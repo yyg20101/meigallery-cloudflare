@@ -2,7 +2,7 @@
 
 App 版本：1.0
 
-日期：2026-07-23
+日期：2026-07-28
 
 状态：需求讨论中
 
@@ -27,7 +27,7 @@ App 版本：1.0
 
 - 建立从真人内容供给、发现、单向互动到会员平台话题的完整闭环。
 - 将 MeiGallery 的人物和媒体资产转为有来源、有授权、有状态的真人资料。
-- 建立可解释的管理员代运营消息服务和未来本人认领路径。
+- 建立可解释的平台话题运营服务和未来本人认领路径。
 - App 1.0 建立五级心享会员手动发放、管理员金币账本和用户明细；在线商业化以后独立立项。
 - 以 KMP 支持 Android/iOS 首发；普通用户桌面客户端是否立项以后独立决策。
 
@@ -94,6 +94,14 @@ App 版本：1.0
 - 多语言、多地区和平台级实验能力。
 - 普通用户 Windows/macOS 客户端仅在独立立项后进入范围；桌面运营继续使用 Nuxt 管理后台。
 - 视频资料、更加丰富的消息媒体和经过评审的新互动形态。
+
+### 3.7 App 1.0 需求与页面交付基线
+
+- App 1.0 当前定义移动端 49 页、Nuxt 管理后台 43 页，共 92 个稳定 Page ID。
+- 92 个页面全部具有默认状态原型；54 个 P0 页面另有一张关键异常、受限、冲突或处理中状态原型，共 146 张逐页原型图。
+- 页面优先级为 P0 54 页、P1 31 页、P2 7 页。P0 阻塞限量 Alpha/Beta，P1 阻塞 App 1.0 客户最终验收，P2 为可独立排期的后台运营增强。
+- 每个用户可见功能必须映射到产品需求编号、发布范围编号、Feature PRD 和 Page ID；没有独立页面的后台规则、运营门禁或未来能力必须在追踪矩阵中明确说明。
+- 原型用于确认信息结构、交互、状态与视觉表达，不得自行增加需求。具体关系以 [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md) 为准。
 
 ## 4. 信息架构
 
@@ -216,7 +224,7 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 
 ### 5.10 后台
 
-- **PRD-FR-090**：App 1.0 后台包括真人导入、认证发布、标签地区、推荐位、代运营消息、举报审核、会员发放、调币复核和审计；商品、订单退款和认领模块按后续阶段启用。
+- **PRD-FR-090**：App 1.0 后台包括真人导入、认证发布、标签地区、推荐位、平台话题运营、举报审核、会员发放、调币复核和审计；商品、订单退款和认领模块按后续阶段启用。
 - **PRD-FR-091**：认证、发布、代运营、财务、复核和审计使用独立角色，所有写操作记录原因和前后状态。
 - **PRD-FR-092**：批量任务逐项幂等，单项失败不得重复处理已成功项目。
 
@@ -313,11 +321,14 @@ unclaimed → claim_submitted → identity_review
 - **PRD-AC-005**：围绕未认领真人发起话题时，用户持续看到平台运营接收/回复标识。
 - **PRD-AC-006**：管理员调币只产生新账本分录，用户可查看原因，历史不可编辑删除。
 - **PRD-AC-007**：五级会员都可在 App 1.0 目录中展示和由管理员发放，服务端按 rank/entitlement 授权；客户端不存在在线支付入口。
-- **PRD-AC-008**：真人认领后新会话路由本人，历史代运营消息不自动开放。
+- **PRD-AC-008**：真人认领后新会话路由本人，历史平台运营消息不自动开放。
 - **PRD-AC-009**：旧客户端安全忽略未知 entitlement，不崩溃也不扩大权限。
 - **PRD-AC-010**：任一公开发布候选版本通过安全、隐私、目标商店、管理员账本、无障碍和恢复门禁；支付和推送门禁仅在对应能力启用时加入。
 - **PRD-AC-011**：会员申请通过但管理员 grant 尚未生效时，用户仍不能创建或发送平台话题消息。
+- **PRD-AC-012**：App 1.0 的 92 个 Page ID 均能追踪到至少一个产品需求编号、发布范围编号和 Feature PRD，且页面名称、优先级、状态和原型文件使用同一清单。
+- **PRD-AC-013**：92 个页面均具有默认状态原型，54 个 P0 页面均额外具有关键状态原型；原型总数为 146 张，文档中不存在凭章节顺序猜测图片的映射。
+- **PRD-AC-014**：礼物、装扮、在线支付、金币充值、系统推送、媒体消息、真人认领和普通用户桌面端在 App 1.0 追踪矩阵中标记为未来范围，不生成可执行页面、占位入口或上线验收项。
 
 ## 10. 文档关系
 
-本文件是产品层总需求。App 1.0 的启用边界以 [发布范围 PRD](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md) 为准；模块可验收细节以 [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) 为准；页面交互以 [移动端规格](./MOBILE_APP_INTERACTION_SPEC.md)、[后台规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) 和 [统一状态文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) 为准；技术边界以 [技术架构](./TECHNICAL_ARCHITECTURE.md)、[数据与迁移](./DATA_AND_MIGRATION.md) 和 [API 契约](./API_AND_REALTIME_CONTRACT.md) 为准。发生冲突时，先更新发布范围、产品蓝图和决策登记，再同步所有下游文档，禁止在实现中自行选择旧规则。
+本文件是产品层总需求。研发、测试、接口设计和任务拆分统一从 [App 1.0 开发需求规格](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md) 进入；该文件由本产品总需求、[发布范围 PRD](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md) 和统一页面目录生成。模块可验收细节以 [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md) 为准；需求到页面、原型的确定性映射以 [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md) 为准；页面交互以 [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)、[详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)、[移动端规格](./MOBILE_APP_INTERACTION_SPEC.md)、[后台规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) 和 [统一状态文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) 为准；技术边界以 [技术架构](./TECHNICAL_ARCHITECTURE.md)、[数据与迁移](./DATA_AND_MIGRATION.md) 和 [API 契约](./API_AND_REALTIME_CONTRACT.md) 为准。客户 DOCX 只用于阅读和确认，不作为开发需求源。发生冲突时，先更新发布范围、产品蓝图和决策登记，再同步所有下游文档，禁止在实现中自行选择旧规则。

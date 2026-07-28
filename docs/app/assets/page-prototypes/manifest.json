@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "appVersion": "1.0",
   "generatedAt": "2026-07-28",
   "source": "docs/app/interactive-prototype/page-catalog.js",
@@ -57,7 +57,38 @@
         "页面覆盖“首次、恢复中、离线、升级、维护”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "注册和登录只处理观看者账号，不创建公开真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-001",
+          "PRD-FR-002",
+          "PRD-FR-003",
+          "PRD-FR-004"
+        ],
+        "release": [
+          "SCP-FR-001",
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-01",
+            "title": "观看者注册、登录与设备安全",
+            "requirementGroup": "ACC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-AUTH-01 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*"
+      }
     },
     {
       "order": 2,
@@ -97,7 +128,38 @@
         "页面覆盖“正常、输入错误、验证中、频控、账号受限”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "注册和登录只处理观看者账号，不创建公开真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-001",
+          "PRD-FR-002",
+          "PRD-FR-003",
+          "PRD-FR-004"
+        ],
+        "release": [
+          "SCP-FR-001",
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-01",
+            "title": "观看者注册、登录与设备安全",
+            "requirementGroup": "ACC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-AUTH-02 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*"
+      }
     },
     {
       "order": 3,
@@ -135,7 +197,38 @@
         "页面覆盖“正常、标识占用、验证码失效、地区不可用”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "注册和登录只处理观看者账号，不创建公开真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-001",
+          "PRD-FR-002",
+          "PRD-FR-003",
+          "PRD-FR-004"
+        ],
+        "release": [
+          "SCP-FR-001",
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-01",
+            "title": "观看者注册、登录与设备安全",
+            "requirementGroup": "ACC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-AUTH-03 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*"
+      }
     },
     {
       "order": 4,
@@ -172,7 +265,38 @@
         "页面覆盖“等待、失败、次数限制”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "注册和登录只处理观看者账号，不创建公开真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-001",
+          "PRD-FR-002",
+          "PRD-FR-003",
+          "PRD-FR-004"
+        ],
+        "release": [
+          "SCP-FR-001",
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-01",
+            "title": "观看者注册、登录与设备安全",
+            "requirementGroup": "ACC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-AUTH-04 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*"
+      }
     },
     {
       "order": 5,
@@ -210,7 +334,38 @@
         "页面覆盖“正常、空目录、保存失败、非个性化说明”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "注册和登录只处理观看者账号，不创建公开真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-001",
+          "PRD-FR-002",
+          "PRD-FR-003",
+          "PRD-FR-004"
+        ],
+        "release": [
+          "SCP-FR-001",
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-01",
+            "title": "观看者注册、登录与设备安全",
+            "requirementGroup": "ACC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-AUTH-05 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*"
+      }
     },
     {
       "order": 6,
@@ -247,7 +402,38 @@
         "页面覆盖“正常、加载失败、版本更新”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "注册和登录只处理观看者账号，不创建公开真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-001",
+          "PRD-FR-002",
+          "PRD-FR-003",
+          "PRD-FR-004"
+        ],
+        "release": [
+          "SCP-FR-001",
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-01",
+            "title": "观看者注册、登录与设备安全",
+            "requirementGroup": "ACC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-AUTH-06 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*"
+      }
     },
     {
       "order": 7,
@@ -289,7 +475,45 @@
         "页面覆盖“正常、首次空、骨架、分页、离线缓存、规则刷新”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023"
+        ],
+        "release": [
+          "SCP-FR-002",
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-02–F-05",
+            "title": "真人发现、搜索与资料浏览",
+            "requirementGroup": "DSP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md"
+          },
+          {
+            "feature": "A-05",
+            "title": "推荐位、排序规则与热度运营",
+            "requirementGroup": "ROP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md"
+          }
+        ],
+        "traceKey": "APP-DSC-01 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-05/ROP-FR-*"
+      }
     },
     {
       "order": 8,
@@ -327,7 +551,45 @@
         "页面覆盖“正常、定位未使用、目录更新、无结果”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023"
+        ],
+        "release": [
+          "SCP-FR-002",
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-02–F-05",
+            "title": "真人发现、搜索与资料浏览",
+            "requirementGroup": "DSP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md"
+          },
+          {
+            "feature": "A-04",
+            "title": "标签、地区与分类目录管理",
+            "requirementGroup": "TAX-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-DSC-02 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*"
+      }
     },
     {
       "order": 9,
@@ -364,7 +626,45 @@
         "页面覆盖“正常、空分类、目录失效”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023"
+        ],
+        "release": [
+          "SCP-FR-002",
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-02–F-05",
+            "title": "真人发现、搜索与资料浏览",
+            "requirementGroup": "DSP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md"
+          },
+          {
+            "feature": "A-04",
+            "title": "标签、地区与分类目录管理",
+            "requirementGroup": "TAX-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-DSC-03 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*"
+      }
     },
     {
       "order": 10,
@@ -403,7 +703,45 @@
         "页面覆盖“初始、输入中、有结果、无结果、历史关闭”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023"
+        ],
+        "release": [
+          "SCP-FR-002",
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-02–F-05",
+            "title": "真人发现、搜索与资料浏览",
+            "requirementGroup": "DSP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md"
+          },
+          {
+            "feature": "A-04",
+            "title": "标签、地区与分类目录管理",
+            "requirementGroup": "TAX-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-DSC-04 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*"
+      }
     },
     {
       "order": 11,
@@ -441,7 +779,45 @@
         "页面覆盖“正常、权益门槛、目录冲突、无结果”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023"
+        ],
+        "release": [
+          "SCP-FR-002",
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-02–F-05",
+            "title": "真人发现、搜索与资料浏览",
+            "requirementGroup": "DSP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md"
+          },
+          {
+            "feature": "A-04",
+            "title": "标签、地区与分类目录管理",
+            "requirementGroup": "TAX-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-DSC-05 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*"
+      }
     },
     {
       "order": 12,
@@ -479,7 +855,45 @@
         "页面覆盖“正常、空、额度满、标签已合并”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023"
+        ],
+        "release": [
+          "SCP-FR-002",
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-02–F-05",
+            "title": "真人发现、搜索与资料浏览",
+            "requirementGroup": "DSP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md"
+          },
+          {
+            "feature": "A-04",
+            "title": "标签、地区与分类目录管理",
+            "requirementGroup": "TAX-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-DSC-06 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*"
+      }
     },
     {
       "order": 13,
@@ -521,7 +935,38 @@
         "页面覆盖“正常、下架、受限、离线摘要、媒体不可用”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-030",
+          "PRD-FR-031",
+          "PRD-FR-032"
+        ],
+        "release": [
+          "SCP-FR-002",
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-02–F-05",
+            "title": "真人发现、搜索与资料浏览",
+            "requirementGroup": "DSP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md"
+          }
+        ],
+        "traceKey": "APP-DSC-07 → PRD-FR-030,PRD-FR-031,PRD-FR-032 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*"
+      }
     },
     {
       "order": 14,
@@ -560,7 +1005,38 @@
         "页面覆盖“正常、凭证刷新、加载失败、内容隐藏”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-030",
+          "PRD-FR-031",
+          "PRD-FR-032"
+        ],
+        "release": [
+          "SCP-FR-002",
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-02–F-05",
+            "title": "真人发现、搜索与资料浏览",
+            "requirementGroup": "DSP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md"
+          }
+        ],
+        "traceKey": "APP-DSC-08 → PRD-FR-030,PRD-FR-031,PRD-FR-032 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*"
+      }
     },
     {
       "order": 15,
@@ -597,7 +1073,44 @@
         "页面覆盖“正常、认证失效、资料变化”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-030",
+          "PRD-FR-031",
+          "PRD-FR-032"
+        ],
+        "release": [
+          "SCP-FR-002",
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-02–F-05",
+            "title": "真人发现、搜索与资料浏览",
+            "requirementGroup": "DSP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md"
+          },
+          {
+            "feature": "A-03",
+            "title": "真人认证与发布审核",
+            "requirementGroup": "VER-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md"
+          }
+        ],
+        "traceKey": "APP-DSC-09 → PRD-FR-030,PRD-FR-031,PRD-FR-032 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-03/VER-FR-*"
+      }
     },
     {
       "order": 16,
@@ -635,7 +1148,35 @@
         "页面覆盖“正常、首次空、无更新、资料下架”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-040",
+          "PRD-FR-041",
+          "PRD-FR-042"
+        ],
+        "release": [
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-003"
+        ],
+        "features": [
+          {
+            "feature": "F-06",
+            "title": "喜欢、关注、收藏与浏览历史",
+            "requirementGroup": "VIR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md"
+          }
+        ],
+        "traceKey": "APP-INT-01 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*"
+      }
     },
     {
       "order": 17,
@@ -672,7 +1213,35 @@
         "页面覆盖“正常、空、资料不可用”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-040",
+          "PRD-FR-041",
+          "PRD-FR-042"
+        ],
+        "release": [
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-003"
+        ],
+        "features": [
+          {
+            "feature": "F-06",
+            "title": "喜欢、关注、收藏与浏览历史",
+            "requirementGroup": "VIR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md"
+          }
+        ],
+        "traceKey": "APP-INT-02 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*"
+      }
     },
     {
       "order": 18,
@@ -711,7 +1280,35 @@
         "页面覆盖“正常、空、额度满、离线”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-040",
+          "PRD-FR-041",
+          "PRD-FR-042"
+        ],
+        "release": [
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-003"
+        ],
+        "features": [
+          {
+            "feature": "F-06",
+            "title": "喜欢、关注、收藏与浏览历史",
+            "requirementGroup": "VIR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md"
+          }
+        ],
+        "traceKey": "APP-INT-03 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*"
+      }
     },
     {
       "order": 19,
@@ -749,7 +1346,35 @@
         "页面覆盖“正常、文件夹已删除、资料下架”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-040",
+          "PRD-FR-041",
+          "PRD-FR-042"
+        ],
+        "release": [
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-003"
+        ],
+        "features": [
+          {
+            "feature": "F-06",
+            "title": "喜欢、关注、收藏与浏览历史",
+            "requirementGroup": "VIR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md"
+          }
+        ],
+        "traceKey": "APP-INT-04 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*"
+      }
     },
     {
       "order": 20,
@@ -787,7 +1412,35 @@
         "页面覆盖“正常、空、保留到期、清除失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-040",
+          "PRD-FR-041",
+          "PRD-FR-042"
+        ],
+        "release": [
+          "SCP-FR-003"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-003"
+        ],
+        "features": [
+          {
+            "feature": "F-06",
+            "title": "喜欢、关注、收藏与浏览历史",
+            "requirementGroup": "VIR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md"
+          }
+        ],
+        "traceKey": "APP-INT-05 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*"
+      }
     },
     {
       "order": 21,
@@ -825,7 +1478,48 @@
         "页面覆盖“正常、首次空、离线、会话受限”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "话题由平台管理员接收与处理；只有有效会员可以新建和发送。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-050",
+          "PRD-FR-051",
+          "PRD-FR-052",
+          "PRD-FR-053",
+          "PRD-FR-054",
+          "PRD-FR-055",
+          "PRD-FR-056"
+        ],
+        "release": [
+          "SCP-FR-005",
+          "SCP-FR-006",
+          "SCP-FR-007",
+          "SCP-FR-008",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-005",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-07、A-06",
+            "title": "会员平台话题、实时会话与运营工作台",
+            "requirementGroup": "MOP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md"
+          }
+        ],
+        "traceKey": "APP-MSG-01 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*"
+      }
     },
     {
       "order": 22,
@@ -864,7 +1558,48 @@
         "页面覆盖“正常、无会员、额度尽、资料失效、已有话题”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "话题由平台管理员接收与处理；只有有效会员可以新建和发送。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-050",
+          "PRD-FR-051",
+          "PRD-FR-052",
+          "PRD-FR-053",
+          "PRD-FR-054",
+          "PRD-FR-055",
+          "PRD-FR-056"
+        ],
+        "release": [
+          "SCP-FR-005",
+          "SCP-FR-006",
+          "SCP-FR-007",
+          "SCP-FR-008",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-005",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-07、A-06",
+            "title": "会员平台话题、实时会话与运营工作台",
+            "requirementGroup": "MOP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md"
+          }
+        ],
+        "traceKey": "APP-MSG-02 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*"
+      }
     },
     {
       "order": 23,
@@ -905,7 +1640,48 @@
         "页面覆盖“正常、补拉、审核中、只读、冻结、关闭”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "话题由平台管理员接收与处理；只有有效会员可以新建和发送。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-050",
+          "PRD-FR-051",
+          "PRD-FR-052",
+          "PRD-FR-053",
+          "PRD-FR-054",
+          "PRD-FR-055",
+          "PRD-FR-056"
+        ],
+        "release": [
+          "SCP-FR-005",
+          "SCP-FR-006",
+          "SCP-FR-007",
+          "SCP-FR-008",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-005",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-07、A-06",
+            "title": "会员平台话题、实时会话与运营工作台",
+            "requirementGroup": "MOP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md"
+          }
+        ],
+        "traceKey": "APP-MSG-03 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*"
+      }
     },
     {
       "order": 24,
@@ -943,7 +1719,48 @@
         "页面覆盖“正常、操作失败、已关闭”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "话题由平台管理员接收与处理；只有有效会员可以新建和发送。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-050",
+          "PRD-FR-051",
+          "PRD-FR-052",
+          "PRD-FR-053",
+          "PRD-FR-054",
+          "PRD-FR-055",
+          "PRD-FR-056"
+        ],
+        "release": [
+          "SCP-FR-005",
+          "SCP-FR-006",
+          "SCP-FR-007",
+          "SCP-FR-008",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-005",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-07、A-06",
+            "title": "会员平台话题、实时会话与运营工作台",
+            "requirementGroup": "MOP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md"
+          }
+        ],
+        "traceKey": "APP-MSG-04 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*"
+      }
     },
     {
       "order": 25,
@@ -981,7 +1798,37 @@
         "页面覆盖“正常、首次空、分页失败、实时离线”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "话题由平台管理员接收与处理；只有有效会员可以新建和发送。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081"
+        ],
+        "release": [
+          "SCP-FR-009"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-12",
+            "title": "站内通知中心与通知偏好",
+            "requirementGroup": "NTF-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md"
+          }
+        ],
+        "traceKey": "APP-MSG-05 → PRD-FR-080,PRD-FR-081 → SCP-FR-009 → F-12/NTF-FR-*"
+      }
     },
     {
       "order": 26,
@@ -1019,7 +1866,37 @@
         "页面覆盖“正常、目标失效、无权限、需要升级”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "话题由平台管理员接收与处理；只有有效会员可以新建和发送。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081"
+        ],
+        "release": [
+          "SCP-FR-009"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-12",
+            "title": "站内通知中心与通知偏好",
+            "requirementGroup": "NTF-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md"
+          }
+        ],
+        "traceKey": "APP-MSG-06 → PRD-FR-080,PRD-FR-081 → SCP-FR-009 → F-12/NTF-FR-*"
+      }
     },
     {
       "order": 27,
@@ -1057,7 +1934,47 @@
         "页面覆盖“免费、已有申请、待生效、同步失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "App 1.0 不提供在线支付；提交申请不产生权限，管理员 grant 生效后才获得会员权益。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-060",
+          "PRD-FR-061",
+          "PRD-FR-062",
+          "PRD-FR-063",
+          "PRD-FR-064",
+          "PRD-FR-065",
+          "PRD-FR-066"
+        ],
+        "release": [
+          "SCP-FR-004",
+          "SCP-FR-005",
+          "SCP-FR-005A",
+          "SCP-FR-005B"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-007",
+          "PRD-AC-009",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-09、A-08",
+            "title": "心享会员、Entitlement 与管理员手动发放",
+            "requirementGroup": "MBR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md"
+          }
+        ],
+        "traceKey": "APP-MBR-01 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066 → SCP-FR-004,SCP-FR-005,SCP-FR-005A,SCP-FR-005B → F-09、A-08/MBR-FR-*"
+      }
     },
     {
       "order": 28,
@@ -1096,7 +2013,47 @@
         "页面覆盖“正常、即将到期、到期、撤销、受限”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "App 1.0 不提供在线支付；提交申请不产生权限，管理员 grant 生效后才获得会员权益。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-060",
+          "PRD-FR-061",
+          "PRD-FR-062",
+          "PRD-FR-063",
+          "PRD-FR-064",
+          "PRD-FR-065",
+          "PRD-FR-066"
+        ],
+        "release": [
+          "SCP-FR-004",
+          "SCP-FR-005",
+          "SCP-FR-005A",
+          "SCP-FR-005B"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-007",
+          "PRD-AC-009",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-09、A-08",
+            "title": "心享会员、Entitlement 与管理员手动发放",
+            "requirementGroup": "MBR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md"
+          }
+        ],
+        "traceKey": "APP-MBR-02 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066 → SCP-FR-004,SCP-FR-005,SCP-FR-005A,SCP-FR-005B → F-09、A-08/MBR-FR-*"
+      }
     },
     {
       "order": 29,
@@ -1138,7 +2095,47 @@
         "页面覆盖“未申请、已提交、处理中、待补充、已通过、已拒绝、已取消”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "App 1.0 不提供在线支付；提交申请不产生权限，管理员 grant 生效后才获得会员权益。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-060",
+          "PRD-FR-061",
+          "PRD-FR-062",
+          "PRD-FR-063",
+          "PRD-FR-064",
+          "PRD-FR-065",
+          "PRD-FR-066"
+        ],
+        "release": [
+          "SCP-FR-004",
+          "SCP-FR-005",
+          "SCP-FR-005A",
+          "SCP-FR-005B"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-007",
+          "PRD-AC-009",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-09、A-08",
+            "title": "心享会员、Entitlement 与管理员手动发放",
+            "requirementGroup": "MBR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md"
+          }
+        ],
+        "traceKey": "APP-MBR-03 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066 → SCP-FR-004,SCP-FR-005,SCP-FR-005A,SCP-FR-005B → F-09、A-08/MBR-FR-*"
+      }
     },
     {
       "order": 30,
@@ -1176,7 +2173,37 @@
         "页面覆盖“正常、空钱包、离线缓存、同步失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-070",
+          "PRD-FR-071",
+          "PRD-FR-074"
+        ],
+        "release": [
+          "SCP-FR-010",
+          "SCP-FR-011"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-006"
+        ],
+        "features": [
+          {
+            "feature": "F-10、A-10",
+            "title": "金币钱包与管理员调币",
+            "requirementGroup": "WAL-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md"
+          }
+        ],
+        "traceKey": "APP-WAL-01 → PRD-FR-070,PRD-FR-071,PRD-FR-074 → SCP-FR-010,SCP-FR-011 → F-10、A-10/WAL-FR-*"
+      }
     },
     {
       "order": 31,
@@ -1214,7 +2241,37 @@
         "页面覆盖“正常、首次空、分页、对账维护”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-070",
+          "PRD-FR-071",
+          "PRD-FR-074"
+        ],
+        "release": [
+          "SCP-FR-010",
+          "SCP-FR-011"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-006"
+        ],
+        "features": [
+          {
+            "feature": "F-10、A-10",
+            "title": "金币钱包与管理员调币",
+            "requirementGroup": "WAL-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md"
+          }
+        ],
+        "traceKey": "APP-WAL-02 → PRD-FR-070,PRD-FR-071,PRD-FR-074 → SCP-FR-010,SCP-FR-011 → F-10、A-10/WAL-FR-*"
+      }
     },
     {
       "order": 32,
@@ -1251,7 +2308,37 @@
         "页面覆盖“正常、分录不可用、冲正中”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-070",
+          "PRD-FR-071",
+          "PRD-FR-074"
+        ],
+        "release": [
+          "SCP-FR-010",
+          "SCP-FR-011"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-006"
+        ],
+        "features": [
+          {
+            "feature": "F-10、A-10",
+            "title": "金币钱包与管理员调币",
+            "requirementGroup": "WAL-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md"
+          }
+        ],
+        "traceKey": "APP-WAL-03 → PRD-FR-070,PRD-FR-071,PRD-FR-074 → SCP-FR-010,SCP-FR-011 → F-10、A-10/WAL-FR-*"
+      }
     },
     {
       "order": 33,
@@ -1289,7 +2376,36 @@
         "页面覆盖“正常、账号受限、摘要同步失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-01 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*"
+      }
     },
     {
       "order": 34,
@@ -1326,7 +2442,44 @@
         "页面覆盖“正常、保存失败、需要重新验证”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082",
+          "PRD-FR-001",
+          "PRD-FR-002"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          },
+          {
+            "feature": "F-01",
+            "title": "观看者注册、登录与设备安全",
+            "requirementGroup": "ACC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-02 → PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-001,PRD-FR-002 → SCP-FR-013 → F-13/PDR-FR-*,F-01/ACC-FR-*"
+      }
     },
     {
       "order": 35,
@@ -1362,7 +2515,44 @@
         "页面覆盖“正常、仅当前设备、撤销失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082",
+          "PRD-FR-001",
+          "PRD-FR-002"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          },
+          {
+            "feature": "F-01",
+            "title": "观看者注册、登录与设备安全",
+            "requirementGroup": "ACC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-03 → PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-001,PRD-FR-002 → SCP-FR-013 → F-13/PDR-FR-*,F-01/ACC-FR-*"
+      }
     },
     {
       "order": 36,
@@ -1399,7 +2589,36 @@
         "页面覆盖“正常、保存冲突、政策更新”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-04 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*"
+      }
     },
     {
       "order": 37,
@@ -1435,7 +2654,36 @@
         "页面覆盖“正常、同步失败、策略变化”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-05 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*"
+      }
     },
     {
       "order": 38,
@@ -1472,7 +2720,42 @@
         "页面覆盖“正常、空、解除失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          },
+          {
+            "feature": "A-07",
+            "title": "举报、拉黑与安全审核",
+            "requirementGroup": "MOD-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-06 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*,A-07/MOD-FR-*"
+      }
     },
     {
       "order": 39,
@@ -1508,7 +2791,42 @@
         "页面覆盖“正常、空、状态延迟”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          },
+          {
+            "feature": "A-07",
+            "title": "举报、拉黑与安全审核",
+            "requirementGroup": "MOD-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-07 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*,A-07/MOD-FR-*"
+      }
     },
     {
       "order": 40,
@@ -1545,7 +2863,42 @@
         "页面覆盖“正常、已有处理中、提交失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          },
+          {
+            "feature": "A-07",
+            "title": "举报、拉黑与安全审核",
+            "requirementGroup": "MOD-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-08 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*,A-07/MOD-FR-*"
+      }
     },
     {
       "order": 41,
@@ -1584,7 +2937,36 @@
         "页面覆盖“正常、处理中、失败、已过期、需要重新验证”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-09 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*"
+      }
     },
     {
       "order": 42,
@@ -1622,7 +3004,36 @@
         "页面覆盖“正常、存在阻塞项、处理中、失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-10 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*"
+      }
     },
     {
       "order": 43,
@@ -1659,7 +3070,36 @@
         "页面覆盖“正常、离线、无结果”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-11 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*"
+      }
     },
     {
       "order": 44,
@@ -1695,7 +3135,36 @@
         "页面覆盖“正常、文档不可用”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "账号设置不改变公开真人资料；敏感操作需要服务端重新验证。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-013"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-13",
+            "title": "我的、隐私设置与数据权利",
+            "requirementGroup": "PDR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md"
+          }
+        ],
+        "traceKey": "APP-SET-12 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*"
+      }
     },
     {
       "order": 45,
@@ -1731,7 +3200,37 @@
         "页面覆盖“必须升级、商店不可用”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "缓存不能冒充最新事实；必须提供可理解原因和安全返回路径。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080"
+        ],
+        "release": [
+          "SCP-FR-031",
+          "SCP-FR-032",
+          "SCP-FR-033"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-009",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "App 1.0 范围",
+            "title": "发布范围与能力启用策略",
+            "requirementGroup": "SCP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md"
+          }
+        ],
+        "traceKey": "APP-SYS-01 → PRD-FR-080 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*"
+      }
     },
     {
       "order": 46,
@@ -1766,7 +3265,37 @@
         "页面覆盖“维护中、部分恢复”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "缓存不能冒充最新事实；必须提供可理解原因和安全返回路径。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080"
+        ],
+        "release": [
+          "SCP-FR-031",
+          "SCP-FR-032",
+          "SCP-FR-033"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-009",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "App 1.0 范围",
+            "title": "发布范围与能力启用策略",
+            "requirementGroup": "SCP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md"
+          }
+        ],
+        "traceKey": "APP-SYS-02 → PRD-FR-080 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*"
+      }
     },
     {
       "order": 47,
@@ -1802,7 +3331,39 @@
         "页面覆盖“部分受限、全部受限”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "缓存不能冒充最新事实；必须提供可理解原因和安全返回路径。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-001",
+          "PRD-FR-002",
+          "PRD-FR-082"
+        ],
+        "release": [
+          "SCP-FR-031",
+          "SCP-FR-032",
+          "SCP-FR-033"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-009",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "App 1.0 范围",
+            "title": "发布范围与能力启用策略",
+            "requirementGroup": "SCP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md"
+          }
+        ],
+        "traceKey": "APP-SYS-03 → PRD-FR-001,PRD-FR-002,PRD-FR-082 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*"
+      }
     },
     {
       "order": 48,
@@ -1838,7 +3399,38 @@
         "页面覆盖“已下架、无权限、已删除”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "缓存不能冒充最新事实；必须提供可理解原因和安全返回路径。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-013",
+          "PRD-FR-032"
+        ],
+        "release": [
+          "SCP-FR-031",
+          "SCP-FR-032",
+          "SCP-FR-033"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-009",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "App 1.0 范围",
+            "title": "发布范围与能力启用策略",
+            "requirementGroup": "SCP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md"
+          }
+        ],
+        "traceKey": "APP-SYS-04 → PRD-FR-013,PRD-FR-032 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*"
+      }
     },
     {
       "order": 49,
@@ -1873,7 +3465,38 @@
         "页面覆盖“未开放、政策变化”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "缓存不能冒充最新事实；必须提供可理解原因和安全返回路径。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-022"
+        ],
+        "release": [
+          "SCP-FR-031",
+          "SCP-FR-032",
+          "SCP-FR-033"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-004",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-009",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "App 1.0 范围",
+            "title": "发布范围与能力启用策略",
+            "requirementGroup": "SCP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md"
+          }
+        ],
+        "traceKey": "APP-SYS-05 → PRD-FR-020,PRD-FR-022 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*"
+      }
     },
     {
       "order": 50,
@@ -1911,7 +3534,41 @@
         "页面覆盖“正常、数据延迟、质量异常、部分无权限”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-014",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-13",
+            "title": "运营看板、审计日志与异常追踪",
+            "requirementGroup": "OAU-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md"
+          }
+        ],
+        "traceKey": "ADM-OV-01 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014,SCP-FR-015 → A-13/OAU-FR-*"
+      }
     },
     {
       "order": 51,
@@ -1949,7 +3606,41 @@
         "页面覆盖“正常、P0/P1、未分配、已缓解”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-014",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-13",
+            "title": "运营看板、审计日志与异常追踪",
+            "requirementGroup": "OAU-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md"
+          }
+        ],
+        "traceKey": "ADM-OV-02 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014,SCP-FR-015 → A-13/OAU-FR-*"
+      }
     },
     {
       "order": 52,
@@ -1988,7 +3679,41 @@
         "页面覆盖“正常、影响扩大、并发更新、证据不足”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-014",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-13",
+            "title": "运营看板、审计日志与异常追踪",
+            "requirementGroup": "OAU-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md"
+          }
+        ],
+        "traceKey": "ADM-OV-03 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014,SCP-FR-015 → A-13/OAU-FR-*"
+      }
     },
     {
       "order": 53,
@@ -2029,7 +3754,45 @@
         "页面覆盖“正常、草稿、待审、已发布、已暂停、争议”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-010",
+          "PRD-FR-011",
+          "PRD-FR-012",
+          "PRD-FR-013",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-014"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-01–A-02",
+            "title": "真人来源、上传与 MeiGallery 导入",
+            "requirementGroup": "SRC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md"
+          }
+        ],
+        "traceKey": "ADM-PER-01 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*"
+      }
     },
     {
       "order": 54,
@@ -2067,7 +3830,45 @@
         "页面覆盖“正常、缺少来源、重复候选、媒体失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-010",
+          "PRD-FR-011",
+          "PRD-FR-012",
+          "PRD-FR-013",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-014"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-01–A-02",
+            "title": "真人来源、上传与 MeiGallery 导入",
+            "requirementGroup": "SRC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md"
+          }
+        ],
+        "traceKey": "ADM-PER-02 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*"
+      }
     },
     {
       "order": 55,
@@ -2106,7 +3907,45 @@
         "页面覆盖“正常、认证待审、发布待审、授权过期”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-010",
+          "PRD-FR-011",
+          "PRD-FR-012",
+          "PRD-FR-013",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-014"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-01–A-02",
+            "title": "真人来源、上传与 MeiGallery 导入",
+            "requirementGroup": "SRC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md"
+          }
+        ],
+        "traceKey": "ADM-PER-03 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*"
+      }
     },
     {
       "order": 56,
@@ -2146,7 +3985,45 @@
         "页面覆盖“正常、校验中、部分失败、已暂停、已完成”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-010",
+          "PRD-FR-011",
+          "PRD-FR-012",
+          "PRD-FR-013",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-014"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-01–A-02",
+            "title": "真人来源、上传与 MeiGallery 导入",
+            "requirementGroup": "SRC-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md"
+          }
+        ],
+        "traceKey": "ADM-PER-04 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*"
+      }
     },
     {
       "order": 57,
@@ -2185,7 +4062,45 @@
         "页面覆盖“正常、证据不足、版本冲突、需要复核”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-010",
+          "PRD-FR-011",
+          "PRD-FR-012",
+          "PRD-FR-013",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-014"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-03",
+            "title": "真人认证与发布审核",
+            "requirementGroup": "VER-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md"
+          }
+        ],
+        "traceKey": "ADM-PER-05 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-03/VER-FR-*"
+      }
     },
     {
       "order": 58,
@@ -2224,7 +4139,45 @@
         "页面覆盖“正常、未认证、授权失效、投影失败”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-010",
+          "PRD-FR-011",
+          "PRD-FR-012",
+          "PRD-FR-013",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-014"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-001",
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-03",
+            "title": "真人认证与发布审核",
+            "requirementGroup": "VER-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md"
+          }
+        ],
+        "traceKey": "ADM-PER-06 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-03/VER-FR-*"
+      }
     },
     {
       "order": 59,
@@ -2262,7 +4215,45 @@
         "页面覆盖“正常、草稿目录、生效目录、归档目录”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-009",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-04",
+            "title": "标签、地区与分类目录管理",
+            "requirementGroup": "TAX-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md"
+          }
+        ],
+        "traceKey": "ADM-TAX-01 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-04/TAX-FR-*"
+      }
     },
     {
       "order": 60,
@@ -2300,7 +4291,45 @@
         "页面覆盖“正常、被引用、合并冲突、版本过期”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-009",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-04",
+            "title": "标签、地区与分类目录管理",
+            "requirementGroup": "TAX-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md"
+          }
+        ],
+        "traceKey": "ADM-TAX-02 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-04/TAX-FR-*"
+      }
     },
     {
       "order": 61,
@@ -2338,7 +4367,45 @@
         "页面覆盖“正常、未知引用、客户端不兼容、待复核”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-009",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-04",
+            "title": "标签、地区与分类目录管理",
+            "requirementGroup": "TAX-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md"
+          }
+        ],
+        "traceKey": "ADM-TAX-03 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-04/TAX-FR-*"
+      }
     },
     {
       "order": 62,
@@ -2376,7 +4443,44 @@
         "页面覆盖“正常、当前生效、灰度中、已回滚”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-05",
+            "title": "推荐位、排序规则与热度运营",
+            "requirementGroup": "ROP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md"
+          }
+        ],
+        "traceKey": "ADM-REC-01 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*"
+      }
     },
     {
       "order": 63,
@@ -2414,7 +4518,44 @@
         "页面覆盖“正常、Schema 错误、触碰安全过滤、并发冲突”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-05",
+            "title": "推荐位、排序规则与热度运营",
+            "requirementGroup": "ROP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md"
+          }
+        ],
+        "traceKey": "ADM-REC-02 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*"
+      }
     },
     {
       "order": 64,
@@ -2451,7 +4592,44 @@
         "页面覆盖“正常、样本不足、数据延迟”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-05",
+            "title": "推荐位、排序规则与热度运营",
+            "requirementGroup": "ROP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md"
+          }
+        ],
+        "traceKey": "ADM-REC-03 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*"
+      }
     },
     {
       "order": 65,
@@ -2488,7 +4666,44 @@
         "页面覆盖“正常、时间冲突、资料下架”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-020",
+          "PRD-FR-021",
+          "PRD-FR-022",
+          "PRD-FR-023",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-05",
+            "title": "推荐位、排序规则与热度运营",
+            "requirementGroup": "ROP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md"
+          }
+        ],
+        "traceKey": "ADM-REC-04 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*"
+      }
     },
     {
       "order": 66,
@@ -2527,7 +4742,51 @@
         "页面覆盖“正常、待分配、待平台、待用户、安全审核”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "管理员只能以固定平台运营身份发送，正文读取按租约和对象范围控制。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-050",
+          "PRD-FR-051",
+          "PRD-FR-052",
+          "PRD-FR-053",
+          "PRD-FR-054",
+          "PRD-FR-055",
+          "PRD-FR-056",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-007",
+          "SCP-FR-008",
+          "SCP-FR-012",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-005",
+          "PRD-AC-010",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-07、A-06",
+            "title": "会员平台话题、实时会话与运营工作台",
+            "requirementGroup": "MOP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MSG-01 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*"
+      }
     },
     {
       "order": 67,
@@ -2567,7 +4826,51 @@
         "页面覆盖“正常、租约冲突、只读、冻结、关闭”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "管理员只能以固定平台运营身份发送，正文读取按租约和对象范围控制。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-050",
+          "PRD-FR-051",
+          "PRD-FR-052",
+          "PRD-FR-053",
+          "PRD-FR-054",
+          "PRD-FR-055",
+          "PRD-FR-056",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-007",
+          "SCP-FR-008",
+          "SCP-FR-012",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-005",
+          "PRD-AC-010",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-07、A-06",
+            "title": "会员平台话题、实时会话与运营工作台",
+            "requirementGroup": "MOP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MSG-02 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*"
+      }
     },
     {
       "order": 68,
@@ -2605,7 +4908,51 @@
         "页面覆盖“正常、无值班、过载、配置冲突”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "管理员只能以固定平台运营身份发送，正文读取按租约和对象范围控制。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-050",
+          "PRD-FR-051",
+          "PRD-FR-052",
+          "PRD-FR-053",
+          "PRD-FR-054",
+          "PRD-FR-055",
+          "PRD-FR-056",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-007",
+          "SCP-FR-008",
+          "SCP-FR-012",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-005",
+          "PRD-AC-010",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-07、A-06",
+            "title": "会员平台话题、实时会话与运营工作台",
+            "requirementGroup": "MOP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MSG-03 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*"
+      }
     },
     {
       "order": 69,
@@ -2642,7 +4989,51 @@
         "页面覆盖“正常、无正文授权、披露缺失”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "管理员只能以固定平台运营身份发送，正文读取按租约和对象范围控制。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-050",
+          "PRD-FR-051",
+          "PRD-FR-052",
+          "PRD-FR-053",
+          "PRD-FR-054",
+          "PRD-FR-055",
+          "PRD-FR-056",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-007",
+          "SCP-FR-008",
+          "SCP-FR-012",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-004",
+          "PRD-AC-005",
+          "PRD-AC-010",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-07、A-06",
+            "title": "会员平台话题、实时会话与运营工作台",
+            "requirementGroup": "MOP-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MSG-04 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*"
+      }
     },
     {
       "order": 70,
@@ -2680,7 +5071,45 @@
         "页面覆盖“正常、P0、超时、未分配”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-032",
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-005",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-07",
+            "title": "举报、拉黑与安全审核",
+            "requirementGroup": "MOD-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md"
+          }
+        ],
+        "traceKey": "ADM-SAF-01 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*"
+      }
     },
     {
       "order": 71,
@@ -2718,7 +5147,45 @@
         "页面覆盖“正常、证据受限、并发冲突、已冻结”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-032",
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-005",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-07",
+            "title": "举报、拉黑与安全审核",
+            "requirementGroup": "MOD-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md"
+          }
+        ],
+        "traceKey": "ADM-SAF-02 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*"
+      }
     },
     {
       "order": 72,
@@ -2755,7 +5222,45 @@
         "页面覆盖“正常、原审核人隔离、逾期”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-032",
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-005",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-07",
+            "title": "举报、拉黑与安全审核",
+            "requirementGroup": "MOD-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md"
+          }
+        ],
+        "traceKey": "ADM-SAF-03 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*"
+      }
     },
     {
       "order": 73,
@@ -2793,7 +5298,45 @@
         "页面覆盖“正常、证据不足、需要升级”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-032",
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-082",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012",
+          "SCP-FR-015"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-002",
+          "PRD-AC-005",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-07",
+            "title": "举报、拉黑与安全审核",
+            "requirementGroup": "MOD-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md"
+          }
+        ],
+        "traceKey": "ADM-SAF-04 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*"
+      }
     },
     {
       "order": 74,
@@ -2831,7 +5374,52 @@
         "页面覆盖“正常、草稿、生效、待回滚”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-060",
+          "PRD-FR-061",
+          "PRD-FR-062",
+          "PRD-FR-063",
+          "PRD-FR-064",
+          "PRD-FR-065",
+          "PRD-FR-066",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-004",
+          "SCP-FR-005",
+          "SCP-FR-005B",
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-007",
+          "PRD-AC-009",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-09、A-08",
+            "title": "心享会员、Entitlement 与管理员手动发放",
+            "requirementGroup": "MBR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MBR-01 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*"
+      }
     },
     {
       "order": 75,
@@ -2868,7 +5456,52 @@
         "页面覆盖“正常、未知客户端、合并冲突”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-060",
+          "PRD-FR-061",
+          "PRD-FR-062",
+          "PRD-FR-063",
+          "PRD-FR-064",
+          "PRD-FR-065",
+          "PRD-FR-066",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-004",
+          "SCP-FR-005",
+          "SCP-FR-005B",
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-007",
+          "PRD-AC-009",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-09、A-08",
+            "title": "心享会员、Entitlement 与管理员手动发放",
+            "requirementGroup": "MBR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MBR-02 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*"
+      }
     },
     {
       "order": 76,
@@ -2909,7 +5542,52 @@
         "页面覆盖“待处理、处理中、待补充、已通过、已拒绝、直接发放”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-060",
+          "PRD-FR-061",
+          "PRD-FR-062",
+          "PRD-FR-063",
+          "PRD-FR-064",
+          "PRD-FR-065",
+          "PRD-FR-066",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-004",
+          "SCP-FR-005",
+          "SCP-FR-005B",
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-007",
+          "PRD-AC-009",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-09、A-08",
+            "title": "心享会员、Entitlement 与管理员手动发放",
+            "requirementGroup": "MBR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MBR-03 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*"
+      }
     },
     {
       "order": 77,
@@ -2947,7 +5625,52 @@
         "页面覆盖“正常、账号错误、高风险、重复业务单”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-060",
+          "PRD-FR-061",
+          "PRD-FR-062",
+          "PRD-FR-063",
+          "PRD-FR-064",
+          "PRD-FR-065",
+          "PRD-FR-066",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-004",
+          "SCP-FR-005",
+          "SCP-FR-005B",
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-007",
+          "PRD-AC-009",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-09、A-08",
+            "title": "心享会员、Entitlement 与管理员手动发放",
+            "requirementGroup": "MBR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MBR-04 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*"
+      }
     },
     {
       "order": 78,
@@ -2984,7 +5707,52 @@
         "页面覆盖“正常、发起人冲突、账号状态已变”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-060",
+          "PRD-FR-061",
+          "PRD-FR-062",
+          "PRD-FR-063",
+          "PRD-FR-064",
+          "PRD-FR-065",
+          "PRD-FR-066",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-004",
+          "SCP-FR-005",
+          "SCP-FR-005B",
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-007",
+          "PRD-AC-009",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-09、A-08",
+            "title": "心享会员、Entitlement 与管理员手动发放",
+            "requirementGroup": "MBR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MBR-05 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*"
+      }
     },
     {
       "order": 79,
@@ -3021,7 +5789,52 @@
         "页面覆盖“正常、证据不足、映射冲突”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-060",
+          "PRD-FR-061",
+          "PRD-FR-062",
+          "PRD-FR-063",
+          "PRD-FR-064",
+          "PRD-FR-065",
+          "PRD-FR-066",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-004",
+          "SCP-FR-005",
+          "SCP-FR-005B",
+          "SCP-FR-012",
+          "SCP-FR-030"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-007",
+          "PRD-AC-009",
+          "PRD-AC-011"
+        ],
+        "features": [
+          {
+            "feature": "F-09、A-08",
+            "title": "心享会员、Entitlement 与管理员手动发放",
+            "requirementGroup": "MBR-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md"
+          }
+        ],
+        "traceKey": "ADM-MBR-06 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*"
+      }
     },
     {
       "order": 80,
@@ -3058,7 +5871,43 @@
         "页面覆盖“正常、账号受限、对账异常”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-070",
+          "PRD-FR-071",
+          "PRD-FR-074",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-010",
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-10、A-10",
+            "title": "金币钱包与管理员调币",
+            "requirementGroup": "WAL-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md"
+          }
+        ],
+        "traceKey": "ADM-WAL-01 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*"
+      }
     },
     {
       "order": 81,
@@ -3095,7 +5944,43 @@
         "页面覆盖“正常、余额锁定、Sequence 异常”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-070",
+          "PRD-FR-071",
+          "PRD-FR-074",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-010",
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-10、A-10",
+            "title": "金币钱包与管理员调币",
+            "requirementGroup": "WAL-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md"
+          }
+        ],
+        "traceKey": "ADM-WAL-02 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*"
+      }
     },
     {
       "order": 82,
@@ -3133,7 +6018,43 @@
         "页面覆盖“正常、预计负余额、高风险、重复业务单”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-070",
+          "PRD-FR-071",
+          "PRD-FR-074",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-010",
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-10、A-10",
+            "title": "金币钱包与管理员调币",
+            "requirementGroup": "WAL-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md"
+          }
+        ],
+        "traceKey": "ADM-WAL-03 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*"
+      }
     },
     {
       "order": 83,
@@ -3170,7 +6091,43 @@
         "页面覆盖“正常、余额已变化、发起人冲突”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-070",
+          "PRD-FR-071",
+          "PRD-FR-074",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-010",
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-10、A-10",
+            "title": "金币钱包与管理员调币",
+            "requirementGroup": "WAL-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md"
+          }
+        ],
+        "traceKey": "ADM-WAL-04 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*"
+      }
     },
     {
       "order": 84,
@@ -3209,7 +6166,43 @@
         "页面覆盖“正常、部分成功、重复项、总额异常”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-070",
+          "PRD-FR-071",
+          "PRD-FR-074",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-010",
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-10、A-10",
+            "title": "金币钱包与管理员调币",
+            "requirementGroup": "WAL-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md"
+          }
+        ],
+        "traceKey": "ADM-WAL-05 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*"
+      }
     },
     {
       "order": 85,
@@ -3246,7 +6239,43 @@
         "页面覆盖“正常、钱包冻结、差异未解释”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-070",
+          "PRD-FR-071",
+          "PRD-FR-074",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-010",
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-10、A-10",
+            "title": "金币钱包与管理员调币",
+            "requirementGroup": "WAL-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md"
+          }
+        ],
+        "traceKey": "ADM-WAL-06 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*"
+      }
     },
     {
       "order": 86,
@@ -3283,7 +6312,42 @@
         "页面覆盖“正常、未登记、已停用”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-009",
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-12",
+            "title": "站内通知中心与通知偏好",
+            "requirementGroup": "NTF-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md"
+          }
+        ],
+        "traceKey": "ADM-NTF-01 → PRD-FR-080,PRD-FR-081,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-009,SCP-FR-012 → F-12/NTF-FR-*"
+      }
     },
     {
       "order": 87,
@@ -3321,7 +6385,42 @@
         "页面覆盖“正常、变量缺失、地区冲突、语言冲突”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-009",
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-12",
+            "title": "站内通知中心与通知偏好",
+            "requirementGroup": "NTF-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md"
+          }
+        ],
+        "traceKey": "ADM-NTF-02 → PRD-FR-080,PRD-FR-081,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-009,SCP-FR-012 → F-12/NTF-FR-*"
+      }
     },
     {
       "order": 88,
@@ -3359,7 +6458,42 @@
         "页面覆盖“正常、积压、模板失败、重复抑制”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-080",
+          "PRD-FR-081",
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-009",
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "F-12",
+            "title": "站内通知中心与通知偏好",
+            "requirementGroup": "NTF-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md"
+          }
+        ],
+        "traceKey": "ADM-NTF-03 → PRD-FR-080,PRD-FR-081,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-009,SCP-FR-012 → F-12/NTF-FR-*"
+      }
     },
     {
       "order": 89,
@@ -3396,7 +6530,40 @@
         "页面覆盖“正常、范围过大、完整性告警”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-13",
+            "title": "运营看板、审计日志与异常追踪",
+            "requirementGroup": "OAU-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md"
+          }
+        ],
+        "traceKey": "ADM-AUD-01 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*"
+      }
     },
     {
       "order": 90,
@@ -3433,7 +6600,40 @@
         "页面覆盖“正常、关联缺失、敏感字段受限”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-13",
+            "title": "运营看板、审计日志与异常追踪",
+            "requirementGroup": "OAU-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md"
+          }
+        ],
+        "traceKey": "ADM-AUD-02 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*"
+      }
     },
     {
       "order": 91,
@@ -3470,7 +6670,40 @@
         "页面覆盖“正常、Sequence 缺口、业务无审计”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-13",
+            "title": "运营看板、审计日志与异常追踪",
+            "requirementGroup": "OAU-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md"
+          }
+        ],
+        "traceKey": "ADM-AUD-03 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*"
+      }
     },
     {
       "order": 92,
@@ -3508,7 +6741,40 @@
         "页面覆盖“正常、待批准、已过期、范围变化”状态，并在空、错误、受限或冲突时提供安全下一步。",
         "服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。",
         "后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。"
-      ]
+      ],
+      "requirements": {
+        "product": [
+          "PRD-FR-090",
+          "PRD-FR-091",
+          "PRD-FR-092"
+        ],
+        "release": [
+          "SCP-FR-012"
+        ],
+        "nonFunctional": [
+          "PRD-NFR-001",
+          "PRD-NFR-002",
+          "PRD-NFR-003",
+          "PRD-NFR-004",
+          "PRD-NFR-005",
+          "PRD-NFR-006",
+          "PRD-NFR-007",
+          "PRD-NFR-008"
+        ],
+        "acceptance": [
+          "PRD-AC-006",
+          "PRD-AC-010"
+        ],
+        "features": [
+          {
+            "feature": "A-13",
+            "title": "运营看板、审计日志与异常追踪",
+            "requirementGroup": "OAU-FR-*",
+            "document": "../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md"
+          }
+        ],
+        "traceKey": "ADM-AUD-04 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*"
+      }
     }
   ],
   "captures": [

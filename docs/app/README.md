@@ -8,12 +8,19 @@ App 版本：1.0
 
 文档版本与 App 版本一致。需求讨论期间直接修订当前文档，不因每次讨论递增版本；变更历史由 Git 记录。
 
+## 开发交付
+
+- [App 1.0 开发需求规格（Markdown）](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)：研发、测试、接口设计和任务拆分的单一入口，完整包含产品/发布需求、技术边界、92 个 Page ID、146 张原型、逐页状态、权限、需求追踪和完成定义。
+- [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID 和 146 张原型建立确定性映射，并明确未来能力或非 UI 门禁。
+- [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
+
 ## 客户确认交付
 
-- [App 1.0 产品需求确认书（Markdown）](./MEIGALLERY_APP_1_0_CLIENT_PRD.md)：面向客户的单一需求基线，覆盖范围、角色、会员、移动端与后台交互、异常状态、迁移、验收和 8 项客户确认事项。
 - [App 1.0 产品需求确认书（DOCX）](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx)：可直接提供客户评审、填写结论和签字确认的完整交付版。
 - [App 1.0 逐页交互设计确认册（DOCX）](./deliverables/MeiGallery_App_1.0_逐页交互设计确认册.docx)：按 49 个移动端页面与 43 个后台页面汇总 Page ID、页面目标、主操作、必备状态、跨页旅程、验收清单和签字页。
-- [App 1.0 详细功能与原型规格（Markdown）](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)：以 Page ID 为唯一键，逐页列出角色、前置、入口、结构、交互、规则、权限、状态、验收标准和原型文件。
+- [客户确认书生成源（Markdown）](./MEIGALLERY_APP_1_0_CLIENT_PRD.md)：用于生成客户 DOCX，不作为研发直接实现依据，也不单独提供客户维护。
+- [逐页确认册生成源（Markdown）](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)：用于生成逐页客户 DOCX；研发按开发需求规格和 Page ID 实现。
+- [详细功能与原型中间规格（Markdown）](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)：由页面目录生成，供文档与原型映射复核；最终开发入口仍是开发需求规格。
 - [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)：可点击体验 8 个移动端与后台关键旅程，包含业务规则、建议操作、预期结果、响应式布局和状态反馈。
 - [App 1.0 逐页交互设计库](./interactive-prototype/pages.html)：覆盖移动端 49 页和管理后台 43 页，共 92 个可独立访问、搜索、切换状态和操作的页面设计。
 - [App 1.0 逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)：逐页列出页面目标、主操作、必备状态、跨页旅程和验收方法。
@@ -57,9 +64,11 @@ App 版本：1.0
 
 | 文档 | 解决的问题 |
 |------|------------|
-| [客户产品需求确认书](./MEIGALLERY_APP_1_0_CLIENT_PRD.md) | 将分散的产品、交互、原型、验收与客户待确认参数合并为单一可签字需求基线 |
+| [App 1.0 开发需求规格](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md) | 将产品/发布需求、技术边界、Feature PRD、92 个 Page ID、146 张原型和开发验收合并为研发单一入口 |
+| [客户确认书生成源](./MEIGALLERY_APP_1_0_CLIENT_PRD.md) | 将分散的产品、交互、原型、验收与客户待确认参数合并为 DOCX 生成源 |
 | [客户确认版 DOCX](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx) | 供客户阅读、勾选确认结论、填写意见并签字盖章 |
 | [逐页交互设计确认册 DOCX](./deliverables/MeiGallery_App_1.0_逐页交互设计确认册.docx) | 供客户按 Page ID 逐页确认 92 个页面的目标、主操作、必备状态和修改意见 |
+| [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md) | 将产品总需求、发布范围、Feature PRD、92 个 Page ID、优先级与原型映射为同一套可校验口径 |
 | [详细功能与原型规格](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md) | 以 92 个 Page ID 串联详细需求、默认状态、P0 关键状态、截图文件和验收标准 |
 | [高保真关键旅程原型](./interactive-prototype/index.html) | 通过 8 个可点击旅程演示移动端、管理后台、业务规则和关键状态 |
 | [逐页交互设计库](./interactive-prototype/pages.html) | 为 92 个移动端和后台 Page ID 提供可独立访问、状态切换和交互评审的高保真页面 |
@@ -124,10 +133,10 @@ App 版本：1.0
 ## 7. 交付物维护
 
 - `scripts/generate_app_product_assets.py`：生成客户文档使用的流程总览和原始参考对照图。
-- `scripts/generate_app_page_spec.mjs`：从页面目录生成 92 页详细规格、146 张截图任务和确定性映射清单。
+- `scripts/generate_app_page_spec.mjs`：从产品总需求、发布范围和页面目录生成开发需求规格、92 页详细规格、需求追踪矩阵、146 张截图任务和确定性映射清单。
 - `scripts/verify_app_page_prototypes.py`：校验截图数量、尺寸、真实 PNG、哈希重复、清单引用并生成 14 组联系表。
 - `scripts/generate_app_product_docs.py`：根据当前 Markdown 和已验证原型清单生成两份 DOCX，避免手工副本与需求基线分叉。
-- `scripts/verify_app_product_docs.py`：校验两份 DOCX 是否完整包含 92 个 Page ID、146 个精确原型映射和图片替代文本。
+- `scripts/verify_app_product_docs.py`：校验两份 DOCX 是否完整包含 92 个 Page ID、逐页需求追踪键、146 个精确原型映射和图片替代文本。
 - `scripts/create_docx_contact_sheets.py`：将 DOCX 全页渲染结果整理为可配置的视觉复核联系表。
-- 每次客户确认导致需求变化后，应先修改 Markdown 和原型，再重新生成 DOCX；DOCX 不作为独立需求源维护。
+- 每次客户确认导致需求变化后，应先修改上游 Markdown 和原型，再重新生成开发需求规格与 DOCX；开发只以同步后的 Markdown 为实现入口，DOCX 不作为独立需求源维护。
 - 当前交付仍标记为“需求讨论中”。客户完成 C-01～C-08 和签字页确认后，才可将范围状态改为“已确认并冻结”。

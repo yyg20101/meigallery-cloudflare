@@ -46,13 +46,26 @@ def main() -> None:
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     if manifest.get("status") != "verified":
         raise ValueError("逐页原型清单未通过验证")
+    if int(manifest.get("schemaVersion", 0)) < 2:
+        raise ValueError("逐页原型清单缺少需求追踪 schema")
     if manifest["counts"]["pages"] != 92:
         raise ValueError("页面清单不是 92 页")
     if manifest["counts"]["totalCaptures"] != 146:
         raise ValueError("原型清单不是 146 张")
+    if (
+        manifest["counts"]["p0Pages"],
+        manifest["counts"]["p1Pages"],
+        manifest["counts"]["p2Pages"],
+    ) != (54, 31, 7):
+        raise ValueError("P0/P1/P2 页面数量不是 54/31/7")
 
     expected_page_ids = {page["pageId"] for page in manifest["pages"]}
     expected_alts = {capture["alt"] for capture in manifest["captures"]}
+    expected_trace_keys = {
+        page["requirements"]["traceKey"] for page in manifest["pages"]
+    }
+    if len(expected_trace_keys) != 92:
+        raise ValueError("需求追踪键不是 92 个唯一值")
 
     for path in DOCUMENTS:
         verify_docx_archive(path)
@@ -65,6 +78,9 @@ def main() -> None:
             page_id for page_id in expected_page_ids if page_id not in text
         )
         missing_alts = sorted(expected_alts - image_alt_set)
+        missing_trace_keys = sorted(
+            trace_key for trace_key in expected_trace_keys if trace_key not in text
+        )
         if missing_page_ids:
             raise ValueError(
                 f"{path.name} 缺少 Page ID：{', '.join(missing_page_ids)}"
@@ -72,6 +88,10 @@ def main() -> None:
         if missing_alts:
             raise ValueError(
                 f"{path.name} 缺少原型映射：{', '.join(missing_alts[:5])}"
+            )
+        if missing_trace_keys:
+            raise ValueError(
+                f"{path.name} 缺少需求追踪键：{', '.join(missing_trace_keys[:3])}"
             )
         if "原型图片暂不可用" in text:
             raise ValueError(f"{path.name} 包含缺图回退文案")
@@ -83,6 +103,7 @@ def main() -> None:
         print(
             f"文档映射通过：{path.name}；"
             f"Page ID={len(expected_page_ids)}，"
+            f"需求追踪={len(expected_trace_keys)}，"
             f"逐页原型={len(expected_alts)}，"
             f"内嵌图片={len(document.inline_shapes)}，"
             f"图片替代文本={len(image_alts)}。"

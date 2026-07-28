@@ -922,6 +922,8 @@ def load_page_manifest() -> dict[str, Any]:
         "mobilePages": 49,
         "adminPages": 43,
         "p0Pages": 54,
+        "p1Pages": 31,
+        "p2Pages": 7,
         "defaultCaptures": 92,
         "keyStateCaptures": 54,
         "totalCaptures": 146,
@@ -933,6 +935,16 @@ def load_page_manifest() -> dict[str, Any]:
             )
     if manifest.get("status") != "verified":
         raise ValueError("逐页原型清单尚未完成校验，拒绝生成客户文档")
+    if int(manifest.get("schemaVersion", 0)) < 2:
+        raise ValueError("逐页原型清单缺少需求追踪 schema")
+    for page in manifest.get("pages", []):
+        requirements = page.get("requirements", {})
+        if not requirements.get("traceKey"):
+            raise ValueError(f"{page.get('pageId', '未知页面')} 缺少需求追踪键")
+        if not requirements.get("product") or not requirements.get("release"):
+            raise ValueError(f"{page['pageId']} 缺少产品或发布范围需求编号")
+        if not requirements.get("features"):
+            raise ValueError(f"{page['pageId']} 缺少 Feature PRD 映射")
     return manifest
 
 
@@ -1052,6 +1064,13 @@ def add_page_confirmation_unit(
     )
     add_compact_field(
         doc,
+        "需求追踪",
+        page["requirements"]["traceKey"],
+        size=7.75,
+        keep_together=True,
+    )
+    add_compact_field(
+        doc,
         "状态与下一步",
         f"{'、'.join(page['states'])}；成功后可进入 "
         f"{page['nextPageId'] or '当前流程安全出口'}。",
@@ -1078,7 +1097,7 @@ def add_page_catalog_appendix(
     add_inline_content(
         paragraph,
         "本附录以 Page ID 为唯一映射键。每个页面均包含用途、入口、角色、"
-        "结构、交互、规则、权限、状态、验收标准、对应默认原型和客户确认栏；"
+        "结构、交互、规则、权限、需求追踪、状态、验收标准、对应默认原型和客户确认栏；"
         "移动端 49 页、管理后台 43 页，共 92 个独立确认单元。",
         base_size=10,
     )
@@ -1198,6 +1217,8 @@ def add_final_delivery_confirmation(
         f"{counts['mobilePages']} 页、管理后台 {counts['adminPages']} 页。",
         f"P0 页面共 {counts['p0Pages']} 个，并分别纳入一个关键状态原型；"
         f"默认原型与关键状态合计 {counts['totalCaptures']} 张。",
+        "每个 Page ID 均包含产品总需求编号、App 1.0 发布范围编号和 "
+        "Feature PRD 需求组组成的追踪键。",
         "每张图片均通过 Page ID、页面名称、状态和文件清单建立确定性映射；"
         "客户意见应引用 Page ID，避免口头描述造成页面错配。",
     ):

@@ -18,6 +18,13 @@ const CATALOG_PATH = path.join(ROOT, 'docs/app/interactive-prototype/page-catalo
 const OUTPUT_DIR = path.join(ROOT, 'docs/app/assets/page-prototypes')
 const MANIFEST_PATH = path.join(OUTPUT_DIR, 'manifest.json')
 const MARKDOWN_PATH = path.join(ROOT, 'docs/app/APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md')
+const TRACEABILITY_PATH = path.join(ROOT, 'docs/app/APP_REQUIREMENTS_TRACEABILITY.md')
+const DEVELOPMENT_MARKDOWN_PATH = path.join(ROOT, 'docs/app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md')
+const PRODUCT_REQUIREMENTS_PATH = path.join(ROOT, 'docs/app/PRODUCT_REQUIREMENTS.md')
+const RELEASE_SCOPE_PATH = path.join(
+  ROOT,
+  'docs/ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md'
+)
 
 const catalogSource = fs.readFileSync(CATALOG_PATH, 'utf8')
 const sandbox = { window: {} }
@@ -105,6 +112,273 @@ const layoutDescriptions = {
   'audit-detail': '事件时间线、脱敏差异和申请—批准—执行关系集中展示。',
   integrity: 'sequence 缺口、无审计业务和校验结果按风险程度组织。',
   export: '范围、目的、独立复核、短期凭证和过期状态形成受控导出闭环。'
+}
+
+const featureSources = {
+  account: {
+    feature: 'F-01',
+    title: '观看者注册、登录与设备安全',
+    requirementGroup: 'ACC-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md'
+  },
+  discovery: {
+    feature: 'F-02–F-05',
+    title: '真人发现、搜索与资料浏览',
+    requirementGroup: 'DSP-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md'
+  },
+  source: {
+    feature: 'A-01–A-02',
+    title: '真人来源、上传与 MeiGallery 导入',
+    requirementGroup: 'SRC-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md'
+  },
+  verification: {
+    feature: 'A-03',
+    title: '真人认证与发布审核',
+    requirementGroup: 'VER-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md'
+  },
+  interaction: {
+    feature: 'F-06',
+    title: '喜欢、关注、收藏与浏览历史',
+    requirementGroup: 'VIR-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md'
+  },
+  messaging: {
+    feature: 'F-07、A-06',
+    title: '会员平台话题、实时会话与运营工作台',
+    requirementGroup: 'MOP-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md'
+  },
+  membership: {
+    feature: 'F-09、A-08',
+    title: '心享会员、Entitlement 与管理员手动发放',
+    requirementGroup: 'MBR-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md'
+  },
+  wallet: {
+    feature: 'F-10、A-10',
+    title: '金币钱包与管理员调币',
+    requirementGroup: 'WAL-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md'
+  },
+  notification: {
+    feature: 'F-12',
+    title: '站内通知中心与通知偏好',
+    requirementGroup: 'NTF-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md'
+  },
+  privacy: {
+    feature: 'F-13',
+    title: '我的、隐私设置与数据权利',
+    requirementGroup: 'PDR-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md'
+  },
+  taxonomy: {
+    feature: 'A-04',
+    title: '标签、地区与分类目录管理',
+    requirementGroup: 'TAX-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md'
+  },
+  recommendation: {
+    feature: 'A-05',
+    title: '推荐位、排序规则与热度运营',
+    requirementGroup: 'ROP-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md'
+  },
+  safety: {
+    feature: 'A-07',
+    title: '举报、拉黑与安全审核',
+    requirementGroup: 'MOD-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md'
+  },
+  operations: {
+    feature: 'A-13',
+    title: '运营看板、审计日志与异常追踪',
+    requirementGroup: 'OAU-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md'
+  },
+  release: {
+    feature: 'App 1.0 范围',
+    title: '发布范围与能力启用策略',
+    requirementGroup: 'SCP-FR-*',
+    document: '../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md'
+  }
+}
+
+function ids(prefix, values) {
+  return values.map(value => `${prefix}-${value}`)
+}
+
+function requirementTraceFor(page) {
+  const id = page.id
+  let product = []
+  let release = []
+  let nonFunctional = []
+  let acceptance = []
+  let features = []
+
+  if (id.startsWith('APP-AUTH')) {
+    product = ids('PRD-FR', ['001', '002', '003', '004'])
+    release = ids('SCP-FR', ['001', '013'])
+    nonFunctional = ids('PRD-NFR', ['001', '005', '006', '007'])
+    acceptance = ids('PRD-AC', ['001', '010'])
+    features = [featureSources.account]
+  } else if (id.startsWith('APP-DSC')) {
+    const profilePage = ['APP-DSC-07', 'APP-DSC-08', 'APP-DSC-09'].includes(id)
+    product = profilePage
+      ? ids('PRD-FR', ['030', '031', '032'])
+      : ids('PRD-FR', ['020', '021', '022', '023'])
+    release = ids('SCP-FR', ['002', '003'])
+    nonFunctional = ids('PRD-NFR', ['001', '004', '005', '006', '007'])
+    acceptance = ids('PRD-AC', ['002', '010'])
+    features = [featureSources.discovery]
+    if (['APP-DSC-02', 'APP-DSC-03', 'APP-DSC-04', 'APP-DSC-05', 'APP-DSC-06'].includes(id)) {
+      features.push(featureSources.taxonomy)
+    }
+    if (id === 'APP-DSC-01') features.push(featureSources.recommendation)
+    if (id === 'APP-DSC-09') features.push(featureSources.verification)
+  } else if (id.startsWith('APP-INT')) {
+    product = ids('PRD-FR', ['040', '041', '042'])
+    release = ids('SCP-FR', ['003'])
+    nonFunctional = ids('PRD-NFR', ['001', '005', '006', '007'])
+    acceptance = ids('PRD-AC', ['003'])
+    features = [featureSources.interaction]
+  } else if (id.startsWith('APP-MSG')) {
+    const notificationPage = ['APP-MSG-05', 'APP-MSG-06'].includes(id)
+    product = notificationPage
+      ? ids('PRD-FR', ['080', '081'])
+      : ids('PRD-FR', ['050', '051', '052', '053', '054', '055', '056'])
+    release = notificationPage
+      ? ids('SCP-FR', ['009'])
+      : ids('SCP-FR', ['005', '006', '007', '008', '015'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '005', '006', '007', '008'])
+    acceptance = notificationPage
+      ? ids('PRD-AC', ['010'])
+      : ids('PRD-AC', ['004', '005', '011'])
+    features = [notificationPage ? featureSources.notification : featureSources.messaging]
+  } else if (id.startsWith('APP-MBR')) {
+    product = ids('PRD-FR', ['060', '061', '062', '063', '064', '065', '066'])
+    release = ids('SCP-FR', ['004', '005', '005A', '005B'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '004', '005', '006', '007'])
+    acceptance = ids('PRD-AC', ['004', '007', '009', '011'])
+    features = [featureSources.membership]
+  } else if (id.startsWith('APP-WAL')) {
+    product = ids('PRD-FR', ['070', '071', '074'])
+    release = ids('SCP-FR', ['010', '011'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '005', '006', '007'])
+    acceptance = ids('PRD-AC', ['006'])
+    features = [featureSources.wallet]
+  } else if (id.startsWith('APP-SET')) {
+    product = ids('PRD-FR', ['080', '081', '082'])
+    release = ids('SCP-FR', ['013'])
+    nonFunctional = ids('PRD-NFR', ['001', '005', '006', '007'])
+    acceptance = ids('PRD-AC', ['001', '010'])
+    features = [featureSources.privacy]
+    if (['APP-SET-02', 'APP-SET-03'].includes(id)) {
+      product.push(...ids('PRD-FR', ['001', '002']))
+      features.push(featureSources.account)
+    }
+    if (['APP-SET-06', 'APP-SET-07', 'APP-SET-08'].includes(id)) {
+      features.push(featureSources.safety)
+    }
+  } else if (id.startsWith('APP-SYS')) {
+    const mapping = {
+      'APP-SYS-01': ids('PRD-FR', ['080']),
+      'APP-SYS-02': ids('PRD-FR', ['080']),
+      'APP-SYS-03': ids('PRD-FR', ['001', '002', '082']),
+      'APP-SYS-04': ids('PRD-FR', ['013', '032']),
+      'APP-SYS-05': ids('PRD-FR', ['020', '022'])
+    }
+    product = mapping[id]
+    release = ids('SCP-FR', ['031', '032', '033'])
+    nonFunctional = ids('PRD-NFR', ['001', '004', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['009', '010'])
+    features = [featureSources.release]
+  } else if (id.startsWith('ADM-OV')) {
+    product = ids('PRD-FR', ['090', '091', '092'])
+    release = ids('SCP-FR', ['012', '014', '015'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '004', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['010'])
+    features = [featureSources.operations]
+  } else if (id.startsWith('ADM-PER')) {
+    product = ids('PRD-FR', ['010', '011', '012', '013', '090', '091', '092'])
+    release = ids('SCP-FR', ['012', '014'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['001', '002', '010'])
+    features = ['ADM-PER-05', 'ADM-PER-06'].includes(id)
+      ? [featureSources.verification]
+      : [featureSources.source]
+  } else if (id.startsWith('ADM-TAX')) {
+    product = ids('PRD-FR', ['020', '021', '022', '023', '090', '091', '092'])
+    release = ids('SCP-FR', ['012', '030'])
+    nonFunctional = ids('PRD-NFR', ['001', '003', '004', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['002', '009', '010'])
+    features = [featureSources.taxonomy]
+  } else if (id.startsWith('ADM-REC')) {
+    product = ids('PRD-FR', ['020', '021', '022', '023', '090', '091', '092'])
+    release = ids('SCP-FR', ['012', '030'])
+    nonFunctional = ids('PRD-NFR', ['001', '003', '004', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['002', '010'])
+    features = [featureSources.recommendation]
+  } else if (id.startsWith('ADM-MSG')) {
+    product = ids('PRD-FR', ['050', '051', '052', '053', '054', '055', '056', '090', '091', '092'])
+    release = ids('SCP-FR', ['007', '008', '012', '015'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['004', '005', '010', '011'])
+    features = [featureSources.messaging]
+  } else if (id.startsWith('ADM-SAF')) {
+    product = ids('PRD-FR', ['032', '080', '081', '082', '090', '091', '092'])
+    release = ids('SCP-FR', ['012', '015'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['002', '005', '010'])
+    features = [featureSources.safety]
+  } else if (id.startsWith('ADM-MBR')) {
+    product = ids('PRD-FR', ['060', '061', '062', '063', '064', '065', '066', '090', '091', '092'])
+    release = ids('SCP-FR', ['004', '005', '005B', '012', '030'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '004', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['007', '009', '011'])
+    features = [featureSources.membership]
+  } else if (id.startsWith('ADM-WAL')) {
+    product = ids('PRD-FR', ['070', '071', '074', '090', '091', '092'])
+    release = ids('SCP-FR', ['010', '012'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['006', '010'])
+    features = [featureSources.wallet]
+  } else if (id.startsWith('ADM-NTF')) {
+    product = ids('PRD-FR', ['080', '081', '090', '091', '092'])
+    release = ids('SCP-FR', ['009', '012'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '004', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['010'])
+    features = [featureSources.notification]
+  } else if (id.startsWith('ADM-AUD')) {
+    product = ids('PRD-FR', ['090', '091', '092'])
+    release = ids('SCP-FR', ['012'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '004', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['006', '010'])
+    features = [featureSources.operations]
+  }
+
+  const unique = values => [...new Set(values)]
+  product = unique(product)
+  release = unique(release)
+  nonFunctional = unique(nonFunctional)
+  acceptance = unique(acceptance)
+  features = [...new Map(features.map(feature => [feature.feature, feature])).values()]
+  if (!product.length || !release.length || !features.length) {
+    throw new Error(`${id} 缺少需求追踪映射`)
+  }
+
+  const featureGroups = features.map(feature => `${feature.feature}/${feature.requirementGroup}`)
+  return {
+    product,
+    release,
+    nonFunctional,
+    acceptance,
+    features,
+    traceKey: `${id} → ${product.join(',')} → ${release.join(',')} → ${featureGroups.join(',')}`
+  }
 }
 
 function groupFor(page) {
@@ -254,7 +528,8 @@ const enrichedPages = catalog.pages.map((page, index) => {
     dataPermission: dataPermissionFor(page),
     nextPageId: page.next || null,
     keyState,
-    acceptance: acceptanceFor(page)
+    acceptance: acceptanceFor(page),
+    requirements: requirementTraceFor(page)
   }
 })
 
@@ -336,13 +611,35 @@ for (const [key, expected] of Object.entries(expectedCounts)) {
   }
 }
 
-const ids = enrichedPages.map(page => page.pageId)
-if (new Set(ids).size !== ids.length) {
+const pageIds = enrichedPages.map(page => page.pageId)
+if (new Set(pageIds).size !== pageIds.length) {
   throw new Error('Page ID 存在重复')
 }
 
+const expectedProductRequirements = ids('PRD-FR', [
+  '001', '002', '003', '004',
+  '010', '011', '012', '013',
+  '020', '021', '022', '023',
+  '030', '031', '032',
+  '040', '041', '042',
+  '050', '051', '052', '053', '054', '055', '056',
+  '060', '061', '062', '063', '064', '065', '066',
+  '070', '071', '074',
+  '080', '081', '082',
+  '090', '091', '092'
+])
+const mappedProductRequirements = new Set(
+  enrichedPages.flatMap(page => page.requirements.product)
+)
+const missingProductRequirements = expectedProductRequirements.filter(
+  requirement => !mappedProductRequirements.has(requirement)
+)
+if (missingProductRequirements.length) {
+  throw new Error(`产品需求未映射到页面：${missingProductRequirements.join('、')}`)
+}
+
 const manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   appVersion: '1.0',
   generatedAt: '2026-07-28',
   source: 'docs/app/interactive-prototype/page-catalog.js',
@@ -380,6 +677,10 @@ function markdownForPage(page) {
     '',
     `**数据与权限：** ${page.dataPermission}`,
     '',
+    `**需求追踪：** \`${page.requirements.traceKey}\``,
+    '',
+    `**模块 PRD：** ${page.requirements.features.map(feature => `[${feature.feature} ${feature.title}](${feature.document})（${feature.requirementGroup}）`).join('；')}`,
+    '',
     `**页面状态：** ${page.states.join('、')}`,
     '',
     '**页面级验收：**',
@@ -405,16 +706,77 @@ function markdownForPage(page) {
   return lines
 }
 
+function requirementLines(source, prefix) {
+  return source
+    .split(/\r?\n/)
+    .filter(line => new RegExp(`^- \\*\\*${prefix}-`).test(line))
+}
+
+function developmentMarkdownForPage(page) {
+  const defaultCapture = captures.find(capture => capture.pageId === page.pageId && capture.variant === 'default')
+  const keyCapture = captures.find(capture => capture.pageId === page.pageId && capture.variant === 'key-state')
+  const lines = [
+    `#### ${page.pageId} ${page.pageName}`,
+    '',
+    `**平台与模块：** ${page.platform === 'mobile' ? '移动端' : '管理后台'} · ${page.module}　　**优先级：** ${page.priority}　　**设计路由：** \`${page.route}\``,
+    '',
+    `**用户价值：** ${page.userValue}`,
+    '',
+    `**适用角色：** ${page.roles}`,
+    '',
+    `**前置条件：** ${page.preconditions}`,
+    '',
+    `**进入路径：** ${page.entry}`,
+    '',
+    `**页面结构：** ${page.structure}`,
+    '',
+    `**详细交互：** ${page.interaction}`,
+    '',
+    `**业务规则：** ${page.rule}`,
+    '',
+    `**数据与权限：** ${page.dataPermission}`,
+    '',
+    `**页面状态：** ${page.states.join('、')}`,
+    '',
+    '**实现追踪：**',
+    '',
+    `- 追踪键：\`${page.requirements.traceKey}\``,
+    `- 产品需求：${page.requirements.product.map(item => `\`${item}\``).join('、')}`,
+    `- 发布范围：${page.requirements.release.map(item => `\`${item}\``).join('、')}`,
+    `- 非功能要求：${page.requirements.nonFunctional.map(item => `\`${item}\``).join('、')}`,
+    `- 产品级验收：${page.requirements.acceptance.map(item => `\`${item}\``).join('、')}`,
+    `- 模块 PRD：${page.requirements.features.map(feature => `[${feature.feature} ${feature.title}](${feature.document})（${feature.requirementGroup}）`).join('；')}`,
+    '',
+    '**开发验收：**',
+    ''
+  ]
+  for (const item of page.acceptance) lines.push(`- ${item}`)
+  lines.push(
+    '- UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。',
+    '- 加载、空、错误、离线、无权限、对象失效和服务端状态变化必须按本页状态集合安全收敛。',
+    '',
+    `![${defaultCapture.alt}](${imagePathFor(defaultCapture)})`,
+    ''
+  )
+  if (keyCapture) {
+    lines.push(`**P0 关键状态：** ${page.keyState}`, '', `![${keyCapture.alt}](${imagePathFor(keyCapture)})`, '')
+  }
+  lines.push('---', '')
+  return lines
+}
+
 const markdown = [
   '# MeiGallery App 1.0 详细功能与逐页原型说明',
   '',
+  'App 版本：1.0',
+  '',
   '更新日期：2026-07-28',
   '',
-  '状态：需求确认版',
+  '状态：需求讨论中，待客户确认',
   '',
   '## 1. 文档用途',
   '',
-  '本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、验收标准和客户确认项。',
+  '本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。',
   '',
   '默认状态原型共 92 张；54 个 P0 页面各补充 1 张关键异常、受限或处理中状态原型，共 146 张。所有截图由同一页面目录与同一映射清单生成，不通过章节位置猜测图片。',
   '',
@@ -429,6 +791,7 @@ const markdown = [
   `| 默认状态原型 | ${counts.defaultCaptures} |`,
   `| P0 关键状态原型 | ${counts.keyStateCaptures} |`,
   `| 原型图总数 | ${counts.totalCaptures} |`,
+  `| 已建立需求追踪的页面 | ${enrichedPages.filter(page => page.requirements.traceKey).length} |`,
   '',
   '## 3. 逐页详细设计',
   ''
@@ -448,9 +811,283 @@ for (const group of catalog.groups) {
 
 fs.mkdirSync(path.join(OUTPUT_DIR, 'mobile'), { recursive: true })
 fs.mkdirSync(path.join(OUTPUT_DIR, 'admin'), { recursive: true })
+const productRequirementsSource = fs.readFileSync(PRODUCT_REQUIREMENTS_PATH, 'utf8')
+const releaseScopeSource = fs.readFileSync(RELEASE_SCOPE_PATH, 'utf8')
+const productFunctionalRequirements = requirementLines(productRequirementsSource, 'PRD-FR')
+const productNonFunctionalRequirements = requirementLines(productRequirementsSource, 'PRD-NFR')
+const productAcceptanceRequirements = requirementLines(productRequirementsSource, 'PRD-AC')
+const releaseFunctionalRequirements = requirementLines(releaseScopeSource, 'SCP-FR')
+const releaseNonFunctionalRequirements = requirementLines(releaseScopeSource, 'SCP-NFR')
+const releaseAcceptanceRequirements = requirementLines(releaseScopeSource, 'SCP-AC')
+const futureProductIds = new Set(['PRD-FR-072', 'PRD-FR-073', 'PRD-FR-075'])
+const futureReleaseIds = new Set([
+  'SCP-FR-020',
+  'SCP-FR-021',
+  'SCP-FR-022',
+  'SCP-FR-023',
+  'SCP-FR-024'
+])
+const currentProductFunctionalRequirements = productFunctionalRequirements.filter(
+  line => ![...futureProductIds].some(id => line.includes(`**${id}**`))
+)
+const futureProductFunctionalRequirements = productFunctionalRequirements.filter(
+  line => [...futureProductIds].some(id => line.includes(`**${id}**`))
+)
+const currentReleaseFunctionalRequirements = releaseFunctionalRequirements.filter(
+  line => ![...futureReleaseIds].some(id => line.includes(`**${id}**`))
+)
+const futureReleaseFunctionalRequirements = releaseFunctionalRequirements.filter(
+  line => [...futureReleaseIds].some(id => line.includes(`**${id}**`))
+)
+const developmentMarkdown = [
+  '# MeiGallery App 1.0 开发需求规格',
+  '',
+  'App 版本：1.0',
+  '',
+  '更新日期：2026-07-28',
+  '',
+  '状态：需求讨论中；客户确认结论同步后作为开发排期与实现验收基线',
+  '',
+  '> 本文由产品总需求、App 1.0 发布范围和统一页面目录确定性生成。DOCX 只用于客户阅读与确认；研发、测试、接口设计和任务拆分统一引用本 Markdown、需求编号和 Page ID。',
+  '',
+  '## 1. 文档定位与使用规则',
+  '',
+  '1. 本文是 App 1.0 面向开发的单一入口，覆盖产品范围、需求编号、技术边界、92 个页面级实现对象、146 张原型和开发验收。',
+  '2. 客户意见先同步到产品总需求、发布范围、Feature PRD 和页面目录，再重新生成本文与客户 DOCX；不得直接在 DOCX 中维护独立需求。',
+  '3. 开发任务、接口、测试用例、缺陷和变更必须至少引用一个 `PRD/SCP` 编号和一个 Page ID；纯后端门禁可引用需求编号并标注“无独立页面”。',
+  '4. 原型用于确认信息层级、交互和状态表达，不替代服务端权限、数据状态机、API 契约或安全门禁。',
+  '5. 发生冲突时按“客户已确认结论 → App 1.0 发布范围 → 产品总需求 → Feature PRD → 本文逐页规格 → 原型”处理，并先修订上游再重新生成下游。',
+  '',
+  '## 2. 开发交付基线',
+  '',
+  '| 指标 | 基线 |',
+  '|---|---:|',
+  '| App 版本 | 1.0 |',
+  `| 页面总数 | ${counts.pages} |`,
+  `| 移动端页面 | ${counts.mobilePages} |`,
+  `| Nuxt 管理后台页面 | ${counts.adminPages} |`,
+  `| P0 / P1 / P2 | ${counts.p0Pages} / ${counts.p1Pages} / ${counts.p2Pages} |`,
+  `| 默认状态原型 | ${counts.defaultCaptures} |`,
+  `| P0 关键状态原型 | ${counts.keyStateCaptures} |`,
+  `| 原型总数 | ${counts.totalCaptures} |`,
+  `| 已建立需求追踪的页面 | ${enrichedPages.length} |`,
+  '',
+  '### 2.1 App 1.0 实现范围',
+  '',
+  '- Android/iOS 观看者客户端：KMP + Compose Multiplatform，共享业务、状态、网络、缓存和主要 UI。',
+  '- 桌面运营端：现有 Nuxt 管理后台，覆盖真人供给、认证发布、推荐运营、平台话题、会员申请与发放、金币调整、安全审核和审计。',
+  '- 后端与数据：复用现有 MeiGallery 数据并通过共享业务平台渐进迁移；App 不直接读取 legacy 表。',
+  '- 商业能力：只做五级会员展示、站内申请、管理员手动发放、金币余额与追加式明细。',
+  '- 通知：站内拉取和实时刷新完成全部核心流程，不依赖系统推送。',
+  '',
+  '### 2.2 App 1.0 明确不实现',
+  '',
+  '- 在线支付、自动续订、金币充值、礼物、头像框、主页皮肤、聊天皮肤、订单和退款。',
+  '- 系统推送、图片消息、音视频通话、直播、公开评论和用户上传公开媒体。',
+  '- 普通用户公开真人资料、双向匹配、普通用户间聊天、真人认领后的本人运营和普通用户桌面客户端。',
+  '- 未来能力不得生成可点击入口、占位按钮、伪价格或可执行状态；需要新增页面、SDK、权限或审核声明时正常升级 App。',
+  '',
+  '## 3. 不可违反的业务与安全边界',
+  '',
+  '- 注册只创建观看者 `Account`；只有管理员认证且发布的真人资料进入公开列表。',
+  '- 未认领真人相关话题由平台运营接收与处理，入口、列表和会话持续披露平台身份；不得伪装本人在线、输入、已读或回复。',
+  '- 只有有效会员 entitlement 才能创建或发送平台话题；会员申请通过但 grant 未生效时仍无权限。',
+  '- 五级会员的名称只用于展示，授权统一使用数值 `rank`、稳定 entitlement key、有效期和额度。',
+  '- 喜欢、关注、收藏是互相独立的单向关系，不创建匹配。',
+  '- 金币不可提现、转账或兑换法币；管理员加扣币和冲正只追加账本分录，历史不可编辑删除。',
+  '- 受保护媒体、对象级授权、会员有效期、会话资格、余额和后台写操作全部由服务端判定。',
+  '- 所有后台写操作记录操作者、原因、前后状态、请求链和时间；高风险会员/调币操作执行职责分离。',
+  '',
+  '## 4. 技术实现基线与规范性文档',
+  '',
+  '| 主题 | 约束 | 规范性文档 |',
+  '|---|---|---|',
+  '| 客户端 | KMP + Compose Multiplatform；App 1.0 发布 Android/iOS | [KMP 技术栈](./KMP_CLIENT_TECH_STACK.md)、[KMP 模块设计](./KMP_CLIENT_MODULE_DESIGN.md) |',
+  '| 管理后台 | Nuxt 管理后台；不建设普通用户桌面客户端 | [后台交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md)、[后台 RBAC](./ADMIN_RBAC_AND_WORKFLOW_DESIGN.md) |',
+  '| 后端 | Cloudflare Workers + Hono，共享核心平台和领域边界 | [技术架构](./TECHNICAL_ARCHITECTURE.md)、[Cloudflare 后端模块](./CLOUDFLARE_BACKEND_MODULE_DESIGN.md) |',
+  '| 数据迁移 | App 通过新契约访问；MeiGallery legacy 数据渐进映射和迁移 | [数据与迁移](./DATA_AND_MIGRATION.md) |',
+  '| API/事件 | OpenAPI、JSON Schema、幂等键、版本化枚举和安全未知值处理 | [API 与实时契约](./API_AND_REALTIME_CONTRACT.md)、[契约冻结计划](./API_DATA_CONTRACT_FREEZE_PLAN.md) |',
+  '| UI/文案/埋点 | Page ID、状态 key、文案 key 和事件 key 稳定 | [UI/UX](./UI_UX_DESIGN.md)、[状态文案与埋点](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) |',
+  '| 信任与合规 | 认证、授权、运营披露、举报申诉和数据权利为上线门禁 | [信任、安全、隐私与合规](./TRUST_SAFETY_PRIVACY_COMPLIANCE.md) |',
+  '',
+  '## 5. 产品功能需求',
+  '',
+  '以下需求文本从 `PRODUCT_REQUIREMENTS.md` 同步生成。未来能力保留建模与兼容方向，但不得进入 App 1.0 页面或实现排期。',
+  '',
+  '### 5.1 App 1.0 功能需求',
+  '',
+  ...currentProductFunctionalRequirements,
+  '',
+  '### 5.2 未来能力需求',
+  '',
+  ...futureProductFunctionalRequirements,
+  '',
+  '### 5.3 App 1.0 发布范围要求',
+  '',
+  ...currentReleaseFunctionalRequirements,
+  '',
+  '### 5.4 未来发布范围与版本升级要求',
+  '',
+  ...futureReleaseFunctionalRequirements,
+  '',
+  '## 6. 非功能要求与产品级验收',
+  '',
+  '### 6.1 产品非功能要求',
+  '',
+  ...productNonFunctionalRequirements,
+  '',
+  '### 6.2 发布范围非功能要求',
+  '',
+  ...releaseNonFunctionalRequirements,
+  '',
+  '### 6.3 产品级验收',
+  '',
+  ...productAcceptanceRequirements,
+  '',
+  '### 6.4 发布范围验收',
+  '',
+  ...releaseAcceptanceRequirements,
+  '',
+  '## 7. 全局实现规则',
+  '',
+  '- 每页使用 Page ID 作为设计、导航、埋点、测试和缺陷追踪的稳定键；展示标题可以调整，但 Page ID 不得复用。',
+  '- 页面至少实现默认、加载、空、错误、离线、无权限、对象失效和服务端状态变化后的安全收敛；具体状态以逐页规格为准。',
+  '- 写操作必须具备处理中、成功、失败、防重复提交和服务端权威回读；消息、账本和批量任务必须使用幂等语义。',
+  '- 权限下降、会员到期、真人暂停/撤销、拉黑或安全处置后，客户端不得继续展示过期能力或受保护内容。',
+  '- 未知 capability、entitlement、商品类型、状态枚举或字段必须安全忽略，不崩溃、不扩大权限、不显示伪入口。',
+  '- Android/iOS 支持屏幕阅读器、动态字体、高对比度和减少动态效果；Nuxt 后台支持键盘操作和 200% 缩放。',
+  '- 日志、崩溃报告和埋点不得记录平台话题正文、完整证件、精确位置、访问令牌或其他直接敏感信息。',
+  '',
+  '## 8. 逐页开发规格',
+  ''
+]
+
+for (const group of catalog.groups) {
+  const groupPages = enrichedPages.filter(page => page.platform === group.platform && page.module === group.name)
+  if (!groupPages.length) continue
+  developmentMarkdown.push(
+    `### ${group.platform === 'mobile' ? '移动端' : '管理后台'} · ${group.name}`,
+    '',
+    `本组共 ${groupPages.length} 个页面。实现、接口、测试和缺陷均按 Page ID 追踪。`,
+    ''
+  )
+  for (const page of groupPages) developmentMarkdown.push(...developmentMarkdownForPage(page))
+}
+
+developmentMarkdown.push(
+  '## 9. 开发启动门禁（Definition of Ready）',
+  '',
+  '- 客户 C-01～C-08 的选择、会员额度、Beta 门槛和运营服务参数已记录；未关闭项有 Owner、截止点和安全默认值。',
+  '- P0 页面、路由、状态集合、文案身份披露和原型已经评审；任何业务变化已同步 PRD/SCP/Feature PRD。',
+  '- OpenAPI、事件 Schema、错误模型、幂等规则和未知枚举策略已冻结到可实现版本。',
+  '- Account、Person、PersonProfile、Gallery、会员、会话、账本和 legacy 映射已完成数据所有权与 migration 评审。',
+  '- 管理后台 capability、scope、强认证、复核与审计规则已定义，测试账号和最小样例数据可用。',
+  '- P0 端到端旅程的测试计划、可观测性、降级、恢复和回滚证据要求已确认。',
+  '',
+  '## 10. 完成定义（Definition of Done）',
+  '',
+  '- 每个实现任务引用需求编号和 Page ID，满足逐页开发验收与关联 Feature PRD 的 Given/When/Then。',
+  '- 客户端与后台覆盖本页声明的全部状态；P0 页面完成关键受限/异常状态视觉回归。',
+  '- 所有对象级授权、会员、媒体、消息、账本和后台写操作通过服务端验证；越权与过期用例有自动化测试。',
+  '- API/DTO/事件与冻结 Schema 一致，未知字段和枚举兼容测试通过，重试不产生重复业务结果。',
+  '- 关键操作具备审计、最小化日志、指标和告警；敏感字段未进入日志、埋点或崩溃报告。',
+  '- Android/iOS 无支付 SDK、无推送 SDK 时 P0 E2E 通过；Nuxt 后台关键工作流、键盘操作和 200% 缩放通过。',
+  '- 未来能力没有出现在 1.0 页面、菜单、远程配置可执行入口或上线验收中。',
+  '- 需求一致性、原型、DOCX 映射、类型检查和 Web 构建校验全部通过。',
+  '',
+  '## 11. 维护与生成',
+  '',
+  '- 编辑上游：`PRODUCT_REQUIREMENTS.md`、App 1.0 发布范围、Feature PRD、`page-catalog.js` 和开放问题清单。',
+  '- 重新生成：`node scripts/generate_app_page_spec.mjs`。',
+  '- 一致性校验：`python scripts/verify_app_requirement_consistency.py`、`python scripts/verify_app_page_prototypes.py --skip-contact-sheets`。',
+  '- 客户文档：上游同步后运行 `python scripts/generate_app_product_docs.py`，DOCX 不作为需求源手工分叉。',
+  ''
+)
+
+const traceability = [
+  '# MeiGallery App 1.0 需求追踪矩阵',
+  '',
+  'App 版本：1.0',
+  '',
+  '更新时间：2026-07-28',
+  '',
+  '状态：需求讨论中，待客户确认',
+  '',
+  '## 1. 文档目的',
+  '',
+  '本文把产品总需求、App 1.0 发布范围、Feature PRD、92 个 Page ID 与 146 张逐页原型建立确定性映射，并作为开发需求规格的追踪索引。任何页面或原型不得脱离需求编号单独成为实现依据；任何 App 1.0 用户可见需求也不得在没有 Page ID、明确非 UI 验收或未来范围说明的情况下进入开发。',
+  '',
+  '## 2. 基线与冲突处理',
+  '',
+  '1. 客户确认前，以产品总需求、App 1.0 发布范围和开放问题清单的当前结论共同约束下游设计。',
+  '2. 客户签署产品需求确认书后，以签署结论作为业务范围基线，再同步产品总需求、发布范围、Feature PRD、页面设计和原型。',
+  '3. Feature PRD 细化业务规则；Page ID 细化用户任务、状态和交互；原型图只证明视觉与状态表达，不自行增加功能。',
+  '4. 发生冲突时必须先修订上游需求并重新生成本矩阵，不允许开发、设计或测试自行选择较旧口径。',
+  '',
+  '## 3. 覆盖统计',
+  '',
+  '| 指标 | 数量 |',
+  '|---|---:|',
+  `| 产品页面 | ${counts.pages} |`,
+  `| 移动端页面 | ${counts.mobilePages} |`,
+  `| 管理后台页面 | ${counts.adminPages} |`,
+  `| P0 / P1 / P2 | ${counts.p0Pages} / ${counts.p1Pages} / ${counts.p2Pages} |`,
+  `| 默认状态原型 | ${counts.defaultCaptures} |`,
+  `| P0 关键状态原型 | ${counts.keyStateCaptures} |`,
+  `| 原型图总数 | ${counts.totalCaptures} |`,
+  `| 已建立需求追踪的页面 | ${enrichedPages.length} |`,
+  '',
+  '## 4. App 1.0 无页面范围',
+  '',
+  '| 需求 | 处理方式 |',
+  '|---|---|',
+  '| PRD-FR-072、PRD-FR-073、PRD-FR-075 | 礼物、装扮和未来订单能力只保留长期需求，不创建 App 1.0 页面或可点击入口。 |',
+  '| SCP-FR-020～SCP-FR-024 | 在线商业化、系统推送、媒体消息、真人认领和普通用户桌面端属于未来阶段，不纳入 1.0 页面验收。 |',
+  '| SCP-FR-014 | 限量 Beta 供给门禁属于数据与运营验收，通过后台总览、供给清单和发布检查联合验证，不创建独立移动端页面。 |',
+  '',
+  '## 5. 逐页需求追踪',
+  ''
+]
+
+for (const group of catalog.groups) {
+  const groupPages = enrichedPages.filter(page => page.platform === group.platform && page.module === group.name)
+  if (!groupPages.length) continue
+  traceability.push(
+    `### ${group.platform === 'mobile' ? '移动端' : '管理后台'} · ${group.name}`,
+    '',
+    '| Page ID | 页面 | 优先级 | 产品总需求 | 发布范围 | Feature PRD |',
+    '|---|---|---|---|---|---|'
+  )
+  for (const page of groupPages) {
+    const featureLinks = page.requirements.features
+      .map(feature => `[${feature.feature} ${feature.title}](${feature.document})（${feature.requirementGroup}）`)
+      .join('；')
+    traceability.push(
+      `| ${page.pageId} | ${page.pageName} | ${page.priority} | ${page.requirements.product.join('、')} | ${page.requirements.release.join('、')} | ${featureLinks} |`
+    )
+  }
+  traceability.push('')
+}
+
+traceability.push(
+  '## 6. 逐页同步验收',
+  '',
+  '- 每个 Page ID 必须同时存在页面目录、详细功能说明、默认状态原型和需求追踪键。',
+  '- 54 个 P0 页面必须额外存在一张关键异常、受限、冲突或处理中状态原型。',
+  '- Page ID、页面名称、优先级、默认状态、关键状态、图片文件名和需求追踪键由同一清单生成并自动校验。',
+  '- `ADM-AUD-03` 的完整可视化页面属于 P2；审计完整性的最小自动校验与告警属于 P0 后端门禁，两者不得混为同一页面优先级。',
+  '- 客户意见、设计修改、研发任务和测试用例必须引用 Page ID；涉及业务规则变化时还必须引用对应 PRD/SCP 需求编号。',
+  '- 最终开发入口为 `MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`；其 Page ID、需求追踪和原型引用必须与本矩阵及 `manifest.json` 完全一致。',
+  ''
+)
+
 fs.writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`)
 fs.writeFileSync(MARKDOWN_PATH, `${markdown.join('\n').trimEnd()}\n`)
+fs.writeFileSync(DEVELOPMENT_MARKDOWN_PATH, `${developmentMarkdown.join('\n').trimEnd()}\n`)
+fs.writeFileSync(TRACEABILITY_PATH, `${traceability.join('\n').trimEnd()}\n`)
 
 console.log(`已生成：${path.relative(ROOT, MANIFEST_PATH)}`)
 console.log(`已生成：${path.relative(ROOT, MARKDOWN_PATH)}`)
+console.log(`已生成：${path.relative(ROOT, DEVELOPMENT_MARKDOWN_PATH)}`)
+console.log(`已生成：${path.relative(ROOT, TRACEABILITY_PATH)}`)
 console.log(JSON.stringify(counts))

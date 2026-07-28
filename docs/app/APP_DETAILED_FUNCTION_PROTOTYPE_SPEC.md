@@ -1,12 +1,14 @@
 # MeiGallery App 1.0 详细功能与逐页原型说明
 
+App 版本：1.0
+
 更新日期：2026-07-28
 
-状态：需求确认版
+状态：需求讨论中，待客户确认
 
 ## 1. 文档用途
 
-本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、验收标准和客户确认项。
+本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。
 
 默认状态原型共 92 张；54 个 P0 页面各补充 1 张关键异常、受限或处理中状态原型，共 146 张。所有截图由同一页面目录与同一映射清单生成，不通过章节位置猜测图片。
 
@@ -21,6 +23,7 @@
 | 默认状态原型 | 92 |
 | P0 关键状态原型 | 54 |
 | 原型图总数 | 146 |
+| 已建立需求追踪的页面 | 92 |
 
 ## 3. 逐页详细设计
 
@@ -48,6 +51,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-AUTH-01 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
+
+**模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
+
 **页面状态：** 首次、恢复中、离线、升级、维护
 
 **页面级验收：**
@@ -73,6 +80,7 @@
 意见：____________________________________________________________
 
 ---
+
 ### APP-AUTH-02 登录
 
 **平台与模块：** 移动端 · 启动与认证　　**优先级：** P0　　**设计路由：** `/auth/login`
@@ -92,6 +100,10 @@
 **业务规则：** 注册和登录只处理观看者账号，不创建公开真人资料。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-AUTH-02 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
+
+**模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
 
 **页面状态：** 正常、输入错误、验证中、频控、账号受限
 
@@ -139,6 +151,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-AUTH-03 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
+
+**模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
+
 **页面状态：** 正常、标识占用、验证码失效、地区不可用
 
 **页面级验收：**
@@ -185,6 +201,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-AUTH-04 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
+
+**模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
+
 **页面状态：** 等待、失败、次数限制
 
 **页面级验收：**
@@ -227,6 +247,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-AUTH-05 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
+
+**模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
+
 **页面状态：** 正常、空目录、保存失败、非个性化说明
 
 **页面级验收：**
@@ -268,6 +292,10 @@
 **业务规则：** 注册和登录只处理观看者账号，不创建公开真人资料。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-AUTH-06 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
+
+**模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
 
 **页面状态：** 正常、加载失败、版本更新
 
@@ -319,6 +347,10 @@
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
+**需求追踪：** `APP-DSC-01 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-05/ROP-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*）
+
 **页面状态：** 正常、首次空、骨架、分页、离线缓存、规则刷新
 
 **页面级验收：**
@@ -364,6 +396,10 @@
 **业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
+
+**需求追踪：** `APP-DSC-02 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
 
 **页面状态：** 正常、定位未使用、目录更新、无结果
 
@@ -411,6 +447,10 @@
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
+**需求追踪：** `APP-DSC-03 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
+
 **页面状态：** 正常、空分类、目录失效
 
 **页面级验收：**
@@ -452,6 +492,10 @@
 **业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
+
+**需求追踪：** `APP-DSC-04 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
 
 **页面状态：** 初始、输入中、有结果、无结果、历史关闭
 
@@ -499,6 +543,10 @@
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
+**需求追踪：** `APP-DSC-05 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
+
 **页面状态：** 正常、权益门槛、目录冲突、无结果
 
 **页面级验收：**
@@ -545,6 +593,10 @@
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
+**需求追踪：** `APP-DSC-06 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
+
 **页面状态：** 正常、空、额度满、标签已合并
 
 **页面级验收：**
@@ -586,6 +638,10 @@
 **业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
+
+**需求追踪：** `APP-DSC-07 → PRD-FR-030,PRD-FR-031,PRD-FR-032 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）
 
 **页面状态：** 正常、下架、受限、离线摘要、媒体不可用
 
@@ -633,6 +689,10 @@
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
+**需求追踪：** `APP-DSC-08 → PRD-FR-030,PRD-FR-031,PRD-FR-032 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）
+
 **页面状态：** 正常、凭证刷新、加载失败、内容隐藏
 
 **页面级验收：**
@@ -678,6 +738,10 @@
 **业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
+
+**需求追踪：** `APP-DSC-09 → PRD-FR-030,PRD-FR-031,PRD-FR-032 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-03/VER-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-03 真人认证与发布审核](../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md)（VER-FR-*）
 
 **页面状态：** 正常、认证失效、资料变化
 
@@ -729,6 +793,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-INT-01 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*`
+
+**模块 PRD：** [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*）
+
 **页面状态：** 正常、首次空、无更新、资料下架
 
 **页面级验收：**
@@ -774,6 +842,10 @@
 **业务规则：** 喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-INT-02 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*`
+
+**模块 PRD：** [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*）
 
 **页面状态：** 正常、空、资料不可用
 
@@ -821,6 +893,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-INT-03 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*`
+
+**模块 PRD：** [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*）
+
 **页面状态：** 正常、空、额度满、离线
 
 **页面级验收：**
@@ -863,6 +939,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-INT-04 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*`
+
+**模块 PRD：** [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*）
+
 **页面状态：** 正常、文件夹已删除、资料下架
 
 **页面级验收：**
@@ -904,6 +984,10 @@
 **业务规则：** 喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-INT-05 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*`
+
+**模块 PRD：** [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*）
 
 **页面状态：** 正常、空、保留到期、清除失败
 
@@ -951,6 +1035,10 @@
 
 **数据与权限：** 读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。
 
+**需求追踪：** `APP-MSG-01 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*`
+
+**模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
+
 **页面状态：** 正常、首次空、离线、会话受限
 
 **页面级验收：**
@@ -996,6 +1084,10 @@
 **业务规则：** 话题由平台管理员接收与处理；只有有效会员可以新建和发送。
 
 **数据与权限：** 读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。
+
+**需求追踪：** `APP-MSG-02 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*`
+
+**模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
 
 **页面状态：** 正常、无会员、额度尽、资料失效、已有话题
 
@@ -1043,6 +1135,10 @@
 
 **数据与权限：** 读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。
 
+**需求追踪：** `APP-MSG-03 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*`
+
+**模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
+
 **页面状态：** 正常、补拉、审核中、只读、冻结、关闭
 
 **页面级验收：**
@@ -1088,6 +1184,10 @@
 **业务规则：** 话题由平台管理员接收与处理；只有有效会员可以新建和发送。
 
 **数据与权限：** 读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。
+
+**需求追踪：** `APP-MSG-04 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*`
+
+**模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
 
 **页面状态：** 正常、操作失败、已关闭
 
@@ -1135,6 +1235,10 @@
 
 **数据与权限：** 读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。
 
+**需求追踪：** `APP-MSG-05 → PRD-FR-080,PRD-FR-081 → SCP-FR-009 → F-12/NTF-FR-*`
+
+**模块 PRD：** [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*）
+
 **页面状态：** 正常、首次空、分页失败、实时离线
 
 **页面级验收：**
@@ -1180,6 +1284,10 @@
 **业务规则：** 话题由平台管理员接收与处理；只有有效会员可以新建和发送。
 
 **数据与权限：** 读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。
+
+**需求追踪：** `APP-MSG-06 → PRD-FR-080,PRD-FR-081 → SCP-FR-009 → F-12/NTF-FR-*`
+
+**模块 PRD：** [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*）
 
 **页面状态：** 正常、目标失效、无权限、需要升级
 
@@ -1227,6 +1335,10 @@
 
 **数据与权限：** 读取会员目录、当前 grant 与申请状态；申请写入不等同于权限生效。
 
+**需求追踪：** `APP-MBR-01 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066 → SCP-FR-004,SCP-FR-005,SCP-FR-005A,SCP-FR-005B → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
+
 **页面状态：** 免费、已有申请、待生效、同步失败
 
 **页面级验收：**
@@ -1272,6 +1384,10 @@
 **业务规则：** App 1.0 不提供在线支付；提交申请不产生权限，管理员 grant 生效后才获得会员权益。
 
 **数据与权限：** 读取会员目录、当前 grant 与申请状态；申请写入不等同于权限生效。
+
+**需求追踪：** `APP-MBR-02 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066 → SCP-FR-004,SCP-FR-005,SCP-FR-005A,SCP-FR-005B → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
 
 **页面状态：** 正常、即将到期、到期、撤销、受限
 
@@ -1319,6 +1435,10 @@
 
 **数据与权限：** 读取会员目录、当前 grant 与申请状态；申请写入不等同于权限生效。
 
+**需求追踪：** `APP-MBR-03 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066 → SCP-FR-004,SCP-FR-005,SCP-FR-005A,SCP-FR-005B → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
+
 **页面状态：** 未申请、已提交、处理中、待补充、已通过、已拒绝、已取消
 
 **页面级验收：**
@@ -1364,6 +1484,10 @@
 **业务规则：** 金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。
 
 **数据与权限：** 只读取余额与有效分录；客户端不得直接修改余额，申诉只创建独立案件。
+
+**需求追踪：** `APP-WAL-01 → PRD-FR-070,PRD-FR-071,PRD-FR-074 → SCP-FR-010,SCP-FR-011 → F-10、A-10/WAL-FR-*`
+
+**模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、空钱包、离线缓存、同步失败
 
@@ -1411,6 +1535,10 @@
 
 **数据与权限：** 只读取余额与有效分录；客户端不得直接修改余额，申诉只创建独立案件。
 
+**需求追踪：** `APP-WAL-02 → PRD-FR-070,PRD-FR-071,PRD-FR-074 → SCP-FR-010,SCP-FR-011 → F-10、A-10/WAL-FR-*`
+
+**模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
+
 **页面状态：** 正常、首次空、分页、对账维护
 
 **页面级验收：**
@@ -1456,6 +1584,10 @@
 **业务规则：** 金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。
 
 **数据与权限：** 只读取余额与有效分录；客户端不得直接修改余额，申诉只创建独立案件。
+
+**需求追踪：** `APP-WAL-03 → PRD-FR-070,PRD-FR-071,PRD-FR-074 → SCP-FR-010,SCP-FR-011 → F-10、A-10/WAL-FR-*`
+
+**模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、分录不可用、冲正中
 
@@ -1503,6 +1635,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SET-01 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）
+
 **页面状态：** 正常、账号受限、摘要同步失败
 
 **页面级验收：**
@@ -1549,6 +1685,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SET-02 → PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-001,PRD-FR-002 → SCP-FR-013 → F-13/PDR-FR-*,F-01/ACC-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
+
 **页面状态：** 正常、保存失败、需要重新验证
 
 **页面级验收：**
@@ -1590,6 +1730,10 @@
 **业务规则：** 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-SET-03 → PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-001,PRD-FR-002 → SCP-FR-013 → F-13/PDR-FR-*,F-01/ACC-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
 
 **页面状态：** 正常、仅当前设备、撤销失败
 
@@ -1633,6 +1777,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SET-04 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）
+
 **页面状态：** 正常、保存冲突、政策更新
 
 **页面级验收：**
@@ -1675,6 +1823,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SET-05 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）
+
 **页面状态：** 正常、同步失败、策略变化
 
 **页面级验收：**
@@ -1716,6 +1868,10 @@
 **业务规则：** 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-SET-06 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*,A-07/MOD-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
 
 **页面状态：** 正常、空、解除失败
 
@@ -1763,6 +1919,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SET-07 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*,A-07/MOD-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
+
 **页面状态：** 正常、空、状态延迟
 
 **页面级验收：**
@@ -1808,6 +1968,10 @@
 **业务规则：** 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-SET-08 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*,A-07/MOD-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
 
 **页面状态：** 正常、已有处理中、提交失败
 
@@ -1855,6 +2019,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SET-09 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）
+
 **页面状态：** 正常、处理中、失败、已过期、需要重新验证
 
 **页面级验收：**
@@ -1897,6 +2065,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SET-10 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）
+
 **页面状态：** 正常、存在阻塞项、处理中、失败
 
 **页面级验收：**
@@ -1938,6 +2110,10 @@
 **业务规则：** 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-SET-11 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）
 
 **页面状态：** 正常、离线、无结果
 
@@ -1985,6 +2161,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SET-12 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）
+
 **页面状态：** 正常、文档不可用
 
 **页面级验收：**
@@ -2031,6 +2211,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SYS-01 → PRD-FR-080 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*`
+
+**模块 PRD：** [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*）
+
 **页面状态：** 必须升级、商店不可用
 
 **页面级验收：**
@@ -2073,6 +2257,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SYS-02 → PRD-FR-080 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*`
+
+**模块 PRD：** [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*）
+
 **页面状态：** 维护中、部分恢复
 
 **页面级验收：**
@@ -2114,6 +2302,10 @@
 **业务规则：** 缓存不能冒充最新事实；必须提供可理解原因和安全返回路径。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-SYS-03 → PRD-FR-001,PRD-FR-002,PRD-FR-082 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*`
+
+**模块 PRD：** [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*）
 
 **页面状态：** 部分受限、全部受限
 
@@ -2161,6 +2353,10 @@
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
+**需求追踪：** `APP-SYS-04 → PRD-FR-013,PRD-FR-032 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*`
+
+**模块 PRD：** [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*）
+
 **页面状态：** 已下架、无权限、已删除
 
 **页面级验收：**
@@ -2206,6 +2402,10 @@
 **业务规则：** 缓存不能冒充最新事实；必须提供可理解原因和安全返回路径。
 
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-SYS-05 → PRD-FR-020,PRD-FR-022 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*`
+
+**模块 PRD：** [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*）
 
 **页面状态：** 未开放、政策变化
 
@@ -2253,6 +2453,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-OV-01 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014,SCP-FR-015 → A-13/OAU-FR-*`
+
+**模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
+
 **页面状态：** 正常、数据延迟、质量异常、部分无权限
 
 **页面级验收：**
@@ -2295,6 +2499,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-OV-02 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014,SCP-FR-015 → A-13/OAU-FR-*`
+
+**模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
+
 **页面状态：** 正常、P0/P1、未分配、已缓解
 
 **页面级验收：**
@@ -2336,6 +2544,10 @@
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-OV-03 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014,SCP-FR-015 → A-13/OAU-FR-*`
+
+**模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
 
 **页面状态：** 正常、影响扩大、并发更新、证据不足
 
@@ -2383,6 +2595,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-PER-01 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*`
+
+**模块 PRD：** [A-01–A-02 真人来源、上传与 MeiGallery 导入](../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md)（SRC-FR-*）
+
 **页面状态：** 正常、草稿、待审、已发布、已暂停、争议
 
 **页面级验收：**
@@ -2428,6 +2644,10 @@
 **业务规则：** 只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-PER-02 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*`
+
+**模块 PRD：** [A-01–A-02 真人来源、上传与 MeiGallery 导入](../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md)（SRC-FR-*）
 
 **页面状态：** 正常、缺少来源、重复候选、媒体失败
 
@@ -2475,6 +2695,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-PER-03 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*`
+
+**模块 PRD：** [A-01–A-02 真人来源、上传与 MeiGallery 导入](../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md)（SRC-FR-*）
+
 **页面状态：** 正常、认证待审、发布待审、授权过期
 
 **页面级验收：**
@@ -2520,6 +2744,10 @@
 **业务规则：** 只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-PER-04 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*`
+
+**模块 PRD：** [A-01–A-02 真人来源、上传与 MeiGallery 导入](../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md)（SRC-FR-*）
 
 **页面状态：** 正常、校验中、部分失败、已暂停、已完成
 
@@ -2567,6 +2795,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-PER-05 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-03/VER-FR-*`
+
+**模块 PRD：** [A-03 真人认证与发布审核](../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md)（VER-FR-*）
+
 **页面状态：** 正常、证据不足、版本冲突、需要复核
 
 **页面级验收：**
@@ -2612,6 +2844,10 @@
 **业务规则：** 只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-PER-06 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-03/VER-FR-*`
+
+**模块 PRD：** [A-03 真人认证与发布审核](../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md)（VER-FR-*）
 
 **页面状态：** 正常、未认证、授权失效、投影失败
 
@@ -2663,6 +2899,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-TAX-01 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-04/TAX-FR-*`
+
+**模块 PRD：** [A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
+
 **页面状态：** 正常、草稿目录、生效目录、归档目录
 
 **页面级验收：**
@@ -2704,6 +2944,10 @@
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-TAX-02 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-04/TAX-FR-*`
+
+**模块 PRD：** [A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
 
 **页面状态：** 正常、被引用、合并冲突、版本过期
 
@@ -2747,6 +2991,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-TAX-03 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-04/TAX-FR-*`
+
+**模块 PRD：** [A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
+
 **页面状态：** 正常、未知引用、客户端不兼容、待复核
 
 **页面级验收：**
@@ -2788,6 +3036,10 @@
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-REC-01 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*`
+
+**模块 PRD：** [A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*）
 
 **页面状态：** 正常、当前生效、灰度中、已回滚
 
@@ -2831,6 +3083,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-REC-02 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*`
+
+**模块 PRD：** [A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*）
+
 **页面状态：** 正常、Schema 错误、触碰安全过滤、并发冲突
 
 **页面级验收：**
@@ -2873,6 +3129,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-REC-03 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*`
+
+**模块 PRD：** [A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*）
+
 **页面状态：** 正常、样本不足、数据延迟
 
 **页面级验收：**
@@ -2914,6 +3174,10 @@
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-REC-04 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*`
+
+**模块 PRD：** [A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*）
 
 **页面状态：** 正常、时间冲突、资料下架
 
@@ -2961,6 +3225,10 @@
 
 **数据与权限：** 正文访问受领取租约、对象范围和最小必要原则限制；发送身份固定为平台运营。
 
+**需求追踪：** `ADM-MSG-01 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*`
+
+**模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
+
 **页面状态：** 正常、待分配、待平台、待用户、安全审核
 
 **页面级验收：**
@@ -3006,6 +3274,10 @@
 **业务规则：** 管理员只能以固定平台运营身份发送，正文读取按租约和对象范围控制。
 
 **数据与权限：** 正文访问受领取租约、对象范围和最小必要原则限制；发送身份固定为平台运营。
+
+**需求追踪：** `ADM-MSG-02 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*`
+
+**模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
 
 **页面状态：** 正常、租约冲突、只读、冻结、关闭
 
@@ -3053,6 +3325,10 @@
 
 **数据与权限：** 正文访问受领取租约、对象范围和最小必要原则限制；发送身份固定为平台运营。
 
+**需求追踪：** `ADM-MSG-03 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*`
+
+**模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
+
 **页面状态：** 正常、无值班、过载、配置冲突
 
 **页面级验收：**
@@ -3098,6 +3374,10 @@
 **业务规则：** 管理员只能以固定平台运营身份发送，正文读取按租约和对象范围控制。
 
 **数据与权限：** 正文访问受领取租约、对象范围和最小必要原则限制；发送身份固定为平台运营。
+
+**需求追踪：** `ADM-MSG-04 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*`
+
+**模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
 
 **页面状态：** 正常、无正文授权、披露缺失
 
@@ -3149,6 +3429,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-SAF-01 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*`
+
+**模块 PRD：** [A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
+
 **页面状态：** 正常、P0、超时、未分配
 
 **页面级验收：**
@@ -3194,6 +3478,10 @@
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-SAF-02 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*`
+
+**模块 PRD：** [A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
 
 **页面状态：** 正常、证据受限、并发冲突、已冻结
 
@@ -3241,6 +3529,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-SAF-03 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*`
+
+**模块 PRD：** [A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
+
 **页面状态：** 正常、原审核人隔离、逾期
 
 **页面级验收：**
@@ -3286,6 +3578,10 @@
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-SAF-04 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*`
+
+**模块 PRD：** [A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
 
 **页面状态：** 正常、证据不足、需要升级
 
@@ -3337,6 +3633,10 @@
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
+**需求追踪：** `ADM-MBR-01 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
+
 **页面状态：** 正常、草稿、生效、待回滚
 
 **页面级验收：**
@@ -3379,6 +3679,10 @@
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
+**需求追踪：** `ADM-MBR-02 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
+
 **页面状态：** 正常、未知客户端、合并冲突
 
 **页面级验收：**
@@ -3420,6 +3724,10 @@
 **业务规则：** 等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
+
+**需求追踪：** `ADM-MBR-03 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
 
 **页面状态：** 待处理、处理中、待补充、已通过、已拒绝、直接发放
 
@@ -3467,6 +3775,10 @@
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
+**需求追踪：** `ADM-MBR-04 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
+
 **页面状态：** 正常、账号错误、高风险、重复业务单
 
 **页面级验收：**
@@ -3512,6 +3824,10 @@
 **业务规则：** 等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
+
+**需求追踪：** `ADM-MBR-05 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
 
 **页面状态：** 正常、发起人冲突、账号状态已变
 
@@ -3559,6 +3875,10 @@
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
+**需求追踪：** `ADM-MBR-06 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
+
 **页面状态：** 正常、证据不足、映射冲突
 
 **页面级验收：**
@@ -3600,6 +3920,10 @@
 **业务规则：** 余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
+
+**需求追踪：** `ADM-WAL-01 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*`
+
+**模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、账号受限、对账异常
 
@@ -3647,6 +3971,10 @@
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
+**需求追踪：** `ADM-WAL-02 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*`
+
+**模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
+
 **页面状态：** 正常、余额锁定、Sequence 异常
 
 **页面级验收：**
@@ -3692,6 +4020,10 @@
 **业务规则：** 余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
+
+**需求追踪：** `ADM-WAL-03 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*`
+
+**模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、预计负余额、高风险、重复业务单
 
@@ -3739,6 +4071,10 @@
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
+**需求追踪：** `ADM-WAL-04 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*`
+
+**模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
+
 **页面状态：** 正常、余额已变化、发起人冲突
 
 **页面级验收：**
@@ -3785,6 +4121,10 @@
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
+**需求追踪：** `ADM-WAL-05 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*`
+
+**模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
+
 **页面状态：** 正常、部分成功、重复项、总额异常
 
 **页面级验收：**
@@ -3826,6 +4166,10 @@
 **业务规则：** 余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。
 
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
+
+**需求追踪：** `ADM-WAL-06 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*`
+
+**模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、钱包冻结、差异未解释
 
@@ -3877,6 +4221,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-NTF-01 → PRD-FR-080,PRD-FR-081,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-009,SCP-FR-012 → F-12/NTF-FR-*`
+
+**模块 PRD：** [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*）
+
 **页面状态：** 正常、未登记、已停用
 
 **页面级验收：**
@@ -3918,6 +4266,10 @@
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
+
+**需求追踪：** `ADM-NTF-02 → PRD-FR-080,PRD-FR-081,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-009,SCP-FR-012 → F-12/NTF-FR-*`
+
+**模块 PRD：** [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*）
 
 **页面状态：** 正常、变量缺失、地区冲突、语言冲突
 
@@ -3961,6 +4313,10 @@
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
+**需求追踪：** `ADM-NTF-03 → PRD-FR-080,PRD-FR-081,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-009,SCP-FR-012 → F-12/NTF-FR-*`
+
+**模块 PRD：** [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*）
+
 **页面状态：** 正常、积压、模板失败、重复抑制
 
 **页面级验收：**
@@ -4002,6 +4358,10 @@
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 **数据与权限：** 仅允许具备审计 capability 的管理员按授权范围读取脱敏事件；导出必须申请、复核、短期授权并记录审计。
+
+**需求追踪：** `ADM-AUD-01 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
+
+**模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
 
 **页面状态：** 正常、范围过大、完整性告警
 
@@ -4049,6 +4409,10 @@
 
 **数据与权限：** 仅允许具备审计 capability 的管理员按授权范围读取脱敏事件；导出必须申请、复核、短期授权并记录审计。
 
+**需求追踪：** `ADM-AUD-02 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
+
+**模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
+
 **页面状态：** 正常、关联缺失、敏感字段受限
 
 **页面级验收：**
@@ -4095,6 +4459,10 @@
 
 **数据与权限：** 仅允许具备审计 capability 的管理员按授权范围读取脱敏事件；导出必须申请、复核、短期授权并记录审计。
 
+**需求追踪：** `ADM-AUD-03 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
+
+**模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
+
 **页面状态：** 正常、Sequence 缺口、业务无审计
 
 **页面级验收：**
@@ -4136,6 +4504,10 @@
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 **数据与权限：** 仅允许具备审计 capability 的管理员按授权范围读取脱敏事件；导出必须申请、复核、短期授权并记录审计。
+
+**需求追踪：** `ADM-AUD-04 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
+
+**模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
 
 **页面状态：** 正常、待批准、已过期、范围变化
 
