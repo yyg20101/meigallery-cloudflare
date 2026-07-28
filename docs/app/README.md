@@ -1,6 +1,6 @@
 # 独立 App 与共享业务平台文档总览
 
-更新时间：2026-07-23
+更新时间：2026-07-28
 
 App 版本：1.0
 
@@ -13,10 +13,12 @@ App 版本：1.0
 - [App 1.0 产品需求确认书（Markdown）](./MEIGALLERY_APP_1_0_CLIENT_PRD.md)：面向客户的单一需求基线，覆盖范围、角色、会员、移动端与后台交互、异常状态、迁移、验收和 8 项客户确认事项。
 - [App 1.0 产品需求确认书（DOCX）](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx)：可直接提供客户评审、填写结论和签字确认的完整交付版。
 - [App 1.0 逐页交互设计确认册（DOCX）](./deliverables/MeiGallery_App_1.0_逐页交互设计确认册.docx)：按 49 个移动端页面与 43 个后台页面汇总 Page ID、页面目标、主操作、必备状态、跨页旅程、验收清单和签字页。
+- [App 1.0 详细功能与原型规格（Markdown）](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)：以 Page ID 为唯一键，逐页列出角色、前置、入口、结构、交互、规则、权限、状态、验收标准和原型文件。
 - [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)：可点击体验 8 个移动端与后台关键旅程，包含业务规则、建议操作、预期结果、响应式布局和状态反馈。
 - [App 1.0 逐页交互设计库](./interactive-prototype/pages.html)：覆盖移动端 49 页和管理后台 43 页，共 92 个可独立访问、搜索、切换状态和操作的页面设计。
 - [App 1.0 逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)：逐页列出页面目标、主操作、必备状态、跨页旅程和验收方法。
-- [客户确认原型图](./assets/client-prd/)：从交互原型生成的 9 组高保真截图，覆盖登录发现、真人详情与五级会员、平台会话、通知/钱包、后台内容审核、后台运营、端到端流程及移动端/后台逐页设计库。
+- [逐页客户确认原型图](./assets/page-prototypes/)：92 张页面默认状态 + 54 张 P0 关键状态，共 146 张 1600 × 1000 原型图；`manifest.json` 记录 Page ID、状态、路径、尺寸和 SHA-256。
+- [逐页原型 QA 联系表](./assets/page-prototypes/qa/contact-sheets/)：按 14 个功能组汇总 146 张原型，用于视觉与映射复核。
 
 ## 1. 产品定位
 
@@ -58,6 +60,7 @@ App 版本：1.0
 | [客户产品需求确认书](./MEIGALLERY_APP_1_0_CLIENT_PRD.md) | 将分散的产品、交互、原型、验收与客户待确认参数合并为单一可签字需求基线 |
 | [客户确认版 DOCX](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx) | 供客户阅读、勾选确认结论、填写意见并签字盖章 |
 | [逐页交互设计确认册 DOCX](./deliverables/MeiGallery_App_1.0_逐页交互设计确认册.docx) | 供客户按 Page ID 逐页确认 92 个页面的目标、主操作、必备状态和修改意见 |
+| [详细功能与原型规格](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md) | 以 92 个 Page ID 串联详细需求、默认状态、P0 关键状态、截图文件和验收标准 |
 | [高保真关键旅程原型](./interactive-prototype/index.html) | 通过 8 个可点击旅程演示移动端、管理后台、业务规则和关键状态 |
 | [逐页交互设计库](./interactive-prototype/pages.html) | 为 92 个移动端和后台 Page ID 提供可独立访问、状态切换和交互评审的高保真页面 |
 | [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md) | 汇总 92 页的页面目标、主操作、必备状态、全局交互和验收清单 |
@@ -120,8 +123,11 @@ App 版本：1.0
 
 ## 7. 交付物维护
 
-- `scripts/generate_app_product_assets.py`：从已确认原型生成客户文档使用的 9 组截图。
-- `scripts/generate_app_product_docs.py`：根据当前 Markdown、页面目录和原型截图生成两份 DOCX，避免手工副本与需求基线分叉。
-- `scripts/create_docx_contact_sheets.py`：将 DOCX 渲染结果整理为视觉复核联系表。
+- `scripts/generate_app_product_assets.py`：生成客户文档使用的流程总览和原始参考对照图。
+- `scripts/generate_app_page_spec.mjs`：从页面目录生成 92 页详细规格、146 张截图任务和确定性映射清单。
+- `scripts/verify_app_page_prototypes.py`：校验截图数量、尺寸、真实 PNG、哈希重复、清单引用并生成 14 组联系表。
+- `scripts/generate_app_product_docs.py`：根据当前 Markdown 和已验证原型清单生成两份 DOCX，避免手工副本与需求基线分叉。
+- `scripts/verify_app_product_docs.py`：校验两份 DOCX 是否完整包含 92 个 Page ID、146 个精确原型映射和图片替代文本。
+- `scripts/create_docx_contact_sheets.py`：将 DOCX 全页渲染结果整理为可配置的视觉复核联系表。
 - 每次客户确认导致需求变化后，应先修改 Markdown 和原型，再重新生成 DOCX；DOCX 不作为独立需求源维护。
 - 当前交付仍标记为“需求讨论中”。客户完成 C-01～C-08 和签字页确认后，才可将范围状态改为“已确认并冻结”。

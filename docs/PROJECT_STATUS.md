@@ -25,9 +25,12 @@
 
 - App 1.0 当前只处于产品、交互和客户确认资料阶段，尚未创建 KMP 工程、App 专用 API 或数据库 migration。
 - 已完成移动端 49 页和管理后台 43 页的页面级产品设计。
-- 客户于 2026-07-28 确认重构 DOCX：92 个 Page ID 全部使用独立对应截图，54 个 P0 页面补充关键状态图。
+- 已按客户于 2026-07-28 确认的规格完成重构：92 个 Page ID 全部使用独立默认原型，54 个 P0 页面各补充一个关键状态，共 146 张 1600 × 1000 原型图。
+- 已生成 `docs/app/APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md`，逐页覆盖角色、前置、入口、结构、交互、业务规则、数据权限、状态和验收。
+- 已重建两份客户 DOCX：产品需求确认书完整覆盖业务需求并内嵌 162 张图，逐页交互设计确认册精确内嵌 146 张逐页原型。
+- 两份 DOCX 已通过 92 个 Page ID / 146 个原型映射校验、压缩包完整性、图片替代文本、表格表头和全页渲染目检；LibreOffice 基准渲染分别为 163 页和 138 页。
+- 逐页原型清单、SHA-256、14 组功能联系表和设计 QA 证据位于 `docs/app/assets/page-prototypes/` 与 `docs/app/interactive-prototype/design-qa.md`。
 - 详细实施规格见 `docs/superpowers/specs/2026-07-28-app-detailed-prd-prototype-docx-design.md`。
-- 当前旧版 DOCX 仅用于问题对照，不再作为最终客户确认稿。
 
 ## 通用广告归因
 

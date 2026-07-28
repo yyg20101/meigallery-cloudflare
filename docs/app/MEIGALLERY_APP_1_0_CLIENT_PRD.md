@@ -8,7 +8,7 @@ App 版本：1.0
 
 文档状态：待客户确认
 
-日期：2026-07-23
+日期：2026-07-28
 
 ## 1. 确认说明
 
@@ -284,7 +284,11 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 8.1 启动、注册与登录
 
-![登录、推荐与搜索原型](./assets/client-prd/prototype-01-entry-discovery.png)
+![APP-AUTH-02 登录默认状态原型](./assets/page-prototypes/mobile/app-auth-02__default.png)
+
+![APP-DSC-01 推荐首页默认状态原型](./assets/page-prototypes/mobile/app-dsc-01__default.png)
+
+![APP-DSC-04 搜索默认状态原型](./assets/page-prototypes/mobile/app-dsc-04__default.png)
 
 页面：启动检查、欢迎页、登录/注册、验证码或密码验证、条款与隐私、首次偏好。
 
@@ -340,7 +344,9 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 8.4 真人详情与媒体
 
-![五级会员、平台话题门槛与人工申请原型](./assets/client-prd/prototype-02-profile-membership.png)
+![APP-DSC-07 真人详情默认状态原型](./assets/page-prototypes/mobile/app-dsc-07__default.png)
+
+![APP-MBR-01 会员门槛默认状态原型](./assets/page-prototypes/mobile/app-mbr-01__default.png)
 
 详情顺序：媒体头图 → 认证与展示名 → 模糊地区/职业/标签 → 简介 → 图库 → 话题接收主体说明 → 喜欢/关注/收藏 → 发起话题 → 举报/拉黑/分享。
 
@@ -386,7 +392,7 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 8.7 平台话题列表与会话
 
-![会话、平台运营披露与只读状态原型](./assets/client-prd/prototype-03-messaging.png)
+![APP-MSG-03 话题会话默认状态原型](./assets/page-prototypes/mobile/app-msg-03__default.png)
 
 会话列表展示“与目标真人相关的话题”、平台运营标签、最近消息安全摘要、时间、未读数、静音和限制状态。列表不得写成“与真人本人聊天”。
 
@@ -410,7 +416,11 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 8.8 站内通知
 
-![通知、金币与个人中心原型](./assets/client-prd/prototype-04-notification-wallet-me.png)
+![APP-MSG-05 通知中心默认状态原型](./assets/page-prototypes/mobile/app-msg-05__default.png)
+
+![APP-WAL-01 金币钱包默认状态原型](./assets/page-prototypes/mobile/app-wal-01__default.png)
+
+![APP-SET-01 我的默认状态原型](./assets/page-prototypes/mobile/app-set-01__default.png)
 
 分类：消息、互动、会员/金币、系统/安全、营销。
 
@@ -466,7 +476,11 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 9.1 真人上传与 MeiGallery 导入
 
-![后台真人供给、认证与发布原型](./assets/client-prd/prototype-05-admin-content-review.png)
+![ADM-PER-02 单条新建真人默认状态原型](./assets/page-prototypes/admin/adm-per-02__default.png)
+
+![ADM-PER-04 真人认证审核默认状态原型](./assets/page-prototypes/admin/adm-per-04__default.png)
+
+![ADM-PER-05 发布审核默认状态原型](./assets/page-prototypes/admin/adm-per-05__default.png)
 
 管理员可单条新建真人草稿或导入 MeiGallery 候选。导入必须保留 legacy 映射、输入哈希、来源、媒体清单和批次记录。
 
@@ -509,7 +523,11 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 9.5 平台话题代运营工作台
 
-![后台代运营、会员发放与金币调整原型](./assets/client-prd/prototype-06-admin-operations.png)
+![ADM-MSG-02 会话运营工作台默认状态原型](./assets/page-prototypes/admin/adm-msg-02__default.png)
+
+![ADM-MBR-04 会员人工发放默认状态原型](./assets/page-prototypes/admin/adm-mbr-04__default.png)
+
+![ADM-WAL-03 调币审批默认状态原型](./assets/page-prototypes/admin/adm-wal-03__default.png)
 
 工作台包含队列、筛选、会话详情、用户可见消息、内部备注、领取/转派和安全升级。
 

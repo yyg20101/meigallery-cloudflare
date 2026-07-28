@@ -11,11 +11,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from docx import Document
 from docx.enum.section import WD_SECTION_START
@@ -27,16 +28,32 @@ from docx.shared import Inches, Pt, RGBColor, Twips
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DOC_SKILL_SCRIPTS = Path(
-    "/Users/wajie/.codex/plugins/cache/openai-primary-runtime/"
-    "documents/26.715.12143/skills/documents/scripts"
-)
+
+
+def resolve_document_skill_scripts() -> Path:
+    base = (
+        Path.home()
+        / ".codex/plugins/cache/openai-primary-runtime/documents"
+    )
+    candidates = sorted(
+        base.glob("*/skills/documents/scripts"),
+        reverse=True,
+    )
+    for candidate in candidates:
+        if (candidate / "table_geometry.py").exists():
+            return candidate
+    raise FileNotFoundError("未找到 documents skill 的 table_geometry.py")
+
+
+DOC_SKILL_SCRIPTS = resolve_document_skill_scripts()
 sys.path.insert(0, str(DOC_SKILL_SCRIPTS))
 
 from table_geometry import apply_table_geometry, column_widths_from_weights  # noqa: E402
 
 
 DELIVERABLES = ROOT / "docs/app/deliverables"
+PAGE_ASSET_ROOT = ROOT / "docs/app/assets/page-prototypes"
+PAGE_MANIFEST = PAGE_ASSET_ROOT / "manifest.json"
 BODY_FONT = "Arial Unicode MS"
 EAST_ASIA_FONT = "Arial Unicode MS"
 MONO_FONT = "JetBrains Mono"
@@ -91,16 +108,6 @@ SPECS = (
             "先确认全局交互规则与不可变产品边界。",
             "按 P0 关键旅程评审移动端，再评审后台闭环。",
             "逐页意见必须引用 Page ID，并注明具体状态和预期调整。",
-        ),
-        supplemental_images=(
-            (
-                "移动端逐页交互设计库",
-                ROOT / "docs/app/assets/client-prd/prototype-08-page-library-mobile.png",
-            ),
-            (
-                "管理后台逐页交互设计库",
-                ROOT / "docs/app/assets/client-prd/prototype-09-page-library-admin.png",
-            ),
         ),
     ),
 )
@@ -498,7 +505,7 @@ def add_cover(doc: Document, spec: DocumentSpec) -> None:
     table = doc.add_table(rows=2, cols=4)
     values = (
         ("产品", "MeiGallery App", "版本", "1.0"),
-        ("状态", "待客户确认", "日期", "2026-07-23"),
+        ("状态", "待客户确认", "日期", "2026-07-28"),
     )
     for row_index, row_values in enumerate(values):
         for col_index, value in enumerate(row_values):
@@ -905,7 +912,340 @@ def add_revision_note(doc: Document, *, style: str = "Heading 1") -> None:
     )
 
 
+def load_page_manifest() -> dict[str, Any]:
+    if not PAGE_MANIFEST.exists():
+        raise FileNotFoundError(f"逐页原型清单不存在：{PAGE_MANIFEST}")
+    manifest = json.loads(PAGE_MANIFEST.read_text(encoding="utf-8"))
+    counts = manifest.get("counts", {})
+    expected = {
+        "pages": 92,
+        "mobilePages": 49,
+        "adminPages": 43,
+        "p0Pages": 54,
+        "defaultCaptures": 92,
+        "keyStateCaptures": 54,
+        "totalCaptures": 146,
+    }
+    for key, value in expected.items():
+        if counts.get(key) != value:
+            raise ValueError(
+                f"逐页原型清单计数异常：{key}={counts.get(key)!r}，应为 {value}"
+            )
+    if manifest.get("status") != "verified":
+        raise ValueError("逐页原型清单尚未完成校验，拒绝生成客户文档")
+    return manifest
+
+
+def add_compact_field(
+    doc: Document,
+    label: str,
+    value: str,
+    *,
+    size: float = 8.35,
+    keep_together: bool = False,
+) -> None:
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(2)
+    paragraph.paragraph_format.line_spacing = 1.0
+    paragraph.paragraph_format.keep_together = keep_together
+    run = paragraph.add_run(f"{label}｜")
+    set_run_font(run, size=size, color=BRAND_DARK, bold=True)
+    run = paragraph.add_run(value)
+    set_run_font(run, size=size, color=INK)
+
+
+def add_confirmation_line(doc: Document, text: str) -> None:
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.space_before = Pt(3)
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.keep_together = True
+    add_inline_content(
+        paragraph,
+        f"客户确认｜□ 接受  □ 调整  □ 不适用    意见：{text}",
+        base_size=8.5,
+        base_color=BRAND_DARK,
+        base_bold=True,
+    )
+    add_bottom_rule(paragraph, color="D9A8BA", size="4")
+
+
+def capture_maps(
+    manifest: dict[str, Any],
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    defaults: dict[str, dict[str, Any]] = {}
+    key_states: dict[str, dict[str, Any]] = {}
+    for capture in manifest["captures"]:
+        target = defaults if capture["variant"] == "default" else key_states
+        target[capture["pageId"]] = capture
+    return defaults, key_states
+
+
+def add_page_confirmation_unit(
+    doc: Document,
+    page: dict[str, Any],
+    capture: dict[str, Any],
+) -> None:
+    doc.add_page_break()
+
+    kicker = doc.add_paragraph()
+    kicker.paragraph_format.space_before = Pt(0)
+    kicker.paragraph_format.space_after = Pt(2)
+    kicker.paragraph_format.keep_with_next = True
+    add_inline_content(
+        kicker,
+        f"{'移动端' if page['platform'] == 'mobile' else '管理后台'} · "
+        f"{page['module']} · {page['priority']} · 逐页确认单元",
+        base_size=8.8,
+        base_color=BRAND,
+        base_bold=True,
+    )
+
+    heading = doc.add_paragraph(
+        f"{page['pageId']}  {page['pageName']}",
+        style="Heading 1",
+    )
+    heading.paragraph_format.space_before = Pt(0)
+    heading.paragraph_format.space_after = Pt(3)
+
+    purpose = doc.add_paragraph()
+    purpose.paragraph_format.space_after = Pt(2)
+    add_inline_content(
+        purpose,
+        page["purpose"],
+        base_size=9.2,
+        base_color=INK,
+        base_bold=True,
+    )
+
+    metadata = doc.add_paragraph()
+    metadata.paragraph_format.space_after = Pt(2)
+    add_inline_content(
+        metadata,
+        f"设计路由：`{page['route']}`　默认状态：{capture['state']}　"
+        f"角色：{page['roles']}",
+        base_size=8.4,
+        base_color=MUTED,
+    )
+
+    add_image(
+        doc,
+        capture["alt"],
+        PAGE_ASSET_ROOT / capture["image"],
+        width=Inches(6.15),
+    )
+
+    add_compact_field(
+        doc,
+        "入口与前置",
+        f"{page['entry']}。{page['preconditions']}",
+    )
+    add_compact_field(
+        doc,
+        "页面结构与交互",
+        f"{page['structure']} {page['interaction']}",
+    )
+    add_compact_field(
+        doc,
+        "业务规则与权限",
+        f"{page['rule']} {page['dataPermission']}",
+    )
+    add_compact_field(
+        doc,
+        "状态与下一步",
+        f"{'、'.join(page['states'])}；成功后可进入 "
+        f"{page['nextPageId'] or '当前流程安全出口'}。",
+        keep_together=True,
+    )
+    add_compact_field(
+        doc,
+        "验收要点",
+        "；".join(page["acceptance"]),
+        size=8.15,
+    )
+    add_confirmation_line(doc, "________________________________")
+
+
+def add_page_catalog_appendix(
+    doc: Document,
+    manifest: dict[str, Any],
+) -> None:
+    defaults, _ = capture_maps(manifest)
+    doc.add_page_break()
+    heading = doc.add_paragraph("附录 A：92 页详细需求与默认原型", style="Heading 1")
+    set_keep_with_next(heading)
+    paragraph = doc.add_paragraph()
+    add_inline_content(
+        paragraph,
+        "本附录以 Page ID 为唯一映射键。每个页面均包含用途、入口、角色、"
+        "结构、交互、规则、权限、状态、验收标准、对应默认原型和客户确认栏；"
+        "移动端 49 页、管理后台 43 页，共 92 个独立确认单元。",
+        base_size=10,
+    )
+    paragraph = doc.add_paragraph()
+    add_inline_content(
+        paragraph,
+        "评审规则：原型中的 Page ID、页面名称和状态必须与本页标题及说明一致；"
+        "任何调整意见均应同时写明 Page ID 和目标状态。",
+        base_size=9.5,
+        base_color=BRAND_DARK,
+        base_bold=True,
+    )
+
+    pages = sorted(manifest["pages"], key=lambda item: item["order"])
+    for page in pages:
+        capture = defaults.get(page["pageId"])
+        if capture is None:
+            raise ValueError(f"缺少默认原型：{page['pageId']}")
+        add_page_confirmation_unit(doc, page, capture)
+
+
+def add_key_state_image(
+    doc: Document,
+    page: dict[str, Any],
+    capture: dict[str, Any],
+) -> None:
+    image_path = PAGE_ASSET_ROOT / capture["image"]
+    if not image_path.exists():
+        raise FileNotFoundError(f"关键状态原型不存在：{image_path}")
+
+    title = doc.add_paragraph()
+    title.paragraph_format.space_before = Pt(0)
+    title.paragraph_format.space_after = Pt(2)
+    title.paragraph_format.keep_with_next = True
+    add_inline_content(
+        title,
+        f"{page['pageId']} {page['pageName']}｜关键状态：{capture['state']}",
+        base_size=8.7,
+        base_color=BRAND_DARK,
+        base_bold=True,
+    )
+
+    image_paragraph = doc.add_paragraph()
+    image_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    image_paragraph.paragraph_format.space_before = Pt(0)
+    image_paragraph.paragraph_format.space_after = Pt(0)
+    image_paragraph.paragraph_format.keep_with_next = True
+    shape = image_paragraph.add_run().add_picture(
+        str(image_path),
+        width=Inches(6.05),
+    )
+    set_image_alt(shape, capture["alt"])
+
+    caption = doc.add_paragraph(
+        f"图：{capture['alt']}；触发后必须提供可理解原因和安全下一步。",
+        style="Caption",
+    )
+    caption.paragraph_format.space_before = Pt(2)
+    caption.paragraph_format.space_after = Pt(5)
+    caption.paragraph_format.keep_with_next = False
+
+
+def add_key_state_appendix(
+    doc: Document,
+    manifest: dict[str, Any],
+) -> None:
+    _, key_states = capture_maps(manifest)
+    pages_by_id = {page["pageId"]: page for page in manifest["pages"]}
+    captures = [
+        capture
+        for capture in manifest["captures"]
+        if capture["variant"] == "key-state"
+    ]
+    if len(captures) != manifest["counts"]["keyStateCaptures"]:
+        raise ValueError(
+            f"关键状态截图数量异常：{len(captures)}，"
+            f"应为 {manifest['counts']['keyStateCaptures']}"
+        )
+    captures.sort(key=lambda item: pages_by_id[item["pageId"]]["order"])
+
+    doc.add_page_break()
+    heading = doc.add_paragraph("附录 B：54 个 P0 关键状态原型", style="Heading 1")
+    set_keep_with_next(heading)
+    paragraph = doc.add_paragraph()
+    add_inline_content(
+        paragraph,
+        "P0 页面除默认状态外，另提供一个对开发与验收最关键的异常、受限、"
+        "冲突或完成状态。以下 54 张原型与附录 A 使用同一 Page ID 映射。",
+        base_size=10,
+    )
+
+    for index in range(0, len(captures), 2):
+        group = doc.add_paragraph(
+            f"P0 关键状态 {index + 1:02d}–{min(index + 2, len(captures)):02d}",
+            style="Heading 2",
+        )
+        group.paragraph_format.page_break_before = True
+        group.paragraph_format.space_before = Pt(0)
+        group.paragraph_format.space_after = Pt(4)
+        for capture in captures[index : index + 2]:
+            page = pages_by_id[capture["pageId"]]
+            if key_states.get(page["pageId"]) != capture:
+                raise ValueError(f"关键状态映射冲突：{page['pageId']}")
+            add_key_state_image(doc, page, capture)
+
+
+def add_final_delivery_confirmation(
+    doc: Document,
+    manifest: dict[str, Any],
+) -> None:
+    counts = manifest["counts"]
+    heading = doc.add_paragraph("逐页需求与原型总确认", style="Heading 1")
+    heading.paragraph_format.page_break_before = True
+    set_keep_with_next(heading)
+    for text in (
+        f"本文件已纳入 {counts['pages']} 个页面默认原型，其中移动端 "
+        f"{counts['mobilePages']} 页、管理后台 {counts['adminPages']} 页。",
+        f"P0 页面共 {counts['p0Pages']} 个，并分别纳入一个关键状态原型；"
+        f"默认原型与关键状态合计 {counts['totalCaptures']} 张。",
+        "每张图片均通过 Page ID、页面名称、状态和文件清单建立确定性映射；"
+        "客户意见应引用 Page ID，避免口头描述造成页面错配。",
+    ):
+        paragraph = doc.add_paragraph()
+        add_inline_content(paragraph, text, base_size=10.5)
+
+    table = doc.add_table(rows=4, cols=2)
+    mark_repeat_header(table.rows[0])
+    values = (
+        ("□ 全部确认", "范围、逐页需求、原型和关键状态可作为后续实现与验收基线。"),
+        ("□ 有条件确认", "除下方明确列出的 Page ID 外，其余内容确认。"),
+        ("□ 暂不确认", "需重新评审的 Page ID 与原因见下方意见。"),
+        ("客户意见", "\n\n"),
+    )
+    for row, values_row in zip(table.rows, values):
+        prevent_row_split(row)
+        for index, value in enumerate(values_row):
+            cell = row.cells[index]
+            cell.text = ""
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            set_cell_shading(cell, PINK_FILL if index == 0 else WHITE)
+            set_cell_border(cell, color="E7C4D1")
+            paragraph = cell.paragraphs[0]
+            paragraph.paragraph_format.space_after = Pt(0)
+            add_inline_content(
+                paragraph,
+                value,
+                base_size=9.2,
+                base_color=BRAND_DARK if index == 0 else INK,
+                base_bold=index == 0,
+            )
+    apply_table_geometry(
+        table,
+        column_widths_from_weights((1.55, 4.95), TABLE_WIDTH_DXA),
+    )
+
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.space_before = Pt(20)
+    add_inline_content(
+        paragraph,
+        "客户代表签字：____________________    日期：____年__月__日",
+        base_size=10.5,
+        base_bold=True,
+    )
+
+
 def build_document(spec: DocumentSpec) -> None:
+    manifest = load_page_manifest()
     doc = Document()
     configure_styles(doc)
     section = doc.sections[0]
@@ -913,6 +1253,9 @@ def build_document(spec: DocumentSpec) -> None:
     configure_header_footer(section, spec.running_label)
     add_cover(doc, spec)
     render_markdown(doc, spec.source)
+    add_page_catalog_appendix(doc, manifest)
+    add_key_state_appendix(doc, manifest)
+    add_final_delivery_confirmation(doc, manifest)
 
     doc.core_properties.title = spec.title.replace("\n", " ")
     doc.core_properties.subject = spec.subtitle
@@ -920,7 +1263,8 @@ def build_document(spec: DocumentSpec) -> None:
     doc.core_properties.keywords = "MeiGallery, App 1.0, PRD, 交互设计, 客户确认"
     doc.core_properties.comments = (
         "版式：standard_business_brief；首页：customer_pack；"
-        "命名覆盖：MeiGallery 品牌粉色标题层级、Arial Unicode MS 跨平台中文字体。"
+        "命名覆盖：MeiGallery 品牌粉色标题层级、Arial Unicode MS 跨平台中文字体；"
+        "逐页原型：92 张默认状态 + 54 张 P0 关键状态。"
     )
     doc.core_properties.last_modified_by = "MeiGallery 产品团队"
 
