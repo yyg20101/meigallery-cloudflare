@@ -1,8 +1,13 @@
 import type { AdAttributionProvider } from '@meigallery/shared'
+import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 
 const FBP_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
-const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
-const FBCLID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/
+const FBC_PATTERN = new RegExp(
+  `^fb\\.1\\.\\d{10,16}\\.[A-Za-z0-9._-]{1,${ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH}}$`,
+)
+const FBCLID_PATTERN = new RegExp(
+  `^[A-Za-z0-9._-]{1,${ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH}}$`,
+)
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
 const TIKTOK_CLICK_COOKIE = 'mg_ttclid'
 const TIKTOK_CLICK_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -35,7 +40,7 @@ export function readAdPlatformBrowserIdentifiers(
 
 export function projectAdClickCookie(provider: AdAttributionProvider, clickIds: BrowserClickIds) {
   if (provider !== 'tiktok') return ''
-  const value = safeIdentifier(firstText(clickIds.ttclid), 1_000)
+  const value = safeIdentifier(firstText(clickIds.ttclid), ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH)
   return value
     ? `${TIKTOK_CLICK_COOKIE}=${encodeURIComponent(value)}; Max-Age=${TIKTOK_CLICK_MAX_AGE_SECONDS}; Path=/; SameSite=Lax; Secure`
     : ''
@@ -59,8 +64,11 @@ function readMetaIdentifiers(cookie: string, value: unknown, now: number) {
 }
 
 function readTikTokIdentifiers(cookie: string, value: unknown) {
-  const ttclid = safeIdentifier(firstText(value), 1_000)
-    || safeIdentifier(readCookie(cookie, TIKTOK_CLICK_COOKIE, true), 1_000)
+  const ttclid = safeIdentifier(firstText(value), ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH)
+    || safeIdentifier(
+      readCookie(cookie, TIKTOK_CLICK_COOKIE, true),
+      ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH,
+    )
   const ttp = safeIdentifier(readCookie(cookie, '_ttp', true), 256)
   return {
     ...(ttclid ? { ttclid } : {}),

@@ -7,7 +7,7 @@ import { safeContactLinkUrl } from '../utils/contact-link-url'
 import { generateContactLink } from '@meigallery/shared/constants'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { buildAdPlatformUserData, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
-import { resolveRequestAdAttributionContext } from '../utils/request-ad-attribution-context'
+import { resolveRequestAdAttribution } from '../utils/request-ad-attribution'
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
 
@@ -38,12 +38,13 @@ conversionRoutes.post('/events', async (c) => {
   if (!contact || !contact.platform.trim() || !targetUrl) {
     return errorJson(c, 400, '公开转化动作无效', { code: 'PUBLIC_CONVERSION_ACTION_INVALID' })
   }
-  const attributionContext = await resolveRequestAdAttributionContext(
+  const attribution = await resolveRequestAdAttribution(
     c.env,
     getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE),
     isPlainRecord(body.adAttributionSignals) ? body.adAttributionSignals : {},
     body.trackingSourceSlug,
   )
+  const attributionContext = attribution.context
   const adPlatformUserData = attributionContext
     ? buildAdPlatformUserData(c.req.raw, readAdPlatformBrowserIdentifiersFromRequest(c.req.raw))
     : undefined
@@ -52,7 +53,11 @@ conversionRoutes.post('/events', async (c) => {
     routeName: text(body.routeName, 120), path: text(body.path, 240), sourceChannel: text(body.sourceChannel, 40) || 'unknown',
     sourceName: text(body.sourceName, 120), trackingSourceSlug: text(body.trackingSourceSlug, 120),
     utmSource: text(body.utmSource, 120), utmMedium: text(body.utmMedium, 120), utmCampaign: text(body.utmCampaign, 120), utmContent: text(body.utmContent, 120),
-    attributionContext, attributionSource: attributionContext ? 'context' : 'none', adPlatformUserData,
+    attributionContext,
+    attributionSource: attributionContext
+      ? 'context'
+      : attribution.resolution === 'conflict' ? 'conflict' : 'none',
+    adPlatformUserData,
     contactMethodId: contact.id, contactPlatform: contact.platform, actionType: 'open_link',
     metadata: isPlainRecord(body.metadata) ? body.metadata : {},
   })

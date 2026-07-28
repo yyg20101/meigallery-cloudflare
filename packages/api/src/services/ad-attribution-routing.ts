@@ -1,4 +1,5 @@
 import type { AdAttributionProvider } from '@meigallery/shared'
+import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 import type { AdAttributionSource } from '../utils/ad-attribution-context'
 
 export type AdAttributionResolution = 'matched' | 'inherited' | 'none' | 'conflict'
@@ -21,8 +22,6 @@ export interface AdAttributionRoutingResult {
 
 type TrackingSourceProviderRow = { ad_provider: string }
 
-const CLICK_ID_MAX_LENGTH = 1_000
-
 export interface AdAttributionSourceInput {
   clickIdentifiers: Partial<Record<
     AdAttributionProvider,
@@ -38,12 +37,21 @@ export async function resolveAdAttributionRouting(
   inheritedProvider: AdAttributionProvider | null,
 ): Promise<AdAttributionRoutingResult> {
   const normalized = normalizeSignals(signals)
-  if (normalized.invalid) return conflict()
   const managedProvider = await resolveManagedLinkProvider(db, normalized)
-  if (normalized.trackingSourceSlug && !managedProvider) return conflict()
+  const clickIdentifiers = buildClickIdentifiers(normalized)
+  const hasValidClickSignal = Object.values(clickIdentifiers).some(Boolean)
+
+  if (!hasValidClickSignal && !managedProvider && normalized.hasInvalidSignal) {
+    return conflict()
+  }
+  if (!hasValidClickSignal
+    && !managedProvider
+    && normalized.trackingSourceProvided) {
+    return conflict()
+  }
 
   return resolveAdAttributionSource({
-    clickIdentifiers: buildClickIdentifiers(normalized),
+    clickIdentifiers,
     managedProvider,
     inheritedProvider,
   })
@@ -91,11 +99,11 @@ async function resolveManagedLinkProvider(
 }
 
 function normalizeSignals(signals: AdAttributionSignals) {
-  const fbclid = normalizeOptionalSignal(signals.fbclid, 128)
-  const ttclid = normalizeOptionalSignal(signals.ttclid, CLICK_ID_MAX_LENGTH)
-  const gclid = normalizeOptionalSignal(signals.gclid, CLICK_ID_MAX_LENGTH)
-  const gbraid = normalizeOptionalSignal(signals.gbraid, CLICK_ID_MAX_LENGTH)
-  const wbraid = normalizeOptionalSignal(signals.wbraid, CLICK_ID_MAX_LENGTH)
+  const fbclid = normalizeOptionalSignal(signals.fbclid, ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH)
+  const ttclid = normalizeOptionalSignal(signals.ttclid, ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH)
+  const gclid = normalizeOptionalSignal(signals.gclid, ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH)
+  const gbraid = normalizeOptionalSignal(signals.gbraid, ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH)
+  const wbraid = normalizeOptionalSignal(signals.wbraid, ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH)
   const trackingSource = normalizeOptionalSignal(signals.trackingSourceSlug, 120)
   const trackingSourceSlug = trackingSource.provided ? normalizeSlug(trackingSource.value) : ''
   return {
@@ -105,7 +113,8 @@ function normalizeSignals(signals: AdAttributionSignals) {
     gbraid: gbraid.value,
     wbraid: wbraid.value,
     trackingSourceSlug,
-    invalid: [
+    trackingSourceProvided: trackingSource.provided,
+    hasInvalidSignal: [
       fbclid, ttclid, gclid, gbraid, wbraid, trackingSource,
     ].some(item => item.invalid)
       || (trackingSource.provided && !trackingSourceSlug),

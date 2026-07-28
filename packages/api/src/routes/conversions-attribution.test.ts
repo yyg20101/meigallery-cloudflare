@@ -56,6 +56,35 @@ describe('公开联系转化来源恢复', () => {
     }))
   })
 
+  it('真实长度的 Meta click ID 不会关闭受管来源 Contact', async () => {
+    const fbclid = 'x'.repeat(512)
+    const response = await app().request('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        actionType: 'open_link',
+        contactMethodId: 'contact_123',
+        visitorId: 'visitor_123',
+        sessionId: 'session_123',
+        trackingSourceSlug: 'ad-meta-team',
+        adAttributionSignals: {
+          trackingSourceSlug: 'ad-meta-team',
+          fbclid,
+        },
+      }),
+    }, env())
+
+    expect(response.status).toBe(201)
+    expect(recordContactMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      attributionContext: expect.objectContaining({
+        provider: 'meta',
+        source: 'click_id',
+        identifiers: { fbclid },
+      }),
+      attributionSource: 'context',
+    }))
+  })
+
   it('跨平台来源信号冲突时保留站内事实但不选择广告平台', async () => {
     const response = await app().request('/api/conversions/events', {
       method: 'POST',
@@ -76,7 +105,7 @@ describe('公开联系转化来源恢复', () => {
     expect(response.status).toBe(201)
     expect(recordContactMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       attributionContext: null,
-      attributionSource: 'none',
+      attributionSource: 'conflict',
     }))
   })
 })

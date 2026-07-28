@@ -1,11 +1,13 @@
 import type { AdPlatformSensitiveContext } from '@meigallery/shared'
+import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 
 const FBP_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
-const FBC_PATTERN = /^fb\.1\.\d{10,16}\.[A-Za-z0-9._-]{1,128}$/
+const FBC_PATTERN = new RegExp(
+  `^fb\\.1\\.\\d{10,16}\\.[A-Za-z0-9._-]{1,${ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH}}$`,
+)
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/u
 const IP_MAX_LENGTH = 45
 const USER_AGENT_MAX_LENGTH = 512
-const TTCLID_MAX_LENGTH = 1_000
 const TTP_MAX_LENGTH = 256
 const IDENTIFIER_ERROR = 'AD_PLATFORM_IDENTIFIER_INVALID'
 
@@ -15,7 +17,7 @@ export function normalizeAdPlatformBrowserIdentifiers(
   if (!isPlainRecord(value)) return {}
   const fbp = textValue(value.fbp)
   const fbc = textValue(value.fbc)
-  const ttclid = safeText(value.ttclid, TTCLID_MAX_LENGTH)
+  const ttclid = safeText(value.ttclid, ATTRIBUTION_LIMITS.CLICK_ID_MAX_LENGTH)
   const ttp = safeText(value.ttp, TTP_MAX_LENGTH)
   return {
     ...(FBP_PATTERN.test(fbp) ? { fbp } : {}),

@@ -61,7 +61,7 @@ describe('注册 API 权威创建 CompleteRegistration', () => {
 
     expect(recordRegistrationMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       attributionContext: null,
-      attributionSource: 'none',
+      attributionSource: 'conflict',
     }))
     const input = recordRegistrationMock.mock.calls[0]![1]
     expect(input.adPlatformUserData).toBeUndefined()
