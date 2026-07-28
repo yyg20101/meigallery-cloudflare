@@ -2,7 +2,7 @@
 
 App 版本：1.0
 
-日期：2026-07-23
+日期：2026-07-28
 
 状态：需求讨论中
 
@@ -12,11 +12,13 @@ App 版本：1.0
 
 本文把 App 1.0 的产品与 Feature PRD 转换为移动端页面级交互契约，供产品、UI、KMP、API、测试和运营共同使用。本文定义页面编号、信息层级、入口、操作、返回行为、关键状态和验收；不定义最终像素、字体尺寸、品牌资产或实现代码。
 
-49 个移动端 Screen ID 均已进入 [App 1.0 逐页交互设计库](./interactive-prototype/pages.html)，可独立访问、切换必备状态并查看页面目标、入口、主次操作和验收说明；完整目录见 [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)。
+49 个移动端 Screen ID 均已进入 [App 1.0 逐页交互设计库](./interactive-prototype/pages.html)，可独立访问、切换必备状态并查看页面目标、入口、主次操作和验收说明；完整目录见 [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)，逐页角色、规则、权限、需求编号、验收与原型见 [详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)，上游需求对应关系见 [需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)。
 
 上游事实源：
 
 - [产品需求](./PRODUCT_REQUIREMENTS.md)
+- [App 1.0 发布范围](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)
+- [需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)
 - [UI/UX 设计总纲](./UI_UX_DESIGN.md)
 - [Feature PRD 目录](../ways-of-work/plan/real-person-discovery-platform/README.md)
 - [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md)

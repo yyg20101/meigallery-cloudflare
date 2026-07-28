@@ -31,7 +31,7 @@ const hasSeoData = computed(() => {
 const trendSeries = [
   { label: '搜索 Session', key: 'session_count', tone: 'blue' as const },
   { label: '搜索 PV', key: 'page_view_count', tone: 'teal' as const },
-  { label: '联系', key: 'contact_click_count', tone: 'gold' as const },
+  { label: '有效联系', key: 'contact_click_count', tone: 'gold' as const },
   { label: '注册', key: 'register_count', tone: 'green' as const },
 ]
 
@@ -49,7 +49,7 @@ const metrics = computed(() => [
     tone: 'default' as const,
   },
   {
-    label: '搜索联系',
+    label: '搜索有效联系',
     value: formatAnalyticsNumber(totalNumber('contact_click_count')),
     hint: `联系率 ${formatRate(totalNumber('contact_rate'))}`,
     tone: 'gold' as const,
@@ -149,7 +149,7 @@ function formatRate(value: unknown) {
             { key: 'bounce_rate', label: '跳出率', type: 'percent', sortable: true },
             { key: 'average_active_seconds', label: '平均停留', type: 'duration', sortable: true },
             { key: 'max_scroll_depth', label: '最大滚动', type: 'percent', sortable: true },
-            { key: 'contact_click_count', label: '联系', type: 'number', sortable: true },
+            { key: 'contact_click_count', label: '有效联系', type: 'number', sortable: true },
             { key: 'register_count', label: '注册', type: 'number', sortable: true },
             { key: 'contact_rate', label: '联系率', type: 'percent', sortable: true },
           ]"
@@ -169,7 +169,7 @@ function formatRate(value: unknown) {
             { key: 'session_count', label: 'Session', type: 'number', sortable: true },
             { key: 'page_view_count', label: 'PV', type: 'number', sortable: true },
             { key: 'average_active_seconds', label: '平均时长', type: 'duration', sortable: true },
-            { key: 'contact_click_count', label: '联系', type: 'number', sortable: true },
+            { key: 'contact_click_count', label: '有效联系', type: 'number', sortable: true },
             { key: 'register_count', label: '注册', type: 'number', sortable: true },
             { key: 'contact_rate', label: '联系率', type: 'percent', sortable: true },
             { key: 'register_rate', label: '注册率', type: 'percent', sortable: true },

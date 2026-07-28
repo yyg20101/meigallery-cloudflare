@@ -1,12 +1,12 @@
 # 真人发现与互动平台 Feature PRD 目录
 
-更新时间：2026-07-20
+更新时间：2026-07-28
 
 App 版本：1.0
 
 状态：需求讨论中
 
-本目录把 [产品蓝图](./product-blueprint/prd.md) 拆为可独立评审、设计、估算和验收的 Feature PRD。上游产品与技术基线见 [App 文档总览](../../../app/README.md)，已确认设计记录见 [真人发现与互动平台产品蓝图](../../../superpowers/specs/2026-07-20-real-person-discovery-product-blueprint-design.md)。
+本目录把 [产品蓝图](./product-blueprint/prd.md) 拆为可独立评审、设计、估算和验收的 Feature PRD。研发、测试、接口设计和任务拆分统一从 [App 1.0 开发需求规格](../../../app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md) 进入；上游产品与技术基线见 [App 文档总览](../../../app/README.md)，已确认设计记录见 [真人发现与互动平台产品蓝图](../../../superpowers/specs/2026-07-20-real-person-discovery-product-blueprint-design.md)。
 
 本 Epic 的跨 Feature 技术边界见 [Epic 架构方案](./arch.md)。它定义系统图、领域所有权、App 1.0 Feature/Enabler、同步与异步提交点、技术栈、规模和进入实现的出口条件；详细客户端、后端、RBAC 和契约冻结文档从该文档继续下钻。
 
@@ -16,7 +16,7 @@ App 版本：1.0
 - 每个 Feature PRD 必须链接产品蓝图，并说明依赖、版本、入口、异常状态和验收证据。
 - 普通账号不创建公开真人资料；任何 Feature 不得重新引入双方匹配或用户间聊天。
 - 真人资料只有在管理员认证并发布后才能进入列表。
-- 未认领真人的私信由管理员代运营，并向观看者披露实际接收主体。
+- 未认领真人的平台话题由平台运营接收和处理，并向观看者持续披露实际接收主体。
 - 会员功能使用 rank/entitlement，不硬编码心遇、心悦等展示名称。
 
 ## 2. 已完成 PRD
@@ -52,7 +52,7 @@ App 版本：1.0
 | F-04 | [搜索、筛选与保存条件](./person-discovery-and-profile-experience/prd.md) | M1/M2 | 搜索索引、会员 entitlement |
 | F-05 | [真人详情与媒体浏览](./person-discovery-and-profile-experience/prd.md) | M1 | Person/Profile/Gallery 映射、媒体授权 |
 | F-06 | [喜欢、关注、收藏与历史](./viewer-interactions-and-history/prd.md) | M1 | 观看者互动、隐私与幂等 |
-| F-07 | [心享会员私信与会话](./member-messaging-and-managed-operations/prd.md) | M2 | 心享会员、代运营工作台、实时消息 |
+| F-07 | [心享会员平台话题与会话](./member-messaging-and-managed-operations/prd.md) | App 1.0 | 心享会员、代运营工作台、实时消息 |
 | F-08 | 礼物与互动记录 | 后续商业化 | 金币账本、礼物目录、会话 |
 | F-09 | [心享会员手动发放与权益](./membership-entitlements-and-manual-grants/prd.md) | App 1.0 | 五级目录、管理员发放、有效期、entitlement |
 | F-10 | [金币余额、明细与管理员调整](./wallet-ledger-and-admin-coin-adjustments/prd.md) | App 1.0 | 钱包、追加账本、后台调币；充值后续立项 |
@@ -86,7 +86,7 @@ Person/Profile/Gallery 建模
 → 推荐、列表、搜索和详情
 → 喜欢、关注、收藏
 → 心享会员与商品目录
-→ 心享会员私信与代运营工作台
+→ 心享会员平台话题与代运营工作台
 → 金币、礼物和装扮
 → 真人本人认领与会话交接
 → 桌面端与多地区扩展
@@ -104,10 +104,10 @@ flowchart LR
     PROJ --> DISC
     DISC --> INT["F-06 单向互动"]
     ACC --> INT
-    INT --> MSG["F-07 会员私信"]
+    INT --> MSG["F-07 会员平台话题"]
 ```
 
-首批详细 PRD 已冻结业务流程和门禁，但不代表开放参数已经关闭。正式进入实现前仍需按各 PRD 的“实施前门禁”完成首发地区、身份方式、授权范围、认证声明、审核复核和推荐规则决策。
+首批详细 PRD 已形成可评审流程和门禁，但当前仍处于需求讨论中，不代表客户已确认范围或开放参数已经关闭。正式进入实现前仍需按各 PRD 的“实施前门禁”完成首发地区、身份方式、授权范围、认证声明、审核复核和推荐规则决策。
 
 ### 5.2 第二批横向治理链
 
@@ -121,7 +121,7 @@ flowchart LR
     VIR --> PDR["F-13 隐私/数据权利"]
     MOD["A-07 举报/拉黑/审核"] --> DISC
     MOD --> VIR
-    MOD --> MSG["F-07 私信/会话"]
+    MOD --> MSG["F-07 平台话题/会话"]
     PDR --> ROP
 ```
 
@@ -131,7 +131,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    MBR["F-09/A-08 五级会员与 Entitlement"] --> MSG["F-07/A-06 会员私信与代运营"]
+    MBR["F-09/A-08 五级会员与 Entitlement"] --> MSG["F-07/A-06 会员平台话题与代运营"]
     MSG --> NTF["F-12 站内通知"]
     MBR --> NTF
     WAL["F-10/A-10 钱包账本与调币"] --> NTF
@@ -143,7 +143,7 @@ flowchart LR
     MOD --> OAU
 ```
 
-第三批冻结 App 1.0 的服务与内控闭环：五级会员全部可私信但按 entitlement 表达差异；平台代运营身份持续披露；站内通知不依赖系统推送；金币只允许管理员通过追加账本调整；所有高风险动作进入审计、异常和对账。
+第三批定义 App 1.0 的服务与内控闭环：五级有效会员均可创建和发送平台话题但按 entitlement 表达额度差异；平台代运营身份持续披露；站内通知不依赖系统推送；金币只允许管理员通过追加账本调整；所有高风险动作进入审计、异常和对账。
 
 ## 6. 页面交互设计参考
 
@@ -152,6 +152,8 @@ flowchart LR
 | [移动端页面与交互规格](../../../app/MOBILE_APP_INTERACTION_SPEC.md) | 将 F-01–F-13 映射为 Screen ID、设计路由、页面状态、关键旅程和移动端低保真结构 |
 | [Nuxt 管理后台交互与低保真规格](../../../app/ADMIN_CONSOLE_INTERACTION_SPEC.md) | 将 A-01–A-13 映射为 Page ID、角色权限、工作台、审批阶段、并发和后台低保真结构 |
 | [统一 UI 状态、文案与埋点目录](../../../app/UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) | 统一错误映射、平台代运营/会员/金币文案、状态 key、事件 key 和组件状态矩阵 |
+| [App 1.0 需求追踪矩阵](../../../app/APP_REQUIREMENTS_TRACEABILITY.md) | 把产品总需求、发布范围、Feature PRD、92 个 Page ID 与 146 张原型建立确定性映射 |
+| [详细功能与逐页原型说明](../../../app/APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md) | 按 Page ID 给出角色、前置条件、交互、状态、数据权限、需求追踪、验收与对应原型 |
 
 页面级文档是 Feature PRD 到高保真、技术设计和测试用例之间的可追溯桥梁。未来 Feature 不得提前混入 App 1.0 可点击原型。
 
@@ -169,4 +171,4 @@ flowchart LR
 
 ## 8. 文档完成定义
 
-任一 Feature 进入技术方案前必须具备：目标用户、用户故事、功能/非功能要求、主流程、异常状态、权限边界、埋点、验收标准和明确不做项。任何仍依赖价格、具体额度或地区政策的参数必须进入统一决策登记，并通过配置表达，不能用模糊占位符代替产品规则。
+任一 Feature 进入技术方案前必须具备：目标用户、用户故事、功能/非功能要求、主流程、异常状态、权限边界、埋点、验收标准、明确不做项，以及与 Page ID 或明确非 UI 验收项的追踪关系。任何仍依赖价格、具体额度或地区政策的参数必须进入统一决策登记，并通过配置表达，不能用模糊占位符代替产品规则。

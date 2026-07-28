@@ -48,7 +48,7 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
         { key: 'entry_count', label: '入口', type: 'number', sortable: true },
         { key: 'exit_count', label: '退出', type: 'number', sortable: true },
         { key: 'bounce_count', label: '跳出', type: 'number', sortable: true },
-        { key: 'contact_click_count', label: '联系', type: 'number', sortable: true },
+        { key: 'contact_click_count', label: '有效联系', type: 'number', sortable: true },
         { key: 'register_count', label: '注册', type: 'number', sortable: true },
         { key: 'active_seconds_total', label: '有效时长', type: 'duration', sortable: true },
       ]"

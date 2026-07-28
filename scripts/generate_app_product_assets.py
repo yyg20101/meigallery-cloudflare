@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLIENT_ASSET_DIR = REPO_ROOT / "docs/app/assets/client-prd"
+PAGE_ASSET_DIR = REPO_ROOT / "docs/app/assets/page-prototypes"
 QA_DIR = REPO_ROOT / "docs/app/interactive-prototype/qa"
 FONT_PATH = Path("/System/Library/Fonts/STHeiti Light.ttc")
 
@@ -49,7 +50,8 @@ def draw_panel(
 def generate_reference_comparison(reference: Path, implementation: Path) -> Path:
     QA_DIR.mkdir(parents=True, exist_ok=True)
     reference_copy = QA_DIR / "source-ui-reference.png"
-    shutil.copyfile(reference, reference_copy)
+    if reference.resolve() != reference_copy.resolve():
+        shutil.copyfile(reference, reference_copy)
 
     reference_image = Image.open(reference_copy)
     implementation_image = Image.open(implementation)
@@ -106,6 +108,45 @@ def generate_contact_sheet() -> Path:
     return output
 
 
+def generate_page_capture_comparison(reference: Path) -> Path:
+    """把原始视觉参考与新的单页移动端、后台捕获版式放入同一画面复核。"""
+    mobile = PAGE_ASSET_DIR / "mobile/app-dsc-01__default.png"
+    admin = PAGE_ASSET_DIR / "admin/adm-ov-01__default.png"
+    if not mobile.exists() or not admin.exists():
+        raise FileNotFoundError("缺少逐页原型代表截图，请先完成 146 张截图生成")
+
+    canvas = Image.new("RGB", (2400, 1480), "#f1f2f5")
+    draw = ImageDraw.Draw(canvas)
+    draw.text((48, 28), "原始视觉参考与逐页原型捕获版式", fill="#111318", font=font(36))
+    draw.text(
+        (48, 76),
+        "左侧用于核对粉白品牌、人像内容和玫红主操作；右侧验证移动端与管理后台的单页功能—状态—说明映射。",
+        fill="#5f6470",
+        font=font(22),
+    )
+    draw_panel(
+        canvas,
+        Image.open(reference),
+        (40, 124, 1170, 1430),
+        "客户原始宣传视觉参考",
+    )
+    draw_panel(
+        canvas,
+        Image.open(mobile),
+        (1190, 124, 2360, 760),
+        "APP-DSC-01 推荐首页 · 默认态",
+    )
+    draw_panel(
+        canvas,
+        Image.open(admin),
+        (1190, 780, 2360, 1430),
+        "ADM-OV-01 运营总览 · 默认态",
+    )
+    output = QA_DIR / "source-page-capture-comparison.png"
+    canvas.save(output, format="PNG", optimize=True)
+    return output
+
+
 def normalize_client_images() -> None:
     """浏览器截图可能返回 JPEG 字节；统一转为与扩展名一致的 PNG。"""
     for path in sorted(CLIENT_ASSET_DIR.glob("prototype-*.png")):
@@ -121,8 +162,10 @@ def main() -> None:
     normalize_client_images()
     implementation = CLIENT_ASSET_DIR / "prototype-01-entry-discovery.png"
     comparison = generate_reference_comparison(args.reference, implementation)
+    page_capture_comparison = generate_page_capture_comparison(args.reference)
     contact_sheet = generate_contact_sheet()
     print(comparison)
+    print(page_capture_comparison)
     print(contact_sheet)
 
 

@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('数据库迁移契约', () => {
-  it('migration 索引从 0001 到 0064 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0065 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 64 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 65 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -54,12 +54,13 @@ describe('数据库迁移契约', () => {
     expect(sql).not.toContain("WHERE event_name = 'page_view'")
   })
 
-  it('0060 至 0064 收口为来源路由最终结构', async () => {
+  it('0060 至 0065 收口来源路由并统一转化事实口径', async () => {
     const controlCleanup = await readMigration('0060_attribution_control_plane_cleanup.sql')
     const routerCleanup = await readMigration('0061_attribution_source_router_cleanup.sql')
     const garbageCleanup = await readMigration('0062_attribution_runtime_garbage_cleanup.sql')
     const sourceContract = await readMigration('0063_attribution_tracking_source_contract.sql')
     const runtimeSlimdown = await readMigration('0064_attribution_runtime_slimdown.sql')
+    const conversionTruth = await readMigration('0065_analytics_conversion_truth.sql')
 
     expect(controlCleanup).toContain('DROP TABLE IF EXISTS attribution_verifications')
     expect(routerCleanup).toContain('DROP TABLE IF EXISTS attribution_privacy_policy')
@@ -69,5 +70,12 @@ describe('数据库迁移契约', () => {
     expect(sourceContract).not.toMatch(/link_proof|mg_proof/i)
     expect(runtimeSlimdown).toContain("DELETE FROM site_settings WHERE key = 'analytics_consent_mode'")
     expect(runtimeSlimdown).toContain("provider = 'meta' AND collection_status IN ('error', 'unavailable')")
+    expect(conversionTruth).toContain("DELETE FROM analytics_events\nWHERE event_name = 'register_success'")
+    expect(conversionTruth).toContain('idx_attribution_conversion_facts_occurred_event')
+    expect(conversionTruth).toContain('UPDATE analytics_session_summaries')
+    expect(conversionTruth).toContain('UPDATE analytics_daily_sources')
+    expect(conversionTruth).toContain('UPDATE analytics_daily_pages')
+    expect(conversionTruth).toContain('UPDATE analytics_source_page_daily')
+    expect(conversionTruth).toContain('UPDATE analytics_path_edges')
   })
 })

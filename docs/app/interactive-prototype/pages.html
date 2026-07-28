@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="./page-library.css" />
   </head>
   <body class="page-library-body">
-    <div class="prototype-app page-library-app">
+    <div class="prototype-app page-library-app" data-testid="page-capture-root">
       <header class="topbar">
         <a class="brand-lockup brand-link" href="./index.html" aria-label="返回关键旅程原型">
           <span class="brand-mark" aria-hidden="true">M</span>
@@ -77,6 +77,7 @@
             </div>
           </div>
           <div class="page-state-switcher" id="page-state-switcher" aria-label="页面状态"></div>
+          <div class="capture-state-summary" id="capture-state-summary" aria-live="polite"></div>
           <div class="device-stage page-device-stage" id="page-device-stage"></div>
         </section>
 

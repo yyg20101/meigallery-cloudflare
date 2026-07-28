@@ -21,6 +21,12 @@
   ];
   const levels = levelDetails.map(level => level.name);
   const params = new URLSearchParams(location.search);
+  const captureMode = params.get("capture") === "doc";
+  if (captureMode) {
+    document.documentElement.dataset.captureMode = "doc";
+    document.documentElement.dataset.captureReady = "false";
+    document.body.classList.add("doc-capture");
+  }
   const requestedPage = catalog.pages.find(item => item.id === params.get("page"));
 
   const state = {
@@ -47,6 +53,7 @@
     progressText: document.getElementById("page-progress-text"),
     progressBar: document.getElementById("page-progress-bar"),
     footerLabel: document.getElementById("page-footer-label"),
+    captureStateSummary: document.getElementById("capture-state-summary"),
     toast: document.getElementById("toast-region"),
     modal: document.getElementById("modal-layer")
   };
@@ -92,11 +99,11 @@
     return `<nav class="phone-tabs library-tabs">${tabs.map(([label, glyph, pageId]) => `<button type="button" class="bottom-tab ${active === label ? "active" : ""}" data-action="open-page" data-page="${pageId}">${icon(glyph)}<span>${label}</span></button>`).join("")}</nav>`;
   }
 
-  function stateNotice(page) {
-    const value = selectedState(page);
-    if (["正常", "首次", "免费", "初始", "未申请", "维护中", "必须升级", "部分受限", "已下架", "未开放"].includes(value)) return "";
-    const isRisk = /失败|错误|受限|冲突|不可用|过期|不足|冻结|限制|异常|无权限|下架|关闭/.test(value);
-    const glyph = isRisk ? "alert-circle" : "history";
+  function isRiskState(value) {
+    return /失败|错误|受限|冲突|不可用|过期|不足|冻结|限制|异常|无权限|下架|关闭|维护|升级|撤销|锁定/.test(value);
+  }
+
+  function stateDescription(value) {
     const descriptions = {
       "已提交": "申请已由服务端创建，等待平台领取；可以查看进度或取消。",
       "处理中": "平台运营正在处理，会员权限尚未生效。",
@@ -107,9 +114,25 @@
       "额度尽": "今日新话题额度已用完；已有话题仍按当前权益与会话状态处理。",
       "无会员": "当前账号没有有效会员；可以查看权益并提交会员申请。",
       "离线": "当前显示上次同步结果；权威操作需要恢复联网后重新校验。",
-      "同步失败": "未取得最新权威状态；页面不会推断会员、余额或权限。"
+      "同步失败": "未取得最新权威状态；页面不会推断会员、余额或权限。",
+      "维护": "服务当前处于维护状态；页面说明影响范围并提供重试或帮助入口。",
+      "维护中": "服务当前处于维护状态；页面说明影响范围并提供重试或帮助入口。",
+      "升级": "当前版本低于服务端最低要求；升级完成前不进入不兼容业务页面。",
+      "必须升级": "当前版本低于服务端最低要求；升级完成前不进入不兼容业务页面。",
+      "账号受限": "账号当前受到限制；页面只展示可公开的原因、影响范围和申诉入口。",
+      "发起人冲突": "申请人与复核人不能是同一管理员；必须更换具备权限的独立复核人。",
+      "下架": "资料当前已下架；不再展示受保护内容，并提供安全返回路径。",
+      "已下架": "资料当前已下架；不再展示受保护内容，并提供安全返回路径。"
     };
-    const description = descriptions[value] || `当前为“${value}”状态；页面展示已知事实，并提供与该状态相符的安全下一步。`;
+    return descriptions[value] || `当前为“${value}”状态；页面展示已知事实，并提供与该状态相符的安全下一步。`;
+  }
+
+  function stateNotice(page) {
+    const value = selectedState(page);
+    if (["正常", "首次", "免费", "初始", "未申请"].includes(value)) return "";
+    const isRisk = isRiskState(value);
+    const glyph = isRisk ? "alert-circle" : "history";
+    const description = stateDescription(value);
     return `<div class="page-state-notice ${isRisk ? "risk" : ""}">${icon(glyph)}<div><strong>${escapeHtml(value)}</strong><span>${escapeHtml(description)}</span></div></div>`;
   }
 
@@ -602,6 +625,32 @@
     els.states.innerHTML = `<span>页面状态</span>${page.states.map(item => `<button type="button" class="${selectedState(page) === item ? "active" : ""}" data-action="set-page-state" data-state="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("")}`;
   }
 
+  function renderCaptureStateSummary(page) {
+    if (!captureMode || !els.captureStateSummary) return;
+    const value = selectedState(page);
+    const risk = isRiskState(value);
+    els.captureStateSummary.classList.toggle("risk", risk);
+    els.captureStateSummary.innerHTML = `${icon(risk ? "alert-circle" : "circle-check")}<div><span>当前原型状态</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(stateDescription(value))}</small></div>`;
+  }
+
+  function markCaptureReady() {
+    if (!captureMode) return;
+    document.documentElement.dataset.captureReady = "false";
+    const images = Array.from(document.images);
+    Promise.all(images.map(image => {
+      if (image.complete && image.naturalWidth > 0) return Promise.resolve();
+      if (typeof image.decode === "function") return image.decode().catch(() => undefined);
+      return new Promise(resolve => {
+        image.addEventListener("load", resolve, { once: true });
+        image.addEventListener("error", resolve, { once: true });
+      });
+    })).then(() => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.documentElement.dataset.captureReady = "true";
+      }));
+    });
+  }
+
   function updateHistory(page) {
     const url = new URL(location.href);
     url.searchParams.set("page", page.id);
@@ -612,6 +661,8 @@
   function render() {
     const page = currentPage();
     if (!page.states.includes(state.currentState)) state.currentState = normalState(page);
+    document.documentElement.dataset.currentPageId = page.id;
+    document.documentElement.dataset.currentState = selectedState(page);
     const group = groupFor(page);
     const index = catalog.pages.findIndex(item => item.id === page.id);
     els.title.textContent = page.name;
@@ -627,6 +678,7 @@
     els.stage.style.animation = "sceneEnter 360ms var(--ease) both";
     els.stage.innerHTML = page.platform === "mobile" ? renderMobile(page) : renderAdmin(page);
     renderStates(page);
+    renderCaptureStateSummary(page);
     renderNav();
     renderInspector(page);
     document.querySelectorAll("[data-action='set-platform']").forEach(button => button.classList.toggle("active", button.dataset.platform === state.platform));
@@ -635,6 +687,7 @@
       const active = els.nav.querySelector(".page-nav-item.active");
       if (active && !active.matches(":hover")) active.scrollIntoView({ block: "nearest" });
     });
+    markCaptureReady();
   }
 
   function openPage(pageId) {

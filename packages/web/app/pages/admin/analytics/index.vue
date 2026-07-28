@@ -348,12 +348,12 @@ function riskClass(tone: string) {
         />
         <AnalyticsTopList
           title="Top 点击"
-          description="按有效点击排序，包含联系方式具体点击"
+          description="按去重行为点击排序，包含联系方式具体点击"
           :rows="analytics.data.value.topClicks"
           label-key="element_label"
           meta-key="location_label"
           value-key="effective_click_count"
-          value-label="有效"
+          value-label="去重"
           to="/admin/analytics/clicks"
         />
       </div>
@@ -389,7 +389,7 @@ function riskClass(tone: string) {
             { key: 'session_count', label: 'Session', type: 'number', sortable: true },
             { key: 'page_view_count', label: 'PV', type: 'number', sortable: true },
             { key: 'register_count', label: '注册', type: 'number', sortable: true },
-            { key: 'contact_click_count', label: '联系入口', type: 'number', sortable: true },
+            { key: 'contact_click_count', label: '有效联系', type: 'number', sortable: true },
             { key: 'effective_contact_click_count', label: '有效联系', type: 'number', sortable: true },
             { key: 'membership_grant_count', label: '会员', type: 'number', sortable: true },
           ]"

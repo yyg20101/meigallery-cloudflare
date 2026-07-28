@@ -144,7 +144,7 @@ describe('register page', () => {
     expect(executeBrowserInstructions).toHaveBeenCalledWith([
       expect.objectContaining({ canonicalEvent: 'CompleteRegistration', externalEventId: 'mg3_registration_1' }),
     ])
-    expect(track).toHaveBeenCalledWith('register_success', expect.objectContaining({ eventId: 'mg3_registration_1' }))
+    expect(track).not.toHaveBeenCalledWith('register_success', expect.anything())
     expect(push).toHaveBeenCalledWith('/')
     expect(track).not.toHaveBeenCalledWith('register_failed', expect.anything())
   })

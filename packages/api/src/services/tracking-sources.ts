@@ -2,7 +2,12 @@ import type { AdAttributionProvider, AnalyticsSourceChannel } from '@meigallery/
 import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import { generateId } from '../utils/db'
 import { sanitizeAnalyticsPath } from '../utils/analytics-url'
-import { readD1UsageMeta } from '../utils/analytics-cost'
+import { mergeD1Usage, readD1UsageMeta } from '../utils/analytics-cost'
+import {
+  buildAnalyticsConversionIndex,
+  readAnalyticsConversionMetrics,
+  sourceMetricKey,
+} from './analytics-conversion-metrics'
 
 type TrackingSourceDb = Pick<D1Database, 'prepare'>
 type TrackingSourceStatus = 'active' | 'disabled'
@@ -105,8 +110,6 @@ interface TrackingSourceMetricRow extends TrackingSourceRow {
   session_count: number | null
   page_view_count: number | null
   gallery_detail_count: number | null
-  contact_click_count: number | null
-  register_count: number | null
   membership_grant_count: number | null
   active_seconds_total: number | null
 }
@@ -194,44 +197,49 @@ export async function queryTrackingSourcesWithMetrics(
   db: TrackingSourceDb,
   range: { from: string; to: string },
 ) {
-  const result = await db.prepare(`
-    SELECT
-      ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
-      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note, ats.created_by,
-      ats.created_at, ats.updated_at,
-      COALESCE(SUM(ads.visitor_count), 0) AS visitor_count,
-      COALESCE(SUM(ads.session_count), 0) AS session_count,
-      COALESCE(SUM(ads.page_view_count), 0) AS page_view_count,
-      COALESCE(SUM(ads.gallery_detail_count), 0) AS gallery_detail_count,
-      COALESCE(SUM(ads.contact_click_count), 0) AS contact_click_count,
-      COALESCE(SUM(ads.register_count), 0) AS register_count,
-      COALESCE(SUM(ads.membership_grant_count), 0) AS membership_grant_count,
-      COALESCE(SUM(ads.active_seconds_total), 0) AS active_seconds_total
-    FROM analytics_tracking_sources ats
-    LEFT JOIN analytics_daily_sources ads
-      ON ads.date BETWEEN ? AND ?
-     AND ads.source_name = ats.utm_source
-     AND ads.source_channel = ats.channel
-    GROUP BY
-      ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
-      ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note, ats.created_by,
-      ats.created_at, ats.updated_at
-    ORDER BY session_count DESC, ats.created_at DESC
-  `).bind(range.from, range.to).all<TrackingSourceMetricRow>()
+  const [result, conversions] = await Promise.all([
+    db.prepare(`
+      SELECT
+        ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
+        ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note, ats.created_by,
+        ats.created_at, ats.updated_at,
+        COALESCE(SUM(ads.visitor_count), 0) AS visitor_count,
+        COALESCE(SUM(ads.session_count), 0) AS session_count,
+        COALESCE(SUM(ads.page_view_count), 0) AS page_view_count,
+        COALESCE(SUM(ads.gallery_detail_count), 0) AS gallery_detail_count,
+        COALESCE(SUM(ads.membership_grant_count), 0) AS membership_grant_count,
+        COALESCE(SUM(ads.active_seconds_total), 0) AS active_seconds_total
+      FROM analytics_tracking_sources ats
+      LEFT JOIN analytics_daily_sources ads
+        ON ads.date BETWEEN ? AND ?
+       AND ads.source_name = ats.slug
+       AND ads.source_channel = ats.channel
+      GROUP BY
+        ats.id, ats.name, ats.channel, ats.slug, ats.target_path, ats.utm_source,
+        ats.utm_medium, ats.utm_campaign, ats.utm_content, ats.ad_provider, ats.status, ats.note, ats.created_by,
+        ats.created_at, ats.updated_at
+      ORDER BY session_count DESC, ats.created_at DESC
+    `).bind(range.from, range.to).all<TrackingSourceMetricRow>(),
+    readAnalyticsConversionMetrics(db, range),
+  ])
+  const conversionIndex = buildAnalyticsConversionIndex(conversions.rows)
 
   return {
-    items: result.results.map(row => ({
-      ...serializeTrackingSource(row),
-      visitorCount: Number(row.visitor_count ?? 0),
-      sessionCount: Number(row.session_count ?? 0),
-      pageViewCount: Number(row.page_view_count ?? 0),
-      galleryDetailCount: Number(row.gallery_detail_count ?? 0),
-      contactClickCount: Number(row.contact_click_count ?? 0),
-      registerCount: Number(row.register_count ?? 0),
-      membershipGrantCount: Number(row.membership_grant_count ?? 0),
-      activeSecondsTotal: Number(row.active_seconds_total ?? 0),
-    })),
-    usage: readD1UsageMeta(result),
+    items: result.results.map(row => {
+      const counts = conversionIndex.bySource.get(sourceMetricKey(row.channel, row.slug, ''))
+      return {
+        ...serializeTrackingSource(row),
+        visitorCount: Number(row.visitor_count ?? 0),
+        sessionCount: Number(row.session_count ?? 0),
+        pageViewCount: Number(row.page_view_count ?? 0),
+        galleryDetailCount: Number(row.gallery_detail_count ?? 0),
+        contactClickCount: counts?.contact_click_count ?? 0,
+        registerCount: counts?.register_count ?? 0,
+        membershipGrantCount: Number(row.membership_grant_count ?? 0),
+        activeSecondsTotal: Number(row.active_seconds_total ?? 0),
+      }
+    }),
+    usage: mergeD1Usage(readD1UsageMeta(result), conversions.usage),
   }
 }
 

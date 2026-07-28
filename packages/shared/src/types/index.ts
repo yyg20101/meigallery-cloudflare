@@ -149,7 +149,6 @@ export type AnalyticsEventName =
   | 'invite_code_checked'
   | 'register_start'
   | 'register_submit'
-  | 'register_success'
   | 'register_failed'
   | 'membership_granted_conversion'
   | 'gallery_card_impression'

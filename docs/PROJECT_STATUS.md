@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-07-26。
+更新时间：2026-07-28。
 
 本文件只记录当前状态。历史变更以 Git、PR、tag 和 `docs/releases/` 为准。
 
@@ -21,6 +21,19 @@
 - 一方数据分析、来源、邀请码、有效联系、转化趋势和后台看板。
 - SEO 设置、sitemap、robots、结构化数据和 production 校验。
 
+## 独立 App 产品设计
+
+- App 1.0 当前只处于产品、交互和客户确认资料阶段，尚未创建 KMP 工程、App 专用 API 或数据库 migration。
+- 已完成移动端 49 页和管理后台 43 页的页面级产品设计。
+- 已按客户于 2026-07-28 确认的规格完成重构：92 个 Page ID 全部使用独立默认原型，54 个 P0 页面各补充一个关键状态，共 146 张 1600 × 1000 原型图。
+- 已生成 `docs/app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`，作为研发、测试与验收的 App 1.0 唯一开发需求基线；文档覆盖当前范围、未来兼容方向、非功能要求、技术基线、92 页逐页规格、146 张原型引用、需求追踪、DoR 与 DoD。
+- 已生成 `docs/app/APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md`，逐页覆盖角色、前置、入口、结构、交互、业务规则、数据权限、状态和验收。
+- 已重建两份客户 DOCX：产品需求确认书完整覆盖业务需求并内嵌 162 张图，逐页交互设计确认册精确内嵌 146 张逐页原型。
+- 最终 MD 与两份 DOCX 已通过 92 个 Page ID、146 个原型、41 个 App 1.0 产品需求编号和 92 个逐页追踪键的一致性校验。
+- 两份 DOCX 已通过压缩包完整性、图片替代文本、表格表头、无障碍审计和干净目录全页渲染目检；LibreOffice 基准渲染分别为 163 页和 138 页，无空白页、图片缺失、内容错位或裁切。
+- 逐页原型清单、SHA-256、14 组功能联系表和设计 QA 证据位于 `docs/app/assets/page-prototypes/` 与 `docs/app/interactive-prototype/design-qa.md`。
+- 详细实施规格见 `docs/superpowers/specs/2026-07-28-app-detailed-prd-prototype-docx-design.md`。
+
 ## 通用广告归因
 
 - 唯一业务事实：`Contact`、`CompleteRegistration`。
@@ -34,6 +47,8 @@
 - 平台凭证由 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 加密，管理端不回显明文。
 - Test Event Code 只用于单次同步连接测试，不持久化，也不进入正式事件。
 - 平台连接只保留连接、Browser、Server 三个开关，不存在 rollout、验证 Workflow 或发布门禁。
+- 后台分析、Session 明细和 CSV 中的有效联系与注册只读取 `attribution_conversion_facts`；点击表只表示行为点击，不再充当第二套转化事实。
+- `0065_analytics_conversion_truth.sql` 清除历史重复转化计数并补齐事实时间索引，不修改现有 Pixel、Token、Delivery 或平台回执。
 
 ## 归因瘦身
 

@@ -49,15 +49,16 @@ describe('analytics-aggregate', () => {
     expect(db.calls.every(call => call.params.includes('2026-06-07'))).toBe(true)
   })
 
-  it('聚合路径边使用 session 内页面顺序并带转化计数', async () => {
+  it('聚合路径边使用 session 内页面顺序并只从权威事实读取转化', async () => {
     const db = createDb()
 
     await aggregatePathEdges(db as unknown as D1Database, '2026-06-07')
 
     const insert = db.calls.find(call => call.sql.includes('INSERT INTO analytics_path_edges'))
     expect(insert?.sql).toContain('LEAD(aps.route_name)')
-    expect(insert?.sql).toContain('contact_click_count')
-    expect(insert?.sql).toContain('register_success_count')
+    expect(insert?.sql).toContain('attribution_conversion_facts')
+    expect(insert?.sql).toContain("'Contact', 'CompleteRegistration'")
+    expect(insert?.sql).not.toContain('register_success_count')
     expect(insert?.sql).toContain('membership_grant_count')
   })
 

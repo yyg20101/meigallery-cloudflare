@@ -3,6 +3,13 @@ import { ANALYTICS_RETENTION } from '@meigallery/shared/constants'
 import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../utils/analytics-time'
+import {
+  buildAnalyticsConversionIndex,
+  dateSourceMetricKey,
+  readAnalyticsConversionMetrics,
+  sourceMetricKey,
+  sourcePageMetricKey,
+} from './analytics-conversion-metrics'
 
 export type AnalyticsExportKind =
   | 'overview'
@@ -148,10 +155,63 @@ export async function buildAnalyticsExportCsv(
   ].join('\n')
 }
 
-async function queryExportRows(db: Pick<D1Database, 'prepare'>, kind: AnalyticsExportKind, range: AnalyticsDateRange) {
+async function queryExportRows(
+  db: Pick<D1Database, 'prepare'>,
+  kind: AnalyticsExportKind,
+  range: AnalyticsDateRange,
+): Promise<Record<string, unknown>[]> {
   const sql = exportSql(kind)
-  const result = await db.prepare(sql).bind(range.from, range.to).all<Record<string, unknown>>()
-  return result.results ?? []
+  const [result, conversions] = await Promise.all([
+    db.prepare(sql).bind(range.from, range.to).all<Record<string, unknown>>(),
+    readAnalyticsConversionMetrics(db, range),
+  ])
+  const index = buildAnalyticsConversionIndex(conversions.rows)
+  return (result.results ?? []).map(row => {
+    if (kind === 'overview') {
+      return exportRowWithConversions(row, index.byDateSource.get(dateSourceMetricKey(
+        row.date,
+        row.source_channel,
+        row.source_name,
+        row.invite_code_id,
+      )))
+    }
+    if (kind === 'sources') {
+      return exportRowWithConversions(row, index.bySource.get(sourceMetricKey(
+        row.source_channel,
+        row.source_name,
+        row.invite_code_id,
+      )))
+    }
+    if (kind === 'source-pages') {
+      return exportRowWithConversions(row, index.bySourcePage.get(sourcePageMetricKey(
+        row.source_channel,
+        row.source_name,
+        row.invite_code_id,
+        row.route_name,
+        row.path,
+      )))
+    }
+    if (kind === 'sessions') {
+      const counts = index.bySession.get(String(row.session_id ?? ''))
+      return {
+        ...row,
+        contact_click_count: counts?.contact_click_count ?? 0,
+        register_count: counts?.register_count ?? 0,
+      }
+    }
+    return row
+  })
+}
+
+function exportRowWithConversions(
+  row: Record<string, unknown>,
+  counts: { contact_click_count: number; register_count: number } | undefined,
+) {
+  return {
+    ...row,
+    contact_click_count: counts?.contact_click_count ?? 0,
+    register_count: counts?.register_count ?? 0,
+  }
 }
 
 function exportSql(kind: AnalyticsExportKind) {
@@ -159,8 +219,7 @@ function exportSql(kind: AnalyticsExportKind) {
     return `
       SELECT date, source_channel, source_name, invite_code_id,
              visitor_count, session_count, page_view_count, gallery_detail_count,
-             contact_click_count, register_count, invite_register_count,
-             membership_grant_count, active_seconds_total
+             invite_register_count, membership_grant_count, active_seconds_total
       FROM analytics_daily_sources
       WHERE date BETWEEN ? AND ?
       ORDER BY date DESC, session_count DESC
@@ -173,8 +232,6 @@ function exportSql(kind: AnalyticsExportKind) {
              SUM(session_count) AS session_count,
              SUM(page_view_count) AS page_view_count,
              SUM(gallery_detail_count) AS gallery_detail_count,
-             SUM(contact_click_count) AS contact_click_count,
-             SUM(register_count) AS register_count,
              SUM(membership_grant_count) AS membership_grant_count,
              SUM(active_seconds_total) AS active_seconds_total
       FROM analytics_daily_sources
@@ -239,9 +296,7 @@ function exportSql(kind: AnalyticsExportKind) {
              SUM(aspd.exit_count) AS exit_count,
              SUM(aspd.bounce_count) AS bounce_count,
              SUM(aspd.active_seconds_total) AS active_seconds_total,
-             MAX(aspd.max_scroll_depth) AS max_scroll_depth,
-             SUM(aspd.register_count) AS register_count,
-             SUM(aspd.contact_click_count) AS contact_click_count
+             MAX(aspd.max_scroll_depth) AS max_scroll_depth
       FROM analytics_source_page_daily aspd
       LEFT JOIN analytics_tracking_sources ats ON ats.slug = aspd.source_name
       WHERE aspd.date BETWEEN ? AND ?
@@ -288,8 +343,7 @@ function exportSql(kind: AnalyticsExportKind) {
   return `
     SELECT session_id, date, source_channel, source_name, invite_code_id,
            device_type, country, entry_path, exit_path, page_view_count,
-           active_seconds, click_count, contact_click_count,
-           register_success_count, membership_grant_count, is_bounce
+           active_seconds, click_count, membership_grant_count, is_bounce
     FROM analytics_session_summaries
     WHERE date BETWEEN ? AND ?
     ORDER BY started_at DESC

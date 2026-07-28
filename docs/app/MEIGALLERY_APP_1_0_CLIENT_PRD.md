@@ -8,7 +8,7 @@ App 版本：1.0
 
 文档状态：待客户确认
 
-日期：2026-07-23
+日期：2026-07-28
 
 ## 1. 确认说明
 
@@ -16,7 +16,7 @@ App 版本：1.0
 
 客户确认本文后，产品、UI、技术和测试均以本文为需求基线。尚未确认的参数集中在第 17 章，不应由设计或开发人员自行决定。后续需要改变已确认范围时，应先完成影响评估，再更新同一 App 版本下的需求基线；讨论期不频繁增加文档版本号。
 
-配套的 [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html) 可直接操作登录、发现、详情、会员申请、平台话题、通知钱包、内容审核和运营调币八个场景。[App 1.0 逐页交互设计库](./interactive-prototype/pages.html) 进一步覆盖移动端 49 页和管理后台 43 页，共 92 个可独立访问的页面级需求原型，并支持切换每页的正常、空、错误、受限和冲突状态。详细页面基线见 [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)，本阶段关键决策见 [App 1.0 产品决策基线](./APP_1_0_PRODUCT_DECISION_BASELINE.md)。
+配套的 [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html) 可直接操作登录、发现、详情、会员申请、平台话题、通知钱包、内容审核和运营调币八个场景。[App 1.0 逐页交互设计库](./interactive-prototype/pages.html) 进一步覆盖移动端 49 页和管理后台 43 页，共 92 个可独立访问的页面级需求原型，并支持切换每页的正常、空、错误、受限和冲突状态。详细页面基线见 [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md) 和 [详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)；产品总需求、发布范围、Feature PRD 与 Page ID 的对应关系见 [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)；本阶段关键决策见 [App 1.0 产品决策基线](./APP_1_0_PRODUCT_DECISION_BASELINE.md)。
 
 ### 1.1 本次要求客户重点确认
 
@@ -171,7 +171,7 @@ App 1.0 采用分层交付：
 认证与发布
 标签、地区与分类
 推荐与热度运营
-代运营消息
+平台话题运营
 举报与安全审核
 会员与金币
 运营看板
@@ -190,7 +190,9 @@ App 1.0 当前定义 92 个独立页面设计对象：
 | Android/iOS 移动端 | 49 | 启动认证、发现真人、单向互动、平台话题、站内通知、五级会员、金币钱包、我的与系统状态 |
 | Nuxt 管理后台 | 43 | 总览异常、真人供给、认证发布、目录推荐、代运营、安全申诉、会员金币、通知审计 |
 
-每个页面必须有稳定 Page ID、设计路由、页面目标、进入方式、主次操作、必备状态、成功出口、失败下一步和页面级验收。客户可在 [逐页设计库](./interactive-prototype/pages.html) 搜索 Page ID 并单独评审；评审意见应引用 Page ID，避免只描述截图位置。92 页是完整需求覆盖，不代表 92 页同时进入首批开发；P0/P1/P2 的排期边界以第 3.1 节和产品决策基线为准。
+页面优先级为 P0 54 页、P1 31 页、P2 7 页。每个页面均有一张默认状态原型，54 个 P0 页面另有一张关键异常、受限、冲突或处理中状态原型，共 146 张逐页原型图。
+
+每个页面必须有稳定 Page ID、设计路由、页面目标、进入方式、主次操作、必备状态、成功出口、失败下一步、需求追踪键和页面级验收。客户可在 [逐页设计库](./interactive-prototype/pages.html) 搜索 Page ID 并单独评审；评审意见应引用 Page ID，涉及业务规则变化时还应引用对应 PRD/SCP 编号，避免只描述截图位置。92 页是完整需求覆盖，不代表 92 页同时进入首批开发；P0/P1/P2 的排期边界以第 3.1 节和产品决策基线为准。
 
 ## 6. 端到端业务流程
 
@@ -284,7 +286,11 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 8.1 启动、注册与登录
 
-![登录、推荐与搜索原型](./assets/client-prd/prototype-01-entry-discovery.png)
+![APP-AUTH-02 登录默认状态原型](./assets/page-prototypes/mobile/app-auth-02__default.png)
+
+![APP-DSC-01 推荐首页默认状态原型](./assets/page-prototypes/mobile/app-dsc-01__default.png)
+
+![APP-DSC-04 搜索默认状态原型](./assets/page-prototypes/mobile/app-dsc-04__default.png)
 
 页面：启动检查、欢迎页、登录/注册、验证码或密码验证、条款与隐私、首次偏好。
 
@@ -340,7 +346,9 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 8.4 真人详情与媒体
 
-![五级会员、平台话题门槛与人工申请原型](./assets/client-prd/prototype-02-profile-membership.png)
+![APP-DSC-07 真人详情默认状态原型](./assets/page-prototypes/mobile/app-dsc-07__default.png)
+
+![APP-MBR-01 会员门槛默认状态原型](./assets/page-prototypes/mobile/app-mbr-01__default.png)
 
 详情顺序：媒体头图 → 认证与展示名 → 模糊地区/职业/标签 → 简介 → 图库 → 话题接收主体说明 → 喜欢/关注/收藏 → 发起话题 → 举报/拉黑/分享。
 
@@ -386,7 +394,7 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 8.7 平台话题列表与会话
 
-![会话、平台运营披露与只读状态原型](./assets/client-prd/prototype-03-messaging.png)
+![APP-MSG-03 话题会话默认状态原型](./assets/page-prototypes/mobile/app-msg-03__default.png)
 
 会话列表展示“与目标真人相关的话题”、平台运营标签、最近消息安全摘要、时间、未读数、静音和限制状态。列表不得写成“与真人本人聊天”。
 
@@ -410,7 +418,11 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 8.8 站内通知
 
-![通知、金币与个人中心原型](./assets/client-prd/prototype-04-notification-wallet-me.png)
+![APP-MSG-05 通知中心默认状态原型](./assets/page-prototypes/mobile/app-msg-05__default.png)
+
+![APP-WAL-01 金币钱包默认状态原型](./assets/page-prototypes/mobile/app-wal-01__default.png)
+
+![APP-SET-01 我的默认状态原型](./assets/page-prototypes/mobile/app-set-01__default.png)
 
 分类：消息、互动、会员/金币、系统/安全、营销。
 
@@ -466,7 +478,11 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 9.1 真人上传与 MeiGallery 导入
 
-![后台真人供给、认证与发布原型](./assets/client-prd/prototype-05-admin-content-review.png)
+![ADM-PER-02 单条新建真人默认状态原型](./assets/page-prototypes/admin/adm-per-02__default.png)
+
+![ADM-PER-04 真人认证审核默认状态原型](./assets/page-prototypes/admin/adm-per-04__default.png)
+
+![ADM-PER-05 发布审核默认状态原型](./assets/page-prototypes/admin/adm-per-05__default.png)
 
 管理员可单条新建真人草稿或导入 MeiGallery 候选。导入必须保留 legacy 映射、输入哈希、来源、媒体清单和批次记录。
 
@@ -509,7 +525,11 @@ App 1.0 当前定义 92 个独立页面设计对象：
 
 ### 9.5 平台话题代运营工作台
 
-![后台代运营、会员发放与金币调整原型](./assets/client-prd/prototype-06-admin-operations.png)
+![ADM-MSG-02 会话运营工作台默认状态原型](./assets/page-prototypes/admin/adm-msg-02__default.png)
+
+![ADM-MBR-04 会员人工发放默认状态原型](./assets/page-prototypes/admin/adm-mbr-04__default.png)
+
+![ADM-WAL-03 调币审批默认状态原型](./assets/page-prototypes/admin/adm-wal-03__default.png)
 
 工作台包含队列、筛选、会话详情、用户可见消息、内部备注、领取/转派和安全升级。
 
@@ -773,6 +793,9 @@ App 1.0 首次业务发布采用限量邀请，不在功能完成后直接公开
 
 - App 1.0 不包含在线支付、充值、系统推送、图片消息、礼物、装扮、真人认领和用户桌面端入口。
 - 客户端收到未知 entitlement、事件或未来功能时安全忽略，不崩溃、不扩大权限。
+- 49 个移动端 Page ID、43 个管理后台 Page ID、P0/P1/P2 的 54/31/7 页面数量与需求追踪矩阵一致。
+- 92 个 Page ID 均包含产品需求编号、发布范围编号、Feature PRD、默认状态原型和页面级验收；54 个 P0 页面另有关键状态原型，总计 146 张。
+- 客户确认书和逐页交互设计确认册中的每张原型都以 Page ID 和状态确定性映射，不存在功能说明与图片错位。
 
 ## 17. 客户产品与业务确认事项
 
@@ -831,13 +854,13 @@ App 1.0 首次业务发布采用限量邀请，不在功能完成后直接公开
 | 原型 03 | 话题列表、平台运营会话、会员到期只读 |
 | 原型 04 | 站内通知、金币钱包、个人中心 |
 | 原型 05 | 后台真人列表、认证检查和发布预览 |
-| 原型 06 | 代运营消息、会员发放、金币调整与审批 |
+| 原型 06 | 平台话题运营、会员发放、金币调整与审批 |
 | 原型 07 | 用户、内容、运营和内控端到端流程 |
 | 原型 08 | 移动端逐页设计库、推荐首页与单页说明 |
 | 原型 09 | 管理后台逐页设计库、认证审核与单页说明 |
 
-以上图片来自 [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)，用于快速确认主流程。完整的 [92 页逐页交互设计库](./interactive-prototype/pages.html) 用于逐页确认信息结构、视觉方向、主次操作和必备状态；其中关键旅程是可连续操作的高保真原型，其余页面是页面级需求原型。[逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md) 提供对应的书面页面目录、优先级和验收方法。后续研发可在不改变已确认身份披露、权限门槛、状态和业务规则的前提下，继续细化字体、颜色、图片、间距和动效参数。
+以上图片来自 [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)，用于快速确认主流程。完整的 [92 页逐页交互设计库](./interactive-prototype/pages.html) 用于逐页确认信息结构、视觉方向、主次操作和必备状态；其中关键旅程是可连续操作的高保真原型，其余页面是页面级需求原型。[逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md) 提供对应的书面页面目录、优先级和验收方法；[详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md) 逐页嵌入 92 张默认状态和 54 张 P0 关键状态原型；[需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md) 记录产品需求、发布范围、Feature PRD 与 Page ID 的对应关系。后续研发可在不改变已确认身份披露、权限门槛、状态和业务规则的前提下，继续细化字体、颜色、图片、间距和动效参数。
 
 ## 附录 B：需求文档关系
 
-本文是客户阅读与确认入口。团队内部的详细 Feature PRD、技术架构、KMP 模块、API/数据契约、后台 RBAC 和测试说明继续保留，若与本文产生实质冲突，应先回到产品确认流程解决，不由开发人员自行选择。
+本文是客户 DOCX 的内容生成源。客户以 DOCX 阅读和确认；研发、测试、接口设计与任务拆分统一使用 [App 1.0 开发需求规格](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)。团队内部的产品总需求、发布范围、详细 Feature PRD、需求追踪矩阵、技术架构、KMP 模块、API/数据契约、后台 RBAC 和测试说明继续保留。若与客户结论产生实质冲突，应先回到产品确认流程解决，并同步更新上游需求、开发规格、Page ID 和原型，不由开发、设计或测试人员自行选择。

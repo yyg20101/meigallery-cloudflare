@@ -54,7 +54,7 @@
 - `[新增设计]` 卡片圆角保持 8px 或以下，表格和筛选区域比装饰更重要。
 - `[新增设计]` 页面以表格、紧凑趋势、漏斗和路径边为主；MVP 不引入复杂图表库。
 - `[新增设计]` 使用 Nuxt UI / Tailwind CSS v4 与现有后台布局风格，图标优先使用 Nuxt Icon / lucide 图标名。
-- `[实现约束]` 所有默认查询使用聚合表和摘要表；单 session 明细必须显式输入 session ID 且 owner-only。
+- `[实现约束]` 流量、页面与点击默认查询使用聚合表和摘要表；有效联系与注册只读取 `attribution_conversion_facts`。单 session 明细必须显式输入 session ID 且 owner-only。
 
 ### 2.2.1 设计假设与待确认问题
 
@@ -170,8 +170,8 @@
 
 验收标准：
 
-- 点击页同时展示 raw clicks、effective clicks、duplicate clicks、独立访客、点击率、人均点击次数。
-- 1 秒内重复点击在表格中有“重复点击率”列，不作为有效点击。
+- 点击页同时展示 raw clicks、去重行为点击、duplicate clicks、独立访客、点击率、人均点击次数。
+- 1 秒内重复点击在表格中有“重复点击率”列，不计入去重行为点击。
 - 外链点击只展示目标域名和链接类型，不展示完整 URL query。
 
 **故事 5：评估内容吸引力 `[新增设计]`**  
@@ -301,8 +301,8 @@ Nuxt 后台归因中心
 布局：
 
 - 顶部：元素类型筛选：广告、图库卡片、联系入口、规则入口、会员 CTA、筛选标签、外链。
-- KPI：有效点击、点击率、重复点击率、独立点击访客、人均点击。
-- 主体：点击排行表，列为 element_id、位置、目标类型、raw、effective、duplicate、CTR、访客数、session 数。
+- KPI：去重行为点击、点击率、重复点击率、独立点击访客、人均点击。
+- 主体：点击排行表，列为 element_id、位置、目标类型、raw、去重（`effective_click_count`）、duplicate、CTR、访客数、session 数。
 - 异常区：重复点击率 > 20% 或 1 分钟内异常点击的元素。
 
 #### `/admin/analytics/durations` 时长
@@ -424,18 +424,18 @@ Nuxt 后台归因中心
 | 访客数 | `visitor_id` 去重数 | 总览、来源、内容 |
 | session 数 | `session_id` 去重数 | 总览、来源 |
 | PV | `page_view` 或页面摘要总数 | 总览、内容 |
-| 注册数 | `register_success` 去重用户数 | 总览、来源、邀请 |
-| 邀请注册数 | 带 `invite_code_id` 的注册成功用户数 | 总览、邀请 |
-| 有效联系数 | `contact_method_click` 事件数；仅打开联系面板不计转化 | 总览、来源、页面、点击 |
+| 注册数 | `attribution_conversion_facts` 中不可变 `CompleteRegistration` 事实数 | 总览、来源、页面 |
+| 邀请注册数 | `invite_registrations` 中带 `invite_code_id` 的唯一注册事实数 | 总览、邀请 |
+| 有效联系数 | `attribution_conversion_facts` 中不可变 `Contact` 事实数；联系面板展开和二维码展开不计转化 | 总览、来源、页面 |
 | 会员发放数 | 首次 rank > 0 的会员发放转化数 | 总览、来源、邀请 |
 | 注册率 | 注册数 / session 数 | 来源、邀请 |
-| 联系率 | 联系点击独立 session 数 / session 数 | 来源、点击 |
+| 联系率 | `Contact` 事实数 / session 数 | 总览、来源、页面 |
 | 会员发放率 | 会员发放数 / 注册数 | 总览、来源、邀请 |
 | 跳出率 | 仅 1 个 page view 且 active_seconds < 15 秒的 session / session 数 | 内容、时长 |
 | 平均有效时长 | active_seconds 总和 / page view 或 session 数 | 总览、内容、时长 |
 | 中位有效时长 | active_seconds P50 | 时长 |
 | 深度浏览率 | active_seconds >= 60 秒或 scroll_depth >= 75% 的页面访问 / 页面访问 | 内容、时长 |
-| 有效点击 | 去除 1 秒内同 visitor + element_id 重复点击后的点击数 | 点击 |
+| 去重行为点击 | 去除 1 秒内同 visitor + element_id 重复点击后的点击数；不等同于有效联系事实 | 点击 |
 | 重复点击率 | duplicate clicks / raw clicks | 点击、健康 |
 
 所有比率分母为 0 时展示 `--`，不展示 0% 误导运营判断。

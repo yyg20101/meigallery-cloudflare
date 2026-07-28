@@ -527,11 +527,8 @@ test.describe('核心页面 smoke', () => {
     await expect.poll(async () => {
       const response = await request.get(`${apiURL}/api/test/analytics-events`)
       const body = await response.json()
-      return {
-        registrations: body.registrations.length,
-        registerSuccess: body.events.some((event: { eventName?: string }) => event.eventName === 'register_success'),
-      }
-    }, { timeout: 8_000 }).toEqual({ registrations: 1, registerSuccess: true })
+      return body.registrations.length
+    }, { timeout: 8_000 }).toBe(1)
 
     const response = await request.get(`${apiURL}/api/test/analytics-events`)
     const payload = await response.json()
@@ -544,7 +541,7 @@ test.describe('核心页面 smoke', () => {
     expect(eventNames).toContain('contact_method_click')
     expect(eventNames).toContain('invite_landed')
     expect(eventNames).toContain('invite_code_checked')
-    expect(eventNames).toContain('register_success')
+    expect(eventNames).not.toContain('register_success')
     expect(payload.events.some((event: { eventName?: string; props?: { method_type?: string; action_type?: string } }) =>
       event.eventName === 'contact_method_click' &&
       event.props?.method_type === 'telegram' &&

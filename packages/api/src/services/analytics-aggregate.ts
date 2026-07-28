@@ -53,8 +53,14 @@ export async function aggregatePathEdges(db: AnalyticsDb, date: string): Promise
       COUNT(DISTINCT op.visitor_id) AS visitor_count,
       COUNT(DISTINCT op.session_id) AS session_count,
       SUM(CASE
-        WHEN ss.contact_click_count > 0
-          OR ss.register_success_count > 0
+        WHEN EXISTS (
+          SELECT 1
+          FROM attribution_conversion_facts AS fact
+          WHERE json_valid(fact.analytics_dimensions_json)
+            AND json_extract(fact.analytics_dimensions_json, '$.sessionId') = op.session_id
+            AND date(datetime(fact.occurred_at, '+8 hours')) = ?
+            AND fact.canonical_event IN ('Contact', 'CompleteRegistration')
+        )
           OR ss.membership_grant_count > 0
         THEN 1 ELSE 0
       END) AS conversion_count,
@@ -63,7 +69,7 @@ export async function aggregatePathEdges(db: AnalyticsDb, date: string): Promise
     LEFT JOIN analytics_session_summaries ss ON ss.session_id = op.session_id
     WHERE op.to_route IS NOT NULL AND op.to_route != ''
     GROUP BY op.date, op.from_route, op.to_route
-  `).bind(date).run()
+  `).bind(date, date).run()
   return { date, steps: ['paths'] }
 }
 
@@ -167,28 +173,18 @@ async function aggregateDailySources(db: AnalyticsDb, date: string) {
       WHERE ss.date = ?
       GROUP BY ss.date, ss.source_channel, ss.source_name, ss.invite_code_id
     ),
-    conversion_counts AS (
+    membership_counts AS (
       SELECT
         date(datetime(ae.occurred_at, '+8 hours')) AS date,
         ss.source_channel,
         ss.source_name,
         ss.invite_code_id,
-        SUM(CASE WHEN ae.event_name = 'contact_method_click' THEN 1 ELSE 0 END) AS contact_click_count,
-        SUM(CASE WHEN ae.event_name = 'register_success' THEN 1 ELSE 0 END) AS register_count,
-        SUM(CASE
-          WHEN ae.event_name = 'register_success' AND ss.invite_code_id != '' THEN 1
-          ELSE 0
-        END) AS invite_register_count,
-        SUM(CASE WHEN ae.event_name = 'membership_granted_conversion' THEN 1 ELSE 0 END) AS membership_grant_count
+        COUNT(*) AS membership_grant_count
       FROM analytics_events ae
       JOIN analytics_session_summaries ss
         ON ss.session_id = ae.session_id
       WHERE date(datetime(ae.occurred_at, '+8 hours')) = ?
-        AND ae.event_name IN (
-          'contact_method_click',
-          'register_success',
-          'membership_granted_conversion'
-        )
+        AND ae.event_name = 'membership_granted_conversion'
       GROUP BY
         date(datetime(ae.occurred_at, '+8 hours')),
         ss.source_channel,
@@ -212,7 +208,7 @@ async function aggregateDailySources(db: AnalyticsDb, date: string) {
     dimensions AS (
       SELECT date, source_channel, source_name, invite_code_id FROM source_sessions
       UNION
-      SELECT date, source_channel, source_name, invite_code_id FROM conversion_counts
+      SELECT date, source_channel, source_name, invite_code_id FROM membership_counts
       UNION
       SELECT date, source_channel, source_name, invite_code_id FROM gallery_counts
     )
@@ -225,10 +221,10 @@ async function aggregateDailySources(db: AnalyticsDb, date: string) {
       COALESCE(s.session_count, 0),
       COALESCE(s.page_view_count, 0),
       COALESCE(g.gallery_detail_count, 0),
-      COALESCE(c.contact_click_count, 0),
-      COALESCE(c.register_count, 0),
-      COALESCE(c.invite_register_count, 0),
-      COALESCE(c.membership_grant_count, 0),
+      0,
+      0,
+      0,
+      COALESCE(m.membership_grant_count, 0),
       COALESCE(s.active_seconds_total, 0),
       datetime('now')
     FROM dimensions
@@ -242,11 +238,11 @@ async function aggregateDailySources(db: AnalyticsDb, date: string) {
      AND g.source_channel = dimensions.source_channel
      AND g.source_name = dimensions.source_name
      AND g.invite_code_id = dimensions.invite_code_id
-    LEFT JOIN conversion_counts c
-      ON c.date = dimensions.date
-     AND c.source_channel = dimensions.source_channel
-     AND c.source_name = dimensions.source_name
-     AND c.invite_code_id = dimensions.invite_code_id
+    LEFT JOIN membership_counts m
+      ON m.date = dimensions.date
+     AND m.source_channel = dimensions.source_channel
+     AND m.source_name = dimensions.source_name
+     AND m.invite_code_id = dimensions.invite_code_id
   `).bind(date, date, date).run()
 }
 
@@ -259,56 +255,6 @@ async function aggregateDailyPages(db: AnalyticsDb, date: string) {
       active_seconds_total, max_scroll_depth, register_count, contact_click_count,
       updated_at
     )
-    WITH page_rows AS (
-      SELECT
-        date,
-        route_name,
-        path,
-        entity_type,
-        entity_id,
-        MAX(page_title) AS page_title,
-        SUM(page_view_count) AS page_view_count,
-        COUNT(DISTINCT visitor_id) AS visitor_count,
-        COUNT(DISTINCT session_id) AS session_count,
-        SUM(is_entry) AS entry_count,
-        SUM(is_exit) AS exit_count,
-        SUM(is_bounce) AS bounce_count,
-        SUM(active_seconds) AS active_seconds_total,
-        MAX(max_scroll_depth) AS max_scroll_depth,
-        0 AS register_count,
-        0 AS contact_click_count
-      FROM analytics_page_summaries
-      WHERE date = ?
-      GROUP BY date, route_name, path, entity_type, entity_id
-    ),
-    conversion_rows AS (
-      SELECT
-        date(datetime(occurred_at, '+8 hours')) AS date,
-        route_name,
-        path,
-        entity_type,
-        entity_id,
-        MAX(page_title) AS page_title,
-        0 AS page_view_count,
-        0 AS visitor_count,
-        0 AS session_count,
-        0 AS entry_count,
-        0 AS exit_count,
-        0 AS bounce_count,
-        0 AS active_seconds_total,
-        0 AS max_scroll_depth,
-        SUM(CASE WHEN event_name = 'register_success' THEN 1 ELSE 0 END) AS register_count,
-        SUM(CASE WHEN event_name = 'contact_method_click' THEN 1 ELSE 0 END) AS contact_click_count
-      FROM analytics_events
-      WHERE date(datetime(occurred_at, '+8 hours')) = ?
-        AND event_name IN ('contact_method_click', 'register_success')
-      GROUP BY date, route_name, path, entity_type, entity_id
-    ),
-    combined AS (
-      SELECT * FROM page_rows
-      UNION ALL
-      SELECT * FROM conversion_rows
-    )
     SELECT
       date,
       route_name,
@@ -317,19 +263,20 @@ async function aggregateDailyPages(db: AnalyticsDb, date: string) {
       entity_id,
       MAX(page_title) AS page_title,
       SUM(page_view_count) AS page_view_count,
-      SUM(visitor_count) AS visitor_count,
-      SUM(session_count) AS session_count,
-      SUM(entry_count) AS entry_count,
-      SUM(exit_count) AS exit_count,
-      SUM(bounce_count) AS bounce_count,
-      SUM(active_seconds_total) AS active_seconds_total,
+      COUNT(DISTINCT visitor_id) AS visitor_count,
+      COUNT(DISTINCT session_id) AS session_count,
+      SUM(is_entry) AS entry_count,
+      SUM(is_exit) AS exit_count,
+      SUM(is_bounce) AS bounce_count,
+      SUM(active_seconds) AS active_seconds_total,
       MAX(max_scroll_depth) AS max_scroll_depth,
-      SUM(register_count) AS register_count,
-      SUM(contact_click_count) AS contact_click_count,
+      0 AS register_count,
+      0 AS contact_click_count,
       datetime('now')
-    FROM combined
+    FROM analytics_page_summaries
+    WHERE date = ?
     GROUP BY date, route_name, path, entity_type, entity_id
-  `).bind(date, date).run()
+  `).bind(date).run()
 }
 
 async function aggregateDailyEvents(db: AnalyticsDb, date: string) {
@@ -395,42 +342,6 @@ async function aggregateSourcePages(db: AnalyticsDb, date: string) {
       GROUP BY
         aps.date, ss.source_channel, ss.source_name, ss.invite_code_id,
         aps.route_name, aps.path, aps.entity_type, aps.entity_id
-    ),
-    conversion_rows AS (
-      SELECT
-        date(datetime(ae.occurred_at, '+8 hours')) AS date,
-        ss.source_channel,
-        ss.source_name,
-        ss.invite_code_id,
-        ae.route_name,
-        ae.path,
-        ae.entity_type,
-        ae.entity_id,
-        MAX(ae.page_title) AS page_title,
-        0 AS visitor_count,
-        0 AS session_count,
-        0 AS page_view_count,
-        0 AS entry_count,
-        0 AS exit_count,
-        0 AS bounce_count,
-        0 AS active_seconds_total,
-        0 AS max_scroll_depth,
-        SUM(CASE WHEN ae.event_name = 'register_success' THEN 1 ELSE 0 END) AS register_count,
-        SUM(CASE WHEN ae.event_name = 'contact_method_click' THEN 1 ELSE 0 END) AS contact_click_count
-      FROM analytics_events ae
-      JOIN analytics_session_summaries ss
-        ON ss.session_id = ae.session_id
-      WHERE date(datetime(ae.occurred_at, '+8 hours')) = ?
-        AND ae.event_name IN ('contact_method_click', 'register_success')
-      GROUP BY
-        date(datetime(ae.occurred_at, '+8 hours')),
-        ss.source_channel, ss.source_name, ss.invite_code_id,
-        ae.route_name, ae.path, ae.entity_type, ae.entity_id
-    ),
-    combined AS (
-      SELECT * FROM page_rows
-      UNION ALL
-      SELECT * FROM conversion_rows
     )
     SELECT
       date,
@@ -441,23 +352,20 @@ async function aggregateSourcePages(db: AnalyticsDb, date: string) {
       path,
       entity_type,
       entity_id,
-      MAX(page_title) AS page_title,
-      SUM(visitor_count) AS visitor_count,
-      SUM(session_count) AS session_count,
-      SUM(page_view_count) AS page_view_count,
-      SUM(entry_count) AS entry_count,
-      SUM(exit_count) AS exit_count,
-      SUM(bounce_count) AS bounce_count,
-      SUM(active_seconds_total) AS active_seconds_total,
-      MAX(max_scroll_depth) AS max_scroll_depth,
-      SUM(register_count) AS register_count,
-      SUM(contact_click_count) AS contact_click_count,
+      page_title,
+      visitor_count,
+      session_count,
+      page_view_count,
+      entry_count,
+      exit_count,
+      bounce_count,
+      active_seconds_total,
+      max_scroll_depth,
+      0 AS register_count,
+      0 AS contact_click_count,
       datetime('now')
-    FROM combined
-    GROUP BY
-      date, source_channel, source_name, invite_code_id,
-      route_name, path, entity_type, entity_id
-  `).bind(date, date).run()
+    FROM page_rows
+  `).bind(date).run()
 }
 
 async function aggregateInviteDaily(db: AnalyticsDb, date: string) {
