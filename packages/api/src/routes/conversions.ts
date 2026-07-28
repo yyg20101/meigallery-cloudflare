@@ -6,9 +6,8 @@ import { errorJson } from '../utils/api-error'
 import { safeContactLinkUrl } from '../utils/contact-link-url'
 import { generateContactLink } from '@meigallery/shared/constants'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
-import { loadAttributionCryptoKeys } from '../utils/attribution-crypto'
-import { resolveTrustedAdAttributionContext } from '../utils/ad-attribution-context'
 import { buildAdPlatformUserData, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
+import { resolveRequestAdAttributionContext } from '../utils/request-ad-attribution-context'
 
 const CONVERSION_ID_RE = /^[A-Za-z0-9_-]{8,120}$/
 
@@ -39,7 +38,12 @@ conversionRoutes.post('/events', async (c) => {
   if (!contact || !contact.platform.trim() || !targetUrl) {
     return errorJson(c, 400, '公开转化动作无效', { code: 'PUBLIC_CONVERSION_ACTION_INVALID' })
   }
-  const attributionContext = await trustedAttributionContext(c)
+  const attributionContext = await resolveRequestAdAttributionContext(
+    c.env,
+    getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE),
+    isPlainRecord(body.adAttributionSignals) ? body.adAttributionSignals : {},
+    body.trackingSourceSlug,
+  )
   const adPlatformUserData = attributionContext
     ? buildAdPlatformUserData(c.req.raw, readAdPlatformBrowserIdentifiersFromRequest(c.req.raw))
     : undefined
@@ -54,14 +58,6 @@ conversionRoutes.post('/events', async (c) => {
   })
   return c.json({ data: result }, result.created ? 201 : 200)
 })
-
-async function trustedAttributionContext(c: Parameters<typeof getCookie>[0]) {
-  try {
-    const keys = await loadAttributionCryptoKeys(c.env)
-    const context = await resolveTrustedAdAttributionContext(keys, getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE))
-    return context
-  } catch { return null }
-}
 
 function conversionId(value: unknown) { const normalized = typeof value === 'string' ? value.trim() : ''; return CONVERSION_ID_RE.test(normalized) ? normalized : '' }
 function text(value: unknown, maximum: number) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum) }

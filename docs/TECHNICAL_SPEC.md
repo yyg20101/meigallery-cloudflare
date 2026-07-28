@@ -652,7 +652,7 @@ INSERT INTO site_settings (key, value) VALUES
 - Google Data Manager `events:ingest` 的 `events[].transactionId` 与 Browser `transaction_id` 共用同一外部事件编号。HTTP 2xx 必须返回安全 `requestId` 才进入 `accepted`；Cron 再通过 `requestStatus.retrieve` 收口为 `processed` 或 `rejected`。Google 请求体要求的 Consent 字段属于平台适配器协议，不是项目自建授权状态。
 - API 只返回 provider-aware `trackingInstructions`，前端通过广告平台 adapter registry 执行，不保留 `pixelEvents` 兼容响应。
 - 广告来源解析优先级固定为 `fbclid > ttclid > gclid/gbraid/wbraid > 后台受管投放链接 > 最近一次有效来源`。优先级只描述信号类别；同一次请求同时出现多个平台信号时直接 `conflict`。
-- `PUT /api/ad-attribution` 签发 30 天 `HttpOnly` 加密来源上下文。普通 UTM、referrer、前端 `provider` 或其他 body 字段不能决定平台；Contact 和注册 API 直接验证签名上下文，不接受额外前端放行状态。
+- `PUT /api/ad-attribution` 签发 30 天 `HttpOnly` 加密来源上下文。普通 UTM、referrer、前端 `provider` 或其他 body 字段不能决定平台；Contact 和注册 API 优先验证签名上下文，Cookie 偶发缺失时仅可经同一服务端路由器按当前官方 click ID 或 active 受管 `mg_source` 恢复唯一平台。
 - 浏览器 adapter registry 同一时刻只允许一个 active provider。SPA 解析结果改变平台或变为空时整页刷新，避免旧平台脚本残留；自然流量且没有历史来源时不加载营销 Pixel。
 - 一个 `attribution_conversion_facts` 最多属于一个广告平台。每个平台只读取自身连接、凭证、Queue 和 receipt；空来源事实不进入任何广告平台。禁止 fan-out、广播或按启用平台枚举投递。
 - 正式活动事件严格限定为 `Contact`、`CompleteRegistration`；sender 与 recovery 不接受 `Lead` 或 `StartTrial`。
@@ -660,7 +660,7 @@ INSERT INTO site_settings (key, value) VALUES
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
 - 当前归因运行时不包含地区判断、营销授权页面、Banner、Consent Cookie、授权 API 或地区策略表。若后续需要合规控制，只能在来源路由之后接入单一 `allow/deny` 输入，不得在平台 adapter 内复制地区逻辑。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`。Server delivery 只有在平台响应满足严格成功契约时才进入 `accepted`；Google 还必须等待异步诊断进入 `processed`。平台接收或处理完成仍不代表广告归因成功。
-- 仅在存在可信签名来源上下文时，从 Cloudflare `CF-Connecting-IP` 与原始 `User-Agent` 读取完整网络匹配上下文；两者只能进入 24 小时加密 Outbox。原始 IP/UA 不得进入事实表、分析维度、日志、响应或审计。
+- 仅在存在可信签名来源上下文或服务端已通过同一来源路由器恢复来源时，从 Cloudflare `CF-Connecting-IP` 与原始 `User-Agent` 读取完整网络匹配上下文；两者只能进入 24 小时加密 Outbox。原始 IP/UA 不得进入事实表、分析维度、日志、响应或审计。
 - `/api/admin/attribution/*` 需要 admin+；连接、凭证和事件映射修改需要 owner，并写入 `admin_audit_logs`。
 - Meta/TikTok/Google Server API 仅在 production 通过各自 `AD_META_QUEUE`、`AD_TIKTOK_QUEUE`、`AD_GOOGLE_QUEUE` 异步投递；主 Queue/DLQ 固定为 6 条 `meigallery-ad-*` 资源。dev/local 不绑定广告 Queue、不配置平台凭证、不调用真实平台 API。
 - 三个平台共享通用 Planner、加密 Outbox、D1 CAS 和恢复算法，但物理 Queue、destination、稳定 Outbox scope 与凭证加密上下文独立；所有读写必须限定唯一 provider，禁止交叉解密、投递、恢复或 fan-out。
