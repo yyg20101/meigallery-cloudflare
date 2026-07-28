@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-07-26。
+更新时间：2026-07-28。
 
 本文件只记录当前状态。历史变更以 Git、PR、tag 和 `docs/releases/` 为准。
 
@@ -20,6 +20,14 @@
 - Telegram 只提供外部导入 API，不内置 Bot。
 - 一方数据分析、来源、邀请码、有效联系、转化趋势和后台看板。
 - SEO 设置、sitemap、robots、结构化数据和 production 校验。
+
+## 独立 App 产品设计
+
+- App 1.0 当前只处于产品、交互和客户确认资料阶段，尚未创建 KMP 工程、App 专用 API 或数据库 migration。
+- 已完成移动端 49 页和管理后台 43 页的页面级产品设计。
+- 客户于 2026-07-28 确认重构 DOCX：92 个 Page ID 全部使用独立对应截图，54 个 P0 页面补充关键状态图。
+- 详细实施规格见 `docs/superpowers/specs/2026-07-28-app-detailed-prd-prototype-docx-design.md`。
+- 当前旧版 DOCX 仅用于问题对照，不再作为最终客户确认稿。
 
 ## 通用广告归因
 
