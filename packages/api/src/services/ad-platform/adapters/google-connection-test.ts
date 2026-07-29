@@ -1,3 +1,4 @@
+import { CANONICAL_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 import { sendGoogleServerEvent } from './google-server'
 import {
   PlatformConnectionTestError,
@@ -19,11 +20,11 @@ export const googleConnectionTestAdapter: PlatformConnectionTestAdapter = {
     const bindings = requireConnectionTestBindings(input)
     const pageUrl = requireProductionSiteUrl(input.siteUrl, '/attribution-test/google')
     const ids = await connectionTestEventIds('gav', input.testId)
-    const externalEventIds = await Promise.all((['Contact', 'CompleteRegistration'] as const).map(event => googleEventId(ids[event])))
+    const externalEventIds = await Promise.all(CANONICAL_CONVERSION_EVENTS.map(event => googleEventId(ids[event])))
     const hashedEmail = await sha256Hex('attribution-test@example.invalid')
     const requestIds: string[] = []
 
-    for (const [index, event] of (['Contact', 'CompleteRegistration'] as const).entries()) {
+    for (const [index, event] of CANONICAL_CONVERSION_EVENTS.entries()) {
       const binding = bindings.get(event)!
       const result = await sendGoogleServerEvent({
         input: {

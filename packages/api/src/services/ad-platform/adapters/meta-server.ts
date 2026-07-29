@@ -1,4 +1,5 @@
 import type { MetaServerDeliveryInput, ServerAdapterRequest, ServerDeliveryResult, ServerTrackingAdapter } from '../server-adapter'
+import { isCanonicalConversionEvent } from '@meigallery/shared/constants'
 import { isAdExternalEventId } from '@meigallery/shared/utils'
 import { META_GRAPH_API_VERSION } from '../protocol-versions'
 import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../../utils/ad-platform-identifiers'
@@ -83,7 +84,7 @@ async function readMetaError(response: Response) {
   }
   catch { return { code: null, subcode: null, isTransient: false } }
 }
-function validDeliveryCore(input: MetaServerDeliveryInput) { return (input.canonicalEvent === 'Contact' || input.canonicalEvent === 'CompleteRegistration') && validEventId(input.externalEventId) && validEventTime(input.eventTime) && validUrl(input.pageUrl) }
+function validDeliveryCore(input: MetaServerDeliveryInput) { return isCanonicalConversionEvent(input.canonicalEvent) && validEventId(input.externalEventId) && validEventTime(input.eventTime) && validUrl(input.pageUrl) }
 function validEventId(value: unknown): value is string { return isAdExternalEventId(value) }
 function validEventTime(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= MIN_EVENT_TIME && value <= MAX_EVENT_TIME }
 function validUrl(value: string) { try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname) && !url.username && !url.password } catch { return false } }

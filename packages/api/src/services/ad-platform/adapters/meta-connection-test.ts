@@ -1,3 +1,4 @@
+import { CANONICAL_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 import { META_GRAPH_API_VERSION } from '../protocol-versions'
 import {
   fetchConnectionTest,
@@ -37,7 +38,7 @@ export const metaConnectionTestAdapter: PlatformConnectionTestAdapter = {
         method: 'POST',
         headers: { Authorization: `Bearer ${input.credential}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          data: (['Contact', 'CompleteRegistration'] as const).map(event => ({
+          data: CANONICAL_CONVERSION_EVENTS.map(event => ({
             event_name: event,
             event_time: eventTime,
             event_id: eventIds[event],

@@ -1,4 +1,5 @@
 import type { ServerDeliveryResult, ServerTrackingAdapter, TikTokServerDeliveryInput } from '../server-adapter'
+import { isCanonicalConversionEvent } from '@meigallery/shared/constants'
 import { isAdExternalEventId } from '@meigallery/shared/utils'
 import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../../utils/ad-platform-identifiers'
 
@@ -89,7 +90,7 @@ async function readTikTokResponse(response: Response) {
   }
   catch { return { code: null, requestId: '' } }
 }
-function validDeliveryCore(input: TikTokServerDeliveryInput) { return (input.canonicalEvent === 'Contact' || input.canonicalEvent === 'CompleteRegistration') && validEventId(input.externalEventId) && validEventTime(input.eventTime) && validUrl(input.pageUrl) }
+function validDeliveryCore(input: TikTokServerDeliveryInput) { return isCanonicalConversionEvent(input.canonicalEvent) && validEventId(input.externalEventId) && validEventTime(input.eventTime) && validUrl(input.pageUrl) }
 function validEventId(value: unknown): value is string { return isAdExternalEventId(value) }
 function validEventTime(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= MIN_EVENT_TIME && value <= MAX_EVENT_TIME }
 function validUrl(value: string) { try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname) && !url.username && !url.password } catch { return false } }

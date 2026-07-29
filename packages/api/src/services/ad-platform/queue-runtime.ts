@@ -1,4 +1,10 @@
-import type { AdAttributionProvider, AdPlatformQueueMessage, CanonicalConversionEvent } from '@meigallery/shared'
+import {
+  isAdAttributionProvider,
+  type AdAttributionProvider,
+  type AdPlatformQueueMessage,
+  type CanonicalConversionEvent,
+} from '@meigallery/shared'
+import { isCanonicalConversionEvent } from '@meigallery/shared/constants'
 import { isAdExternalEventId } from '@meigallery/shared/utils'
 import { decryptAttributionValue, loadAttributionCryptoKeys } from '../../utils/attribution-crypto'
 import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../utils/ad-platform-identifiers'
@@ -150,7 +156,7 @@ function parseQueueMessage(value: unknown): AdPlatformQueueMessage | null {
   const schemaVersion = ownDataProperty(value, 'schemaVersion')
   const deliveryId = ownDataProperty(value, 'deliveryId')
   const provider = ownDataProperty(value, 'provider')
-  if (schemaVersion !== 1 || !identifier(deliveryId) || !isProvider(provider)) return null
+  if (schemaVersion !== 1 || !identifier(deliveryId) || !isAdAttributionProvider(provider)) return null
   return { schemaVersion: 1, deliveryId, provider }
 }
 
@@ -273,7 +279,7 @@ async function deliver(row: AttributionDeliveryQueueRow, env: QueueEnv, dependen
 function parsePayload(plaintext: string, row: AttributionDeliveryQueueRow): DecryptedPayload | null {
   try {
     const value = JSON.parse(plaintext) as Record<string, unknown>
-    if ((value.canonicalEvent !== 'Contact' && value.canonicalEvent !== 'CompleteRegistration')
+    if (!isCanonicalConversionEvent(value.canonicalEvent)
       || !isAdExternalEventId(value.externalEventId)
       || !Number.isSafeInteger(value.eventTime)
       || !validUrl(value.pageUrl)
@@ -458,12 +464,11 @@ function attemptStale(value: string) {
 function terminal(status: string) {
   return status === 'accepted' || status === 'processed' || status === 'rejected' || status === 'dead_letter' || status === 'cancelled'
 }
-function isProvider(value: unknown): value is AdAttributionProvider { return value === 'meta' || value === 'tiktok' || value === 'google' }
 function identifiableProvider(value: unknown): AdAttributionProvider | null {
   try {
     if (!isPlainRecord(value)) return null
     const provider = ownDataProperty(value, 'provider')
-    return isProvider(provider) ? provider : null
+    return isAdAttributionProvider(provider) ? provider : null
   }
   catch {
     return null

@@ -1,4 +1,4 @@
-import type { AdAttributionProvider } from '@meigallery/shared'
+import { isAdAttributionProvider, type AdAttributionProvider } from '@meigallery/shared'
 import type { D1Usage } from '../utils/analytics-cost'
 import { mergeD1Usage, readD1UsageMeta } from '../utils/analytics-cost'
 import type { AnalyticsDateRange } from '../utils/analytics-time'
@@ -56,7 +56,7 @@ export function isAttributionBreakdownDimension(
 export function isAttributionDashboardProvider(
   value: string | undefined,
 ): value is AttributionDashboardProvider {
-  return value === 'meta' || value === 'tiktok' || value === 'google'
+  return isAdAttributionProvider(value)
 }
 
 export async function queryAttributionSummary(

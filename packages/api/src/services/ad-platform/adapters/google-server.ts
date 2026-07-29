@@ -1,4 +1,5 @@
 import type { GoogleServerDeliveryInput, ServerDeliveryResult, ServerTrackingAdapter } from '../server-adapter'
+import { isCanonicalConversionEvent } from '@meigallery/shared/constants'
 import { isAdExternalEventId } from '@meigallery/shared/utils'
 import { getGoogleAccessToken, GoogleAuthError, parseGoogleServiceAccount } from './google-auth'
 
@@ -84,7 +85,7 @@ async function responseRequestId(response: Response) { try { const value = await
 function compact(input: Record<string, string>) { return Object.fromEntries(Object.entries(input).filter(([key]) => GOOGLE_SIGNALS.has(key))) }
 function crossPlatformInvalid(): ServerDeliveryResult { return { classification: 'destination_invalid', incident: { code: 'cross_platform_identifier', severity: 'critical' } } }
 function isCrossPlatformError(error: unknown) { return error instanceof Error && error.message === 'cross_platform_identifier' }
-function validEvent(input: GoogleServerDeliveryInput) { return (input.canonicalEvent === 'Contact' || input.canonicalEvent === 'CompleteRegistration') && typeof input.eventTime === 'number' && Number.isSafeInteger(input.eventTime) && input.eventTime >= MIN_EVENT_TIME && input.eventTime <= MAX_EVENT_TIME && isAdExternalEventId(input.externalEventId) }
+function validEvent(input: GoogleServerDeliveryInput) { return isCanonicalConversionEvent(input.canonicalEvent) && typeof input.eventTime === 'number' && Number.isSafeInteger(input.eventTime) && input.eventTime >= MIN_EVENT_TIME && input.eventTime <= MAX_EVENT_TIME && isAdExternalEventId(input.externalEventId) }
 function validUrl(value: string) { try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname) && !url.username && !url.password } catch { return false } }
 function validHash(value: unknown) { return value === undefined || typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) }
 function validAccountId(value: unknown): value is string { return typeof value === 'string' && ACCOUNT_ID_PATTERN.test(value) }

@@ -173,52 +173,19 @@ describe('公开广告来源 API', () => {
   })
 
   it.each([
-    ['meta', { fbclid: 'meta-click-id' }, { provider: 'meta', pixelId: '123456789' }],
-    ['tiktok', { ttclid: 'tiktok-click-id' }, { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }],
-    ['google', { gclid: 'google-click-id' }, { provider: 'google', tagId: 'AW-123456789' }],
-  ] as const)('bootstrap 只返回当前 %s 来源的浏览器公开配置', async (provider, source, publicConfig) => {
-    const initial = await request(source)
-    readConnectionSnapshot.mockResolvedValueOnce(readySnapshot(provider, publicConfig))
-
-    const response = await app().request(
-      'https://api.616618.xyz/api/ad-attribution/bootstrap',
-      { headers: { cookie: cookiePair(initial) } },
-      env(),
-    )
-    const data = await response.json<Record<string, unknown>>()
-
-    expect(response.status).toBe(200)
-    expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(data).toEqual({
-      provider,
-      publicConfig,
-      events: expectedBrowserEvents(provider),
-    })
-    expect(readConnectionSnapshot).toHaveBeenCalledWith(expect.anything(), provider)
-    expect(JSON.stringify(data)).not.toMatch(/click|token|credential|binding|context/i)
-  })
-
-  it.each([
-    ['没有来源 Cookie', null, readySnapshot('meta', { provider: 'meta', pixelId: '123456789' })],
-    ['连接不存在', 'context', { state: 'connection_invalid', reason: 'not_found' }],
-    ['连接未启用', 'context', readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { enabled: false })],
-    ['浏览器未启用', 'context', readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { browserEnabled: false })],
-  ])('bootstrap 在%s时返回严格空响应', async (_label, contextMode, snapshot) => {
-    const initial = contextMode ? await request({ fbclid: 'meta-click-id' }) : null
+    ['连接不存在', { state: 'connection_invalid', reason: 'not_found' }],
+    ['连接未启用', readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { enabled: false })],
+    ['浏览器未启用', readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { browserEnabled: false })],
+  ])('来源解析在%s时保留可信来源但返回空 Browser 配置', async (_label, snapshot) => {
     readConnectionSnapshot.mockResolvedValueOnce(snapshot)
 
-    const response = await app().request(
-      'https://api.616618.xyz/api/ad-attribution/bootstrap',
-      initial ? { headers: { cookie: cookiePair(initial) } } : {},
-      env(),
-    )
+    const response = await request({ fbclid: 'meta-click-id' })
 
-    expect(await response.json()).toEqual({ provider: null, publicConfig: null, events: [] })
+    expect(await response.json()).toEqual(resolvedPayload('meta', 'matched'))
     expect(response.headers.get('cache-control')).toBe('no-store')
   })
 
-  it('Google bootstrap 不泄露服务端配置', async () => {
-    const initial = await request({ gclid: 'google-click-id' })
+  it('Google 来源响应不泄露服务端配置', async () => {
     readConnectionSnapshot.mockResolvedValueOnce(readySnapshot('google', {
       provider: 'google',
       tagId: 'AW-123456789',
@@ -227,13 +194,11 @@ describe('公开广告来源 API', () => {
       cloudProjectId: 'private-project',
     }))
 
-    const response = await app().request(
-      'https://api.616618.xyz/api/ad-attribution/bootstrap',
-      { headers: { cookie: cookiePair(initial) } },
-      env(),
-    )
+    const response = await request({ gclid: 'google-click-id' })
 
     expect(await response.json()).toEqual({
+      resolution: 'matched',
+      expiresInSeconds: 2_592_000,
       provider: 'google',
       publicConfig: { provider: 'google', tagId: 'AW-123456789' },
       events: expectedBrowserEvents('google'),

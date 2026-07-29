@@ -948,14 +948,6 @@ function handleApi(req, res) {
       .catch(() => json(res, { statusCode: 400, message: '广告来源请求无效' }, 400))
     return
   }
-  if (url.pathname === '/api/ad-attribution/bootstrap' && req.method === 'GET') {
-    const publicConfig = currentAttributionProvider ? attributionBrowserConfigs[currentAttributionProvider] : null
-    return json(res, {
-      provider: currentAttributionProvider,
-      publicConfig,
-      events: attributionBrowserEvents(currentAttributionProvider),
-    })
-  }
   if (url.pathname === '/api/ad-attribution' && req.method === 'DELETE') {
     currentAttributionProvider = null
     currentAttributionResolution = 'none'

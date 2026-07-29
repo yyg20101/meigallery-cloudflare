@@ -31,22 +31,6 @@ adAttributionRoutes.use('*', async (c, next) => {
   await next()
 })
 
-adAttributionRoutes.get('/bootstrap', async (c) => {
-  try {
-    const keys = await loadAttributionCryptoKeys(c.env)
-    const context = await resolveTrustedAdAttributionContext(
-      keys,
-      getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE),
-    )
-    if (!context) return c.json(emptyBootstrapResponse())
-
-    return c.json(await readBrowserContext(c.env.DB, context.provider))
-  }
-  catch {
-    return c.json(emptyBootstrapResponse())
-  }
-})
-
 adAttributionRoutes.put('/', async (c) => {
   let body: AdAttributionSignals
   try {
@@ -142,7 +126,7 @@ function emptyResponse(
   }
 }
 
-function emptyBootstrapResponse() {
+function emptyBrowserContext() {
   return { provider: null, publicConfig: null, events: [] }
 }
 
@@ -169,9 +153,9 @@ async function readBrowserContext(
     const snapshot = await readAttributionConnectionSnapshot(db, provider)
     if (snapshot.state !== 'ready'
       || !snapshot.connection.enabled
-      || !snapshot.connection.browserEnabled) return emptyBootstrapResponse()
+      || !snapshot.connection.browserEnabled) return emptyBrowserContext()
     const publicConfig = serializePublicConfig(snapshot.connection.provider, snapshot.connection.publicConfig)
-    if (!publicConfig) return emptyBootstrapResponse()
+    if (!publicConfig) return emptyBrowserContext()
     return {
       provider: snapshot.connection.provider,
       publicConfig,
@@ -179,7 +163,7 @@ async function readBrowserContext(
     }
   }
   catch {
-    return emptyBootstrapResponse()
+    return emptyBrowserContext()
   }
 }
 

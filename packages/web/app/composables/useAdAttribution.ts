@@ -6,6 +6,8 @@ import type {
   AdBrowserPublicConfig,
   CanonicalConversionEvent,
 } from '@meigallery/shared'
+import { isAdAttributionProvider } from '@meigallery/shared'
+import { isCanonicalConversionEvent } from '@meigallery/shared/constants'
 import { readBrowserAdAttributionSignals } from '~/utils/adAttributionSignals'
 
 export type AdAttributionResolution = 'unresolved' | ServerAdAttributionResolution
@@ -207,7 +209,7 @@ function stableHash(value: string) {
 }
 
 function normalizeProvider(value: unknown): AdAttributionProvider | null {
-  return value === 'meta' || value === 'tiktok' || value === 'google' ? value : null
+  return isAdAttributionProvider(value) ? value : null
 }
 
 function normalizeResolution(value: unknown): AdAttributionResolution {
@@ -284,7 +286,7 @@ function normalizeBrowserEventTemplates(
     const event = item as Record<string, unknown>
     if (!exactKeys(event, ['provider', 'canonicalEvent', 'browserEventName', 'browserDestination'])
       || event.provider !== provider
-      || (event.canonicalEvent !== 'Contact' && event.canonicalEvent !== 'CompleteRegistration')
+      || !isCanonicalConversionEvent(event.canonicalEvent)
       || !safeTemplateText(event.browserDestination)
       || (provider === 'google'
         ? event.browserEventName !== 'conversion'

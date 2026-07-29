@@ -45,7 +45,7 @@ describe('Google Ads Browser adapter', () => {
     expect(queueAtAppend).toEqual([])
     const queue = (window as Window & { dataLayer: unknown[] }).dataLayer
     expect(queue[0]).toEqual(['js', expect.any(Date)])
-    expect(queue[1]).toEqual(['config', 'AW-123456789'])
+    expect(queue[1]).toEqual(['config', 'AW-123456789', { send_page_view: false }])
     expect(script?.src).toBe('https://www.googletagmanager.com/gtag/js?id=AW-123456789')
   })
 

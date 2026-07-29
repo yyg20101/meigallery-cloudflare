@@ -55,7 +55,7 @@ export function createGoogleAdsAdapter() {
     document.head.appendChild(script)
 
     gtag('js', new Date())
-    gtag('config', tagId)
+    gtag('config', tagId, { send_page_view: false })
     initialized = true
     activeTagId = tagId
     return true

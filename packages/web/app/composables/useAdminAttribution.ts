@@ -1,6 +1,7 @@
 import type {
   AdPlatformProvider,
   AnalyticsRangeQuery,
+  CanonicalConversionEvent,
 } from '@meigallery/shared'
 import type { ComputedRef, Ref } from 'vue'
 
@@ -9,7 +10,7 @@ export type AttributionDashboardProvider = AdPlatformProvider
 export type EvidenceLayer = 'business' | 'browser' | 'server' | 'quality'
 
 export interface AdPlatformEventBindingData {
-  canonicalEvent: 'Contact' | 'CompleteRegistration'
+  canonicalEvent: CanonicalConversionEvent
   enabled: boolean
   browserDestination: string
   serverDestination: string

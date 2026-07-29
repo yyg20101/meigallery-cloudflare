@@ -53,7 +53,7 @@ Browser adapter / 加密 Outbox -> provider Queue -> Server adapter
 - 浏览器 adapter registry 同一时刻只允许一个 active provider。
 - Meta 来源只加载 Meta Pixel；TikTok 来源只加载 TikTok Pixel；Google 来源只加载 Google Tag。
 - `PageView`、`ViewContent`、`Search` 只发往 active provider。
-- Contact 外链点击复用 Bootstrap 返回的当前平台 Browser 事件目标，在原生导航前同步进入 Pixel 队列；同一随机 `external_event_id` 通过 `keepalive` 请求进入唯一 Contact API，供 Planner 复用于 Server delivery。
+- 首屏 SSR 通过唯一来源解析响应取得当前平台 Browser 配置和事件目标，并在页面可交互前初始化 Pixel 队列。Contact 外链点击只在原生导航前同步发送一次 Browser 事件；同一随机 `external_event_id` 通过 `keepalive` 请求进入唯一 Contact API，供 Planner 复用于 Server delivery。
 - 站内 `contact_method_click` 在原生导航前通过 Beacon 刷新，不参与业务转化累计。
 - SPA 解析出的 provider 与当前 provider 不同时执行整页刷新；下一结果为冲突或空来源时同样刷新，避免旧脚本残留。
 - Pixel 初始化或事件调用失败只关闭本次平台投递，不阻断页面、联系或注册。

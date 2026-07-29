@@ -1,4 +1,4 @@
-import type { AdAttributionProvider } from '@meigallery/shared'
+import { isAdAttributionProvider, type AdAttributionProvider } from '@meigallery/shared'
 import { ATTRIBUTION_LIMITS } from '@meigallery/shared/constants'
 import type { AdAttributionSource } from '../utils/ad-attribution-context'
 
@@ -176,5 +176,5 @@ function normalizeSlug(value: string) {
 }
 
 function normalizeProvider(value: unknown): AdAttributionProvider | null {
-  return value === 'meta' || value === 'tiktok' || value === 'google' ? value : null
+  return isAdAttributionProvider(value) ? value : null
 }

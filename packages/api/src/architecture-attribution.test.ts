@@ -84,6 +84,22 @@ describe('通用广告归因架构边界', () => {
     expect(violations).toEqual([])
   })
 
+  it('当前运行时不恢复二次 Browser bootstrap 或废弃用户归因编号', () => {
+    const runtimeFiles = trackedTextFiles().filter(filePath => (
+      /^packages\/(?:api\/src|web\/app|shared\/src)\//.test(filePath)
+      && !/\.test\.[cm]?[jt]s$/.test(filePath)
+    ))
+    const forbidden = ['/api/ad-attribution/bootstrap', 'conversion_external_id']
+    const violations = runtimeFiles.flatMap((filePath) => {
+      const source = readFileSync(resolve(repositoryRoot, filePath), 'utf8')
+      return forbidden
+        .filter(value => source.includes(value))
+        .map(value => `${filePath}: ${value}`)
+    })
+
+    expect(violations).toEqual([])
+  })
+
   it('tracked 文件不包含已使用的生产测试码、真实私钥块或直接 secret 赋值', () => {
     const knownProductionCodes = ['16752', '17298', '25401'].map(value => `TEST${value}`)
     const violations: string[] = []

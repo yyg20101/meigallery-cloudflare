@@ -235,14 +235,13 @@ authRoutes.post('/register', async (c) => {
 
   // 创建用户（自增 ID）
   const passwordHash = await hashPassword(body.password)
-  const conversionExternalId = generateConversionExternalId()
 
   const insertResult = await db
     .prepare(
-      `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified, conversion_external_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (email, username, nickname, password_hash, role, status, email_verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified, conversionExternalId)
+    .bind(email, username, body.nickname?.trim() || null, passwordHash, 'user', 'active', emailVerified)
     .run()
   const userId = insertResult.meta.last_row_id
   const attribution = normalizeRegistrationAttribution(body.attribution, userId)
@@ -323,11 +322,6 @@ authRoutes.post('/register', async (c) => {
     trackingInstructions,
   }, 201)
 })
-
-function generateConversionExternalId() {
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
-}
 
 function normalizeRegistrationAttribution(value: unknown, userId: number) {
   const input = isPlainRecord(value) ? value : {}

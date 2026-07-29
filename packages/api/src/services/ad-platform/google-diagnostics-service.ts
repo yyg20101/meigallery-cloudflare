@@ -1,4 +1,4 @@
-import type { CanonicalConversionEvent } from '@meigallery/shared'
+import { isCanonicalConversionEvent } from '@meigallery/shared/constants'
 import { readAttributionCredential } from './credential-vault'
 import { retrieveGoogleRequestStatus, type GoogleDiagnosticResult } from './adapters/google-diagnostics'
 
@@ -223,7 +223,7 @@ async function finalize(
   diagnostic: GoogleDiagnosticResult,
   incident = false,
 ) {
-  if (!isCanonicalEvent(row.canonical_event)) return false
+  if (!isCanonicalConversionEvent(row.canonical_event)) return false
   const fence = `google_diagnostic:${crypto.randomUUID()}`
   const receiptId = `gdiag_${row.delivery_id}_final`
   const category = firstReason(diagnostic) || errorCode
@@ -356,10 +356,6 @@ function normalizeLimit(value: number) {
 
 function changed(result: D1Result<unknown> | undefined) {
   return (result?.meta?.changes ?? 0) > 0
-}
-
-function isCanonicalEvent(value: string): value is CanonicalConversionEvent {
-  return value === 'Contact' || value === 'CompleteRegistration'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

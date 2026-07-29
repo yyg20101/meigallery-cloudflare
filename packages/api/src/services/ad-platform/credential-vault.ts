@@ -1,4 +1,4 @@
-import type { AdAttributionProvider } from '@meigallery/shared'
+import { isAdAttributionProvider, type AdAttributionProvider } from '@meigallery/shared'
 import {
   decryptAttributionValue,
   deriveAttributionHmacKey,
@@ -7,7 +7,6 @@ import {
   type AttributionEncryptedEnvelope,
 } from '../../utils/attribution-crypto'
 
-const PROVIDERS = new Set<AdAttributionProvider>(['meta', 'tiktok', 'google'])
 const CREDENTIAL_TYPES = new Set<AttributionCredentialType>(['access_token', 'service_account_json'])
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,160}$/
 const FINGERPRINT_HEX_LENGTH = 32
@@ -200,7 +199,7 @@ async function validateSaveInput(input: SaveCredentialInput) {
 }
 
 function validateReadInput(input: Omit<SaveCredentialInput, 'plaintext' | 'createdBy'>) {
-  if (!isProvider(input.provider) || !CREDENTIAL_TYPES.has(input.credentialType)
+  if (!isAdAttributionProvider(input.provider) || !CREDENTIAL_TYPES.has(input.credentialType)
     || !isIdentifier(input.connectionId) || !isIdentifier(input.encryptionContext)) {
     throw vaultError('ATTRIBUTION_CREDENTIAL_INPUT_INVALID')
   }
@@ -262,10 +261,6 @@ function toEnvelope(row: CredentialEnvelopeRow): AttributionEncryptedEnvelope {
     ciphertext: row.ciphertext,
     tag: row.tag,
   }
-}
-
-function isProvider(value: unknown): value is AdAttributionProvider {
-  return typeof value === 'string' && PROVIDERS.has(value as AdAttributionProvider)
 }
 
 function isIdentifier(value: unknown): value is string {

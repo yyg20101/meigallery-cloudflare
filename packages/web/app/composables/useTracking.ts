@@ -10,6 +10,7 @@ import {
   isAdExternalEventId,
   normalizeAnalyticsCampaignToken,
 } from '@meigallery/shared/utils'
+import { isCanonicalConversionEvent } from '@meigallery/shared/constants'
 import {
   dispatchAdBrowserEvent,
   executeAdBrowserInstruction,
@@ -234,7 +235,7 @@ function normalizeBrowserInstruction(value: unknown): AdBrowserInstruction | nul
   const instruction = value as Record<string, unknown>
   if (!exactKeys(instruction, ['provider', 'canonicalEvent', 'externalEventId', 'descriptor', 'payload'])
     || !isRegisteredAdBrowserProvider(instruction.provider)
-    || (instruction.canonicalEvent !== 'Contact' && instruction.canonicalEvent !== 'CompleteRegistration')
+    || !isCanonicalConversionEvent(instruction.canonicalEvent)
     || !isAdExternalEventId(instruction.externalEventId)
     || !safeBrowserPayload(instruction.payload)) return null
   const descriptor = instruction.descriptor
