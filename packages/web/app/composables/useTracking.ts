@@ -24,7 +24,8 @@ import {
   readAdPlatformBrowserIdentifiers,
 } from '~/utils/adPlatformBrowserIdentifiers'
 import { resolveConversionIdentity } from '~/utils/conversionIdentity'
-import { hasSensitiveAnalyticsUrl, isAdminPath, sanitizeAnalyticsText } from '~/utils/trackingSanitizer'
+import { isMarketingTrackingRoute } from '~/utils/marketingTrackingRoute'
+import { sanitizeAnalyticsText } from '~/utils/trackingSanitizer'
 import { readBrowserAdAttributionSignals } from '~/utils/adAttributionSignals'
 
 export interface TrackContactInput {
@@ -57,7 +58,7 @@ export function useTracking() {
 
   async function trackContact(input: TrackContactInput) {
     if (input?.actionType !== 'open_link' || !safeIdentifier(input.contactMethodId)) return
-    const routeAllowed = isMarketingRouteAllowed(route.fullPath)
+    const routeAllowed = isMarketingTrackingRoute(route.fullPath)
     const context = analytics.getContext() as AnalyticsContext
     const identity = resolveConversionIdentity(context)
     const sourceContext = context.sourceContext || {}
@@ -77,11 +78,9 @@ export function useTracking() {
         } satisfies AdBrowserEvent
       : null
 
+    if (browserEvent) void dispatchAdBrowserEvent(browserEvent)
     trackContactAnalytics(analytics, input, externalEventId)
     void analytics.flush({ beacon: true })
-    const browserDispatch = browserEvent
-      ? dispatchAdBrowserEvent(browserEvent)
-      : Promise.resolve(false)
 
     const body = {
       actionType: 'open_link' as const,
@@ -104,22 +103,11 @@ export function useTracking() {
       ...(externalEventId ? { externalEventId } : {}),
     }
 
-    const responseTask = postConversionWithRetry(api, body)
-    const resolutionTask = routeAllowed
-      ? adAttribution.resolve(route)
-      : teardownAdBrowserTracking().then(() => null)
-    const response = await responseTask
-    const browserDispatched = await browserDispatch
-    await resolutionTask
-    if (!response) return
-    const instructions = trackingInstructionsFromResponse(response)
-    const resolvedEventId = firstInstructionExternalEventId(instructions)
-    if (resolvedEventId) rememberContactExternalEventId(identity.sessionId, input, resolvedEventId)
-    if (!browserDispatched) await executeBrowserInstructions(instructions)
+    await postConversionWithRetry(api, body)
   }
 
   async function executeBrowserInstructions(instructions: unknown[]) {
-    if (!isMarketingRouteAllowed(route.fullPath) || !Array.isArray(instructions)) return
+    if (!isMarketingTrackingRoute(route.fullPath) || !Array.isArray(instructions)) return
     for (const value of instructions) {
       const instruction = normalizeBrowserInstruction(value)
       if (!instruction || instruction.provider !== adAttribution.provider.value) continue
@@ -129,7 +117,7 @@ export function useTracking() {
   }
 
   async function trackPageView() {
-    if (!isMarketingRouteAllowed(route.fullPath)) {
+    if (!isMarketingTrackingRoute(route.fullPath)) {
       await teardownAdBrowserTracking()
       return
     }
@@ -165,7 +153,7 @@ export function useTracking() {
   }
 
   async function trackSignalForAttributedProvider(signal: AdBrowserSignal, payload: BrowserPayload) {
-    if (!isMarketingRouteAllowed(route.fullPath)) return
+    if (!isMarketingTrackingRoute(route.fullPath)) return
     const active = await resolveActiveBrowserProvider()
     if (!active) {
       await teardownAdBrowserTracking()
@@ -177,7 +165,7 @@ export function useTracking() {
   async function resolveActiveBrowserProvider() {
     const provider = await adAttribution.resolve(route)
     if (!provider || !isRegisteredAdBrowserProvider(provider)) return null
-    const config = await adAttribution.bootstrap()
+    const config = adAttribution.publicConfig.value
     if (!config || config.provider !== provider) return null
     const initialized = await initializeAdBrowserProvider(config)
     return initialized ? { provider, config } : null
@@ -185,7 +173,7 @@ export function useTracking() {
 
   async function activateCurrentAdBrowserProvider(provider: AdAttributionProvider) {
     if (!isRegisteredAdBrowserProvider(provider)) return false
-    const config = await adAttribution.bootstrap()
+    const config = adAttribution.publicConfig.value
     if (!config || config.provider !== provider) return false
     return initializeAdBrowserProvider(config)
   }
@@ -198,7 +186,7 @@ export function useTracking() {
   }
 
   async function buildRegistrationAttributionContext() {
-    const routeAllowed = isMarketingRouteAllowed(route.fullPath)
+    const routeAllowed = isMarketingTrackingRoute(route.fullPath)
     if (routeAllowed) await adAttribution.resolve(route)
     else await teardownAdBrowserTracking()
     const context = analytics.getContext() as AnalyticsContext
@@ -280,19 +268,6 @@ function safeDescriptorText(value: unknown) {
   return typeof value === 'string' && value.length > 0 && value.length <= 200 && !/\p{Cc}/u.test(value)
 }
 
-function trackingInstructionsFromResponse(response: unknown): unknown[] {
-  const instructions = (response as { data?: { trackingInstructions?: unknown } } | null)?.data?.trackingInstructions
-  return Array.isArray(instructions) ? instructions : []
-}
-
-function firstInstructionExternalEventId(instructions: unknown[]) {
-  for (const value of instructions) {
-    const instruction = normalizeBrowserInstruction(value)
-    if (instruction) return instruction.externalEventId
-  }
-  return ''
-}
-
 function trackContactAnalytics(analytics: ReturnType<typeof useAnalytics>, input: TrackContactInput, eventId: string) {
   analytics.track('contact_method_click', {
     eventId,
@@ -318,20 +293,6 @@ function contactExternalEventId(sessionId: string, input: TrackContactInput) {
   catch {
     try { return createRandomAdExternalEventId() }
     catch { return '' }
-  }
-}
-
-function rememberContactExternalEventId(
-  sessionId: string,
-  input: TrackContactInput,
-  externalEventId: string,
-) {
-  if (!isAdExternalEventId(externalEventId)) return
-  try {
-    sessionStorage.setItem(contactEventStorageKey(sessionId, input), externalEventId)
-  }
-  catch {
-    // 浏览器禁用 sessionStorage 时仅失去重复点击复用，不阻断联系行为。
   }
 }
 
@@ -363,13 +324,6 @@ function normalizeText(value: unknown, maxLength: number) {
 
 function safeIdentifier(value: unknown) {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(value)
-}
-
-function isMarketingRouteAllowed(fullPath: string) {
-  let pathname: string
-  try { pathname = new URL(fullPath, 'https://site.local').pathname }
-  catch { pathname = fullPath.split(/[?#]/)[0] || fullPath }
-  return !isAdminPath(pathname) && !hasSensitiveAnalyticsUrl(fullPath)
 }
 
 async function postConversionWithRetry(

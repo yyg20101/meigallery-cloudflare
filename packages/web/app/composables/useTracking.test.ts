@@ -33,7 +33,6 @@ const browserEvents = ref([{
   browserDestination: 'meta_pixel',
 }])
 const resolveAdAttribution = vi.fn(async () => attributionProvider.value)
-const bootstrapAdAttribution = vi.fn(async () => publicConfig.value)
 const getBrowserEventTemplate = vi.fn(() => (
   browserEvents.value.find(event => (
     event.provider === attributionProvider.value
@@ -87,7 +86,6 @@ describe('useTracking', () => {
       browserDestination: 'meta_pixel',
     }]
     resolveAdAttribution.mockClear()
-    bootstrapAdAttribution.mockClear()
     clearAdAttribution.mockClear()
     getBrowserEventTemplate.mockClear()
     route = {
@@ -122,11 +120,8 @@ describe('useTracking', () => {
       provider: attributionProvider,
       resolution: attributionResolution,
       publicConfig,
-      browserEvents,
       resolve: resolveAdAttribution,
-      bootstrap: bootstrapAdAttribution,
       clear: clearAdAttribution,
-      isResolvedFor: () => true,
       getBrowserEventTemplate,
     }))
   })
@@ -169,6 +164,7 @@ describe('useTracking', () => {
     }))
     expect(flushAnalytics).toHaveBeenCalledWith({ beacon: true })
     expect(adapter.execute).not.toHaveBeenCalled()
+    expect(resolveAdAttribution).not.toHaveBeenCalled()
   })
 
   it('Conversion API 未返回时，离页所需动作已经同步启动', async () => {
@@ -257,7 +253,7 @@ describe('useTracking', () => {
     expect(adapter.execute).not.toHaveBeenCalled()
   })
 
-  it('平台脚本执行失败不影响已经完成的联系业务事实', async () => {
+  it('平台脚本执行失败不触发第二条浏览器补发路径，也不影响服务端事实', async () => {
     api.mockResolvedValueOnce({ data: { id: 'fact_1', created: true, trackingInstructions: [metaInstruction] } })
     adapter.dispatch.mockResolvedValueOnce(false)
 
@@ -268,10 +264,10 @@ describe('useTracking', () => {
     })
 
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
-    expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
+    expect(adapter.execute).not.toHaveBeenCalled()
   })
 
-  it('缓存模板与当前来源不一致时不预发送，响应后仍只执行当前平台', async () => {
+  it('缓存模板与当前来源不一致时失败关闭，不依据响应补发 Browser 事件', async () => {
     attributionProvider.value = 'tiktok'
     publicConfig.value = { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }
     browserEvents.value = [{
@@ -280,22 +276,7 @@ describe('useTracking', () => {
       browserEventName: 'Contact',
       browserDestination: 'meta_pixel',
     }]
-    const tiktokInstruction = {
-      provider: 'tiktok' as const,
-      canonicalEvent: 'Contact' as const,
-      externalEventId: `mg3_${'t'.repeat(43)}`,
-      descriptor: {
-        provider: 'tiktok' as const,
-        canonicalEvent: 'Contact' as const,
-        browserEventName: 'Contact',
-        browserDestination: 'tiktok_pixel',
-        serverDestination: 'tiktok_events_api',
-      },
-      payload: {},
-    }
-    api.mockResolvedValueOnce({
-      data: { id: 'fact_tiktok', created: true, trackingInstructions: [tiktokInstruction] },
-    })
+    api.mockResolvedValueOnce({ data: { id: 'fact_tiktok', created: true, trackingInstructions: [metaInstruction] } })
 
     await useTracking().trackContact({
       contactMethodId: 'contact_123',
@@ -304,8 +285,8 @@ describe('useTracking', () => {
     })
 
     expect(adapter.dispatch).not.toHaveBeenCalled()
-    expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value)
-    expect(adapter.execute).toHaveBeenCalledWith(tiktokInstruction)
+    expect(adapter.initialize).not.toHaveBeenCalled()
+    expect(adapter.execute).not.toHaveBeenCalled()
     const body = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
     expect(body).not.toHaveProperty('externalEventId')
   })
@@ -346,11 +327,10 @@ describe('useTracking', () => {
     expect(adapter.execute).not.toHaveBeenCalled()
   })
 
-  it('PageView 只用当前 provider bootstrap 初始化并发送 Browser Signal', async () => {
+  it('PageView 只用已解析的当前 provider 配置初始化并发送 Browser Signal', async () => {
     await useTracking().trackPageView()
 
     expect(resolveAdAttribution).toHaveBeenCalledWith(route)
-    expect(bootstrapAdAttribution).toHaveBeenCalledOnce()
     expect(adapter.initialize).toHaveBeenCalledWith({ provider: 'meta', pixelId: '123456789' })
     expect(adapter.signal).toHaveBeenCalledWith('meta', 'PageView', {})
   })

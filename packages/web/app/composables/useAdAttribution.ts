@@ -1,12 +1,14 @@
 import type {
+  AdAttributionBrowserContextResponse,
   AdAttributionProvider,
+  AdAttributionResolution as ServerAdAttributionResolution,
   AdBrowserEventTemplate,
   AdBrowserPublicConfig,
   CanonicalConversionEvent,
 } from '@meigallery/shared'
 import { readBrowserAdAttributionSignals } from '~/utils/adAttributionSignals'
 
-export type AdAttributionResolution = 'unresolved' | 'matched' | 'inherited' | 'none' | 'conflict'
+export type AdAttributionResolution = 'unresolved' | ServerAdAttributionResolution
 
 type AttributionRoute = {
   path: string
@@ -30,38 +32,41 @@ export function useAdAttribution() {
   const resolvedRouteKey = useState<string>('ad-attribution-route-key', () => '')
 
   async function resolve(route: AttributionRoute): Promise<AdAttributionProvider | null> {
-    if (import.meta.server) return null
     const routeKey = attributionRouteKey(route)
     if (resolvedRouteKey.value === routeKey) {
       return pendingResolution?.routeKey === routeKey
         ? pendingResolution.task
         : provider.value
     }
+    if (import.meta.server) {
+      try {
+        const normalized = await requestResolution(api, route)
+        applyResolvedState(normalized, provider, resolution, publicConfig, browserEvents)
+        resolvedRouteKey.value = routeKey
+        return normalized.provider
+      }
+      catch {
+        resetLocalState(provider, resolution, publicConfig, browserEvents)
+        resolvedRouteKey.value = ''
+        return null
+      }
+    }
+
+    const previousRouteKey = resolvedRouteKey.value
+    const hadResolvedRoute = Boolean(previousRouteKey) && resolution.value !== 'unresolved'
     resolvedRouteKey.value = routeKey
     const version = ++operationVersion
     const queuedTask = operationQueue.then(async () => {
       try {
-        const signals = readBrowserAdAttributionSignals(route.query)
-        const response = await api<{ provider?: unknown; resolution?: unknown; expiresInSeconds?: unknown }>('/api/ad-attribution', {
-          method: 'PUT',
-          body: signals,
-        })
-        const normalized = normalizeServerResolution(response)
-        if (!normalized) throw new Error('广告来源响应不一致')
+        const normalized = await requestResolution(api, route)
         if (version !== operationVersion) return null
-        if (requiresFullReload(provider.value, normalized.provider)) {
+        if (hadResolvedRoute && requiresFullReload(provider.value, normalized.provider)) {
           resetLocalState(provider, resolution, publicConfig, browserEvents)
           resolvedRouteKey.value = ''
           window.location.reload()
           return null
         }
-        const providerChanged = provider.value !== normalized.provider
-        provider.value = normalized.provider
-        resolution.value = normalized.resolution
-        if (providerChanged) {
-          publicConfig.value = null
-          browserEvents.value = []
-        }
+        applyResolvedState(normalized, provider, resolution, publicConfig, browserEvents)
         return normalized.provider
       }
       catch {
@@ -82,38 +87,6 @@ export function useAdAttribution() {
       if (pendingResolution?.task === task) pendingResolution = null
     })
     pendingResolution = { routeKey, task }
-    operationQueue = task.then(() => undefined, () => undefined)
-    return task
-  }
-
-  async function bootstrap(): Promise<AdBrowserPublicConfig | null> {
-    if (import.meta.server || !provider.value) return null
-    const expectedProvider = provider.value
-    const version = operationVersion
-    const task = operationQueue.then(async () => {
-      if (publicConfig.value?.provider === expectedProvider) return publicConfig.value
-      try {
-        const response = await api<{ provider?: unknown; publicConfig?: unknown; events?: unknown }>('/api/ad-attribution/bootstrap')
-        const config = normalizePublicConfig(response.publicConfig)
-        const events = response.events === undefined
-          ? []
-          : normalizeBrowserEventTemplates(response.events, expectedProvider)
-        if (version !== operationVersion
-          || response.provider !== expectedProvider
-          || config?.provider !== expectedProvider
-          || events === null) return null
-        publicConfig.value = config
-        browserEvents.value = events
-        return config
-      }
-      catch {
-        if (version === operationVersion) {
-          publicConfig.value = null
-          browserEvents.value = []
-        }
-        return null
-      }
-    })
     operationQueue = task.then(() => undefined, () => undefined)
     return task
   }
@@ -159,11 +132,8 @@ export function useAdAttribution() {
     provider,
     resolution,
     publicConfig,
-    browserEvents,
     resolve,
-    bootstrap,
     clear,
-    isResolvedFor,
     getBrowserEventTemplate,
   }
 }
@@ -172,7 +142,33 @@ export function requiresFullReload(
   currentProvider: AdAttributionProvider | null,
   nextProvider: AdAttributionProvider | null,
 ) {
-  return Boolean(currentProvider && currentProvider !== nextProvider)
+  return currentProvider !== nextProvider
+}
+
+async function requestResolution(
+  api: ReturnType<typeof useApi>['api'],
+  route: AttributionRoute,
+) {
+  const response = await api<AdAttributionBrowserContextResponse>('/api/ad-attribution', {
+    method: 'PUT',
+    body: readBrowserAdAttributionSignals(route.query),
+  })
+  const normalized = normalizeServerResolution(response)
+  if (!normalized) throw new Error('广告来源响应不一致')
+  return normalized
+}
+
+function applyResolvedState(
+  next: AdAttributionBrowserContextResponse,
+  provider: ReturnType<typeof useState<AdAttributionProvider | null>>,
+  resolution: ReturnType<typeof useState<AdAttributionResolution>>,
+  publicConfig: ReturnType<typeof useState<AdBrowserPublicConfig | null>>,
+  browserEvents: ReturnType<typeof useState<AdBrowserEventTemplate[]>>,
+) {
+  provider.value = next.provider
+  resolution.value = next.resolution
+  publicConfig.value = next.publicConfig
+  browserEvents.value = next.events
 }
 
 function resetLocalState(
@@ -218,24 +214,41 @@ function normalizeResolution(value: unknown): AdAttributionResolution {
   return value === 'matched' || value === 'inherited' || value === 'conflict' ? value : 'none'
 }
 
-function normalizeServerResolution(response: {
-  provider?: unknown
-  resolution?: unknown
-  expiresInSeconds?: unknown
-}) {
-  const provider = normalizeProvider(response.provider)
-  const resolution = normalizeResolution(response.resolution)
+function normalizeServerResolution(response: unknown): AdAttributionBrowserContextResponse | null {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return null
+  const value = response as Record<string, unknown>
+  if (!exactKeys(value, ['provider', 'resolution', 'expiresInSeconds', 'publicConfig', 'events'])) return null
+  const provider = normalizeProvider(value.provider)
+  const resolution = normalizeResolution(value.resolution)
   if (!provider) {
-    if (response.provider !== null || (resolution !== 'none' && resolution !== 'conflict')) return null
-    return { provider: null, resolution }
+    if (value.provider !== null
+      || value.expiresInSeconds !== null
+      || value.publicConfig !== null
+      || !Array.isArray(value.events)
+      || value.events.length !== 0
+      || (resolution !== 'none' && resolution !== 'conflict')) return null
+    return {
+      provider: null,
+      resolution,
+      expiresInSeconds: null,
+      publicConfig: null,
+      events: [],
+    }
   }
   if (resolution !== 'matched' && resolution !== 'inherited') return null
-  if (!Number.isInteger(response.expiresInSeconds)) return null
-  const expiresInSeconds = Number(response.expiresInSeconds)
+  if (!Number.isInteger(value.expiresInSeconds)) return null
+  const expiresInSeconds = Number(value.expiresInSeconds)
   if (expiresInSeconds <= 1 || expiresInSeconds > SERVER_CONTEXT_TTL_SECONDS) return null
+  const publicConfig = value.publicConfig === null ? null : normalizePublicConfig(value.publicConfig)
+  if (publicConfig?.provider !== provider && publicConfig !== null) return null
+  const events = normalizeBrowserEventTemplates(value.events, provider)
+  if (events === null || (!publicConfig && events.length > 0)) return null
   return {
     provider,
     resolution,
+    expiresInSeconds,
+    publicConfig,
+    events,
   }
 }
 
@@ -263,8 +276,9 @@ function normalizeBrowserEventTemplates(
   value: unknown,
   provider: AdAttributionProvider,
 ): AdBrowserEventTemplate[] | null {
-  if (!Array.isArray(value)) return null
+  if (!Array.isArray(value) || value.length > 2) return null
   const normalized: AdBrowserEventTemplate[] = []
+  const canonicalEvents = new Set<CanonicalConversionEvent>()
   for (const item of value) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null
     const event = item as Record<string, unknown>
@@ -275,6 +289,8 @@ function normalizeBrowserEventTemplates(
       || (provider === 'google'
         ? event.browserEventName !== 'conversion'
         : event.browserEventName !== event.canonicalEvent)) return null
+    if (canonicalEvents.has(event.canonicalEvent as CanonicalConversionEvent)) return null
+    canonicalEvents.add(event.canonicalEvent as CanonicalConversionEvent)
     normalized.push(event as unknown as AdBrowserEventTemplate)
   }
   return normalized
