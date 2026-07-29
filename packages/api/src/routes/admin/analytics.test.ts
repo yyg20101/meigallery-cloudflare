@@ -31,18 +31,39 @@ function createDb() {
           calls.push(call)
           if (sql.includes('FROM attribution_conversion_facts')) {
             return {
-              results: [{
-                date: '2026-06-07',
-                source_channel: 'search',
-                source_name: 'google.com',
-                route_name: '/gallery/:slug',
-                path: '/gallery/demo',
-                session_id: 'session_abcdef',
-                invite_code_id: '',
-                contact_click_count: 1,
-                register_count: 1,
-              }] as T[],
-              meta: { rows_read: 1, rows_written: 0, duration: 1 },
+              results: [
+                {
+                  date: '2026-06-07',
+                  source_channel: 'search',
+                  source_name: 'google.com',
+                  tracking_source_label: '',
+                  source_matched: 0,
+                  route_name: '/gallery/:slug',
+                  path: '/gallery/demo',
+                  visitor_id: 'visitor_search',
+                  session_id: 'session_abcdef',
+                  user_id: '42',
+                  invite_code_id: '',
+                  contact_click_count: 1,
+                  register_count: 1,
+                },
+                {
+                  date: '2026-06-07',
+                  source_channel: 'social',
+                  source_name: 'telegram-june',
+                  tracking_source_label: 'Telegram 六月互推',
+                  source_matched: 1,
+                  route_name: '/gallery/:slug',
+                  path: '/gallery/demo',
+                  visitor_id: 'visitor_social',
+                  session_id: 'session_social',
+                  user_id: '',
+                  invite_code_id: '',
+                  contact_click_count: 1,
+                  register_count: 0,
+                },
+              ] as T[],
+              meta: { rows_read: 2, rows_written: 0, duration: 1 },
             }
           }
           if (sql.includes('FROM analytics_tracking_sources')) {
@@ -147,11 +168,11 @@ function createDb() {
                 tracking_source_label: 'Telegram 六月互推',
                 source_matched: 1,
                 invite_code_id: '',
-                element_id: 'contact_method_click',
-                element_type: 'button',
-                location: 'floating_contact_panel',
-                target_type: 'contact',
-                target_id: 'floating_contact_panel',
+                element_id: 'home_ad_click',
+                element_type: 'ad',
+                location: 'home',
+                target_type: 'gallery',
+                target_id: 'gallery-1',
                 raw_click_count: 2,
                 effective_click_count: 2,
                 duplicate_click_count: 0,
@@ -220,24 +241,14 @@ function createDb() {
               meta: { rows_read: 2, rows_written: 0, duration: 1 },
             }
           }
-          if (sql.includes('analytics_click_daily') && sql.includes('all_contact_methods')) {
-            return {
-              results: [{
-                element_id: 'contact_method_click',
-                element_type: 'button',
-                location: 'contact_panel',
-                target_type: 'contact',
-                target_id: 'all_contact_methods',
-                raw_click_count: 5,
-                effective_click_count: 4,
-              }] as T[],
-              meta: { rows_read: 2, rows_written: 0, duration: 1 },
-            }
-          }
           if (sql.includes('analytics_click_daily')) {
             return {
               results: [{
-                element_id: 'contact_method_click',
+                element_id: 'home_ad_click',
+                element_type: 'ad',
+                location: 'home',
+                target_type: 'gallery',
+                target_id: 'gallery-1',
                 raw_click_count: 2,
                 effective_click_count: 2,
               }] as T[],
@@ -446,15 +457,16 @@ describe('后台数据分析 API', () => {
     expect(body.range.days).toBe(7)
     expect(body.data.totals.average_active_seconds).toBe(30)
     expect(body.data.totals.gallery_detail_count).toBe(4)
-    expect(body.data.totals.effective_contact_click_count).toBe(1)
+    expect(body.data.totals.effective_contact_click_count).toBe(2)
     expect(body.data.totals.register_count).toBe(1)
     expect(body.data.topSources[0].source_channel).toBe('invite')
-    expect(body.data.topClicks).toHaveLength(1)
-    expect(body.data.topClicks[0]).toMatchObject({
-      element_label: '联系方式',
+    expect(body.data.topClicks).toHaveLength(2)
+    expect(body.data.topClicks.find((row: Record<string, unknown>) =>
+      row.element_id === 'contact_conversion')).toMatchObject({
+      element_label: '有效联系',
       location_label: '联系面板',
-      raw_click_count: 5,
-      effective_click_count: 4,
+      raw_click_count: 2,
+      effective_click_count: 2,
     })
     expect(body.data.funnel.stages[0].label).toBe('Session')
     expect(body.usage.rowsRead).toBeGreaterThan(0)
@@ -496,10 +508,11 @@ describe('后台数据分析 API', () => {
       route_label: '夏日写真',
     })
     expect(clicksRes.status).toBe(200)
-    expect(clicksBody.data[0]).toMatchObject({
+    expect(clicksBody.data.find((row: Record<string, unknown>) =>
+      row.element_id === 'contact_conversion')).toMatchObject({
       sourceLabel: 'Telegram 六月互推',
-      element_label: '联系方式',
-      location_label: '悬浮联系面板',
+      element_label: '有效联系',
+      location_label: '联系面板',
     })
     expect(db.calls.some(call => call.sql.includes('analytics_events'))).toBe(false)
   })
@@ -582,6 +595,24 @@ describe('后台数据分析 API', () => {
     expect(body.data.status).toBe('completed')
     expect(r2Put).toHaveBeenCalledWith(expect.stringMatching(/^analytics\/exports\/aexp_/), expect.stringContaining('source_channel'), expect.any(Object))
     expect(db.calls.some(call => call.sql.includes('INSERT INTO admin_audit_logs') && call.params[2] === 'analytics.export.create')).toBe(true)
+  })
+
+  it('点击导出使用唯一 Contact 事实投影，不包含旧行为事件', async () => {
+    const db = createDb()
+    const r2Put = vi.fn(async () => null)
+    const res = await createApp('owner').request('/api/admin/analytics/exports', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'clicks', range: '7d' }),
+    }, {
+      DB: db,
+      R2: { put: r2Put },
+    } as unknown as Bindings)
+
+    expect(res.status).toBe(201)
+    const csv = String(r2Put.mock.calls[0]?.[1] ?? '')
+    expect(csv).toContain('contact_conversion')
+    expect(csv).not.toContain('contact_method_click')
   })
 
   it('100,000 事件规模聚合 fixture 下 30 天报表保持预算内', async () => {

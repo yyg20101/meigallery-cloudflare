@@ -4,6 +4,7 @@ import type { Bindings } from '../index'
 import { generateId } from '../utils/db'
 import { parseAnalyticsRange, type AnalyticsDateRange } from '../utils/analytics-time'
 import {
+  buildAnalyticsContactClickRows,
   buildAnalyticsConversionIndex,
   dateSourceMetricKey,
   readAnalyticsConversionMetrics,
@@ -166,6 +167,18 @@ async function queryExportRows(
     readAnalyticsConversionMetrics(db, range),
   ])
   const index = buildAnalyticsConversionIndex(conversions.rows)
+  if (kind === 'clicks') {
+    return mergeExportClickRows(
+      result.results ?? [],
+      buildAnalyticsContactClickRows(conversions.rows),
+    )
+  }
+  if (kind === 'source-clicks') {
+    return mergeExportClickRows(
+      result.results ?? [],
+      buildAnalyticsContactClickRows(conversions.rows, { bySource: true }),
+    )
+  }
   return (result.results ?? []).map(row => {
     if (kind === 'overview') {
       return exportRowWithConversions(row, index.byDateSource.get(dateSourceMetricKey(
@@ -199,8 +212,28 @@ async function queryExportRows(
         register_count: counts?.register_count ?? 0,
       }
     }
+    if (kind === 'invites') {
+      const counts = index.byInvite.get(String(row.invite_code_id ?? ''))
+      return {
+        ...row,
+        contact_click_count: counts?.contact_click_count ?? 0,
+        register_count: counts?.register_count ?? 0,
+      }
+    }
     return row
   })
+}
+
+function mergeExportClickRows(
+  ...groups: Array<readonly Record<string, unknown>[]>
+): Record<string, unknown>[] {
+  return groups
+    .flat()
+    .map(row => ({ ...row }))
+    .sort((a, b) => (
+      Number(b.effective_click_count ?? 0) - Number(a.effective_click_count ?? 0)
+      || Number(b.raw_click_count ?? 0) - Number(a.raw_click_count ?? 0)
+    ))
 }
 
 function exportRowWithConversions(
@@ -330,8 +363,6 @@ function exportSql(kind: AnalyticsExportKind) {
              SUM(aid.landing_count) AS landing_count,
              SUM(aid.visitor_count) AS visitor_count,
              SUM(aid.session_count) AS session_count,
-             SUM(aid.register_count) AS register_count,
-             SUM(aid.contact_click_count) AS contact_click_count,
              SUM(aid.membership_grant_count) AS membership_grant_count
       FROM analytics_invite_daily aid
       LEFT JOIN invite_codes ic ON ic.id = aid.invite_code_id

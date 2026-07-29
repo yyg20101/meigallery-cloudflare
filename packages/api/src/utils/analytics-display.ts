@@ -54,7 +54,6 @@ const EVENT_LABELS: Record<string, string> = {
   sort_changed: '切换排序',
   load_more: '加载更多',
   contact_panel_open: '打开联系面板',
-  contact_method_click: '点击联系方式',
   contact_qr_expand: '展开联系二维码',
   rules_panel_open: '打开规则面板',
   rules_page_click: '查看规则页',
@@ -80,7 +79,7 @@ const ENTITY_LABELS: Record<string, string> = {
 }
 
 const ELEMENT_LABELS: Record<string, string> = {
-  contact_method_click: '联系方式',
+  contact_conversion: '有效联系',
   contact_qr_expand: '联系方式二维码',
   floating_contact_panel: '悬浮联系面板',
   membership_cta: '会员引导按钮',

@@ -43,13 +43,14 @@
 - 没有新来源时继承 30 天内最近一次有效广告来源；自然流量没有历史来源时不加载 Pixel。
 - 跨平台信号冲突或来源不可信时只记录站内事实，不向任何广告平台发送。
 - Browser 与 Server 共用 external event ID，支持同平台去重。
-- SSR 在页面可交互前通过一次来源解析响应初始化当前来源 Pixel；Contact 外链在原生导航前只进入一次 Browser 队列，站内点击使用 Beacon 刷新，API 使用 `keepalive` 保存同一编号的事实与 Server 投递；不存在响应后补发，也未新增表、Worker 或第二条事实链路。
+- SSR 在页面可交互前通过一次来源解析响应初始化当前来源 Pixel；Contact 外链在原生导航前只进入一次 Browser 队列，API 使用 `keepalive` 保存同一编号的事实与 Server 投递；不存在独立联系 Beacon、响应后补发或第二条事实链路。
 - Meta、TikTok、Google 使用独立凭证、目标映射、Queue 和 DLQ。
 - 平台凭证由 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 加密，管理端不回显明文。
 - Test Event Code 只用于单次同步连接测试，不持久化，也不进入正式事件。
 - 平台连接只保留连接、Browser、Server 三个开关，不存在 rollout、验证 Workflow 或发布门禁。
-- 后台分析、Session 明细和 CSV 中的有效联系与注册只读取 `attribution_conversion_facts`；点击表只表示行为点击，不再充当第二套转化事实。
-- `0065_analytics_conversion_truth.sql` 清除历史重复转化计数并补齐事实时间索引，不修改现有 Pixel、Token、Delivery 或平台回执。
+- 后台分析、Session 明细和 CSV 中的有效联系与注册只读取 `attribution_conversion_facts`；有效联系使用 `contact_conversion` 只读投影，点击表只表示非转化行为点击。
+- `0065_analytics_conversion_truth.sql` 清除历史重复转化计数并补齐事实时间索引；`0066_contact_fact_analytics_cleanup.sql` 删除旧 Contact 行为副本、旧派生聚合并建立防回写约束。两者均不修改现有 Pixel、Token、Delivery 或平台回执。
+- `0066` 及对应运行时收口当前已在 `dev` 本地通过定向测试、类型检查和全新 D1 升级验证，尚未推送或部署 production。
 
 ## 归因瘦身
 

@@ -7,9 +7,13 @@ export interface AnalyticsConversionMetric {
   date: string
   source_channel: string
   source_name: string
+  tracking_source_label: string
+  source_matched: number
   route_name: string
   path: string
+  visitor_id: string
   session_id: string
+  user_id: string
   invite_code_id: string
   contact_click_count: number
   register_count: number
@@ -28,6 +32,28 @@ export interface AnalyticsConversionIndex {
   byPage: Map<string, AnalyticsConversionCounts>
   bySourcePage: Map<string, AnalyticsConversionCounts>
   bySession: Map<string, AnalyticsConversionCounts>
+  byInvite: Map<string, AnalyticsConversionCounts>
+}
+
+export interface AnalyticsContactClickRow extends Record<string, unknown> {
+  source_channel?: string
+  source_name?: string
+  tracking_source_label?: string
+  source_matched?: number
+  invite_code_id?: string
+  element_id: 'contact_conversion'
+  element_type: 'contact'
+  location: 'contact_panel'
+  target_type: 'contact'
+  target_id: 'all_contact_methods'
+  raw_click_count: number
+  effective_click_count: number
+  duplicate_click_count: 0
+  visitor_count: number
+  session_count: number
+  user_count: number
+  exposure_session_count: 0
+  is_effective_contact_click: 1
 }
 
 export async function readAnalyticsConversionMetrics(
@@ -46,7 +72,8 @@ export async function readAnalyticsConversionMetrics(
       FROM attribution_conversion_facts
       WHERE occurred_at >= ? AND occurred_at < ?
         AND canonical_event IN ('Contact', 'CompleteRegistration')
-    )
+    ),
+    grouped AS (
     SELECT
       date,
       COALESCE(NULLIF(TRIM(json_extract(dimensions, '$.sourceChannel')), ''), 'unknown') AS source_channel,
@@ -57,7 +84,9 @@ export async function readAnalyticsConversionMetrics(
       ) AS source_name,
       COALESCE(NULLIF(TRIM(json_extract(dimensions, '$.routeName')), ''), '') AS route_name,
       COALESCE(NULLIF(TRIM(json_extract(dimensions, '$.path')), ''), '') AS path,
+      COALESCE(NULLIF(TRIM(json_extract(dimensions, '$.visitorId')), ''), '') AS visitor_id,
       COALESCE(NULLIF(TRIM(json_extract(dimensions, '$.sessionId')), ''), '') AS session_id,
+      COALESCE(CAST(json_extract(dimensions, '$.userId') AS TEXT), '') AS user_id,
       COALESCE(
         NULLIF(TRIM(json_extract(dimensions, '$.inviteCodeId')), ''),
         NULLIF(TRIM(json_extract(dimensions, '$.metadata.invite_code_id')), ''),
@@ -66,15 +95,28 @@ export async function readAnalyticsConversionMetrics(
       SUM(CASE WHEN canonical_event = 'Contact' THEN 1 ELSE 0 END) AS contact_click_count,
       SUM(CASE WHEN canonical_event = 'CompleteRegistration' THEN 1 ELSE 0 END) AS register_count
     FROM normalized
-    GROUP BY date, source_channel, source_name, route_name, path, session_id, invite_code_id
+    GROUP BY
+      date, source_channel, source_name, route_name, path,
+      visitor_id, session_id, user_id, invite_code_id
+    )
+    SELECT
+      grouped.*,
+      COALESCE(source.name, '') AS tracking_source_label,
+      CASE WHEN source.id IS NULL THEN 0 ELSE 1 END AS source_matched
+    FROM grouped
+    LEFT JOIN analytics_tracking_sources source ON source.slug = grouped.source_name
     ORDER BY date ASC
   `).bind(operationDayStart(range.from), operationDayEnd(range.to)).all<{
     date: string
     source_channel: string
     source_name: string
+    tracking_source_label?: string
+    source_matched?: number | string
     route_name: string
     path: string
+    visitor_id: string
     session_id: string
+    user_id: string
     invite_code_id: string
     contact_click_count: number | string
     register_count: number | string
@@ -85,9 +127,13 @@ export async function readAnalyticsConversionMetrics(
       date: row.date,
       source_channel: row.source_channel,
       source_name: row.source_name,
+      tracking_source_label: row.tracking_source_label ?? '',
+      source_matched: Number(row.source_matched ?? 0),
       route_name: row.route_name,
       path: row.path,
+      visitor_id: row.visitor_id,
       session_id: row.session_id,
+      user_id: row.user_id,
       invite_code_id: row.invite_code_id,
       contact_click_count: Number(row.contact_click_count ?? 0),
       register_count: Number(row.register_count ?? 0),
@@ -132,6 +178,7 @@ export function buildAnalyticsConversionIndex(
   const byPage = new Map<string, AnalyticsConversionCounts>()
   const bySourcePage = new Map<string, AnalyticsConversionCounts>()
   const bySession = new Map<string, AnalyticsConversionCounts>()
+  const byInvite = new Map<string, AnalyticsConversionCounts>()
 
   for (const row of rows) {
     addCounts(total, row)
@@ -155,9 +202,73 @@ export function buildAnalyticsConversionIndex(
       row,
     )
     if (row.session_id) addToIndex(bySession, row.session_id, row)
+    if (row.invite_code_id) addToIndex(byInvite, row.invite_code_id, row)
   }
 
-  return { total, byDate, byDateSource, bySource, byPage, bySourcePage, bySession }
+  return { total, byDate, byDateSource, bySource, byPage, bySourcePage, bySession, byInvite }
+}
+
+export function buildAnalyticsContactClickRows(
+  rows: AnalyticsConversionMetric[],
+  options: { bySource?: boolean } = {},
+): AnalyticsContactClickRow[] {
+  type ContactGroup = {
+    row: AnalyticsContactClickRow
+    visitors: Set<string>
+    sessions: Set<string>
+    users: Set<string>
+  }
+  const groups = new Map<string, ContactGroup>()
+
+  for (const metric of rows) {
+    const count = Number(metric.contact_click_count ?? 0)
+    if (count <= 0) continue
+    const key = options.bySource
+      ? sourceMetricKey(metric.source_channel, metric.source_name, metric.invite_code_id)
+      : 'all'
+    const group = groups.get(key) ?? {
+      row: {
+        ...(options.bySource
+          ? {
+              source_channel: metric.source_channel,
+              source_name: metric.source_name,
+              tracking_source_label: metric.tracking_source_label,
+              source_matched: metric.source_matched,
+              invite_code_id: metric.invite_code_id,
+            }
+          : {}),
+        element_id: 'contact_conversion',
+        element_type: 'contact',
+        location: 'contact_panel',
+        target_type: 'contact',
+        target_id: 'all_contact_methods',
+        raw_click_count: 0,
+        effective_click_count: 0,
+        duplicate_click_count: 0,
+        visitor_count: 0,
+        session_count: 0,
+        user_count: 0,
+        exposure_session_count: 0,
+        is_effective_contact_click: 1,
+      },
+      visitors: new Set<string>(),
+      sessions: new Set<string>(),
+      users: new Set<string>(),
+    }
+    group.row.raw_click_count += count
+    group.row.effective_click_count += count
+    if (metric.visitor_id) group.visitors.add(metric.visitor_id)
+    if (metric.session_id) group.sessions.add(metric.session_id)
+    if (metric.user_id && metric.user_id !== 'null') group.users.add(metric.user_id)
+    groups.set(key, group)
+  }
+
+  return [...groups.values()].map((group) => ({
+    ...group.row,
+    visitor_count: group.visitors.size,
+    session_count: group.sessions.size,
+    user_count: group.users.size,
+  }))
 }
 
 export function filterAnalyticsConversionMetrics(

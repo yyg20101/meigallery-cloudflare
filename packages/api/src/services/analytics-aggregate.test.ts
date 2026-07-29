@@ -43,6 +43,9 @@ describe('analytics-aggregate', () => {
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_source_page_daily'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_daily_events'))).toBe(true)
     expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_invite_daily'))).toBe(true)
+    const inviteInsert = db.calls.find(call => call.sql.includes('INSERT INTO analytics_invite_daily'))
+    expect(inviteInsert?.sql).toContain('attribution_conversion_facts')
+    expect(inviteInsert?.sql).not.toContain("event_name = 'contact_method_click'")
     expect(db.calls
       .filter(call => call.sql.includes('analytics_events'))
       .every(call => call.sql.includes("date(datetime(") && call.sql.includes("'+8 hours'"))).toBe(true)
