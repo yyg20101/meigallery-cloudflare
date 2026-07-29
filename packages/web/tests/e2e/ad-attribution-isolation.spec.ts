@@ -76,6 +76,9 @@ test.describe('广告归因浏览器网络隔离', () => {
       const state = await attributionState(request)
       return { provider: state.provider, resolution: state.resolution }
     }).toEqual({ provider: 'meta', resolution: 'matched' })
+    await expect.poll(() => [...new Set(seenProviders)]).toEqual(['meta'])
+    seenProviders.length = 0
+
     await page.goto('/search')
     await expect(page.getByRole('heading', { name: /搜索写真/ })).toBeVisible()
 
@@ -83,7 +86,7 @@ test.describe('广告归因浏览器网络隔离', () => {
       const state = await attributionState(request)
       return { provider: state.provider, resolution: state.resolution }
     }).toEqual({ provider: 'meta', resolution: 'inherited' })
-    expect([...new Set(seenProviders)]).toEqual(['meta'])
+    await expect.poll(() => [...new Set(seenProviders)]).toEqual(['meta'])
   })
 })
 
