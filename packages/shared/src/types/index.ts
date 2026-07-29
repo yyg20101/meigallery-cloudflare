@@ -179,7 +179,6 @@ export type AnalyticsEventName =
   | 'sort_changed'
   | 'load_more'
   | 'contact_panel_open'
-  | 'contact_method_click'
   | 'contact_value_copy'
   | 'contact_qr_expand'
   | 'rules_panel_open'

@@ -599,7 +599,7 @@ INSERT INTO site_settings (key, value) VALUES
 | `analytics_sessions` | `[部分实现]` | session 入口、退出、来源、设备、国家和有效浏览摘要。 |
 | `analytics_page_summaries` | `[部分实现]` | session 内页面级摘要，用于页面时长、跳出、入口/退出和滚动深度统计。 |
 | `analytics_session_summaries` | `[部分实现]` | session 级摘要，用于默认后台报表避免扫描采样明细。 |
-| `analytics_events` | `[部分实现]` | 关键转化事件和 1%-5% 采样明细；不作为默认后台报表的全量事件仓库。 |
+| `analytics_events` | `[部分实现]` | 必要的安全/行为明细和 1%-5% 采样明细；Contact 与完成注册不写入此表。 |
 | `analytics_ingest_health_daily` | `[部分实现]` | 每日 accepted/rejected/duplicate/sensitive blocked、采样、丢弃和 D1 预算估算。 |
 | `invite_codes` | `[当前实现]` | 后台邀请码定义，保存 `code_hash` 和 `display_code`，创建响应返回明文 code，创建/修改/禁用写入审计日志。 |
 | `invite_registrations` | `[当前实现]` | 邀请注册事实，关联 visitor、session、注册用户和首次会员发放回填；重复绑定不会重复增加 `used_count`。 |
@@ -621,7 +621,7 @@ INSERT INTO site_settings (key, value) VALUES
 
 | 事实 | 唯一所有者与命名入口 | 可信触发 | 派生与投递关系 |
 |------|------|------|------|
-| `Contact` | API conversion service 的 `recordContact()` | URL 通过安全校验后发起原生联系跳转，或复制联系方式明确成功后，由公开联系命令进入服务端校验 | 写入 `contact` 事实；不派生 `Lead`。只有服务端签名来源命中的单一平台可生成同平台 Browser / Server delivery。二维码展开、复制失败和无效 URL 不创建 Contact。 |
+| `Contact` | API conversion service 的 `recordContact()` | URL 通过安全校验后发起原生联系跳转，由公开联系命令进入服务端校验 | 写入 `contact` 事实；不派生 `Lead`。只有服务端签名来源命中的单一平台可生成同平台 Browser / Server delivery。二维码展开、复制和无效 URL 不创建 Contact。 |
 | `CompleteRegistration` | 注册 API 在用户、邀请码和 session 事务成功后调用 `recordRegistration()`；事实修复只允许 `recordRegistrationFactOnly()` | 服务端已持久化的正整数 `userId`，客户端不能声明事件类型或注册成功 | 写入 `complete_registration` 事实并以 `userId` 去重；注册响应可携带 Pixel 指令，浏览器只能执行指令，不能通过公开 conversion API 创建注册事实。 |
 | QR 展开 | Web `ContactPanel` 通过 `useAnalytics()` 记录 `contact_qr_expand`，由 analytics ingest 所有 | 用户展开通过安全 URL 校验的二维码 | 仅是一方行为分析事件；不创建 Contact、不进入 conversion 账本，也不生成广告平台 delivery。 |
 
@@ -641,10 +641,10 @@ INSERT INTO site_settings (key, value) VALUES
 
 实现约束：
 
-- `0051_unified_attribution_expand.sql` 建立统一归因表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史；`0060_attribution_control_plane_cleanup.sql` 删除旧控制面；`0061_attribution_source_router_cleanup.sql` 物理删除 consent、region、rollout、mode、revision 和冗余 provider 字段；`0062_attribution_runtime_garbage_cleanup.sql` 删除旧连接质量快照和空的 usage 表；`0063_attribution_tracking_source_contract.sql` 删除推广来源的旧 proof 列；`0065_analytics_conversion_truth.sql` 清除行为分析历史上重复累加的联系与注册计数。最终结构保留有效连接、最新加密凭证、事实、Delivery、Outbox、平台回执、事故、当前质量数据和全部推广来源。
-- `0055_attribution_tracking_integrity.sql` 将管理广告链接历史来源统一修正为 `ad`、只以 `contact_method_click` 计有效联系、按事件发生的北京时间自然日重建来源/页面/邀请日报，并允许 tracking source 绑定 Google；当前运行时只接受数据库中启用且唯一的受管 `mg_source` 建立平台来源，普通 UTM 和自然流量不做推测性回填。
+- `0051_unified_attribution_expand.sql` 建立统一归因表；`0052_unified_attribution_contract.sql` 迁移仍有价值的 Meta 质量历史；`0060_attribution_control_plane_cleanup.sql` 删除旧控制面；`0061_attribution_source_router_cleanup.sql` 物理删除 consent、region、rollout、mode、revision 和冗余 provider 字段；`0062_attribution_runtime_garbage_cleanup.sql` 删除旧连接质量快照和空的 usage 表；`0063_attribution_tracking_source_contract.sql` 删除推广来源的旧 proof 列；`0065_analytics_conversion_truth.sql` 清除行为分析历史上重复累加的联系与注册计数；`0066_contact_fact_analytics_cleanup.sql` 删除旧 Contact 行为副本和派生聚合，并禁止再次写入。最终结构保留有效连接、最新加密凭证、事实、Delivery、Outbox、平台回执、事故、当前质量数据和全部推广来源。
+- `0055_attribution_tracking_integrity.sql` 是历史升级步骤，曾使用 `contact_method_click` 重建有效联系；其运行时口径已由 `0065`、`0066` 完全取代。当前只接受数据库中启用且唯一的受管 `mg_source` 建立平台来源，普通 UTM 和自然流量不做推测性回填。
 - `0056_attribution_fact_source_integrity.sql` 从活跃事实源清除旧版仅凭 UTM 推测出的平台归因及其 Delivery/Receipt/Outbox，并在 D1 层强制事实来源组合：无平台事实只能使用 `none/conflict`，Meta/TikTok/Google 平台事实只能使用 `click_id/managed_link`。migration 前 production D1 备份与 Time Travel 保留原始审计证据。
-- `0057_contact_aggregate_integrity.sql` 只从强制完整保留的 `contact_method_click` 原始事实重建 `analytics_daily_events` 联系趋势与 `analytics_source_click_daily` 来源联系点击；使用北京时间业务日，并排除没有来源名或邀请码的纯 direct 流量。production 门禁对原始事实和两个联系日报做双向集合对账。
+- `0057_contact_aggregate_integrity.sql` 是历史升级步骤，曾从旧 Contact 点击事件重建联系日报；`0066` 已删除这些副本。当前后台联系趋势、点击、来源、邀请、Session 和 CSV 全部读取 `attribution_conversion_facts`。
 - 历史 migration 只负责升级路径和空库顺序建库，应用运行时不得访问后续 migration 已删除的结构。
 - 新增平台必须通过 adapter registry 接入，不得复制业务事实、来源路由、Planner、Queue 状态机或恢复逻辑。
 - TikTok Events API 使用官方 v1.3 Web Events endpoint、`Access-Token` header、`event_source=web`、Pixel ID、`event/event_time/event_id/user/page` 契约；生产 payload 不带 `test_event_code`。Browser Pixel 与 Events API 对同一业务事实使用相同 event name 与 event ID 进行去重。
@@ -658,7 +658,7 @@ INSERT INTO site_settings (key, value) VALUES
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
 - 当前归因运行时不包含地区判断、营销授权页面、Banner、Consent Cookie、授权 API 或地区策略表。若后续需要合规控制，只能在来源路由之后接入单一 `allow/deny` 输入，不得在平台 adapter 内复制地区逻辑。
-- 首屏 SSR 通过唯一 `PUT /api/ad-attribution` 同时取得可信来源、当前平台公开配置与 Browser 事件目标，并在客户端页面可交互前初始化唯一平台队列；响应不返回 Server destination 或凭证。Contact 外链点击在浏览器同步事件阶段生成严格格式的 `external_event_id`，先写入当前 active provider 的 Pixel 队列并使用 Beacon 刷新站内点击，再通过 `keepalive` 请求交给同一个公开 Contact 命令入口；API 仍独占来源判定、事实去重、Planner 和 Server 投递，不存在响应后 Browser 补发路径。
+- 首屏 SSR 通过唯一 `PUT /api/ad-attribution` 同时取得可信来源、当前平台公开配置与 Browser 事件目标，并在客户端页面可交互前初始化唯一平台队列；响应不返回 Server destination 或凭证。Contact 外链点击在浏览器同步事件阶段生成严格格式的 `external_event_id`，先写入当前 active provider 的 Pixel 队列，再通过 `keepalive` 请求交给同一个公开 Contact 命令入口；API 独占来源判定、事实去重、Planner、后台指标投影和 Server 投递，不存在第二条分析事实或响应后 Browser 补发路径。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`。Server delivery 只有在平台响应满足严格成功契约时才进入 `accepted`；Google 还必须等待异步诊断进入 `processed`。平台接收或处理完成仍不代表广告归因成功。
 - 仅在存在可信签名来源上下文或服务端已通过同一来源路由器恢复来源时，从 Cloudflare `CF-Connecting-IP` 与原始 `User-Agent` 读取完整网络匹配上下文；两者只能进入 24 小时加密 Outbox。原始 IP/UA 不得进入事实表、分析维度、日志、响应或审计。
 - `/api/admin/attribution/*` 需要 admin+；连接、凭证和事件映射修改需要 owner，并写入 `admin_audit_logs`。

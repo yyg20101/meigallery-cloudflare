@@ -132,7 +132,7 @@ describe('useTracking', () => {
     vi.unstubAllGlobals()
   })
 
-  it('合法 open_link 在离页前以同一编号发送点击、Browser Pixel 与服务端事实', async () => {
+  it('合法 open_link 在离页前以同一编号发送 Browser Pixel 与唯一服务端事实', async () => {
     await useTracking().trackContact({
       contactMethodId: 'contact_123',
       methodType: 'telegram',
@@ -159,10 +159,8 @@ describe('useTracking', () => {
       browserEventName: 'Contact',
       browserDestination: 'meta_pixel',
     }))
-    expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
-      eventId: body.externalEventId,
-    }))
-    expect(flushAnalytics).toHaveBeenCalledWith({ beacon: true })
+    expect(trackAnalytics).not.toHaveBeenCalled()
+    expect(flushAnalytics).not.toHaveBeenCalled()
     expect(adapter.execute).not.toHaveBeenCalled()
     expect(resolveAdAttribution).not.toHaveBeenCalled()
   })
@@ -179,8 +177,8 @@ describe('useTracking', () => {
       actionType: 'open_link',
     })
 
-    expect(trackAnalytics).toHaveBeenCalledOnce()
-    expect(flushAnalytics).toHaveBeenCalledWith({ beacon: true })
+    expect(trackAnalytics).not.toHaveBeenCalled()
+    expect(flushAnalytics).not.toHaveBeenCalled()
     expect(adapter.dispatch).toHaveBeenCalledOnce()
     expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
       keepalive: true,

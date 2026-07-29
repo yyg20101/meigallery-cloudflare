@@ -16,7 +16,7 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
     v-model:range="analytics.range.value"
     v-model:date="analytics.date.value"
     title="来源点击分析"
-    description="按站内归因来源查看广告、图库卡片、联系入口、会员 CTA 和筛选操作的点击质量。"
+    description="按站内归因来源查看有效联系事实与其他关键行为点击。"
     :loading="analytics.loading.value"
     :error="analytics.error.value"
     :usage="analytics.usage.value"
@@ -28,7 +28,7 @@ const activeSourceCode = computed(() => String(route.query.sourceCode || route.q
       <template v-if="activeSourceCode">
         当前来源 code：<span class="font-mono">{{ activeSourceCode }}</span>。
       </template>
-      本页按站内 UTM、推广链接或 referrer 归因聚合，不读取 Meta Pixel 回传。
+      Contact 直接读取唯一转化事实；其他点击读取站内行为聚合。本页不读取广告平台回传。
     </div>
 
     <AnalyticsDataTable

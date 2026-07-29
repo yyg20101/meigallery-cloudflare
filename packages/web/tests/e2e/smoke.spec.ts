@@ -495,7 +495,7 @@ test.describe('核心页面 smoke', () => {
     await expectAdminContainersWithinViewport(page)
   })
 
-  test('一方数据分析事件覆盖搜索、详情、联系和邀请注册链路', async ({ request, page }) => {
+  test('一方行为分析与唯一联系事实覆盖搜索、详情、联系和邀请注册链路', async ({ request, page }) => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: /精选写真/ }).first()).toBeVisible()
 
@@ -509,9 +509,9 @@ test.describe('核心页面 smoke', () => {
     await page.route('https://t.me/**', route => route.abort())
     await page.getByRole('link', { name: /Telegram/ }).click({ noWaitAfter: true })
     await expect.poll(async () => {
-      const response = await request.get(`${apiURL}/api/test/analytics-events`)
+      const response = await request.get(`${apiURL}/api/test/ad-attribution-events`)
       const body = await response.json()
-      return body.events.some((event: { eventName?: string }) => event.eventName === 'contact_method_click')
+      return body.conversions.length > 0
     }, { timeout: 8_000 }).toBe(true)
 
     await request.patch(`${apiURL}/api/test/auth`, { data: { authenticated: false } })
@@ -538,15 +538,19 @@ test.describe('核心页面 smoke', () => {
     expect(eventNames).toContain('page_view')
     expect(eventNames).toContain('gallery_detail_view')
     expect(eventNames).toContain('contact_panel_open')
-    expect(eventNames).toContain('contact_method_click')
+    expect(eventNames).not.toContain('contact_method_click')
     expect(eventNames).toContain('invite_landed')
     expect(eventNames).toContain('invite_code_checked')
     expect(eventNames).not.toContain('register_success')
-    expect(payload.events.some((event: { eventName?: string; props?: { method_type?: string; action_type?: string } }) =>
-      event.eventName === 'contact_method_click' &&
-      event.props?.method_type === 'telegram' &&
-      ['open_link', 'copy'].includes(event.props?.action_type || ''),
-    )).toBe(true)
+
+    const attributionResponse = await request.get(`${apiURL}/api/test/ad-attribution-events`)
+    const attributionPayload = await attributionResponse.json()
+    expect(attributionPayload.conversions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        actionType: 'open_link',
+        methodType: 'telegram',
+      }),
+    ]))
 
     const serialized = JSON.stringify(payload)
     expect(serialized).not.toContain('meigallery_admin')

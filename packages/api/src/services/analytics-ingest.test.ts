@@ -218,20 +218,18 @@ describe('analytics-ingest', () => {
           }).events[0],
           baseBatch({
             eventId: 'event_source_click_1',
-            eventName: 'contact_method_click',
+            eventName: 'home_ad_click',
             trackingSourceSlug: 'telegram-june',
             utmSource: 'telegram-june',
             utmMedium: 'social',
             routeName: '/gallery/:slug',
             path: '/gallery/demo',
-            entityType: 'contact',
-            entityId: 'floating_contact_panel',
+            entityType: 'ad',
+            entityId: 'home-ad-1',
             props: {
-              element_id: 'contact_method_click',
-              element_type: 'button',
-              location: 'floating_contact_panel',
-              target_type: 'contact',
-              target_id: 'floating_contact_panel',
+              ad_id: 'home-ad-1',
+              target_type: 'internal',
+              target_path_or_host: '/gallery/demo',
             },
           }).events[0],
         ],
@@ -289,38 +287,26 @@ describe('analytics-ingest', () => {
     expect(db.calls.some(call => call.sql.includes('analytics_sessions'))).toBe(false)
   })
 
-  it('contact_method_click 只更新点击行为统计，不写入第二套转化计数', async () => {
+  it('拒绝旧 contact_method_click，Contact 只能通过唯一转化事实入口写入', async () => {
     const db = createDb()
-    await ingestAnalyticsBatch(envFor(db), {
+    const result = await ingestAnalyticsBatch(envFor(db), {
       body: baseBatch({
         eventId: 'event_contact_1',
         eventName: 'contact_method_click',
         entityType: 'contact',
-        trackingSourceSlug: 'telegram-june',
-        utmSource: 'telegram-june',
-        utmMedium: 'social',
-        utmCampaign: 'june',
-        utmContent: 'chat-a',
-        sourceChannel: 'ad',
-        props: {
-          method_type: 'telegram',
-          action_type: 'open_link',
-          location: 'floating_contact_panel',
-          contactValue: '@secret',
-        },
       }),
       bodySizeBytes: 512,
       userId: null,
       currentHost: '616618.xyz',
     })
 
-    const sourceAggregate = db.calls.find(call => call.sql.includes('INSERT INTO analytics_daily_sources'))
-    expect(sourceAggregate?.sql).not.toContain('contact_click_count')
-    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_click_daily'))).toBe(true)
-    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
+    expect(result).toMatchObject({ accepted: 0, rejected: 1 })
+    expect(result.errors?.[0]).toMatchObject({ code: 'ANALYTICS_EVENT_NAME_INVALID' })
+    expect(db.calls.some(call => call.sql.includes('INSERT INTO analytics_click_daily'))).toBe(false)
+    expect(db.calls.some(call => call.sql.includes('attribution_conversion_facts'))).toBe(false)
   })
 
-  it('重复分析批次不会创建任何广告平台 delivery', async () => {
+  it('行为分析批次不会创建广告平台 delivery', async () => {
     const db = createDb()
     const sent: unknown[] = []
     const env = {
@@ -331,19 +317,22 @@ describe('analytics-ingest', () => {
     } as unknown as Pick<Bindings, 'APP_ENV' | 'DB' | 'SESSION_SECRET' | 'AD_META_QUEUE'>
     const context = {
       body: baseBatch({
-        eventId: 'event_contact_duplicate_1',
-        eventName: 'contact_method_click',
+        eventId: 'event_contact_copy_1',
+        eventName: 'contact_value_copy',
         entityType: 'contact',
-        props: { method_type: 'telegram', location: 'floating_contact_panel' },
+        props: {
+          method_type: 'telegram',
+          action_type: 'copy',
+          location: 'floating_contact_panel',
+        },
       }),
       bodySizeBytes: 512,
       userId: null,
       currentHost: '616618.xyz',
     }
-    await ingestAnalyticsBatch(env, context)
-    const duplicate = await ingestAnalyticsBatch(env, context)
+    const result = await ingestAnalyticsBatch(env, context)
 
-    expect(duplicate.duplicate).toBe(1)
+    expect(result.accepted).toBe(1)
     expect(db.calls.some(call => call.sql.includes('analytics_conversion_deliveries'))).toBe(false)
     expect(sent).toEqual([])
   })
@@ -371,10 +360,10 @@ describe('analytics-ingest', () => {
     const db = createDb()
     await ingestAnalyticsBatch(envFor(db), {
       body: baseBatch({
-        eventId: 'event_contact_order_1',
-        eventName: 'contact_method_click',
-        entityType: 'contact',
-        props: { method_type: 'telegram', location: 'floating_contact_panel' },
+        eventId: 'event_login_order_1',
+        eventName: 'login_failed',
+        entityType: 'auth',
+        props: { failure_code: 'BAD_PASSWORD' },
       }),
       bodySizeBytes: 512,
       userId: null,
@@ -385,75 +374,6 @@ describe('analytics-ingest', () => {
     const summaryIndex = db.calls.findIndex(call => call.sql.includes('INSERT INTO analytics_sessions'))
     expect(rawIndex).toBeGreaterThanOrEqual(0)
     expect(summaryIndex).toBeGreaterThan(rawIndex)
-  })
-
-  it('被拒绝事件和 raw duplicate 不写入转化账本', async () => {
-    const rejectedDb = createDb()
-    await ingestAnalyticsBatch(envFor(rejectedDb), {
-      body: baseBatch({
-        eventId: 'event_contact_bad_1',
-        eventName: 'contact_method_click',
-        path: '/gallery/demo?token=secret',
-        entityType: 'contact',
-        props: { method_type: 'telegram', location: 'floating_contact_panel' },
-      }),
-      bodySizeBytes: 512,
-      userId: null,
-      currentHost: '616618.xyz',
-    })
-    expect(rejectedDb.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
-
-    const duplicateDb = createDb({ existingEvents: ['event_contact_dup_1'] })
-    await ingestAnalyticsBatch(envFor(duplicateDb), {
-      body: baseBatch({
-        eventId: 'event_contact_dup_1',
-        eventName: 'contact_method_click',
-        entityType: 'contact',
-        props: { method_type: 'telegram', location: 'floating_contact_panel' },
-      }),
-      bodySizeBytes: 512,
-      userId: null,
-      currentHost: '616618.xyz',
-    })
-    expect(duplicateDb.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
-  })
-
-  it('批内 raw duplicate 不写入转化账本', async () => {
-    const db = createDb()
-    const result = await ingestAnalyticsBatch(envFor(db), {
-      body: {
-        visitorId: 'visitor_123456',
-        sessionId: 'session_123456',
-        events: [
-          baseBatch({
-            eventId: 'event_contact_same',
-            eventName: 'contact_method_click',
-            entityType: 'contact',
-            entityId: 'contact-a',
-            props: {
-              method_type: 'telegram',
-              location: 'floating_contact_panel',
-            },
-          }).events[0],
-          baseBatch({
-            eventId: 'event_contact_same',
-            eventName: 'contact_method_click',
-            entityType: 'contact',
-            entityId: 'contact-b',
-            props: {
-              method_type: 'wechat',
-              location: 'gallery_detail_sidebar',
-            },
-          }).events[0],
-        ],
-      },
-      bodySizeBytes: 1024,
-      userId: null,
-      currentHost: '616618.xyz',
-    })
-
-    expect(result.duplicate).toBe(1)
-    expect(db.calls.some(call => call.sql.includes('analytics_conversion_actions'))).toBe(false)
   })
 
   it('把 sendBeacon session/end 简写 payload 转成批量事件', () => {

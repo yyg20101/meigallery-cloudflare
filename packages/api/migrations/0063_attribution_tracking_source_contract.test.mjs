@@ -61,7 +61,7 @@ describe('0063 推广来源最终契约 migration', () => {
   it('完整迁移链连续，并只保留当前归因结构', () => {
     assert.deepEqual(
       migrationFiles.map(file => Number(file.slice(0, 4))),
-      Array.from({ length: 65 }, (_, index) => index + 1),
+      Array.from({ length: 66 }, (_, index) => index + 1),
     )
     assert.equal(rows(`
       SELECT COUNT(*) AS count

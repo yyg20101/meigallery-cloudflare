@@ -133,11 +133,11 @@ describe('useAnalytics', () => {
   it('允许外部传入 eventId 并随 flush 上报', async () => {
     const analytics = useAnalytics()
     analytics.initialize({ enabled: true, route })
-    analytics.track('contact_method_click', {
+    analytics.track('contact_value_copy', {
       eventId: 'conv_event_1',
       entityType: 'contact',
       flush: true,
-      props: { method_type: 'telegram' },
+      props: { method_type: 'telegram', action_type: 'copy' },
     })
 
     await vi.waitFor(() => {
@@ -148,7 +148,7 @@ describe('useAnalytics', () => {
     expect(events).toEqual(expect.arrayContaining([
       expect.objectContaining({
         eventId: 'conv_event_1',
-        eventName: 'contact_method_click',
+        eventName: 'contact_value_copy',
       }),
     ]))
   })

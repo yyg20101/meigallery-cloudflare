@@ -384,24 +384,24 @@ async function aggregateInviteDaily(db: AnalyticsDb, date: string) {
       WHERE date = ? AND invite_code_id != ''
       GROUP BY invite_code_id
     ),
-    invite_contacts AS (
+    invite_conversions AS (
       SELECT
-        summary.invite_code_id,
-        COUNT(*) AS contact_click_count
-      FROM analytics_events AS event
-      JOIN analytics_session_summaries AS summary
-        ON summary.session_id = event.session_id
-      WHERE date(datetime(event.occurred_at, '+8 hours')) = ?
-        AND event.event_name = 'contact_method_click'
-        AND summary.invite_code_id != ''
-      GROUP BY summary.invite_code_id
-    ),
-    invite_registers AS (
-      SELECT
-        invite_code_id,
-        COUNT(*) AS register_count
-      FROM invite_registrations
-      WHERE date(datetime(registered_at, '+8 hours')) = ?
+        COALESCE(
+          NULLIF(TRIM(json_extract(analytics_dimensions_json, '$.inviteCodeId')), ''),
+          NULLIF(TRIM(json_extract(analytics_dimensions_json, '$.metadata.invite_code_id')), ''),
+          ''
+        ) AS invite_code_id,
+        SUM(CASE WHEN canonical_event = 'Contact' THEN 1 ELSE 0 END) AS contact_click_count,
+        SUM(CASE WHEN canonical_event = 'CompleteRegistration' THEN 1 ELSE 0 END) AS register_count
+      FROM attribution_conversion_facts
+      WHERE date(datetime(occurred_at, '+8 hours')) = ?
+        AND canonical_event IN ('Contact', 'CompleteRegistration')
+        AND json_valid(analytics_dimensions_json)
+        AND COALESCE(
+          NULLIF(TRIM(json_extract(analytics_dimensions_json, '$.inviteCodeId')), ''),
+          NULLIF(TRIM(json_extract(analytics_dimensions_json, '$.metadata.invite_code_id')), ''),
+          ''
+        ) != ''
       GROUP BY invite_code_id
     ),
     invite_memberships AS (
@@ -416,9 +416,7 @@ async function aggregateInviteDaily(db: AnalyticsDb, date: string) {
     ids AS (
       SELECT invite_code_id FROM invite_sessions
       UNION
-      SELECT invite_code_id FROM invite_contacts
-      UNION
-      SELECT invite_code_id FROM invite_registers
+      SELECT invite_code_id FROM invite_conversions
       UNION
       SELECT invite_code_id FROM invite_memberships
     )
@@ -429,17 +427,16 @@ async function aggregateInviteDaily(db: AnalyticsDb, date: string) {
       COALESCE(invite_sessions.session_count, 0) AS landing_count,
       COALESCE(invite_sessions.visitor_count, 0) AS visitor_count,
       COALESCE(invite_sessions.session_count, 0) AS session_count,
-      COALESCE(invite_registers.register_count, 0) AS register_count,
-      COALESCE(invite_contacts.contact_click_count, 0) AS contact_click_count,
+      COALESCE(invite_conversions.register_count, 0) AS register_count,
+      COALESCE(invite_conversions.contact_click_count, 0) AS contact_click_count,
       COALESCE(invite_memberships.membership_grant_count, 0) AS membership_grant_count,
       datetime('now')
     FROM ids
     LEFT JOIN invite_codes ic ON ic.id = ids.invite_code_id
     LEFT JOIN invite_sessions ON invite_sessions.invite_code_id = ids.invite_code_id
-    LEFT JOIN invite_registers ON invite_registers.invite_code_id = ids.invite_code_id
-    LEFT JOIN invite_contacts ON invite_contacts.invite_code_id = ids.invite_code_id
+    LEFT JOIN invite_conversions ON invite_conversions.invite_code_id = ids.invite_code_id
     LEFT JOIN invite_memberships ON invite_memberships.invite_code_id = ids.invite_code_id
-  `).bind(date, date, date, date, date).run()
+  `).bind(date, date, date, date).run()
 }
 
 function assertDate(date: string) {

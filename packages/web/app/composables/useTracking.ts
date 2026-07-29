@@ -80,8 +80,6 @@ export function useTracking() {
       : null
 
     if (browserEvent) void dispatchAdBrowserEvent(browserEvent)
-    trackContactAnalytics(analytics, input, externalEventId)
-    void analytics.flush({ beacon: true })
 
     const body = {
       actionType: 'open_link' as const,
@@ -267,19 +265,6 @@ function exactKeys(value: Record<string, unknown>, keys: string[]) {
 
 function safeDescriptorText(value: unknown) {
   return typeof value === 'string' && value.length > 0 && value.length <= 200 && !/\p{Cc}/u.test(value)
-}
-
-function trackContactAnalytics(analytics: ReturnType<typeof useAnalytics>, input: TrackContactInput, eventId: string) {
-  analytics.track('contact_method_click', {
-    eventId,
-    entityType: 'contact',
-    props: {
-      contact_method_id: input.contactMethodId,
-      method_type: normalizeText(input.methodType, 80) || 'unknown',
-      action_type: 'open_link',
-      location: 'floating_contact_panel',
-    },
-  })
 }
 
 function contactExternalEventId(sessionId: string, input: TrackContactInput) {

@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import type { AnalyticsRangeQuery } from '@meigallery/shared'
 import type { Bindings, Variables } from '../../index'
 import {
+  buildAnalyticsContactClickRows,
   buildAnalyticsConversionIndex,
   filterAnalyticsConversionMetrics,
   pageMetricKey,
@@ -31,7 +32,7 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const [totals, contactClicks, trend, topSources, topPages, topClicks, clickTotals, health, conversions] = await Promise.all([
+  const [totals, trend, topSources, topPages, topClicks, clickTotals, health, conversions] = await Promise.all([
     queryFirst(c.env.DB, `
       SELECT
         COALESCE(SUM(visitor_count), 0) AS visitor_count,
@@ -44,42 +45,18 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       FROM analytics_daily_sources
       WHERE date BETWEEN ? AND ?
     `, [range.from, range.to]),
-    queryFirst(c.env.DB, `
-      SELECT
-        COALESCE(SUM(raw_click_count), 0) AS raw_contact_click_count,
-        COALESCE(SUM(effective_click_count), 0) AS effective_contact_click_count,
-        COALESCE(SUM(duplicate_click_count), 0) AS duplicate_contact_click_count
-      FROM analytics_click_daily
-      WHERE date BETWEEN ? AND ?
-        AND element_id = 'contact_method_click'
-    `, [range.from, range.to]),
     queryAll(c.env.DB, `
-      WITH contact_clicks AS (
-        SELECT
-          date,
-          SUM(raw_click_count) AS raw_contact_click_count,
-          SUM(effective_click_count) AS effective_contact_click_count,
-          SUM(duplicate_click_count) AS duplicate_contact_click_count
-        FROM analytics_click_daily
-        WHERE date BETWEEN ? AND ?
-          AND element_id = 'contact_method_click'
-        GROUP BY date
-      )
       SELECT
         ads.date,
         SUM(ads.visitor_count) AS visitor_count,
         SUM(ads.session_count) AS session_count,
         SUM(ads.page_view_count) AS page_view_count,
-        COALESCE(MAX(contact_clicks.effective_contact_click_count), 0) AS effective_contact_click_count,
-        COALESCE(MAX(contact_clicks.raw_contact_click_count), 0) AS raw_contact_click_count,
-        COALESCE(MAX(contact_clicks.duplicate_contact_click_count), 0) AS duplicate_contact_click_count,
         SUM(ads.membership_grant_count) AS membership_grant_count
       FROM analytics_daily_sources ads
-      LEFT JOIN contact_clicks ON contact_clicks.date = ads.date
       WHERE ads.date BETWEEN ? AND ?
       GROUP BY ads.date
       ORDER BY ads.date ASC
-    `, [range.from, range.to, range.from, range.to]),
+    `, [range.from, range.to]),
     queryAll(c.env.DB, `
       SELECT ads.source_channel, ads.source_name, ads.invite_code_id,
              COALESCE(ats.name, '') AS tracking_source_label,
@@ -107,18 +84,14 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       SELECT
              element_id,
              MAX(element_type) AS element_type,
-             CASE WHEN element_id = 'contact_method_click' THEN 'contact_panel' ELSE MIN(location) END AS location,
-             CASE WHEN element_id = 'contact_method_click' THEN 'contact' ELSE MIN(target_type) END AS target_type,
-             CASE WHEN element_id = 'contact_method_click' THEN 'all_contact_methods' ELSE MIN(target_id) END AS target_id,
+             MIN(location) AS location,
+             MIN(target_type) AS target_type,
+             MIN(target_id) AS target_id,
              SUM(raw_click_count) AS raw_click_count,
              SUM(effective_click_count) AS effective_click_count
       FROM analytics_click_daily
       WHERE date BETWEEN ? AND ?
-      GROUP BY
-             element_id,
-             CASE WHEN element_id = 'contact_method_click' THEN 'contact_panel' ELSE location END,
-             CASE WHEN element_id = 'contact_method_click' THEN 'contact' ELSE target_type END,
-             CASE WHEN element_id = 'contact_method_click' THEN 'all_contact_methods' ELSE target_id END
+      GROUP BY element_id
       ORDER BY effective_click_count DESC, raw_click_count DESC
       LIMIT 5
     `, [range.from, range.to]),
@@ -142,17 +115,19 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
     readAnalyticsConversionMetrics(c.env.DB, range),
   ])
 
-  const usage = mergeQueryUsage(totals, contactClicks, trend, topSources, topPages, topClicks, clickTotals, health, conversions)
+  const usage = mergeQueryUsage(totals, trend, topSources, topPages, topClicks, clickTotals, health, conversions)
   const conversionIndex = buildAnalyticsConversionIndex(conversions.rows)
   const totalRow = withConversionCounts(totals.rows[0] ?? {}, conversionIndex.total)
-  const contactClickRow = contactClicks.rows[0] ?? {}
+  const contactClickCount = conversionIndex.total.contact_click_count
   const sessionCount = Number((totalRow as Record<string, unknown>).session_count ?? 0)
   const activeSeconds = Number((totalRow as Record<string, unknown>).active_seconds_total ?? 0)
   const enrichedTotals = {
     ...totalRow,
-    ...contactClickRow,
-    effective_contact_click_count: conversionIndex.total.contact_click_count,
-    key_click_count: Number((clickTotals.rows[0] as Record<string, unknown> | undefined)?.key_click_count ?? 0),
+    raw_contact_click_count: contactClickCount,
+    effective_contact_click_count: contactClickCount,
+    duplicate_contact_click_count: 0,
+    key_click_count: Number((clickTotals.rows[0] as Record<string, unknown> | undefined)?.key_click_count ?? 0)
+      + contactClickCount,
     average_active_seconds: sessionCount > 0 ? Math.round(activeSeconds / sessionCount) : 0,
   }
   const aggregateTotal = [
@@ -173,9 +148,12 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
       totals: enrichedTotals,
       trend: trend.rows.map(row => {
         const counts = conversionIndex.byDate.get(String(row.date ?? ''))
+        const dailyContactCount = counts?.contact_click_count ?? 0
         return {
           ...withConversionCounts(row, counts),
-          effective_contact_click_count: counts?.contact_click_count ?? 0,
+          raw_contact_click_count: dailyContactCount,
+          effective_contact_click_count: dailyContactCount,
+          duplicate_contact_click_count: 0,
         }
       }),
       topSources: topSources.rows.map(row => enrichAnalyticsDisplayRow(withConversionCounts(
@@ -183,7 +161,10 @@ adminAnalyticsRoutes.get('/overview', async (c) => {
         conversionIndex.bySource.get(sourceMetricKey(row.source_channel, row.source_name, row.invite_code_id)),
       ))),
       topPages: topPages.rows.map(enrichAnalyticsDisplayRow),
-      topClicks: topClicks.rows.map(enrichAnalyticsDisplayRow),
+      topClicks: mergeClickRows(
+        topClicks.rows,
+        buildAnalyticsContactClickRows(conversions.rows),
+      ).slice(0, 5).map(enrichAnalyticsDisplayRow),
       health: health.rows[0] ?? null,
       funnel: buildFunnel(enrichedTotals),
       diagnostics: {
@@ -451,22 +432,29 @@ adminAnalyticsRoutes.get('/clicks', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const result = await queryAll(c.env.DB, `
-    SELECT element_id, element_type, location, target_type, target_id,
-           SUM(raw_click_count) AS raw_click_count,
-           SUM(effective_click_count) AS effective_click_count,
-           SUM(duplicate_click_count) AS duplicate_click_count,
-           SUM(visitor_count) AS visitor_count,
-           SUM(session_count) AS session_count,
-           SUM(user_count) AS user_count,
-           SUM(exposure_session_count) AS exposure_session_count,
-           CASE WHEN element_id = 'contact_method_click' THEN 1 ELSE 0 END AS is_effective_contact_click
-    FROM analytics_click_daily
-    WHERE date BETWEEN ? AND ?
-    GROUP BY element_id, element_type, location, target_type, target_id
-    ORDER BY effective_click_count DESC, raw_click_count DESC
-  `, [range.from, range.to])
-  return c.json({ range, usage: result.usage, data: result.rows.map(enrichAnalyticsDisplayRow) })
+  const [result, conversions] = await Promise.all([
+    queryAll(c.env.DB, `
+      SELECT element_id, element_type, location, target_type, target_id,
+             SUM(raw_click_count) AS raw_click_count,
+             SUM(effective_click_count) AS effective_click_count,
+             SUM(duplicate_click_count) AS duplicate_click_count,
+             SUM(visitor_count) AS visitor_count,
+             SUM(session_count) AS session_count,
+             SUM(user_count) AS user_count,
+             SUM(exposure_session_count) AS exposure_session_count,
+             0 AS is_effective_contact_click
+      FROM analytics_click_daily
+      WHERE date BETWEEN ? AND ?
+      GROUP BY element_id, element_type, location, target_type, target_id
+    `, [range.from, range.to]),
+    readAnalyticsConversionMetrics(c.env.DB, range),
+  ])
+  return c.json({
+    range,
+    usage: mergeD1Usage(result.usage, conversions.usage),
+    data: mergeClickRows(result.rows, buildAnalyticsContactClickRows(conversions.rows))
+      .map(enrichAnalyticsDisplayRow),
+  })
 })
 
 adminAnalyticsRoutes.get('/source-pages', async (c) => {
@@ -521,27 +509,37 @@ adminAnalyticsRoutes.get('/source-clicks', async (c) => {
   if (range instanceof Response) return range
 
   const { where, params } = analyticsWhere(c, range, 'ascd', { sourceName: true })
-  const result = await queryAll(c.env.DB, `
-    SELECT ascd.source_channel, ascd.source_name, ascd.invite_code_id,
-           COALESCE(ats.name, '') AS tracking_source_label,
-           CASE WHEN ats.id IS NULL THEN 0 ELSE 1 END AS source_matched,
-           ascd.element_id, ascd.element_type, ascd.location, ascd.target_type, ascd.target_id,
-           SUM(ascd.raw_click_count) AS raw_click_count,
-           SUM(ascd.effective_click_count) AS effective_click_count,
-           SUM(ascd.duplicate_click_count) AS duplicate_click_count,
-           SUM(ascd.visitor_count) AS visitor_count,
-           SUM(ascd.session_count) AS session_count,
-           SUM(ascd.user_count) AS user_count,
-           SUM(ascd.exposure_session_count) AS exposure_session_count
-    FROM analytics_source_click_daily ascd
-    LEFT JOIN analytics_tracking_sources ats ON ats.slug = ascd.source_name
-    WHERE ${where}
-    GROUP BY ascd.source_channel, ascd.source_name, ascd.invite_code_id,
-             ats.name, ats.id, ascd.element_id, ascd.element_type, ascd.location,
-             ascd.target_type, ascd.target_id
-    ORDER BY raw_click_count DESC
-  `, params)
-  return c.json({ range, usage: result.usage, data: result.rows.map(enrichAnalyticsDisplayRow) })
+  const [result, conversions] = await Promise.all([
+    queryAll(c.env.DB, `
+      SELECT ascd.source_channel, ascd.source_name, ascd.invite_code_id,
+             COALESCE(ats.name, '') AS tracking_source_label,
+             CASE WHEN ats.id IS NULL THEN 0 ELSE 1 END AS source_matched,
+             ascd.element_id, ascd.element_type, ascd.location, ascd.target_type, ascd.target_id,
+             SUM(ascd.raw_click_count) AS raw_click_count,
+             SUM(ascd.effective_click_count) AS effective_click_count,
+             SUM(ascd.duplicate_click_count) AS duplicate_click_count,
+             SUM(ascd.visitor_count) AS visitor_count,
+             SUM(ascd.session_count) AS session_count,
+             SUM(ascd.user_count) AS user_count,
+             SUM(ascd.exposure_session_count) AS exposure_session_count
+      FROM analytics_source_click_daily ascd
+      LEFT JOIN analytics_tracking_sources ats ON ats.slug = ascd.source_name
+      WHERE ${where}
+      GROUP BY ascd.source_channel, ascd.source_name, ascd.invite_code_id,
+               ats.name, ats.id, ascd.element_id, ascd.element_type, ascd.location,
+               ascd.target_type, ascd.target_id
+    `, params),
+    readAnalyticsConversionMetrics(c.env.DB, range),
+  ])
+  const contactRows = buildAnalyticsContactClickRows(
+    filterAnalyticsConversionMetrics(conversions.rows, analyticsConversionFilters(c)),
+    { bySource: true },
+  )
+  return c.json({
+    range,
+    usage: mergeD1Usage(result.usage, conversions.usage),
+    data: mergeClickRows(result.rows, contactRows).map(enrichAnalyticsDisplayRow),
+  })
 })
 
 adminAnalyticsRoutes.get('/funnel', async (c) => {
@@ -603,7 +601,7 @@ adminAnalyticsRoutes.get('/funnel', async (c) => {
     session_count: path ? pageRow.filtered_session_count : sourceRow.session_count,
     page_view_count: pageRow.filtered_page_view_count ?? sourceRow.page_view_count,
     gallery_detail_count: pageRow.filtered_gallery_detail_count ?? sourceRow.gallery_detail_count,
-    key_click_count: clickRow.key_click_count,
+    key_click_count: Number(clickRow.key_click_count ?? 0) + conversionCounts.contact_click_count,
     contact_click_count: conversionCounts.contact_click_count,
     register_count: conversionCounts.register_count,
     membership_grant_count: sourceRow.membership_grant_count,
@@ -647,24 +645,33 @@ adminAnalyticsRoutes.get('/invites', async (c) => {
   const range = parseRangeOrError(c)
   if (range instanceof Response) return range
 
-  const result = await queryAll(c.env.DB, `
-    SELECT aid.invite_code_id,
-           COALESCE(ic.name, '') AS invite_name,
-           aid.channel,
-           COALESCE(ic.status, '') AS status,
-           SUM(aid.landing_count) AS landing_count,
-           SUM(aid.visitor_count) AS visitor_count,
-           SUM(aid.session_count) AS session_count,
-           SUM(aid.register_count) AS register_count,
-           SUM(aid.contact_click_count) AS contact_click_count,
-           SUM(aid.membership_grant_count) AS membership_grant_count
-    FROM analytics_invite_daily aid
-    LEFT JOIN invite_codes ic ON ic.id = aid.invite_code_id
-    WHERE aid.date BETWEEN ? AND ?
-    GROUP BY aid.invite_code_id, ic.name, aid.channel, ic.status
-    ORDER BY register_count DESC
-  `, [range.from, range.to])
-  return c.json({ range, usage: result.usage, data: result.rows })
+  const [result, conversions] = await Promise.all([
+    queryAll(c.env.DB, `
+      SELECT aid.invite_code_id,
+             COALESCE(ic.name, '') AS invite_name,
+             aid.channel,
+             COALESCE(ic.status, '') AS status,
+             SUM(aid.landing_count) AS landing_count,
+             SUM(aid.visitor_count) AS visitor_count,
+             SUM(aid.session_count) AS session_count,
+             SUM(aid.membership_grant_count) AS membership_grant_count
+      FROM analytics_invite_daily aid
+      LEFT JOIN invite_codes ic ON ic.id = aid.invite_code_id
+      WHERE aid.date BETWEEN ? AND ?
+      GROUP BY aid.invite_code_id, ic.name, aid.channel, ic.status
+    `, [range.from, range.to]),
+    readAnalyticsConversionMetrics(c.env.DB, range),
+  ])
+  const conversionIndex = buildAnalyticsConversionIndex(conversions.rows)
+  return c.json({
+    range,
+    usage: mergeD1Usage(result.usage, conversions.usage),
+    data: result.rows.map(row => ({
+      ...row,
+      contact_click_count: conversionIndex.byInvite.get(String(row.invite_code_id ?? ''))?.contact_click_count ?? 0,
+      register_count: conversionIndex.byInvite.get(String(row.invite_code_id ?? ''))?.register_count ?? 0,
+    })).sort((a, b) => Number(b.register_count) - Number(a.register_count)),
+  })
 })
 
 adminAnalyticsRoutes.get('/health', async (c) => {
@@ -877,6 +884,19 @@ function analyticsConversionFilters(c: AdminAnalyticsContext) {
     inviteCodeId: normalizedQueryValue(c.req.query('inviteCodeId')),
     path: normalizedQueryValue(c.req.query('path')),
   }
+}
+
+function mergeClickRows(
+  ...groups: Array<readonly Record<string, unknown>[]>
+): Record<string, unknown>[] {
+  return groups
+    .flat()
+    .map(row => ({ ...row }))
+    .sort((a, b) => (
+      Number(b.effective_click_count ?? 0) - Number(a.effective_click_count ?? 0)
+      || Number(b.raw_click_count ?? 0) - Number(a.raw_click_count ?? 0)
+      || String(a.element_id ?? '').localeCompare(String(b.element_id ?? ''))
+    ))
 }
 
 function withConversionCounts<T extends Record<string, unknown>>(

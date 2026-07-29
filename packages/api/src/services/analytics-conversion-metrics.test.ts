@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildAnalyticsContactClickRows,
   buildAnalyticsConversionIndex,
   readAnalyticsConversionMetrics,
   sourceMetricKey,
@@ -23,9 +24,13 @@ describe('分析转化事实读模型', () => {
                   date: '2026-07-28',
                   source_channel: 'ad',
                   source_name: 'ad-ms3z4pw000z5j6',
+                  tracking_source_label: 'Meta 美国 MW',
+                  source_matched: 1,
                   route_name: 'register',
                   path: '/register',
+                  visitor_id: 'visitor_1',
                   session_id: 'session_1',
+                  user_id: '42',
                   invite_code_id: '',
                   contact_click_count: 0,
                   register_count: 1,
@@ -34,9 +39,13 @@ describe('分析转化事实读模型', () => {
                   date: '2026-07-28',
                   source_channel: 'ad',
                   source_name: 'ad-ms3z4pw000z5j6',
+                  tracking_source_label: 'Meta 美国 MW',
+                  source_matched: 1,
                   route_name: 'home',
                   path: '/',
+                  visitor_id: 'visitor_1',
                   session_id: 'session_1',
+                  user_id: '42',
                   invite_code_id: '',
                   contact_click_count: 1,
                   register_count: 0,
@@ -54,6 +63,7 @@ describe('分析转化事实读模型', () => {
       { from: '2026-07-28', to: '2026-07-28' },
     )
     const index = buildAnalyticsConversionIndex(result.rows)
+    const contactRows = buildAnalyticsContactClickRows(result.rows)
 
     expect(calls[0]).toEqual([
       '2026-07-27T16:00:00.000Z',
@@ -68,5 +78,14 @@ describe('分析转化事实读模型', () => {
       contact_click_count: 1,
       register_count: 1,
     })
+    expect(contactRows).toEqual([expect.objectContaining({
+      element_id: 'contact_conversion',
+      raw_click_count: 1,
+      effective_click_count: 1,
+      duplicate_click_count: 0,
+      visitor_count: 1,
+      session_count: 1,
+      user_count: 1,
+    })])
   })
 })

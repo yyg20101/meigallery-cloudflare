@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('数据库迁移契约', () => {
-  it('migration 索引从 0001 到 0065 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0066 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 65 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 66 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -77,5 +77,17 @@ describe('数据库迁移契约', () => {
     expect(conversionTruth).toContain('UPDATE analytics_daily_pages')
     expect(conversionTruth).toContain('UPDATE analytics_source_page_daily')
     expect(conversionTruth).toContain('UPDATE analytics_path_edges')
+  })
+
+  it('0066 删除旧 Contact 行为副本且不补造历史事实', async () => {
+    const sql = await readMigration('0066_contact_fact_analytics_cleanup.sql')
+
+    expect(sql).toContain("DELETE FROM analytics_events\nWHERE event_name = 'contact_method_click'")
+    expect(sql).toContain("DELETE FROM analytics_click_daily\nWHERE element_id = 'contact_method_click'")
+    expect(sql).toContain("DELETE FROM analytics_source_click_daily\nWHERE element_id = 'contact_method_click'")
+    expect(sql).toContain('UPDATE analytics_invite_daily')
+    expect(sql).toContain('CREATE TRIGGER analytics_contact_event_insert_guard')
+    expect(sql).not.toContain('INSERT INTO attribution_conversion_facts')
+    expect(sql).not.toMatch(/pixel|token|delivery/i)
   })
 })
