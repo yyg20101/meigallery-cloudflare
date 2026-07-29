@@ -75,6 +75,8 @@ export type {
   AdBrowserEvent,
   AdBrowserEventTemplate,
   AdBrowserPublicConfig,
+  AdAttributionBrowserContextResponse,
+  AdAttributionResolution,
   AdAttributionProvider,
   AdBrowserInstruction,
   AdBrowserSignal,

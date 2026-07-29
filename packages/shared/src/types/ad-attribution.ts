@@ -6,6 +6,8 @@ export const AD_ATTRIBUTION_PROVIDERS = [
 
 export type AdAttributionProvider = typeof AD_ATTRIBUTION_PROVIDERS[number]
 
+export type AdAttributionResolution = 'matched' | 'inherited' | 'none' | 'conflict'
+
 export const AD_ATTRIBUTION_IDENTIFIER_KEYS: Readonly<
   Record<AdAttributionProvider, readonly string[]>
 > = {
@@ -54,6 +56,14 @@ export interface AdBrowserEventTemplate {
   canonicalEvent: CanonicalConversionEvent
   browserEventName: string
   browserDestination: string
+}
+
+export interface AdAttributionBrowserContextResponse {
+  provider: AdAttributionProvider | null
+  resolution: AdAttributionResolution
+  expiresInSeconds: number | null
+  publicConfig: AdBrowserPublicConfig | null
+  events: AdBrowserEventTemplate[]
 }
 
 export interface AdBrowserEvent extends AdBrowserEventTemplate {
