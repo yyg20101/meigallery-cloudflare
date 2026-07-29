@@ -1,9 +1,17 @@
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
-import type { AdAttributionProvider, AdBrowserPublicConfig } from '@meigallery/shared'
+import type {
+  AdAttributionProvider,
+  AdBrowserEventTemplate,
+  AdBrowserPublicConfig,
+} from '@meigallery/shared'
 import type { Bindings, Variables } from '../index'
 import { resolveAdAttributionRouting, type AdAttributionSignals } from '../services/ad-attribution-routing'
-import { readAttributionConnectionSnapshot } from '../services/ad-platform/connections'
+import {
+  readAttributionConnectionSnapshot,
+  type AttributionConnectionSnapshotReady,
+} from '../services/ad-platform/connections'
+import { getAdPlatformDefinition } from '../services/ad-platform/registry'
 import {
   AD_ATTRIBUTION_CONTEXT_TTL_SECONDS,
   createAdAttributionContext,
@@ -40,6 +48,7 @@ adAttributionRoutes.get('/bootstrap', async (c) => {
     return c.json({
       provider: snapshot.connection.provider,
       publicConfig,
+      events: serializeBrowserEventTemplates(snapshot),
     })
   }
   catch {
@@ -135,7 +144,7 @@ function emptyResponse() {
 }
 
 function emptyBootstrapResponse() {
-  return { provider: null, publicConfig: null }
+  return { provider: null, publicConfig: null, events: [] }
 }
 
 function serializePublicConfig(
@@ -146,4 +155,22 @@ function serializePublicConfig(
   if (provider === 'tiktok' && config.pixelCode) return { provider, pixelCode: config.pixelCode }
   if (provider === 'google' && config.tagId) return { provider, tagId: config.tagId }
   return null
+}
+
+function serializeBrowserEventTemplates(
+  snapshot: AttributionConnectionSnapshotReady,
+): AdBrowserEventTemplate[] {
+  const definition = getAdPlatformDefinition(snapshot.connection.provider)
+  if (!definition) return []
+  return (['Contact', 'CompleteRegistration'] as const).flatMap((canonicalEvent) => {
+    const binding = snapshot.bindings.get(canonicalEvent)
+    const descriptor = definition.describeEvent({ canonicalEvent })
+    if (!binding?.enabled || !descriptor) return []
+    return [{
+      provider: snapshot.connection.provider,
+      canonicalEvent,
+      browserEventName: descriptor.browserEventName,
+      browserDestination: binding.browserDestination,
+    }]
+  })
 }

@@ -198,7 +198,11 @@ describe('公开广告来源 API', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(data).toEqual({ provider, publicConfig })
+    expect(data).toEqual({
+      provider,
+      publicConfig,
+      events: expectedBrowserEvents(provider),
+    })
     expect(readConnectionSnapshot).toHaveBeenCalledWith(expect.anything(), provider)
     expect(JSON.stringify(data)).not.toMatch(/click|token|credential|binding|context/i)
   })
@@ -218,7 +222,7 @@ describe('公开广告来源 API', () => {
       env(),
     )
 
-    expect(await response.json()).toEqual({ provider: null, publicConfig: null })
+    expect(await response.json()).toEqual({ provider: null, publicConfig: null, events: [] })
     expect(response.headers.get('cache-control')).toBe('no-store')
   })
 
@@ -241,6 +245,7 @@ describe('公开广告来源 API', () => {
     expect(await response.json()).toEqual({
       provider: 'google',
       publicConfig: { provider: 'google', tagId: 'AW-123456789' },
+      events: expectedBrowserEvents('google'),
     })
   })
 })
@@ -305,6 +310,26 @@ function readySnapshot(
   override: { enabled?: boolean; browserEnabled?: boolean } = {},
 ) {
   const { provider: _provider, ...storedConfig } = publicConfig
+  const destinations = provider === 'google'
+    ? {
+        Contact: {
+          browserDestination: 'AW-123456789/Contact_Label',
+          serverDestination: '456',
+        },
+        CompleteRegistration: {
+          browserDestination: 'AW-123456789/Registration_Label',
+          serverDestination: '789',
+        },
+      }
+    : provider === 'meta'
+      ? {
+          Contact: { browserDestination: 'meta_pixel', serverDestination: 'meta_capi' },
+          CompleteRegistration: { browserDestination: 'meta_pixel', serverDestination: 'meta_capi' },
+        }
+      : {
+          Contact: { browserDestination: 'tiktok_pixel', serverDestination: 'tiktok_events_api' },
+          CompleteRegistration: { browserDestination: 'tiktok_pixel', serverDestination: 'tiktok_events_api' },
+        }
   return {
     state: 'ready',
     connection: {
@@ -316,11 +341,48 @@ function readySnapshot(
       publicConfig: storedConfig,
       outboxScope: 'outbox_scope_1',
     },
-    bindings: new Map(),
+    bindings: new Map([
+      ['Contact', { enabled: true, ...destinations.Contact }],
+      ['CompleteRegistration', { enabled: true, ...destinations.CompleteRegistration }],
+    ]),
     credential: {
       type: provider === 'google' ? 'service_account_json' : 'access_token',
       schemaVersion: 1,
       encryptionContext: 'credential_context_1',
     },
   }
+}
+
+function expectedBrowserEvents(provider: 'meta' | 'tiktok' | 'google') {
+  if (provider === 'google') {
+    return [
+      {
+        provider,
+        canonicalEvent: 'Contact',
+        browserEventName: 'conversion',
+        browserDestination: 'AW-123456789/Contact_Label',
+      },
+      {
+        provider,
+        canonicalEvent: 'CompleteRegistration',
+        browserEventName: 'conversion',
+        browserDestination: 'AW-123456789/Registration_Label',
+      },
+    ]
+  }
+  const browserDestination = provider === 'meta' ? 'meta_pixel' : 'tiktok_pixel'
+  return [
+    {
+      provider,
+      canonicalEvent: 'Contact',
+      browserEventName: 'Contact',
+      browserDestination,
+    },
+    {
+      provider,
+      canonicalEvent: 'CompleteRegistration',
+      browserEventName: 'CompleteRegistration',
+      browserDestination,
+    },
+  ]
 }

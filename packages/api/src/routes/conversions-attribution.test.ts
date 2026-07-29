@@ -9,6 +9,7 @@ vi.mock('../services/conversions', () => ({
 }))
 
 const MASTER_KEY = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+const CLIENT_EVENT_ID = `mg3_${'c'.repeat(43)}`
 const recordContactMock = vi.mocked(recordContact)
 
 describe('公开联系转化来源恢复', () => {
@@ -107,6 +108,45 @@ describe('公开联系转化来源恢复', () => {
       attributionContext: null,
       attributionSource: 'conflict',
     }))
+  })
+
+  it('合法浏览器事件编号只传给统一 Contact 事实入口', async () => {
+    const response = await app().request('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        actionType: 'open_link',
+        contactMethodId: 'contact_123',
+        visitorId: 'visitor_123',
+        sessionId: 'session_123',
+        externalEventId: CLIENT_EVENT_ID,
+      }),
+    }, env())
+
+    expect(response.status).toBe(201)
+    expect(recordContactMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      externalEventId: CLIENT_EVENT_ID,
+    }))
+  })
+
+  it('非法浏览器事件编号在写事实前失败关闭', async () => {
+    const response = await app().request('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        actionType: 'open_link',
+        contactMethodId: 'contact_123',
+        visitorId: 'visitor_123',
+        sessionId: 'session_123',
+        externalEventId: 'mg3_short',
+      }),
+    }, env())
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      code: 'PUBLIC_CONVERSION_EVENT_ID_INVALID',
+    })
+    expect(recordContactMock).not.toHaveBeenCalled()
   })
 })
 

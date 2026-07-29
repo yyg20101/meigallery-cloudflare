@@ -1,11 +1,17 @@
 import type {
   AdAttributionProvider,
+  AdBrowserEvent,
   AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
 } from '@meigallery/shared'
-import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import {
+  createRandomAdExternalEventId,
+  isAdExternalEventId,
+  normalizeAnalyticsCampaignToken,
+} from '@meigallery/shared/utils'
+import {
+  dispatchAdBrowserEvent,
   executeAdBrowserInstruction,
   initializeAdBrowserProvider,
   isRegisteredAdBrowserProvider,
@@ -34,6 +40,7 @@ export interface TrackSearchInput {
 
 type BrowserPayload = Record<string, string | number | boolean>
 type AnalyticsContext = ReturnType<ReturnType<typeof useAnalytics>['getContext']> & { sourceChannel?: string }
+const CONTACT_EVENT_ID_STORAGE_PREFIX = 'mg_contact_event_id_v1:'
 
 let lastTrackedPageKey = ''
 let pendingPageView: {
@@ -51,14 +58,31 @@ export function useTracking() {
   async function trackContact(input: TrackContactInput) {
     if (input?.actionType !== 'open_link' || !safeIdentifier(input.contactMethodId)) return
     const routeAllowed = isMarketingRouteAllowed(route.fullPath)
-    if (routeAllowed) await adAttribution.resolve(route)
-    if (!routeAllowed) {
-      await teardownAdBrowserTracking()
-    }
-
     const context = analytics.getContext() as AnalyticsContext
     const identity = resolveConversionIdentity(context)
     const sourceContext = context.sourceContext || {}
+    const eventTemplate = routeAllowed
+      ? adAttribution.getBrowserEventTemplate(route, 'Contact')
+      : null
+    const externalEventId = eventTemplate
+      ? contactExternalEventId(identity.sessionId, input)
+      : ''
+    const browserEvent = eventTemplate && externalEventId
+      ? {
+          ...eventTemplate,
+          externalEventId,
+          payload: {
+            method_type: normalizeText(input.methodType, 80) || 'unknown',
+          },
+        } satisfies AdBrowserEvent
+      : null
+
+    trackContactAnalytics(analytics, input, externalEventId)
+    void analytics.flush({ beacon: true })
+    const browserDispatch = browserEvent
+      ? dispatchAdBrowserEvent(browserEvent)
+      : Promise.resolve(false)
+
     const body = {
       actionType: 'open_link' as const,
       contactMethodId: input.contactMethodId,
@@ -77,17 +101,21 @@ export function useTracking() {
       methodType: normalizeText(input.methodType, 80),
       adAttributionSignals: readBrowserAdAttributionSignals(route.query),
       metadata: { action_type: 'open_link' },
+      ...(externalEventId ? { externalEventId } : {}),
     }
 
-    const response = await postConversionWithRetry(api, body)
-    if (!response) {
-      trackContactAnalytics(analytics, input, '')
-      return
-    }
+    const responseTask = postConversionWithRetry(api, body)
+    const resolutionTask = routeAllowed
+      ? adAttribution.resolve(route)
+      : teardownAdBrowserTracking().then(() => null)
+    const response = await responseTask
+    const browserDispatched = await browserDispatch
+    await resolutionTask
+    if (!response) return
     const instructions = trackingInstructionsFromResponse(response)
-
-    trackContactAnalytics(analytics, input, firstInstructionExternalEventId(instructions))
-    await executeBrowserInstructions(instructions)
+    const resolvedEventId = firstInstructionExternalEventId(instructions)
+    if (resolvedEventId) rememberContactExternalEventId(identity.sessionId, input, resolvedEventId)
+    if (!browserDispatched) await executeBrowserInstructions(instructions)
   }
 
   async function executeBrowserInstructions(instructions: unknown[]) {
@@ -219,8 +247,7 @@ function normalizeBrowserInstruction(value: unknown): AdBrowserInstruction | nul
   if (!exactKeys(instruction, ['provider', 'canonicalEvent', 'externalEventId', 'descriptor', 'payload'])
     || !isRegisteredAdBrowserProvider(instruction.provider)
     || (instruction.canonicalEvent !== 'Contact' && instruction.canonicalEvent !== 'CompleteRegistration')
-    || typeof instruction.externalEventId !== 'string'
-    || !/^[A-Za-z0-9_-]{1,64}$/.test(instruction.externalEventId)
+    || !isAdExternalEventId(instruction.externalEventId)
     || !safeBrowserPayload(instruction.payload)) return null
   const descriptor = instruction.descriptor
   if (!descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)) return null
@@ -270,7 +297,6 @@ function trackContactAnalytics(analytics: ReturnType<typeof useAnalytics>, input
   analytics.track('contact_method_click', {
     eventId,
     entityType: 'contact',
-    flush: true,
     props: {
       contact_method_id: input.contactMethodId,
       method_type: normalizeText(input.methodType, 80) || 'unknown',
@@ -278,6 +304,43 @@ function trackContactAnalytics(analytics: ReturnType<typeof useAnalytics>, input
       location: 'floating_contact_panel',
     },
   })
+}
+
+function contactExternalEventId(sessionId: string, input: TrackContactInput) {
+  const key = contactEventStorageKey(sessionId, input)
+  try {
+    const stored = sessionStorage.getItem(key)
+    if (isAdExternalEventId(stored)) return stored
+    const created = createRandomAdExternalEventId()
+    sessionStorage.setItem(key, created)
+    return created
+  }
+  catch {
+    try { return createRandomAdExternalEventId() }
+    catch { return '' }
+  }
+}
+
+function rememberContactExternalEventId(
+  sessionId: string,
+  input: TrackContactInput,
+  externalEventId: string,
+) {
+  if (!isAdExternalEventId(externalEventId)) return
+  try {
+    sessionStorage.setItem(contactEventStorageKey(sessionId, input), externalEventId)
+  }
+  catch {
+    // 浏览器禁用 sessionStorage 时仅失去重复点击复用，不阻断联系行为。
+  }
+}
+
+function contactEventStorageKey(sessionId: string, input: TrackContactInput) {
+  return `${CONTACT_EVENT_ID_STORAGE_PREFIX}${encodeURIComponent([
+    sessionId,
+    input.contactMethodId,
+    normalizeText(input.methodType, 80),
+  ].join(':'))}`
 }
 
 function sourceChannelFromContext(context: AnalyticsContext) {
@@ -316,7 +379,11 @@ async function postConversionWithRetry(
   const delays = [100, 250] as const
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
     try {
-      return await request('/api/conversions/events', { method: 'POST', body })
+      return await request('/api/conversions/events', {
+        method: 'POST',
+        body,
+        keepalive: true,
+      })
     }
     catch (error) {
       if (attempt === delays.length || !isRetryableConversionError(error)) return null

@@ -1,17 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-function instruction(destination = 'AW-123456789/Contact_Label', externalEventId = 'mg3_contact_123') {
+const EVENT_ID = `mg3_${'g'.repeat(43)}`
+
+function event(destination = 'AW-123456789/Contact_Label', externalEventId = EVENT_ID) {
   return {
     provider: 'google' as const,
     canonicalEvent: 'Contact' as const,
     externalEventId,
-    descriptor: {
-      provider: 'google' as const,
-      canonicalEvent: 'Contact' as const,
-      browserEventName: 'conversion',
-      browserDestination: destination,
-      serverDestination: 'customers/123/conversionActions/456',
-    },
+    browserEventName: 'conversion',
+    browserDestination: destination,
     payload: { value: 1, currency: 'CNY', email: 'blocked@example.com', gclid: 'blocked-click' },
   }
 }
@@ -58,18 +55,18 @@ describe('Google Ads Browser adapter', () => {
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
     await adapter.initialize({ provider: 'google', tagId: 'AW-123456789' })
 
-    await expect(adapter.track(instruction())).resolves.toBe(true)
+    await expect(adapter.track(event())).resolves.toBe(true)
 
     expect((window as Window & { dataLayer: unknown[] }).dataLayer.at(-1)).toEqual([
       'event',
       'conversion',
-      { value: 1, currency: 'CNY', send_to: 'AW-123456789/Contact_Label', transaction_id: 'mg3_contact_123' },
+      { value: 1, currency: 'CNY', send_to: 'AW-123456789/Contact_Label', transaction_id: EVENT_ID },
     ])
   })
 
   it.each([
-    ['非法 destination', 'contact', 'mg3_contact_123'],
-    ['其他 Google Ads 账户 destination', 'AW-987654321/Contact_Label', 'mg3_contact_123'],
+    ['非法 destination', 'contact', EVENT_ID],
+    ['其他 Google Ads 账户 destination', 'AW-987654321/Contact_Label', EVENT_ID],
     ['含 PII 的 event id', 'AW-123456789/Contact_Label', 'person@example.com'],
     ['超长 event id', 'AW-123456789/Contact_Label', 'x'.repeat(65)],
   ])('%s 时 fail closed', async (_label, destination, eventId) => {
@@ -78,7 +75,7 @@ describe('Google Ads Browser adapter', () => {
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
     await adapter.initialize({ provider: 'google', tagId: 'AW-123456789' })
 
-    await expect(adapter.track(instruction(destination, eventId))).resolves.toBe(false)
+    await expect(adapter.track(event(destination, eventId))).resolves.toBe(false)
     expect((window as Window & { dataLayer: unknown[] }).dataLayer).toHaveLength(2)
   })
 

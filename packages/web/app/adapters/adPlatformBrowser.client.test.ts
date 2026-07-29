@@ -13,7 +13,7 @@ vi.mock('./googleAds.client', () => ({ googleAdsAdapter: adapters.google }))
 const metaInstruction = {
   provider: 'meta' as const,
   canonicalEvent: 'Contact' as const,
-  externalEventId: 'mg3_meta_contact',
+  externalEventId: `mg3_${'m'.repeat(43)}`,
   descriptor: {
     provider: 'meta' as const,
     canonicalEvent: 'Contact' as const,
@@ -55,9 +55,38 @@ describe('浏览器广告平台 adapter registry', () => {
     await expect(executeAdBrowserInstruction({ ...metaInstruction, provider: 'tiktok' })).resolves.toBe(false)
 
     expect(adapters.meta.initialize).toHaveBeenCalledWith({ provider: 'meta', pixelId: '123456789' })
-    expect(adapters.meta.track).toHaveBeenCalledWith(metaInstruction)
+    expect(adapters.meta.track).toHaveBeenCalledWith({
+      provider: 'meta',
+      canonicalEvent: 'Contact',
+      externalEventId: metaInstruction.externalEventId,
+      browserEventName: 'Contact',
+      browserDestination: 'meta_pixel',
+      payload: { method_type: 'telegram' },
+    })
     expect(adapters.meta.trackSignal).toHaveBeenCalledWith('PageView', {})
     expect(adapters.tiktok.track).not.toHaveBeenCalled()
+  })
+
+  it('离页事件不等待生命周期队列，调用时同步进入当前平台 adapter', async () => {
+    let invoked = false
+    adapters.meta.track.mockImplementation(async () => {
+      invoked = true
+      return true
+    })
+    const { dispatchAdBrowserEvent, initializeAdBrowserProvider } = await import('./adPlatformBrowser.client')
+    await initializeAdBrowserProvider({ provider: 'meta', pixelId: '123456789' })
+
+    const task = dispatchAdBrowserEvent({
+      provider: 'meta',
+      canonicalEvent: 'Contact',
+      externalEventId: metaInstruction.externalEventId,
+      browserEventName: 'Contact',
+      browserDestination: 'meta_pixel',
+      payload: {},
+    })
+
+    expect(invoked).toBe(true)
+    await expect(task).resolves.toBe(true)
   })
 
   it('来源从 Meta 切换到 TikTok 再切换 Google 时先 teardown', async () => {

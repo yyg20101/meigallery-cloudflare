@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildAdExternalEventId, buildAdExternalEventIdFromKey } from './ad-event-id'
+import {
+  buildAdExternalEventId,
+  buildAdExternalEventIdFromKey,
+  createRandomAdExternalEventId,
+  isAdExternalEventId,
+} from './ad-event-id'
 
 describe('buildAdExternalEventId', () => {
   const secret = 'test-ad-event-id-secret'
@@ -36,5 +41,16 @@ describe('buildAdExternalEventId', () => {
     )
     await expect(buildAdExternalEventIdFromKey(key, 'fact_1', 'Contact')).resolves.toMatch(/^mg3_/)
     expect(key.extractable).toBe(false)
+  })
+
+  it('浏览器随机编号与服务端编号共用严格协议', () => {
+    const first = createRandomAdExternalEventId()
+    const second = createRandomAdExternalEventId()
+
+    expect(isAdExternalEventId(first)).toBe(true)
+    expect(isAdExternalEventId(second)).toBe(true)
+    expect(second).not.toBe(first)
+    expect(first).toHaveLength(47)
+    expect(isAdExternalEventId('mg3_short')).toBe(false)
   })
 })

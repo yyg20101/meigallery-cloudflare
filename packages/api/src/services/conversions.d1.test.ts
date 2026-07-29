@@ -2,7 +2,11 @@ import { Buffer } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Miniflare } from 'miniflare'
-import { recordRegistration, type RecordRegistrationInput } from './conversions'
+import {
+  recordContact,
+  recordRegistration,
+  type RecordRegistrationInput,
+} from './conversions'
 import { decryptAttributionValue, loadAttributionCryptoKeys } from '../utils/attribution-crypto'
 
 const MASTER_KEY = Buffer.alloc(32).toString('base64')
@@ -29,6 +33,36 @@ beforeEach(async () => {
 afterAll(async () => { await miniflare.dispose() })
 
 describe('统一事实 D1 原子写入', () => {
+  it('浏览器预生成编号原样写入 Fact、Browser Delivery 和 Server Outbox', async () => {
+    await seed('meta')
+    const externalEventId = `mg3_${'c'.repeat(43)}`
+    const registration = registrationInput('meta')
+    const { hashedEmail: _hashedEmail, ...base } = registration
+    const result = await recordContact(env(), {
+      ...base,
+      actionType: 'open_link',
+      contactMethodId: 'contact_123',
+      contactPlatform: 'telegram',
+      externalEventId,
+    })
+
+    const fact = await db.prepare(
+      'SELECT external_event_id FROM attribution_conversion_facts WHERE id = ?',
+    ).bind(result.id).first<{ external_event_id: string }>()
+    const deliveries = await db.prepare(
+      'SELECT transport FROM attribution_deliveries WHERE fact_id = ? ORDER BY transport',
+    ).bind(result.id).all<{ transport: string }>()
+    const outbox = await db.prepare(
+      'SELECT key_id, iv, ciphertext, tag FROM attribution_outbox',
+    ).first<{ key_id: string; iv: string; ciphertext: string; tag: string }>()
+    const payload = await decryptPayload('meta', result.id, outbox!)
+
+    expect(fact?.external_event_id).toBe(externalEventId)
+    expect(deliveries.results.map(item => item.transport)).toEqual(['browser', 'server'])
+    expect(payload).toMatchObject({ externalEventId })
+    expect(result.trackingInstructions[0]?.externalEventId).toBe(externalEventId)
+  })
+
   it('D1 batch 成功后立即尝试入队，入队失败不回滚事实或 Outbox', async () => {
     await seed('meta')
     const send = vi.fn().mockRejectedValue(new Error('queue unavailable'))

@@ -18,6 +18,33 @@ describe('归因投递 Planner', () => {
     expect(plan.externalEventId).toMatch(/^mg3_/)
   })
 
+  it('Contact 采用已验证的浏览器事件编号并保持 Browser/Server 一致', async () => {
+    const externalEventId = `mg3_${'c'.repeat(43)}`
+    const plan = await buildAttributionDeliveryPlan({
+      factId: 'fact_client_id',
+      provider: 'meta',
+      canonicalEvent: 'Contact',
+      externalEventId,
+      sourceAvailable: true,
+      connection: readyConnection('meta'),
+    })
+
+    expect(plan.externalEventId).toBe(externalEventId)
+    expect(new Set(plan.deliveries.map(item => item.externalEventId))).toEqual(new Set([externalEventId]))
+    expect(plan.deliveries[0]?.browserInstruction?.externalEventId).toBe(externalEventId)
+  })
+
+  it('非法浏览器事件编号不会静默回退成另一个编号', async () => {
+    await expect(buildAttributionDeliveryPlan({
+      factId: 'fact_invalid_client_id',
+      provider: 'meta',
+      canonicalEvent: 'Contact',
+      externalEventId: 'mg3_short',
+      sourceAvailable: true,
+      connection: readyConnection('meta'),
+    })).rejects.toThrow('ATTRIBUTION_EVENT_ID_INVALID')
+  })
+
   it.each([
     ['无来源', false, true],
     ['冲突来源', true, false],

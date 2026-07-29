@@ -1,4 +1,9 @@
-import type { AdAttributionProvider, AdBrowserPublicConfig } from '@meigallery/shared'
+import type {
+  AdAttributionProvider,
+  AdBrowserEventTemplate,
+  AdBrowserPublicConfig,
+  CanonicalConversionEvent,
+} from '@meigallery/shared'
 import { readBrowserAdAttributionSignals } from '~/utils/adAttributionSignals'
 
 export type AdAttributionResolution = 'unresolved' | 'matched' | 'inherited' | 'none' | 'conflict'
@@ -21,6 +26,7 @@ export function useAdAttribution() {
   const provider = useState<AdAttributionProvider | null>('ad-attribution-provider', () => null)
   const resolution = useState<AdAttributionResolution>('ad-attribution-resolution', () => 'unresolved')
   const publicConfig = useState<AdBrowserPublicConfig | null>('ad-attribution-public-config', () => null)
+  const browserEvents = useState<AdBrowserEventTemplate[]>('ad-attribution-browser-events', () => [])
   const resolvedRouteKey = useState<string>('ad-attribution-route-key', () => '')
 
   async function resolve(route: AttributionRoute): Promise<AdAttributionProvider | null> {
@@ -44,7 +50,7 @@ export function useAdAttribution() {
         if (!normalized) throw new Error('广告来源响应不一致')
         if (version !== operationVersion) return null
         if (requiresFullReload(provider.value, normalized.provider)) {
-          resetLocalState(provider, resolution, publicConfig)
+          resetLocalState(provider, resolution, publicConfig, browserEvents)
           resolvedRouteKey.value = ''
           window.location.reload()
           return null
@@ -52,12 +58,15 @@ export function useAdAttribution() {
         const providerChanged = provider.value !== normalized.provider
         provider.value = normalized.provider
         resolution.value = normalized.resolution
-        if (providerChanged) publicConfig.value = null
+        if (providerChanged) {
+          publicConfig.value = null
+          browserEvents.value = []
+        }
         return normalized.provider
       }
       catch {
         if (version === operationVersion) {
-          resetLocalState(provider, resolution, publicConfig)
+          resetLocalState(provider, resolution, publicConfig, browserEvents)
           resolvedRouteKey.value = ''
         }
         try {
@@ -84,14 +93,24 @@ export function useAdAttribution() {
     const task = operationQueue.then(async () => {
       if (publicConfig.value?.provider === expectedProvider) return publicConfig.value
       try {
-        const response = await api<{ provider?: unknown; publicConfig?: unknown }>('/api/ad-attribution/bootstrap')
+        const response = await api<{ provider?: unknown; publicConfig?: unknown; events?: unknown }>('/api/ad-attribution/bootstrap')
         const config = normalizePublicConfig(response.publicConfig)
-        if (version !== operationVersion || response.provider !== expectedProvider || config?.provider !== expectedProvider) return null
+        const events = response.events === undefined
+          ? []
+          : normalizeBrowserEventTemplates(response.events, expectedProvider)
+        if (version !== operationVersion
+          || response.provider !== expectedProvider
+          || config?.provider !== expectedProvider
+          || events === null) return null
         publicConfig.value = config
+        browserEvents.value = events
         return config
       }
       catch {
-        if (version === operationVersion) publicConfig.value = null
+        if (version === operationVersion) {
+          publicConfig.value = null
+          browserEvents.value = []
+        }
         return null
       }
     })
@@ -101,7 +120,7 @@ export function useAdAttribution() {
 
   async function clear() {
     const version = ++operationVersion
-    resetLocalState(provider, resolution, publicConfig)
+    resetLocalState(provider, resolution, publicConfig, browserEvents)
     resolvedRouteKey.value = ''
     if (import.meta.server) return
     const task = operationQueue.then(async () => {
@@ -111,13 +130,42 @@ export function useAdAttribution() {
       catch {
         // 本地 Pixel 已关闭；服务端不可用不能阻断页面操作。
       }
-      if (version === operationVersion) resetLocalState(provider, resolution, publicConfig)
+      if (version === operationVersion) resetLocalState(provider, resolution, publicConfig, browserEvents)
     })
     operationQueue = task.then(() => undefined, () => undefined)
     await task
   }
 
-  return { provider, resolution, publicConfig, resolve, bootstrap, clear }
+  function isResolvedFor(route: AttributionRoute) {
+    const routeKey = attributionRouteKey(route)
+    return resolvedRouteKey.value === routeKey
+      && pendingResolution?.routeKey !== routeKey
+      && provider.value !== null
+      && (resolution.value === 'matched' || resolution.value === 'inherited')
+  }
+
+  function getBrowserEventTemplate(
+    route: AttributionRoute,
+    canonicalEvent: CanonicalConversionEvent,
+  ) {
+    if (!isResolvedFor(route)) return null
+    return browserEvents.value.find(event => (
+      event.provider === provider.value
+      && event.canonicalEvent === canonicalEvent
+    )) ?? null
+  }
+
+  return {
+    provider,
+    resolution,
+    publicConfig,
+    browserEvents,
+    resolve,
+    bootstrap,
+    clear,
+    isResolvedFor,
+    getBrowserEventTemplate,
+  }
 }
 
 export function requiresFullReload(
@@ -131,10 +179,12 @@ function resetLocalState(
   provider: ReturnType<typeof useState<AdAttributionProvider | null>>,
   resolution: ReturnType<typeof useState<AdAttributionResolution>>,
   publicConfig: ReturnType<typeof useState<AdBrowserPublicConfig | null>>,
+  browserEvents: ReturnType<typeof useState<AdBrowserEventTemplate[]>>,
 ) {
   provider.value = null
   resolution.value = 'none'
   publicConfig.value = null
+  browserEvents.value = []
 }
 
 function attributionRouteKey(route: AttributionRoute) {
@@ -209,7 +259,35 @@ function normalizePublicConfig(value: unknown): AdBrowserPublicConfig | null {
   return null
 }
 
+function normalizeBrowserEventTemplates(
+  value: unknown,
+  provider: AdAttributionProvider,
+): AdBrowserEventTemplate[] | null {
+  if (!Array.isArray(value)) return null
+  const normalized: AdBrowserEventTemplate[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+    const event = item as Record<string, unknown>
+    if (!exactKeys(event, ['provider', 'canonicalEvent', 'browserEventName', 'browserDestination'])
+      || event.provider !== provider
+      || (event.canonicalEvent !== 'Contact' && event.canonicalEvent !== 'CompleteRegistration')
+      || !safeTemplateText(event.browserDestination)
+      || (provider === 'google'
+        ? event.browserEventName !== 'conversion'
+        : event.browserEventName !== event.canonicalEvent)) return null
+    normalized.push(event as unknown as AdBrowserEventTemplate)
+  }
+  return normalized
+}
+
 function exactKeys(value: Record<string, unknown>, required: string[], optional: string[] = []) {
   const allowed = new Set([...required, ...optional])
   return required.every(key => key in value) && Object.keys(value).every(key => allowed.has(key))
+}
+
+function safeTemplateText(value: unknown) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= 200
+    && !/\p{Cc}/u.test(value)
 }

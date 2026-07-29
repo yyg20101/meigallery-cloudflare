@@ -49,6 +49,18 @@ export interface PlatformEventDescriptor {
   serverDestination: string
 }
 
+export interface AdBrowserEventTemplate {
+  provider: AdAttributionProvider
+  canonicalEvent: CanonicalConversionEvent
+  browserEventName: string
+  browserDestination: string
+}
+
+export interface AdBrowserEvent extends AdBrowserEventTemplate {
+  externalEventId: string
+  payload: Record<string, string | number | boolean>
+}
+
 export interface AdBrowserInstruction {
   provider: AdAttributionProvider
   canonicalEvent: CanonicalConversionEvent

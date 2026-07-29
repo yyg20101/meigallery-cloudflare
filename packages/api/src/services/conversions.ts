@@ -17,7 +17,12 @@ type ConversionBaseInput = {
   sourceChannel?: AnalyticsSourceChannel | string; sourceName?: string; trackingSourceSlug?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; utmContent?: string
   attributionContext?: AdAttributionContext | null; attributionSource?: 'context' | 'none' | 'conflict'; adPlatformUserData?: AdPlatformSensitiveContext; metadata?: Record<string, unknown>
 }
-export type RecordContactInput = ConversionBaseInput & { contactMethodId: string; contactPlatform: string; actionType: 'open_link' }
+export type RecordContactInput = ConversionBaseInput & {
+  contactMethodId: string
+  contactPlatform: string
+  actionType: 'open_link'
+  externalEventId?: string
+}
 export type RecordRegistrationInput = ConversionBaseInput & { userId: number; hashedEmail?: string }
 export type RecordRegistrationFactOnlyInput = Pick<RecordRegistrationInput, 'userId' | 'visitorId' | 'sessionId' | 'occurredAt' | 'sourceChannel' | 'sourceName' | 'trackingSourceSlug' | 'utmSource' | 'utmMedium' | 'utmCampaign' | 'utmContent' | 'metadata'>
 export interface RecordConversionResult { id: string; actionType: 'contact' | 'complete_registration'; created: boolean; duplicateOf: string; trackingInstructions: AdBrowserInstruction[] }
@@ -47,7 +52,7 @@ export async function recordRegistrationFactOnly(db: D1Database, input: RecordRe
   return { id, actionType: 'complete_registration', created: true, duplicateOf: '', trackingInstructions: [] }
 }
 
-async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & { actionType: 'contact' | 'complete_registration'; canonicalEvent: CanonicalConversionEvent; methodType: string; actionTarget: string; hashedEmail?: string }) {
+async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & { actionType: 'contact' | 'complete_registration'; canonicalEvent: CanonicalConversionEvent; methodType: string; actionTarget: string; hashedEmail?: string; externalEventId?: string }) {
   const occurredAt = iso(input.occurredAt)
   const eventTime = unixSeconds(occurredAt)
   const dedupeKey = buildConversionDedupeKey({ actionType: input.actionType, userId: input.userId ?? undefined, visitorId: input.visitorId, sessionId: input.sessionId, occurredDate: occurredAt.slice(0, 10), methodType: input.methodType, actionTarget: input.actionTarget })
@@ -63,6 +68,7 @@ async function recordLiveFact(env: ConversionEnv, input: ConversionBaseInput & {
   const matchSignals = definition && context.context ? definition.matchSignals({ contextIdentifiers: context.context.identifiers, contextIssuedAt: context.context.issuedAt, browserIdentifiers: adPlatformUserData }) : {}
   const plan = await buildAttributionDeliveryPlan({
     factId: id, provider: context.provider, canonicalEvent: input.canonicalEvent,
+    externalEventId: input.externalEventId,
     sourceAvailable: context.sourceAvailable, cryptoKeys: keys, matchSignals,
     serverAllowed: Boolean(pageUrl) && serverMatchAvailable(definition, matchSignals, input.hashedEmail, adPlatformUserData), connection: snapshot,
   })

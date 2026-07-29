@@ -1,8 +1,9 @@
 import type {
+  AdBrowserEvent,
   AdBrowserPublicConfig,
-  AdBrowserInstruction,
   AdBrowserSignal,
 } from '@meigallery/shared'
+import { isAdExternalEventId } from '@meigallery/shared/utils'
 import { createFacebookPixelScript, normalizePixelId } from '~/utils/trackingSanitizer'
 
 type MetaPixelEventName = AdBrowserSignal | 'Contact' | 'CompleteRegistration'
@@ -21,8 +22,6 @@ declare global {
     _fbq?: FacebookQueueFunction
   }
 }
-
-const EXTERNAL_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
 export function createMetaPixelAdapter() {
   let initialized = false
@@ -63,13 +62,13 @@ export function createMetaPixelAdapter() {
     return call('init', pixelId)
   }
 
-  async function track(instruction: AdBrowserInstruction) {
-    if (!validInstruction(instruction)) return false
+  async function track(event: AdBrowserEvent) {
+    if (!validEvent(event)) return false
     return call(
       'track',
-      instruction.descriptor.browserEventName,
-      instruction.payload,
-      { eventID: instruction.externalEventId },
+      event.browserEventName,
+      event.payload,
+      { eventID: event.externalEventId },
     )
   }
 
@@ -96,12 +95,10 @@ export function createMetaPixelAdapter() {
 
 export const metaPixelAdapter = createMetaPixelAdapter()
 
-function validInstruction(instruction: AdBrowserInstruction) {
-  return instruction.provider === 'meta'
-    && instruction.descriptor.provider === 'meta'
-    && instruction.descriptor.canonicalEvent === instruction.canonicalEvent
-    && instruction.descriptor.browserEventName === instruction.canonicalEvent
-    && EXTERNAL_EVENT_ID_PATTERN.test(instruction.externalEventId)
+function validEvent(event: AdBrowserEvent) {
+  return event.provider === 'meta'
+    && event.browserEventName === event.canonicalEvent
+    && isAdExternalEventId(event.externalEventId)
 }
 
 function isClientRuntime() {

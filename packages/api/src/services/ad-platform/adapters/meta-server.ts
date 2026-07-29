@@ -1,4 +1,5 @@
 import type { MetaServerDeliveryInput, ServerAdapterRequest, ServerDeliveryResult, ServerTrackingAdapter } from '../server-adapter'
+import { isAdExternalEventId } from '@meigallery/shared/utils'
 import { META_GRAPH_API_VERSION } from '../protocol-versions'
 import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../../utils/ad-platform-identifiers'
 
@@ -6,7 +7,6 @@ const META_ENDPOINT = `https://graph.facebook.com/${META_GRAPH_API_VERSION}`
 const META_SIGNALS = new Set(['fbc', 'fbp'])
 const CROSS_PLATFORM_SIGNALS = new Set(['ttclid', 'ttp', 'gclid', 'gbraid', 'wbraid'])
 const TRANSIENT_META_CODES = new Set([1, 2, 4, 17, 32, 341, 613])
-const EVENT_ID_PATTERN = /^mg3_[A-Za-z0-9_-]{43}$/
 const PIXEL_ID_PATTERN = /^\d{5,20}$/
 const MIN_EVENT_TIME = 946_684_800
 const MAX_EVENT_TIME = 4_102_444_799
@@ -84,7 +84,7 @@ async function readMetaError(response: Response) {
   catch { return { code: null, subcode: null, isTransient: false } }
 }
 function validDeliveryCore(input: MetaServerDeliveryInput) { return (input.canonicalEvent === 'Contact' || input.canonicalEvent === 'CompleteRegistration') && validEventId(input.externalEventId) && validEventTime(input.eventTime) && validUrl(input.pageUrl) }
-function validEventId(value: unknown): value is string { return typeof value === 'string' && value.length <= 64 && EVENT_ID_PATTERN.test(value) }
+function validEventId(value: unknown): value is string { return isAdExternalEventId(value) }
 function validEventTime(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= MIN_EVENT_TIME && value <= MAX_EVENT_TIME }
 function validUrl(value: string) { try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname) && !url.username && !url.password } catch { return false } }
 function validHash(value: unknown) { return value === undefined || typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) }

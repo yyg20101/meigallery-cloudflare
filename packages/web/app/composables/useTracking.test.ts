@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 const adapter = vi.hoisted(() => ({
   initialize: vi.fn(),
+  dispatch: vi.fn(),
   execute: vi.fn(),
   signal: vi.fn(),
   teardown: vi.fn(),
@@ -10,6 +11,7 @@ const adapter = vi.hoisted(() => ({
 
 vi.mock('~/adapters/adPlatformBrowser.client', () => ({
   initializeAdBrowserProvider: adapter.initialize,
+  dispatchAdBrowserEvent: adapter.dispatch,
   executeAdBrowserInstruction: adapter.execute,
   trackAdBrowserSignal: adapter.signal,
   teardownAllAdBrowserProviders: adapter.teardown,
@@ -20,15 +22,29 @@ import { useTracking } from './useTracking'
 
 const api = vi.fn()
 const trackAnalytics = vi.fn()
+const flushAnalytics = vi.fn()
 const attributionProvider = ref<'meta' | 'tiktok' | 'google' | null>('meta')
 const attributionResolution = ref<'matched' | 'inherited' | 'none' | 'conflict'>('matched')
 const publicConfig = ref<Record<string, string> | null>({ provider: 'meta', pixelId: '123456789' })
+const browserEvents = ref([{
+  provider: 'meta' as const,
+  canonicalEvent: 'Contact' as const,
+  browserEventName: 'Contact',
+  browserDestination: 'meta_pixel',
+}])
 const resolveAdAttribution = vi.fn(async () => attributionProvider.value)
 const bootstrapAdAttribution = vi.fn(async () => publicConfig.value)
+const getBrowserEventTemplate = vi.fn(() => (
+  browserEvents.value.find(event => (
+    event.provider === attributionProvider.value
+    && event.canonicalEvent === 'Contact'
+  )) ?? null
+))
 const clearAdAttribution = vi.fn(async () => {
   attributionProvider.value = null
   attributionResolution.value = 'none'
   publicConfig.value = null
+  browserEvents.value = []
 })
 let route = {
   name: 'gallery-slug',
@@ -40,7 +56,7 @@ let route = {
 const metaInstruction = {
   provider: 'meta' as const,
   canonicalEvent: 'Contact' as const,
-  externalEventId: 'mg3_contact_123',
+  externalEventId: `mg3_${'m'.repeat(43)}`,
   descriptor: {
     provider: 'meta' as const,
     canonicalEvent: 'Contact' as const,
@@ -55,16 +71,25 @@ describe('useTracking', () => {
   beforeEach(() => {
     api.mockReset().mockResolvedValue({ data: { id: 'fact_1', created: true, trackingInstructions: [] } })
     trackAnalytics.mockReset()
+    flushAnalytics.mockReset().mockResolvedValue(null)
     adapter.initialize.mockReset().mockResolvedValue(true)
+    adapter.dispatch.mockReset().mockResolvedValue(true)
     adapter.execute.mockReset().mockResolvedValue(true)
     adapter.signal.mockReset().mockResolvedValue(true)
     adapter.teardown.mockReset().mockResolvedValue(undefined)
     attributionProvider.value = 'meta'
     attributionResolution.value = 'matched'
     publicConfig.value = { provider: 'meta', pixelId: '123456789' }
+    browserEvents.value = [{
+      provider: 'meta',
+      canonicalEvent: 'Contact',
+      browserEventName: 'Contact',
+      browserDestination: 'meta_pixel',
+    }]
     resolveAdAttribution.mockClear()
     bootstrapAdAttribution.mockClear()
     clearAdAttribution.mockClear()
+    getBrowserEventTemplate.mockClear()
     route = {
       name: 'gallery-slug',
       path: '/gallery/summer',
@@ -91,14 +116,18 @@ describe('useTracking', () => {
         },
       }),
       track: trackAnalytics,
+      flush: flushAnalytics,
     }))
     vi.stubGlobal('useAdAttribution', () => ({
       provider: attributionProvider,
       resolution: attributionResolution,
       publicConfig,
+      browserEvents,
       resolve: resolveAdAttribution,
       bootstrap: bootstrapAdAttribution,
       clear: clearAdAttribution,
+      isResolvedFor: () => true,
+      getBrowserEventTemplate,
     }))
   })
 
@@ -108,9 +137,7 @@ describe('useTracking', () => {
     vi.unstubAllGlobals()
   })
 
-  it('合法 open_link 只创建一次 Contact 并按最终 instruction 执行当前 provider', async () => {
-    api.mockResolvedValueOnce({ data: { id: 'fact_1', created: true, trackingInstructions: [metaInstruction] } })
-
+  it('合法 open_link 在离页前以同一编号发送点击、Browser Pixel 与服务端事实', async () => {
     await useTracking().trackContact({
       contactMethodId: 'contact_123',
       methodType: 'telegram',
@@ -119,6 +146,7 @@ describe('useTracking', () => {
 
     expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
       method: 'POST',
+      keepalive: true,
       body: expect.objectContaining({
         actionType: 'open_link',
         contactMethodId: 'contact_123',
@@ -126,11 +154,61 @@ describe('useTracking', () => {
       }),
     }))
     const body = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
+    expect(body.externalEventId).toMatch(/^mg3_[A-Za-z0-9_-]{43}$/)
     expect(body).not.toHaveProperty('actionTarget')
     expect(JSON.stringify(body)).not.toContain('actionType":"contact')
-    expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value)
-    expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
-    expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({ eventId: 'mg3_contact_123' }))
+    expect(adapter.dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'meta',
+      canonicalEvent: 'Contact',
+      externalEventId: body.externalEventId,
+      browserEventName: 'Contact',
+      browserDestination: 'meta_pixel',
+    }))
+    expect(trackAnalytics).toHaveBeenCalledWith('contact_method_click', expect.objectContaining({
+      eventId: body.externalEventId,
+    }))
+    expect(flushAnalytics).toHaveBeenCalledWith({ beacon: true })
+    expect(adapter.execute).not.toHaveBeenCalled()
+  })
+
+  it('Conversion API 未返回时，离页所需动作已经同步启动', async () => {
+    let release!: (value: unknown) => void
+    api.mockReturnValueOnce(new Promise(resolve => {
+      release = resolve
+    }))
+
+    const request = useTracking().trackContact({
+      contactMethodId: 'contact_123',
+      methodType: 'telegram',
+      actionType: 'open_link',
+    })
+
+    expect(trackAnalytics).toHaveBeenCalledOnce()
+    expect(flushAnalytics).toHaveBeenCalledWith({ beacon: true })
+    expect(adapter.dispatch).toHaveBeenCalledOnce()
+    expect(api).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
+      keepalive: true,
+    }))
+    release({ data: { id: 'fact_1', created: true, trackingInstructions: [] } })
+    await request
+  })
+
+  it('同一 session 的重复联系复用一个外部事件编号', async () => {
+    const tracking = useTracking()
+    await tracking.trackContact({
+      contactMethodId: 'contact_123',
+      methodType: 'telegram',
+      actionType: 'open_link',
+    })
+    await tracking.trackContact({
+      contactMethodId: 'contact_123',
+      methodType: 'telegram',
+      actionType: 'open_link',
+    })
+
+    const bodies = api.mock.calls.map(call => call[1]?.body as { externalEventId?: string })
+    expect(bodies[0]?.externalEventId).toBeTruthy()
+    expect(bodies[1]?.externalEventId).toBe(bodies[0]?.externalEventId)
   })
 
   it('Contact 向服务端携带原始来源信号但不声明 provider', async () => {
@@ -175,12 +253,13 @@ describe('useTracking', () => {
     const conversionCalls = api.mock.calls.filter(call => call[0] === '/api/conversions/events')
     expect(conversionCalls).toHaveLength(2)
     expect(conversionCalls[1]?.[1]?.body).toEqual(conversionCalls[0]?.[1]?.body)
-    expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
+    expect(adapter.dispatch).toHaveBeenCalledOnce()
+    expect(adapter.execute).not.toHaveBeenCalled()
   })
 
   it('平台脚本执行失败不影响已经完成的联系业务事实', async () => {
     api.mockResolvedValueOnce({ data: { id: 'fact_1', created: true, trackingInstructions: [metaInstruction] } })
-    adapter.execute.mockResolvedValueOnce(false)
+    adapter.dispatch.mockResolvedValueOnce(false)
 
     await useTracking().trackContact({
       contactMethodId: 'contact_123',
@@ -189,6 +268,46 @@ describe('useTracking', () => {
     })
 
     expect(api.mock.calls.filter(call => call[0] === '/api/conversions/events')).toHaveLength(1)
+    expect(adapter.execute).toHaveBeenCalledWith(metaInstruction)
+  })
+
+  it('缓存模板与当前来源不一致时不预发送，响应后仍只执行当前平台', async () => {
+    attributionProvider.value = 'tiktok'
+    publicConfig.value = { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }
+    browserEvents.value = [{
+      provider: 'meta',
+      canonicalEvent: 'Contact',
+      browserEventName: 'Contact',
+      browserDestination: 'meta_pixel',
+    }]
+    const tiktokInstruction = {
+      provider: 'tiktok' as const,
+      canonicalEvent: 'Contact' as const,
+      externalEventId: `mg3_${'t'.repeat(43)}`,
+      descriptor: {
+        provider: 'tiktok' as const,
+        canonicalEvent: 'Contact' as const,
+        browserEventName: 'Contact',
+        browserDestination: 'tiktok_pixel',
+        serverDestination: 'tiktok_events_api',
+      },
+      payload: {},
+    }
+    api.mockResolvedValueOnce({
+      data: { id: 'fact_tiktok', created: true, trackingInstructions: [tiktokInstruction] },
+    })
+
+    await useTracking().trackContact({
+      contactMethodId: 'contact_123',
+      methodType: 'telegram',
+      actionType: 'open_link',
+    })
+
+    expect(adapter.dispatch).not.toHaveBeenCalled()
+    expect(adapter.initialize).toHaveBeenCalledWith(publicConfig.value)
+    expect(adapter.execute).toHaveBeenCalledWith(tiktokInstruction)
+    const body = api.mock.calls[0]?.[1]?.body as Record<string, unknown>
+    expect(body).not.toHaveProperty('externalEventId')
   })
 
   it('Contact 遇到业务 4xx 时不重试', async () => {
@@ -202,6 +321,7 @@ describe('useTracking', () => {
 
     expect(api).toHaveBeenCalledOnce()
     expect(adapter.execute).not.toHaveBeenCalled()
+    expect(adapter.dispatch).toHaveBeenCalledOnce()
   })
 
   it('copy 永不 POST conversion 或执行广告 instruction', async () => {
@@ -213,6 +333,7 @@ describe('useTracking', () => {
 
     expect(api).not.toHaveBeenCalled()
     expect(adapter.initialize).not.toHaveBeenCalled()
+    expect(adapter.dispatch).not.toHaveBeenCalled()
     expect(adapter.execute).not.toHaveBeenCalled()
   })
 

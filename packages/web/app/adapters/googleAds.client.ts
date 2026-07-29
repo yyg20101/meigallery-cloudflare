@@ -1,8 +1,9 @@
 import type {
+  AdBrowserEvent,
   AdBrowserPublicConfig,
-  AdBrowserInstruction,
   AdBrowserSignal,
 } from '@meigallery/shared'
+import { isAdExternalEventId } from '@meigallery/shared/utils'
 
 type BrowserPayload = Record<string, string | number | boolean>
 type DataLayer = unknown[][]
@@ -17,7 +18,6 @@ declare global {
 
 const GOOGLE_TAG_PATTERN = /^AW-\d{5,20}$/
 const GOOGLE_DESTINATION_PATTERN = /^AW-\d{5,20}\/[A-Za-z0-9_-]{1,100}$/
-const EXTERNAL_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 const BLOCKED_PAYLOAD_KEY_PATTERN = /(?:email|phone|click|gclid|gbraid|wbraid|fbp|fbc|ttclid|ttp|destination|token)/i
 const SIGNAL_EVENT_NAMES: Record<AdBrowserSignal, string> = {
   PageView: 'page_view',
@@ -61,12 +61,12 @@ export function createGoogleAdsAdapter() {
     return true
   }
 
-  async function track(instruction: AdBrowserInstruction) {
-    if (!initialized || !window.gtag || !validInstruction(instruction, activeTagId)) return false
+  async function track(event: AdBrowserEvent) {
+    if (!initialized || !window.gtag || !validEvent(event, activeTagId)) return false
     window.gtag('event', 'conversion', {
-      ...safePayload(instruction.payload),
-      send_to: instruction.descriptor.browserDestination,
-      transaction_id: instruction.externalEventId,
+      ...safePayload(event.payload),
+      send_to: event.browserDestination,
+      transaction_id: event.externalEventId,
     })
     return true
   }
@@ -95,14 +95,12 @@ export function createGoogleAdsAdapter() {
 
 export const googleAdsAdapter = createGoogleAdsAdapter()
 
-function validInstruction(instruction: AdBrowserInstruction, activeTagId: string) {
-  return instruction.provider === 'google'
-    && instruction.descriptor.provider === 'google'
-    && instruction.descriptor.canonicalEvent === instruction.canonicalEvent
-    && instruction.descriptor.browserEventName === 'conversion'
-    && GOOGLE_DESTINATION_PATTERN.test(instruction.descriptor.browserDestination)
-    && instruction.descriptor.browserDestination.startsWith(`${activeTagId}/`)
-    && EXTERNAL_EVENT_ID_PATTERN.test(instruction.externalEventId)
+function validEvent(event: AdBrowserEvent, activeTagId: string) {
+  return event.provider === 'google'
+    && event.browserEventName === 'conversion'
+    && GOOGLE_DESTINATION_PATTERN.test(event.browserDestination)
+    && event.browserDestination.startsWith(`${activeTagId}/`)
+    && isAdExternalEventId(event.externalEventId)
 }
 
 function safePayload(payload: BrowserPayload) {

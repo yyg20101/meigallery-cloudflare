@@ -1,17 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-function instruction(provider: 'tiktok' | 'meta' = 'tiktok') {
+const EVENT_ID = `mg3_${'t'.repeat(43)}`
+
+function event(provider: 'tiktok' | 'meta' = 'tiktok') {
   return {
     provider,
     canonicalEvent: 'CompleteRegistration' as const,
-    externalEventId: 'mg3_tiktok_registration_1',
-    descriptor: {
-      provider,
-      canonicalEvent: 'CompleteRegistration' as const,
-      browserEventName: 'CompleteRegistration',
-      browserDestination: 'tiktok_pixel',
-      serverDestination: 'tiktok_events_api',
-    },
+    externalEventId: EVENT_ID,
+    browserEventName: 'CompleteRegistration',
+    browserDestination: 'tiktok_pixel',
     payload: { content_type: 'registration' },
   }
 }
@@ -38,23 +35,23 @@ describe('TikTok Pixel adapter', () => {
     await expect(adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' })).resolves.toBe(true)
     await expect(adapter.trackSignal('PageView', {})).resolves.toBe(true)
     await expect(adapter.trackSignal('Search', { search_string: 'portrait' })).resolves.toBe(true)
-    await expect(adapter.track(instruction())).resolves.toBe(true)
+    await expect(adapter.track(event())).resolves.toBe(true)
 
     expect(window.ttq).toEqual(expect.arrayContaining([
       ['page'],
       ['track', 'Search', { search_string: 'portrait' }],
-      ['track', 'CompleteRegistration', { content_type: 'registration' }, { event_id: 'mg3_tiktok_registration_1' }],
+      ['track', 'CompleteRegistration', { content_type: 'registration' }, { event_id: EVENT_ID }],
     ]))
   })
 
-  it('跨 provider instruction 和非法 externalEventId 均 fail closed', async () => {
+  it('跨 provider event 和非法 externalEventId 均 fail closed', async () => {
     const { createTikTokPixelAdapter } = await import('./tiktokPixel.client')
     const adapter = createTikTokPixelAdapter()
     vi.spyOn(document.head, 'appendChild').mockImplementation(<T extends Node>(node: T) => node)
     await adapter.initialize({ provider: 'tiktok', pixelCode: 'C123456789ABCDEF' })
 
-    await expect(adapter.track(instruction('meta'))).resolves.toBe(false)
-    await expect(adapter.track({ ...instruction(), externalEventId: 'person@example.com' })).resolves.toBe(false)
+    await expect(adapter.track(event('meta'))).resolves.toBe(false)
+    await expect(adapter.track({ ...event(), externalEventId: 'person@example.com' })).resolves.toBe(false)
     expect(window.ttq?.some(item => Array.isArray(item) && item[0] === 'track')).toBe(false)
   })
 

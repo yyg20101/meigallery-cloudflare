@@ -1,4 +1,5 @@
 import type { AdAttributionProvider, AdPlatformQueueMessage, CanonicalConversionEvent } from '@meigallery/shared'
+import { isAdExternalEventId } from '@meigallery/shared/utils'
 import { decryptAttributionValue, loadAttributionCryptoKeys } from '../../utils/attribution-crypto'
 import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../utils/ad-platform-identifiers'
 import { CredentialVaultError, readAttributionCredential } from './credential-vault'
@@ -273,7 +274,7 @@ function parsePayload(plaintext: string, row: AttributionDeliveryQueueRow): Decr
   try {
     const value = JSON.parse(plaintext) as Record<string, unknown>
     if ((value.canonicalEvent !== 'Contact' && value.canonicalEvent !== 'CompleteRegistration')
-      || !identifier(value.externalEventId)
+      || !isAdExternalEventId(value.externalEventId)
       || !Number.isSafeInteger(value.eventTime)
       || !validUrl(value.pageUrl)
       || typeof value.destination !== 'string'

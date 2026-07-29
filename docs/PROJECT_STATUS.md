@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-07-28。
+更新时间：2026-07-29。
 
 本文件只记录当前状态。历史变更以 Git、PR、tag 和 `docs/releases/` 为准。
 
@@ -43,6 +43,7 @@
 - 没有新来源时继承 30 天内最近一次有效广告来源；自然流量没有历史来源时不加载 Pixel。
 - 跨平台信号冲突或来源不可信时只记录站内事实，不向任何广告平台发送。
 - Browser 与 Server 共用 external event ID，支持同平台去重。
+- Contact 外链在原生导航前同步进入当前来源 Pixel 队列，站内点击使用 Beacon 刷新，API 使用 `keepalive` 保存同一编号的事实与 Server 投递；未新增表、Worker 或第二条事实链路。
 - Meta、TikTok、Google 使用独立凭证、目标映射、Queue 和 DLQ。
 - 平台凭证由 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 加密，管理端不回显明文。
 - Test Event Code 只用于单次同步连接测试，不持久化，也不进入正式事件。

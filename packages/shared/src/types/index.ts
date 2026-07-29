@@ -72,6 +72,8 @@ import type {
 } from './ad-attribution'
 
 export type {
+  AdBrowserEvent,
+  AdBrowserEventTemplate,
   AdBrowserPublicConfig,
   AdAttributionProvider,
   AdBrowserInstruction,

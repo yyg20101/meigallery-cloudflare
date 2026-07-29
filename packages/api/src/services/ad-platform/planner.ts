@@ -1,5 +1,5 @@
 import type { AdAttributionProvider, AdBrowserInstruction, CanonicalConversionEvent } from '@meigallery/shared'
-import { buildAdExternalEventIdFromKey } from '@meigallery/shared/utils'
+import { buildAdExternalEventIdFromKey, isAdExternalEventId } from '@meigallery/shared/utils'
 import { deriveAttributionHmacKey, type AttributionCryptoKeys } from '../../utils/attribution-crypto'
 import type { AttributionConnectionSnapshot } from './connections'
 import { getAdPlatformDefinition } from './registry'
@@ -20,6 +20,7 @@ export async function buildAttributionDeliveryPlan(input: {
   factId: string
   provider: unknown
   canonicalEvent: CanonicalConversionEvent
+  externalEventId?: string
   sourceAvailable: boolean
   serverAllowed?: boolean
   cryptoKeys?: AttributionCryptoKeys
@@ -27,9 +28,15 @@ export async function buildAttributionDeliveryPlan(input: {
   matchSignals?: Record<string, string>
   connection: AttributionConnectionSnapshot
 }): Promise<AttributionDeliveryPlan> {
-  const eventKey = input.eventKey ?? (input.cryptoKeys ? await deriveAttributionHmacKey({ keys: input.cryptoKeys, purpose: 'event_id' }) : null)
-  if (!eventKey) throw new Error('ATTRIBUTION_EVENT_KEY_UNAVAILABLE')
-  const externalEventId = await buildAdExternalEventIdFromKey(eventKey, input.factId, input.canonicalEvent)
+  let externalEventId = input.externalEventId
+  if (externalEventId !== undefined && !isAdExternalEventId(externalEventId)) {
+    throw new Error('ATTRIBUTION_EVENT_ID_INVALID')
+  }
+  if (!externalEventId) {
+    const eventKey = input.eventKey ?? (input.cryptoKeys ? await deriveAttributionHmacKey({ keys: input.cryptoKeys, purpose: 'event_id' }) : null)
+    if (!eventKey) throw new Error('ATTRIBUTION_EVENT_KEY_UNAVAILABLE')
+    externalEventId = await buildAdExternalEventIdFromKey(eventKey, input.factId, input.canonicalEvent)
+  }
   const definition = getAdPlatformDefinition(input.provider)
   if (!definition || !input.sourceAvailable || input.connection.state !== 'ready') return { externalEventId, deliveries: [] }
   const { connection, bindings } = input.connection

@@ -33,11 +33,13 @@ describe('useAdAttribution', () => {
     ['tiktok', { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }],
     ['google', { provider: 'google', tagId: 'AW-123456789' }],
   ] as const)('bootstrap 只缓存当前 %s 来源的最终 public config', async (provider, publicConfig) => {
+    const route = { path: '/gallery/source', query: provider === 'meta' ? { fbclid: 'click' } : {} }
+    const events = [browserEvent(provider)]
     api
       .mockResolvedValueOnce({ provider, resolution: 'matched', expiresInSeconds: 1_800 })
-      .mockResolvedValueOnce({ provider, publicConfig })
+      .mockResolvedValueOnce({ provider, publicConfig, events })
     const attribution = useAdAttribution()
-    await attribution.resolve({ path: '/gallery/source', query: provider === 'meta' ? { fbclid: 'click' } : {} })
+    await attribution.resolve(route)
 
     await expect(attribution.bootstrap()).resolves.toEqual(publicConfig)
     await expect(attribution.bootstrap()).resolves.toEqual(publicConfig)
@@ -45,6 +47,8 @@ describe('useAdAttribution', () => {
     expect(api).toHaveBeenLastCalledWith('/api/ad-attribution/bootstrap')
     expect(api).toHaveBeenCalledTimes(2)
     expect(attribution.publicConfig.value).toEqual(publicConfig)
+    expect(attribution.browserEvents.value).toEqual(events)
+    expect(attribution.getBrowserEventTemplate(route, 'Contact')).toEqual(events[0])
   })
 
   it.each([
@@ -74,6 +78,24 @@ describe('useAdAttribution', () => {
 
     await expect(attribution.bootstrap()).resolves.toBeNull()
     expect(attribution.publicConfig.value).toBeNull()
+  })
+
+  it('bootstrap 拒绝包含服务端 destination 的浏览器事件模板', async () => {
+    api
+      .mockResolvedValueOnce({ provider: 'meta', resolution: 'matched', expiresInSeconds: 1_800 })
+      .mockResolvedValueOnce({
+        provider: 'meta',
+        publicConfig: { provider: 'meta', pixelId: '123456789' },
+        events: [{
+          ...browserEvent('meta'),
+          serverDestination: 'meta_capi',
+        }],
+      })
+    const attribution = useAdAttribution()
+    await attribution.resolve({ path: '/meta-source', query: { fbclid: 'click' } })
+
+    await expect(attribution.bootstrap()).resolves.toBeNull()
+    expect(attribution.browserEvents.value).toEqual([])
   })
 
   it.each([
@@ -309,3 +331,14 @@ describe('useAdAttribution', () => {
     expect(api).toHaveBeenLastCalledWith('/api/ad-attribution', { method: 'DELETE' })
   })
 })
+
+function browserEvent(provider: 'meta' | 'tiktok' | 'google') {
+  return {
+    provider,
+    canonicalEvent: 'Contact' as const,
+    browserEventName: provider === 'google' ? 'conversion' : 'Contact',
+    browserDestination: provider === 'google'
+      ? 'AW-123456789/Contact_Label'
+      : provider === 'meta' ? 'meta_pixel' : 'tiktok_pixel',
+  }
+}

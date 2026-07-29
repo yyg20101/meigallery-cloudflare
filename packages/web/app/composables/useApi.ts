@@ -63,6 +63,7 @@ export function useApi() {
   async function ssrFetch<T>(fullPath: string, options?: {
     method?: string
     body?: unknown
+    keepalive?: boolean
   }): Promise<T> {
     const event = useRequestEvent()
     const apiBinding = (event?.context as Record<string, any>)?.cloudflare?.env?.API_SERVICE
@@ -73,6 +74,7 @@ export function useApi() {
       // Cloudflare Workers 环境：Service Binding 直连（域名仅占位，路由取决于路径）
       const init: RequestInit = {
         method: options?.method || 'GET',
+        keepalive: options?.keepalive,
       }
       if (isFormDataBody(options?.body)) {
         init.body = options.body
@@ -92,6 +94,7 @@ export function useApi() {
     const apiBaseUrl = config.public.apiBaseUrl as string
     const fetchOpts: RequestInit = {
       method: options?.method || 'GET',
+      keepalive: options?.keepalive,
     }
     if (isFormDataBody(options?.body)) {
       fetchOpts.body = options.body
@@ -121,6 +124,7 @@ export function useApi() {
       method?: string
       body?: unknown
       query?: Record<string, string | number | undefined>
+      keepalive?: boolean
     },
   ): Promise<T> {
     const method = options?.method || 'GET'
@@ -137,6 +141,7 @@ export function useApi() {
     const fetchOptions: Record<string, unknown> = {
       method,
       credentials: 'include',
+      keepalive: options?.keepalive,
     }
     if (isFormDataBody(options?.body)) {
       fetchOptions.body = options.body
