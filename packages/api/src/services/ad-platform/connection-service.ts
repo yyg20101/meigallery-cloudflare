@@ -4,6 +4,10 @@ import type {
   PlatformPublicConfig,
 } from '@meigallery/shared'
 import {
+  CANONICAL_CONVERSION_EVENTS,
+  isCanonicalConversionEvent,
+} from '@meigallery/shared/constants'
+import {
   CredentialVaultError,
   prepareAttributionCredential,
   type CredentialVaultEnv,
@@ -12,9 +16,12 @@ import {
 import { readAttributionConnectionSnapshot } from './connections'
 import { getAdPlatformDefinition, listAdPlatformProviders } from './registry'
 
-const CANONICAL_EVENTS = ['Contact', 'CompleteRegistration'] as const
 const OPAQUE_ID_BYTES = 12
 const BINDING_FIELDS = new Set(['canonicalEvent', 'enabled', 'browserDestination', 'serverDestination'])
+const BINDING_ID_SUFFIX: Record<CanonicalConversionEvent, string> = {
+  Contact: 'contact',
+  CompleteRegistration: 'registration',
+}
 
 export interface PlatformEventBindingInput {
   canonicalEvent: CanonicalConversionEvent
@@ -183,7 +190,7 @@ export async function getPlatformConnection(
       browserEnabled: snapshot.connection.browserEnabled,
       serverEnabled: snapshot.connection.serverEnabled,
       publicConfig: { provider: snapshot.connection.provider, ...snapshot.connection.publicConfig } as PlatformPublicConfig,
-      eventBindings: CANONICAL_EVENTS.map(canonicalEvent => ({
+      eventBindings: CANONICAL_CONVERSION_EVENTS.map(canonicalEvent => ({
         canonicalEvent,
         enabled: snapshot.bindings.get(canonicalEvent)!.enabled,
         browserDestination: snapshot.bindings.get(canonicalEvent)!.browserDestination,
@@ -245,13 +252,13 @@ function validateEventBindings(
   publicConfig: Record<string, string>,
   definition: NonNullable<ReturnType<typeof getAdPlatformDefinition>>,
 ): ValidatedBinding[] {
-  if (!Array.isArray(value) || value.length !== CANONICAL_EVENTS.length) {
+  if (!Array.isArray(value) || value.length !== CANONICAL_CONVERSION_EVENTS.length) {
     throw serviceError('AD_PLATFORM_CONNECTION_BINDINGS_INVALID')
   }
   const bindings = new Map<CanonicalConversionEvent, ValidatedBinding>()
   for (const input of value) {
     if (!isPlainRecord(input) || !hasOnlyFields(input, BINDING_FIELDS)
-      || !CANONICAL_EVENTS.includes(input.canonicalEvent as CanonicalConversionEvent)
+      || !isCanonicalConversionEvent(input.canonicalEvent)
       || typeof input.enabled !== 'boolean' || bindings.has(input.canonicalEvent as CanonicalConversionEvent)) {
       throw serviceError('AD_PLATFORM_CONNECTION_BINDINGS_INVALID')
     }
@@ -265,10 +272,10 @@ function validateEventBindings(
     if (!destinations) throw serviceError('AD_PLATFORM_CONNECTION_BINDINGS_INVALID')
     bindings.set(canonicalEvent, { canonicalEvent, enabled: input.enabled, ...destinations })
   }
-  if (!CANONICAL_EVENTS.every(event => bindings.has(event))) {
+  if (!CANONICAL_CONVERSION_EVENTS.every(event => bindings.has(event))) {
     throw serviceError('AD_PLATFORM_CONNECTION_BINDINGS_INVALID')
   }
-  const ordered = CANONICAL_EVENTS.map(event => bindings.get(event)!)
+  const ordered = CANONICAL_CONVERSION_EVENTS.map(event => bindings.get(event)!)
   if (!definition.validateEventBindingSet(ordered)) {
     throw serviceError('AD_PLATFORM_CONNECTION_BINDINGS_INVALID')
   }
@@ -488,7 +495,7 @@ function publicConnectionView(result: PersistedPlatformConnection): PlatformConn
 }
 
 function bindingId(provider: AdAttributionProvider, event: CanonicalConversionEvent) {
-  return `binding_${provider}_${event === 'Contact' ? 'contact' : 'registration'}`
+  return `binding_${provider}_${BINDING_ID_SUFFIX[event]}`
 }
 
 function createOpaqueId() {

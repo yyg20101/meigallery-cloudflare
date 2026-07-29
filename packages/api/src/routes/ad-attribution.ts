@@ -1,9 +1,19 @@
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
-import type { AdAttributionProvider, AdBrowserPublicConfig } from '@meigallery/shared'
+import type {
+  AdAttributionBrowserContextResponse,
+  AdAttributionProvider,
+  AdBrowserEventTemplate,
+  AdBrowserPublicConfig,
+} from '@meigallery/shared'
+import { CANONICAL_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 import type { Bindings, Variables } from '../index'
 import { resolveAdAttributionRouting, type AdAttributionSignals } from '../services/ad-attribution-routing'
-import { readAttributionConnectionSnapshot } from '../services/ad-platform/connections'
+import {
+  readAttributionConnectionSnapshot,
+  type AttributionConnectionSnapshotReady,
+} from '../services/ad-platform/connections'
+import { getAdPlatformDefinition } from '../services/ad-platform/registry'
 import {
   AD_ATTRIBUTION_CONTEXT_TTL_SECONDS,
   createAdAttributionContext,
@@ -19,32 +29,6 @@ export const adAttributionRoutes = new Hono<{ Bindings: Bindings; Variables: Var
 adAttributionRoutes.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
   await next()
-})
-
-adAttributionRoutes.get('/bootstrap', async (c) => {
-  try {
-    const keys = await loadAttributionCryptoKeys(c.env)
-    const context = await resolveTrustedAdAttributionContext(
-      keys,
-      getCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE),
-    )
-    if (!context) return c.json(emptyBootstrapResponse())
-
-    const snapshot = await readAttributionConnectionSnapshot(c.env.DB, context.provider)
-    if (snapshot.state !== 'ready'
-      || !snapshot.connection.enabled
-      || !snapshot.connection.browserEnabled) return c.json(emptyBootstrapResponse())
-    const publicConfig = serializePublicConfig(snapshot.connection.provider, snapshot.connection.publicConfig)
-    if (!publicConfig) return c.json(emptyBootstrapResponse())
-
-    return c.json({
-      provider: snapshot.connection.provider,
-      publicConfig,
-    })
-  }
-  catch {
-    return c.json(emptyBootstrapResponse())
-  }
 })
 
 adAttributionRoutes.put('/', async (c) => {
@@ -84,14 +68,14 @@ adAttributionRoutes.put('/', async (c) => {
 
   if (!result.provider) {
     clearContextCookie(c)
-    return c.json({ provider: null, resolution: result.resolution, expiresInSeconds: null })
+    return c.json(emptyResponse(result.resolution))
   }
   if (result.resolution === 'inherited' && currentContext) {
-    return c.json({
+    return c.json(await resolvedResponse(c.env.DB, {
       provider: currentContext.provider,
       resolution: 'inherited' as const,
       expiresInSeconds: currentContext.expiresAt - nowSeconds,
-    })
+    }))
   }
 
   try {
@@ -109,11 +93,11 @@ adAttributionRoutes.put('/', async (c) => {
       path: '/',
       maxAge: AD_ATTRIBUTION_CONTEXT_TTL_SECONDS,
     })
-    return c.json({
+    return c.json(await resolvedResponse(c.env.DB, {
       provider: context.provider,
       resolution: result.resolution,
       expiresInSeconds: AD_ATTRIBUTION_CONTEXT_TTL_SECONDS,
-    })
+    }))
   }
   catch {
     clearContextCookie(c)
@@ -130,12 +114,57 @@ export function clearContextCookie(c: Parameters<typeof deleteCookie>[0]) {
   deleteCookie(c, AD_ATTRIBUTION_CONTEXT_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })
 }
 
-function emptyResponse() {
-  return { provider: null, resolution: 'none' as const, expiresInSeconds: null }
+function emptyResponse(
+  resolution: AdAttributionBrowserContextResponse['resolution'] = 'none',
+): AdAttributionBrowserContextResponse {
+  return {
+    provider: null,
+    resolution,
+    expiresInSeconds: null,
+    publicConfig: null,
+    events: [],
+  }
 }
 
-function emptyBootstrapResponse() {
-  return { provider: null, publicConfig: null }
+function emptyBrowserContext() {
+  return { provider: null, publicConfig: null, events: [] }
+}
+
+async function resolvedResponse(
+  db: D1Database,
+  response: Pick<
+    AdAttributionBrowserContextResponse,
+    'provider' | 'resolution' | 'expiresInSeconds'
+  > & { provider: AdAttributionProvider },
+): Promise<AdAttributionBrowserContextResponse> {
+  const browserContext = await readBrowserContext(db, response.provider)
+  return {
+    ...response,
+    publicConfig: browserContext.publicConfig,
+    events: browserContext.events,
+  }
+}
+
+async function readBrowserContext(
+  db: D1Database,
+  provider: AdAttributionProvider,
+) {
+  try {
+    const snapshot = await readAttributionConnectionSnapshot(db, provider)
+    if (snapshot.state !== 'ready'
+      || !snapshot.connection.enabled
+      || !snapshot.connection.browserEnabled) return emptyBrowserContext()
+    const publicConfig = serializePublicConfig(snapshot.connection.provider, snapshot.connection.publicConfig)
+    if (!publicConfig) return emptyBrowserContext()
+    return {
+      provider: snapshot.connection.provider,
+      publicConfig,
+      events: serializeBrowserEventTemplates(snapshot),
+    }
+  }
+  catch {
+    return emptyBrowserContext()
+  }
 }
 
 function serializePublicConfig(
@@ -146,4 +175,22 @@ function serializePublicConfig(
   if (provider === 'tiktok' && config.pixelCode) return { provider, pixelCode: config.pixelCode }
   if (provider === 'google' && config.tagId) return { provider, tagId: config.tagId }
   return null
+}
+
+function serializeBrowserEventTemplates(
+  snapshot: AttributionConnectionSnapshotReady,
+): AdBrowserEventTemplate[] {
+  const definition = getAdPlatformDefinition(snapshot.connection.provider)
+  if (!definition) return []
+  return CANONICAL_CONVERSION_EVENTS.flatMap((canonicalEvent) => {
+    const binding = snapshot.bindings.get(canonicalEvent)
+    const descriptor = definition.describeEvent({ canonicalEvent })
+    if (!binding?.enabled || !descriptor) return []
+    return [{
+      provider: snapshot.connection.provider,
+      canonicalEvent,
+      browserEventName: descriptor.browserEventName,
+      browserDestination: binding.browserDestination,
+    }]
+  })
 }

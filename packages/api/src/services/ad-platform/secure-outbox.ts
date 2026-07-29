@@ -1,4 +1,8 @@
-import type { AdAttributionProvider, AdPlatformQueueMessage } from '@meigallery/shared'
+import {
+  isAdAttributionProvider,
+  type AdAttributionProvider,
+  type AdPlatformQueueMessage,
+} from '@meigallery/shared'
 
 const STALE_MINUTES = 5
 const MAX_LIMIT = 100
@@ -96,7 +100,7 @@ export async function listRecoverableAttributionOutbox(db: D1Database, limit = M
     ORDER BY o.created_at ASC, o.delivery_id ASC
     LIMIT ?
   `).bind(normalizedLimit).all<{ delivery_id: string; provider: string }>()
-  return result.results.flatMap(row => isProvider(row.provider) ? [{ deliveryId: row.delivery_id, provider: row.provider }] : [])
+  return result.results.flatMap(row => isAdAttributionProvider(row.provider) ? [{ deliveryId: row.delivery_id, provider: row.provider }] : [])
 }
 
 export async function purgeExpiredAttributionOutbox(db: D1Database, limit = MAX_LIMIT): Promise<number> {
@@ -130,7 +134,7 @@ async function readOutboxDelivery(db: D1Database, deliveryId: string, provider: 
 async function expireAttributionOutbox(db: D1Database, rows: OutboxDeliveryRow[]) {
   let purged = 0
   for (const row of rows) {
-    if (!isProvider(row.provider)) continue
+    if (!isAdAttributionProvider(row.provider)) continue
     if (terminal(row.status)) {
       const deleted = await db.prepare(`
         DELETE FROM attribution_outbox
@@ -179,8 +183,7 @@ function recoverable(row: OutboxDeliveryRow) {
   return row.status === 'planned' || ((row.status === 'queued' || row.status === 'retrying') && stale(row.updated_at))
 }
 function terminal(status: string) { return status === 'accepted' || status === 'processed' || status === 'rejected' || status === 'dead_letter' || status === 'cancelled' }
-function validOutboxRow(row: OutboxDeliveryRow) { return isProvider(row.provider) }
-function isProvider(value: string): value is AdAttributionProvider { return value === 'meta' || value === 'tiktok' || value === 'google' }
+function validOutboxRow(row: OutboxDeliveryRow) { return isAdAttributionProvider(row.provider) }
 function invalidOrExpired(value: string) { const parsed = Date.parse(value); return !Number.isFinite(parsed) || parsed <= Date.now() }
 function expiryErrorCode(value: string) { return Number.isFinite(Date.parse(value)) ? 'outbox_expired' : 'outbox_invalid' }
 function stale(value: string) { const parsed = Date.parse(normalizeSqlDate(value)); return Number.isFinite(parsed) && parsed <= Date.now() - STALE_MINUTES * 60_000 }

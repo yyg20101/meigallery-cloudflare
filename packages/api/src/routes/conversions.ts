@@ -5,6 +5,7 @@ import { recordContact } from '../services/conversions'
 import { errorJson } from '../utils/api-error'
 import { safeContactLinkUrl } from '../utils/contact-link-url'
 import { generateContactLink } from '@meigallery/shared/constants'
+import { isAdExternalEventId } from '@meigallery/shared/utils'
 import { AD_ATTRIBUTION_CONTEXT_COOKIE } from './ad-attribution'
 import { buildAdPlatformUserData, readAdPlatformBrowserIdentifiersFromRequest } from '../utils/ad-platform-identifiers'
 import { resolveRequestAdAttribution } from '../utils/request-ad-attribution'
@@ -25,6 +26,10 @@ conversionRoutes.post('/events', async (c) => {
   const contactMethodId = conversionId(body.contactMethodId)
   if (!visitorId || !sessionId || !contactMethodId) {
     return errorJson(c, 400, '联系转化上下文无效', { code: 'PUBLIC_CONVERSION_ACTION_INVALID' })
+  }
+  const externalEventId = body.externalEventId
+  if (externalEventId !== undefined && !isAdExternalEventId(externalEventId)) {
+    return errorJson(c, 400, '联系转化事件编号无效', { code: 'PUBLIC_CONVERSION_EVENT_ID_INVALID' })
   }
   const contact = await c.env.DB.prepare(`
     SELECT id, platform, value, link_url
@@ -58,6 +63,7 @@ conversionRoutes.post('/events', async (c) => {
       ? 'context'
       : attribution.resolution === 'conflict' ? 'conflict' : 'none',
     adPlatformUserData,
+    externalEventId,
     contactMethodId: contact.id, contactPlatform: contact.platform, actionType: 'open_link',
     metadata: isPlainRecord(body.metadata) ? body.metadata : {},
   })

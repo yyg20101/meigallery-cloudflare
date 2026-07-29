@@ -1,11 +1,12 @@
 import type { ServerDeliveryResult, ServerTrackingAdapter, TikTokServerDeliveryInput } from '../server-adapter'
+import { isCanonicalConversionEvent } from '@meigallery/shared/constants'
+import { isAdExternalEventId } from '@meigallery/shared/utils'
 import { isValidAdPlatformIpAddress, isValidAdPlatformUserAgent } from '../../../utils/ad-platform-identifiers'
 
 const TIKTOK_ENDPOINT = 'https://business-api.tiktok.com/open_api/v1.3/event/track/'
 const TIKTOK_SIGNALS = new Set(['ttclid', 'ttp'])
 const CROSS_PLATFORM_SIGNALS = new Set(['fbc', 'fbp', 'gclid', 'gbraid', 'wbraid'])
 const RETRYABLE_CODES = new Set([40016, 40100, 40133, 40202, 60001])
-const EVENT_ID_PATTERN = /^mg3_[A-Za-z0-9_-]{43}$/
 const PIXEL_CODE_PATTERN = /^[A-Z0-9]{10,30}$/
 const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/
 const MIN_EVENT_TIME = 946_684_800
@@ -89,8 +90,8 @@ async function readTikTokResponse(response: Response) {
   }
   catch { return { code: null, requestId: '' } }
 }
-function validDeliveryCore(input: TikTokServerDeliveryInput) { return (input.canonicalEvent === 'Contact' || input.canonicalEvent === 'CompleteRegistration') && validEventId(input.externalEventId) && validEventTime(input.eventTime) && validUrl(input.pageUrl) }
-function validEventId(value: unknown): value is string { return typeof value === 'string' && value.length <= 64 && EVENT_ID_PATTERN.test(value) }
+function validDeliveryCore(input: TikTokServerDeliveryInput) { return isCanonicalConversionEvent(input.canonicalEvent) && validEventId(input.externalEventId) && validEventTime(input.eventTime) && validUrl(input.pageUrl) }
+function validEventId(value: unknown): value is string { return isAdExternalEventId(value) }
 function validEventTime(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= MIN_EVENT_TIME && value <= MAX_EVENT_TIME }
 function validUrl(value: string) { try { const url = new URL(value); return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname) && !url.username && !url.password } catch { return false } }
 function validHash(value: unknown) { return value === undefined || typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) }

@@ -69,7 +69,7 @@ describe('公开设置广告配置隔离', () => {
     expect(publicSettingsRoute).not.toContain('browserConnections')
   })
 
-  it('归因解析和 bootstrap 使用独立限流桶', () => {
+  it('归因解析使用独立限流桶', () => {
     const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')
     const attributionRateLimit = source.slice(
       source.indexOf('// 广告来源解析独立计数'),

@@ -35,11 +35,7 @@ describe('公开广告来源 API', () => {
     const cookie = response.headers.get('set-cookie') || ''
 
     expect(response.status).toBe(200)
-    expect(data).toEqual({
-      provider,
-      resolution: 'matched',
-      expiresInSeconds: 2_592_000,
-    })
+    expect(data).toEqual(resolvedPayload(provider, 'matched'))
     expect(cookie).toMatch(/^mei_ad_attribution=/)
     expect(cookie).toContain('HttpOnly')
     expect(cookie).toContain('Secure')
@@ -51,22 +47,14 @@ describe('公开广告来源 API', () => {
   it('普通 UTM 不选择平台，也不创建来源 Cookie', async () => {
     const response = await request({ utmSource: 'facebook' })
 
-    expect(await response.json()).toEqual({
-      provider: null,
-      resolution: 'none',
-      expiresInSeconds: null,
-    })
+    expect(await response.json()).toEqual(emptyPayload())
     expectClearsAttributionCookie(response)
   })
 
   it('Meta 长点击标识仍签发来源上下文', async () => {
     const response = await request({ fbclid: 'x'.repeat(512) })
 
-    expect(await response.json()).toEqual({
-      provider: 'meta',
-      resolution: 'matched',
-      expiresInSeconds: 2_592_000,
-    })
+    expect(await response.json()).toEqual(resolvedPayload('meta', 'matched'))
     expect(response.headers.get('set-cookie')).toMatch(/^mei_ad_attribution=/)
   })
 
@@ -84,11 +72,7 @@ describe('公开广告来源 API', () => {
     const initial = await request({ fbclid: 'old-meta-click' })
     const response = await requestWithContext({ gclid: 'new-google-click' }, initial)
 
-    expect(await response.json()).toEqual({
-      provider: 'google',
-      resolution: 'matched',
-      expiresInSeconds: 2_592_000,
-    })
+    expect(await response.json()).toEqual(resolvedPayload('google', 'matched'))
     expect(cookiePair(response)).not.toBe(cookiePair(initial))
   })
 
@@ -99,22 +83,14 @@ describe('公开广告来源 API', () => {
       ttclid: 'tiktok-click',
     }, initial)
 
-    expect(await response.json()).toEqual({
-      provider: null,
-      resolution: 'conflict',
-      expiresInSeconds: null,
-    })
+    expect(await response.json()).toEqual(emptyPayload('conflict'))
     expectClearsAttributionCookie(response)
   })
 
   it('客户端直接声明 provider 不会被接受', async () => {
     const response = await request({ provider: 'tiktok' })
 
-    expect(await response.json()).toEqual({
-      provider: null,
-      resolution: 'none',
-      expiresInSeconds: null,
-    })
+    expect(await response.json()).toEqual(emptyPayload())
     expectClearsAttributionCookie(response)
   })
 
@@ -163,11 +139,7 @@ describe('公开广告来源 API', () => {
     )
 
     expect(update.status).toBe(503)
-    expect(await update.json()).toEqual({
-      provider: null,
-      resolution: 'none',
-      expiresInSeconds: null,
-    })
+    expect(await update.json()).toEqual(emptyPayload())
     expectClearsAttributionCookie(update)
   })
 
@@ -185,45 +157,35 @@ describe('公开广告来源 API', () => {
     ['meta', { fbclid: 'meta-click-id' }, { provider: 'meta', pixelId: '123456789' }],
     ['tiktok', { ttclid: 'tiktok-click-id' }, { provider: 'tiktok', pixelCode: 'C123456789ABCDEF' }],
     ['google', { gclid: 'google-click-id' }, { provider: 'google', tagId: 'AW-123456789' }],
-  ] as const)('bootstrap 只返回当前 %s 来源的浏览器公开配置', async (provider, source, publicConfig) => {
-    const initial = await request(source)
+  ] as const)('来源解析一次返回当前 %s 的来源与浏览器公开配置', async (provider, source, publicConfig) => {
     readConnectionSnapshot.mockResolvedValueOnce(readySnapshot(provider, publicConfig))
 
-    const response = await app().request(
-      'https://api.616618.xyz/api/ad-attribution/bootstrap',
-      { headers: { cookie: cookiePair(initial) } },
-      env(),
-    )
+    const response = await request(source)
     const data = await response.json<Record<string, unknown>>()
 
-    expect(response.status).toBe(200)
-    expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(data).toEqual({ provider, publicConfig })
+    expect(data).toEqual({
+      ...resolvedPayload(provider, 'matched'),
+      publicConfig,
+      events: expectedBrowserEvents(provider),
+    })
     expect(readConnectionSnapshot).toHaveBeenCalledWith(expect.anything(), provider)
-    expect(JSON.stringify(data)).not.toMatch(/click|token|credential|binding|context/i)
+    expect(JSON.stringify(data)).not.toMatch(/token|credential|binding|context/i)
   })
 
   it.each([
-    ['没有来源 Cookie', null, readySnapshot('meta', { provider: 'meta', pixelId: '123456789' })],
-    ['连接不存在', 'context', { state: 'connection_invalid', reason: 'not_found' }],
-    ['连接未启用', 'context', readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { enabled: false })],
-    ['浏览器未启用', 'context', readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { browserEnabled: false })],
-  ])('bootstrap 在%s时返回严格空响应', async (_label, contextMode, snapshot) => {
-    const initial = contextMode ? await request({ fbclid: 'meta-click-id' }) : null
+    ['连接不存在', { state: 'connection_invalid', reason: 'not_found' }],
+    ['连接未启用', readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { enabled: false })],
+    ['浏览器未启用', readySnapshot('meta', { provider: 'meta', pixelId: '123456789' }, { browserEnabled: false })],
+  ])('来源解析在%s时保留可信来源但返回空 Browser 配置', async (_label, snapshot) => {
     readConnectionSnapshot.mockResolvedValueOnce(snapshot)
 
-    const response = await app().request(
-      'https://api.616618.xyz/api/ad-attribution/bootstrap',
-      initial ? { headers: { cookie: cookiePair(initial) } } : {},
-      env(),
-    )
+    const response = await request({ fbclid: 'meta-click-id' })
 
-    expect(await response.json()).toEqual({ provider: null, publicConfig: null })
+    expect(await response.json()).toEqual(resolvedPayload('meta', 'matched'))
     expect(response.headers.get('cache-control')).toBe('no-store')
   })
 
-  it('Google bootstrap 不泄露服务端配置', async () => {
-    const initial = await request({ gclid: 'google-click-id' })
+  it('Google 来源响应不泄露服务端配置', async () => {
     readConnectionSnapshot.mockResolvedValueOnce(readySnapshot('google', {
       provider: 'google',
       tagId: 'AW-123456789',
@@ -232,15 +194,14 @@ describe('公开广告来源 API', () => {
       cloudProjectId: 'private-project',
     }))
 
-    const response = await app().request(
-      'https://api.616618.xyz/api/ad-attribution/bootstrap',
-      { headers: { cookie: cookiePair(initial) } },
-      env(),
-    )
+    const response = await request({ gclid: 'google-click-id' })
 
     expect(await response.json()).toEqual({
+      resolution: 'matched',
+      expiresInSeconds: 2_592_000,
       provider: 'google',
       publicConfig: { provider: 'google', tagId: 'AW-123456789' },
+      events: expectedBrowserEvents('google'),
     })
   })
 })
@@ -305,6 +266,26 @@ function readySnapshot(
   override: { enabled?: boolean; browserEnabled?: boolean } = {},
 ) {
   const { provider: _provider, ...storedConfig } = publicConfig
+  const destinations = provider === 'google'
+    ? {
+        Contact: {
+          browserDestination: 'AW-123456789/Contact_Label',
+          serverDestination: '456',
+        },
+        CompleteRegistration: {
+          browserDestination: 'AW-123456789/Registration_Label',
+          serverDestination: '789',
+        },
+      }
+    : provider === 'meta'
+      ? {
+          Contact: { browserDestination: 'meta_pixel', serverDestination: 'meta_capi' },
+          CompleteRegistration: { browserDestination: 'meta_pixel', serverDestination: 'meta_capi' },
+        }
+      : {
+          Contact: { browserDestination: 'tiktok_pixel', serverDestination: 'tiktok_events_api' },
+          CompleteRegistration: { browserDestination: 'tiktok_pixel', serverDestination: 'tiktok_events_api' },
+        }
   return {
     state: 'ready',
     connection: {
@@ -316,11 +297,71 @@ function readySnapshot(
       publicConfig: storedConfig,
       outboxScope: 'outbox_scope_1',
     },
-    bindings: new Map(),
+    bindings: new Map([
+      ['Contact', { enabled: true, ...destinations.Contact }],
+      ['CompleteRegistration', { enabled: true, ...destinations.CompleteRegistration }],
+    ]),
     credential: {
       type: provider === 'google' ? 'service_account_json' : 'access_token',
       schemaVersion: 1,
       encryptionContext: 'credential_context_1',
     },
+  }
+}
+
+function expectedBrowserEvents(provider: 'meta' | 'tiktok' | 'google') {
+  if (provider === 'google') {
+    return [
+      {
+        provider,
+        canonicalEvent: 'Contact',
+        browserEventName: 'conversion',
+        browserDestination: 'AW-123456789/Contact_Label',
+      },
+      {
+        provider,
+        canonicalEvent: 'CompleteRegistration',
+        browserEventName: 'conversion',
+        browserDestination: 'AW-123456789/Registration_Label',
+      },
+    ]
+  }
+  const browserDestination = provider === 'meta' ? 'meta_pixel' : 'tiktok_pixel'
+  return [
+    {
+      provider,
+      canonicalEvent: 'Contact',
+      browserEventName: 'Contact',
+      browserDestination,
+    },
+    {
+      provider,
+      canonicalEvent: 'CompleteRegistration',
+      browserEventName: 'CompleteRegistration',
+      browserDestination,
+    },
+  ]
+}
+
+function resolvedPayload(
+  provider: 'meta' | 'tiktok' | 'google',
+  resolution: 'matched' | 'inherited',
+) {
+  return {
+    provider,
+    resolution,
+    expiresInSeconds: 2_592_000,
+    publicConfig: null,
+    events: [],
+  }
+}
+
+function emptyPayload(resolution: 'none' | 'conflict' = 'none') {
+  return {
+    provider: null,
+    resolution,
+    expiresInSeconds: null,
+    publicConfig: null,
+    events: [],
   }
 }

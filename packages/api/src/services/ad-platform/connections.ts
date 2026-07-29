@@ -1,7 +1,9 @@
 import type { AdAttributionProvider, CanonicalConversionEvent } from '@meigallery/shared'
+import {
+  CANONICAL_CONVERSION_EVENTS,
+  isCanonicalConversionEvent,
+} from '@meigallery/shared/constants'
 import { getAdPlatformDefinition } from './registry'
-
-const CANONICAL_EVENTS = ['Contact', 'CompleteRegistration'] as const
 
 export interface AttributionConnectionSnapshotReady {
   state: 'ready'
@@ -106,7 +108,7 @@ export async function readAttributionConnectionSnapshot(
     `).bind(connection.id).all<CredentialRow>(),
   ])
 
-  if (bindingResult.results.length !== CANONICAL_EVENTS.length
+  if (bindingResult.results.length !== CANONICAL_CONVERSION_EVENTS.length
     || credentialResult.results.length !== 1) return invalid('schema_invalid')
 
   const bindings = new Map<CanonicalConversionEvent, AttributionConnectionSnapshotReady['bindings'] extends Map<CanonicalConversionEvent, infer V> ? V : never>()
@@ -120,7 +122,7 @@ export async function readAttributionConnectionSnapshot(
       serverDestination: row.server_destination,
     })
   }
-  if (!CANONICAL_EVENTS.every(event => bindings.has(event))) return invalid('schema_invalid')
+  if (!CANONICAL_CONVERSION_EVENTS.every(event => bindings.has(event))) return invalid('schema_invalid')
 
   const credential = credentialResult.results[0]!
   if (!validCredential(credential)
@@ -159,7 +161,7 @@ function validConnection(row: ConnectionRow) {
 
 function validBinding(row: BindingRow) {
   return validId(row.id)
-    && (row.canonical_event === 'Contact' || row.canonical_event === 'CompleteRegistration')
+    && isCanonicalConversionEvent(row.canonical_event)
     && (row.enabled === 0 || row.enabled === 1)
     && validText(row.browser_destination)
     && validText(row.server_destination)

@@ -289,8 +289,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/admin/tracking-sources` | 推广来源列表，返回可复制追踪链接 | admin+ |
 | POST | `/api/admin/tracking-sources` | 创建推广来源，写入审计日志 | admin+ |
 | PATCH | `/api/admin/tracking-sources/:id` | 修改或停用推广来源，写入审计日志 | admin+ |
-| PUT | `/api/ad-attribution` | 解析 click ID 或数据库校验通过的受管 `mg_source`，继承最近一次付费来源，并签发 30 天单一平台 HttpOnly 加密来源上下文；普通 UTM 不决定平台，冲突来源清除上下文 | public |
-| GET | `/api/ad-attribution/bootstrap` | 读取签名来源上下文并仅返回该平台的 Browser 公开配置 | public |
+| PUT | `/api/ad-attribution` | 解析 click ID 或数据库校验通过的受管 `mg_source`，继承最近一次付费来源，签发 30 天单一平台 HttpOnly 加密来源上下文，并在同一响应中返回该平台安全的 Browser 公开配置；普通 UTM 不决定平台，冲突来源清除上下文 | public |
 | DELETE | `/api/ad-attribution` | 清除当前广告来源上下文 | public |
 | GET | `/api/admin/analytics/overview` | 数据分析总览，读取聚合表和健康摘要 | admin+ |
 | GET | `/api/admin/analytics/sources` | 来源质量报表，包含已创建推广来源表现 | admin+ |
@@ -659,6 +658,7 @@ INSERT INTO site_settings (key, value) VALUES
 - `/api/conversions/events` 为公开联系命令入口，仅允许提交 `contact`；完成注册由注册 API 的服务端事务创建。`lead`、`complete_registration`、`start_trial` 和 `membership_grant` 的公开提交均返回明确 4xx。
 - 公开转化入口复用应用内兜底限流，并在服务端白名单清洗 metadata；请求不得携带邮箱、手机号、联系方式明文、token、私有 R2 key、完整敏感 URL 或任意广告账户密钥。
 - 当前归因运行时不包含地区判断、营销授权页面、Banner、Consent Cookie、授权 API 或地区策略表。若后续需要合规控制，只能在来源路由之后接入单一 `allow/deny` 输入，不得在平台 adapter 内复制地区逻辑。
+- 首屏 SSR 通过唯一 `PUT /api/ad-attribution` 同时取得可信来源、当前平台公开配置与 Browser 事件目标，并在客户端页面可交互前初始化唯一平台队列；响应不返回 Server destination 或凭证。Contact 外链点击在浏览器同步事件阶段生成严格格式的 `external_event_id`，先写入当前 active provider 的 Pixel 队列并使用 Beacon 刷新站内点击，再通过 `keepalive` 请求交给同一个公开 Contact 命令入口；API 仍独占来源判定、事实去重、Planner 和 Server 投递，不存在响应后 Browser 补发路径。
 - 每个平台的 Browser / Server delivery 使用同一 `external_event_id`。Server delivery 只有在平台响应满足严格成功契约时才进入 `accepted`；Google 还必须等待异步诊断进入 `processed`。平台接收或处理完成仍不代表广告归因成功。
 - 仅在存在可信签名来源上下文或服务端已通过同一来源路由器恢复来源时，从 Cloudflare `CF-Connecting-IP` 与原始 `User-Agent` 读取完整网络匹配上下文；两者只能进入 24 小时加密 Outbox。原始 IP/UA 不得进入事实表、分析维度、日志、响应或审计。
 - `/api/admin/attribution/*` 需要 admin+；连接、凭证和事件映射修改需要 owner，并写入 `admin_audit_logs`。

@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-07-28。
+更新时间：2026-07-29。
 
 本文件只记录当前状态。历史变更以 Git、PR、tag 和 `docs/releases/` 为准。
 
@@ -43,6 +43,7 @@
 - 没有新来源时继承 30 天内最近一次有效广告来源；自然流量没有历史来源时不加载 Pixel。
 - 跨平台信号冲突或来源不可信时只记录站内事实，不向任何广告平台发送。
 - Browser 与 Server 共用 external event ID，支持同平台去重。
+- SSR 在页面可交互前通过一次来源解析响应初始化当前来源 Pixel；Contact 外链在原生导航前只进入一次 Browser 队列，站内点击使用 Beacon 刷新，API 使用 `keepalive` 保存同一编号的事实与 Server 投递；不存在响应后补发，也未新增表、Worker 或第二条事实链路。
 - Meta、TikTok、Google 使用独立凭证、目标映射、Queue 和 DLQ。
 - 平台凭证由 `AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT` 加密，管理端不回显明文。
 - Test Event Code 只用于单次同步连接测试，不持久化，也不进入正式事件。
@@ -62,6 +63,7 @@
 - 删除后台 verification/revision/rollout 交互。
 - 删除地区判断、营销授权页、Banner、Consent Cookie、授权 API 和地区策略表。
 - 删除前端 `adAttributionState` 放行字段；服务端优先信任加密来源上下文，Cookie 偶发缺失时只允许同一来源路由器根据当前官方 click ID 或 active 受管广告链接恢复平台，始终拒绝客户端直接声明 provider。
+- 用户注册运行时已停止读写废弃的 `conversion_external_id`；生产运行时独立发布并通过 smoke 后，再以单独 contract migration 删除旧列与索引，避免把停写和删列混入同一发布。
 - 浏览器由单一 adapter registry 保证同一时刻只激活一个平台；平台变化或变为空时整页刷新。
 - 连接读取改为 connection、bindings、credential 三张表直接查询。
 - 连接内部 Outbox 作用域创建后保持稳定，保存配置不会使排队事件失效。

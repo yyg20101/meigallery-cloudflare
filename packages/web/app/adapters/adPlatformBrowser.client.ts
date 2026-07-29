@@ -1,5 +1,6 @@
 import type {
   AdAttributionProvider,
+  AdBrowserEvent,
   AdBrowserPublicConfig,
   AdBrowserInstruction,
   AdBrowserSignal,
@@ -12,7 +13,7 @@ type BrowserEventPayload = Record<string, string | number | boolean>
 
 export interface BrowserTrackingAdapter {
   initialize(config: AdBrowserPublicConfig): Promise<boolean>
-  track(instruction: AdBrowserInstruction): Promise<boolean>
+  track(event: AdBrowserEvent): Promise<boolean>
   trackSignal(signal: AdBrowserSignal, payload: BrowserEventPayload): Promise<boolean>
   teardown(): Promise<void>
 }
@@ -50,15 +51,29 @@ export async function initializeAdBrowserProvider(config: AdBrowserPublicConfig)
 }
 
 export async function executeAdBrowserInstruction(instruction: AdBrowserInstruction) {
-  return serializeLifecycle(async () => {
-    if (instruction.provider !== activeProvider) return false
-    try {
-      return await adapters.get(instruction.provider)?.track(instruction) ?? false
-    }
-    catch {
-      return false
-    }
+  return dispatchAdBrowserEvent({
+    provider: instruction.provider,
+    canonicalEvent: instruction.canonicalEvent,
+    externalEventId: instruction.externalEventId,
+    browserEventName: instruction.descriptor.browserEventName,
+    browserDestination: instruction.descriptor.browserDestination,
+    payload: instruction.payload,
   })
+}
+
+/**
+ * 联系外链可能立即让页面进入后台，调用 adapter 时不得排队等待异步生命周期。
+ * adapter 的 Pixel 入队动作会在本函数返回 Promise 前同步执行。
+ */
+export function dispatchAdBrowserEvent(event: AdBrowserEvent): Promise<boolean> {
+  if (event.provider !== activeProvider) return Promise.resolve(false)
+  try {
+    return (adapters.get(event.provider)?.track(event) ?? Promise.resolve(false))
+      .catch(() => false)
+  }
+  catch {
+    return Promise.resolve(false)
+  }
 }
 
 export async function trackAdBrowserSignal(

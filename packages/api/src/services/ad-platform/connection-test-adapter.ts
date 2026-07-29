@@ -1,4 +1,5 @@
 import type { AdAttributionProvider, CanonicalConversionEvent } from '@meigallery/shared'
+import { CANONICAL_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 import { googleConnectionTestAdapter } from './adapters/google-connection-test'
 import { metaConnectionTestAdapter } from './adapters/meta-connection-test'
 import { tiktokConnectionTestAdapter } from './adapters/tiktok-connection-test'
@@ -68,8 +69,10 @@ export function getPlatformConnectionTestAdapter(provider: unknown) {
 
 export function requireConnectionTestBindings(input: PlatformConnectionTestInput) {
   const bindings = new Map(input.eventBindings.map(binding => [binding.canonicalEvent, binding]))
-  if (bindings.size !== 2) throw new PlatformConnectionTestError('AD_PLATFORM_CONNECTION_TEST_INPUT_INVALID')
-  for (const event of ['Contact', 'CompleteRegistration'] as const) {
+  if (bindings.size !== CANONICAL_CONVERSION_EVENTS.length) {
+    throw new PlatformConnectionTestError('AD_PLATFORM_CONNECTION_TEST_INPUT_INVALID')
+  }
+  for (const event of CANONICAL_CONVERSION_EVENTS) {
     const binding = bindings.get(event)
     if (!binding?.enabled || !safeText(binding.browserDestination) || !safeText(binding.serverDestination)) {
       throw new PlatformConnectionTestError('AD_PLATFORM_CONNECTION_TEST_INPUT_INVALID')

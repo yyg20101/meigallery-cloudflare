@@ -71,8 +71,18 @@ import type {
   CanonicalConversionEvent,
 } from './ad-attribution'
 
+export {
+  AD_ATTRIBUTION_IDENTIFIER_KEYS,
+  AD_ATTRIBUTION_PROVIDERS,
+  isAdAttributionProvider,
+} from './ad-attribution'
+
 export type {
+  AdBrowserEvent,
+  AdBrowserEventTemplate,
   AdBrowserPublicConfig,
+  AdAttributionBrowserContextResponse,
+  AdAttributionResolution,
   AdAttributionProvider,
   AdBrowserInstruction,
   AdBrowserSignal,

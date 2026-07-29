@@ -1,4 +1,4 @@
-import type { AdAttributionProvider } from '@meigallery/shared'
+import { isAdAttributionProvider, type AdAttributionProvider } from '@meigallery/shared'
 import {
   decryptAttributionValue,
   encryptAttributionValue,
@@ -91,7 +91,7 @@ function isValidContext(value: unknown, nowSeconds: number, checkExpiry: boolean
   const context = value as Partial<AdAttributionContext>
   if (context.version !== 1
     || !CONTEXT_ID_PATTERN.test(String(context.contextId || ''))
-    || !isProvider(context.provider)
+    || !isAdAttributionProvider(context.provider)
     || !isSource(context.source)
     || !Number.isInteger(context.issuedAt)
     || !Number.isInteger(context.expiresAt)
@@ -117,10 +117,6 @@ function validIdentifiers(provider: AdAttributionProvider, source: AdAttribution
 
 function createContextId() {
   return `ctx_${Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('')}`
-}
-
-function isProvider(value: unknown): value is AdAttributionProvider {
-  return value === 'meta' || value === 'tiktok' || value === 'google'
 }
 
 function isSource(value: unknown): value is AdAttributionSource {

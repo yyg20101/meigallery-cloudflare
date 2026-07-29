@@ -1,4 +1,8 @@
-import type { AdAttributionProvider, AnalyticsSourceChannel } from '@meigallery/shared'
+import {
+  isAdAttributionProvider,
+  type AdAttributionProvider,
+  type AnalyticsSourceChannel,
+} from '@meigallery/shared'
 import { normalizeAnalyticsCampaignToken } from '@meigallery/shared/utils'
 import { generateId } from '../utils/db'
 import { sanitizeAnalyticsPath } from '../utils/analytics-url'
@@ -457,12 +461,12 @@ function normalizeAdProvider(channel: TrackingSourceChannel, value: unknown): Ad
     if (provider) throw new TrackingSourceError(400, '仅广告渠道可以绑定广告平台')
     return ''
   }
-  if (provider === 'meta' || provider === 'tiktok' || provider === 'google') return provider
+  if (isAdAttributionProvider(provider)) return provider
   throw new TrackingSourceError(400, '广告渠道必须明确绑定 Meta、TikTok 或 Google')
 }
 
 function normalizeStoredAdProvider(value: unknown): AdAttributionProvider | '' {
-  return value === 'meta' || value === 'tiktok' || value === 'google' ? value : ''
+  return isAdAttributionProvider(value) ? value : ''
 }
 
 function normalizeTargetPath(value: unknown) {

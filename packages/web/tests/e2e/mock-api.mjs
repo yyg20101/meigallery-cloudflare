@@ -240,6 +240,19 @@ function attributionBrowserInstruction(provider, canonicalEvent) {
   }
 }
 
+function attributionBrowserEvents(provider) {
+  if (!provider) return []
+  return ['Contact', 'CompleteRegistration'].map((canonicalEvent) => {
+    const instruction = attributionBrowserInstruction(provider, canonicalEvent)
+    return {
+      provider,
+      canonicalEvent,
+      browserEventName: instruction.descriptor.browserEventName,
+      browserDestination: instruction.descriptor.browserDestination,
+    }
+  })
+}
+
 function resolvedTrackingInstructions(canonicalEvent, attribution) {
   if ((currentAttributionResolution !== 'matched' && currentAttributionResolution !== 'inherited')
     || !currentAttributionProvider
@@ -927,20 +940,24 @@ function handleApi(req, res) {
         json(res, {
           provider: currentAttributionProvider,
           resolution: currentAttributionResolution,
-          expiresInSeconds: 30 * 24 * 60 * 60,
+          expiresInSeconds: currentAttributionProvider ? 30 * 24 * 60 * 60 : null,
+          publicConfig: currentAttributionProvider ? attributionBrowserConfigs[currentAttributionProvider] : null,
+          events: attributionBrowserEvents(currentAttributionProvider),
         }, 200, { 'Set-Cookie': contextCookie })
       })
       .catch(() => json(res, { statusCode: 400, message: '广告来源请求无效' }, 400))
     return
   }
-  if (url.pathname === '/api/ad-attribution/bootstrap' && req.method === 'GET') {
-    const publicConfig = currentAttributionProvider ? attributionBrowserConfigs[currentAttributionProvider] : null
-    return json(res, { provider: currentAttributionProvider, publicConfig })
-  }
   if (url.pathname === '/api/ad-attribution' && req.method === 'DELETE') {
     currentAttributionProvider = null
     currentAttributionResolution = 'none'
-    return json(res, { provider: null, resolution: 'none', expiresInSeconds: 30 * 24 * 60 * 60 })
+    return json(res, {
+      provider: null,
+      resolution: 'none',
+      expiresInSeconds: null,
+      publicConfig: null,
+      events: [],
+    })
   }
   if (url.pathname === '/api/me') {
     const cookie = String(req.headers.cookie || '')

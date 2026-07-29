@@ -1,6 +1,7 @@
 /**
  * MeiGallery 共享常量
  */
+import type { CanonicalConversionEvent } from '../types/ad-attribution'
 
 /** 会员等级 rank 值（业务逻辑不硬编码等级名称，使用 rank 比较） */
 export const MEMBERSHIP_RANKS = {
@@ -106,6 +107,13 @@ export const ANALYTICS_D1_BUDGET = {
 export const ACTIVE_CONVERSION_ACTIONS = ['contact', 'complete_registration'] as const
 export const CANONICAL_CONVERSION_EVENTS = ['Contact', 'CompleteRegistration'] as const
 export const ACTIVE_AD_PLATFORM_CONVERSION_EVENTS = CANONICAL_CONVERSION_EVENTS
+
+export function isCanonicalConversionEvent(
+  value: unknown,
+): value is CanonicalConversionEvent {
+  return typeof value === 'string'
+    && CANONICAL_CONVERSION_EVENTS.some(event => event === value)
+}
 
 export const ATTRIBUTION_LIMITS = {
   CLICK_ID_MAX_LENGTH: 1_000,

@@ -1,8 +1,9 @@
 import type {
+  AdBrowserEvent,
   AdBrowserPublicConfig,
-  AdBrowserInstruction,
   AdBrowserSignal,
 } from '@meigallery/shared'
+import { isAdExternalEventId } from '@meigallery/shared/utils'
 
 type TikTokPixelPayload = Record<string, string | number | boolean>
 type TikTokQueue = unknown[] & {
@@ -26,7 +27,6 @@ declare global {
 }
 
 const TIKTOK_SCRIPT_ORIGIN = 'https://analytics.tiktok.com/i18n/pixel/events.js'
-const EXTERNAL_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 const TIKTOK_DEFERRED_METHODS = [
   'page', 'track', 'identify', 'instances', 'debug', 'on', 'off', 'once', 'ready',
   'alias', 'group', 'enableCookie', 'disableCookie', 'holdConsent', 'revokeConsent', 'grantConsent',
@@ -75,12 +75,12 @@ export function createTikTokPixelAdapter() {
     return true
   }
 
-  async function track(instruction: AdBrowserInstruction) {
-    if (!window.ttq || !initialized || !validInstruction(instruction)) return false
+  async function track(event: AdBrowserEvent) {
+    if (!window.ttq || !initialized || !validEvent(event)) return false
     window.ttq.track?.(
-      instruction.descriptor.browserEventName,
-      instruction.payload,
-      { event_id: instruction.externalEventId },
+      event.browserEventName,
+      event.payload,
+      { event_id: event.externalEventId },
     )
     return true
   }
@@ -110,12 +110,10 @@ export function createTikTokPixelAdapter() {
 
 export const tiktokPixelAdapter = createTikTokPixelAdapter()
 
-function validInstruction(instruction: AdBrowserInstruction) {
-  return instruction.provider === 'tiktok'
-    && instruction.descriptor.provider === 'tiktok'
-    && instruction.descriptor.canonicalEvent === instruction.canonicalEvent
-    && instruction.descriptor.browserEventName === instruction.canonicalEvent
-    && EXTERNAL_EVENT_ID_PATTERN.test(instruction.externalEventId)
+function validEvent(event: AdBrowserEvent) {
+  return event.provider === 'tiktok'
+    && event.browserEventName === event.canonicalEvent
+    && isAdExternalEventId(event.externalEventId)
 }
 
 function installQueueMethods(queue: TikTokQueue) {

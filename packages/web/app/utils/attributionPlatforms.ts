@@ -2,6 +2,7 @@ import type {
   AdPlatformProvider,
   CanonicalConversionEvent,
 } from '@meigallery/shared'
+import { CANONICAL_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 import type { AdPlatformConnectionData } from '~/composables/useAdminAttribution'
 
 export type AttributionPlatformProvider = AdPlatformProvider
@@ -77,10 +78,14 @@ export interface AttributionPlatformConnectionDraft {
   eventBindings: AttributionEventBindingDraft[]
 }
 
-const STANDARD_EVENTS = [
-  { canonicalEvent: 'Contact', label: '有效联系' },
-  { canonicalEvent: 'CompleteRegistration', label: '完成注册' },
-] as const
+const STANDARD_EVENT_LABELS: Record<CanonicalConversionEvent, string> = {
+  Contact: '有效联系',
+  CompleteRegistration: '完成注册',
+}
+const STANDARD_EVENTS = CANONICAL_CONVERSION_EVENTS.map(canonicalEvent => ({
+  canonicalEvent,
+  label: STANDARD_EVENT_LABELS[canonicalEvent],
+}))
 
 function fixedBindings(browserDestination: string, serverDestination: string): AttributionEventBindingDefinition[] {
   return STANDARD_EVENTS.map(event => ({

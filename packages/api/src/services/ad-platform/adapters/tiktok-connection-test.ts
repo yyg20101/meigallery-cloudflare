@@ -1,3 +1,4 @@
+import { CANONICAL_CONVERSION_EVENTS } from '@meigallery/shared/constants'
 import {
   fetchConnectionTest,
   PlatformConnectionTestError,
@@ -37,7 +38,7 @@ export const tiktokConnectionTestAdapter: PlatformConnectionTestAdapter = {
         event_source: 'web',
         event_source_id: pixelCode,
         test_event_code: testEventCode,
-        data: (['Contact', 'CompleteRegistration'] as const).map(event => ({
+        data: CANONICAL_CONVERSION_EVENTS.map(event => ({
           event,
           event_time: eventTime,
           event_id: eventIds[event],
