@@ -216,18 +216,19 @@ SOURCE_FILES = (
 
 VISUAL_EVIDENCE = (
     (
-        "通知中心 Figma 最终正常状态",
+        "移动端发现与原始视觉参考对照",
         APP_ROOT
-        / "assets/page-prototypes/figma-final/phase14/phase14-01-noticeDefault.png",
+        / "assets/figma-qa/phase3/comparison-discovery-reference-vs-official-20260730.png",
     ),
     (
-        "金币钱包 Figma 最终正常状态",
+        "移动端五级会员最终设计",
         APP_ROOT
-        / "assets/page-prototypes/figma-final/phase14/phase14-10-walletDefault.png",
+        / "assets/figma-qa/phase3/mobile-membership-catalog-20260730.png",
     ),
     (
-        "管理后台认证审核页面级原型",
-        APP_ROOT / "assets/page-prototypes/admin/adm-per-05__default.png",
+        "管理后台真人工作台最终设计",
+        APP_ROOT
+        / "assets/figma-qa/phase3/admin-person-workbench-normal-20260730.jpeg",
     ),
 )
 
@@ -267,6 +268,12 @@ def load_manifest() -> dict:
         "detailedFigmaPages": 5,
         "detailedFigmaStateCaptures": 23,
         "documentPrototypeMappings": 169,
+        "figmaDesignedPages": 92,
+        "figmaDesignedStates": 349,
+        "figmaMobileStates": 186,
+        "figmaAdminStates": 163,
+        "figmaFlowPreviews": 92,
+        "figmaTotalActions": 2284,
     }
     for key, value in expected.items():
         if data.get("counts", {}).get(key) != value:
@@ -340,8 +347,8 @@ App 版本：1.0
 当前资料已具备客户确认产品范围、功能规则和页面交互的条件，但不应提前标记为“需求已冻结”：
 
 - 产品与业务：8 项客户决策尚待逐项接受、调整或明确暂缓。
-- 页面与交互：92 个 Page ID、146 张基础原型和 23 张 Figma 最终状态已建立 169 个确定性映射，可进入逐页确认。
-- 视觉成熟度：92 页均有独立页面级设计；通知与金币 5 页已完成 23 个 Figma 多状态最终稿，其余 87 页尚属于页面级需求原型，不宣称像素级视觉冻结。
+- 页面与交互：92 个 Page ID、349 个 Figma 最终状态、92 个流程预览和 2,284 个有效交互动作已完成；客户文档另建立 169 个确定性图片映射，可进入逐页确认。
+- 视觉成熟度：移动端 49 页/186 状态、管理后台 43 页/163 状态均已完成像素级 Figma 最终稿和 QA；是否冻结仍等待客户/设计负责人签署。
 - 专业门禁：7 组法律、隐私、安全、运营、财务和技术结论尚需责任人关闭；这些门禁不替客户决定功能，但会阻止对应 schema、工程或生产发布。
 - 开发授权：在客户签署和阻塞门禁关闭前，不创建 KMP 工程、不新增 App API、不执行数据库 migration。
 
@@ -353,8 +360,8 @@ App 版本：1.0
         ("产品范围", "客户 PRD 第 1–19 章、C-01 至 C-08", "可确认，未冻结", "8 项客户决策形成书面结论"),
         ("功能需求", "41 个产品需求编号、92 个追踪键", "可确认，未冻结", "客户范围结论同步到开发规格和追踪矩阵"),
         ("页面交互", "49 个移动端页、43 个后台页", "可逐页确认，未冻结", "逐页确认册意见关闭或形成明确例外"),
-        ("原型映射", "146 张基础原型 + 23 张 Figma 最终状态", "169/169 已校验", "Page ID、状态、图片和需求追踪继续保持一致"),
-        ("像素级视觉", "5 页已完成 Figma 多状态最终稿", "部分冻结", "剩余页面按实施波次完成视觉定稿或书面接受设计系统实现"),
+        ("原型映射", "146 张基础原型 + 23 张逐状态导出", "169/169 已校验", "Page ID、状态、图片和需求追踪继续保持一致"),
+        ("像素级视觉", "92 页 / 349 状态 Figma 最终稿", "已完成，待签署", "客户与设计负责人按 Page ID 关闭意见"),
         ("技术与上线", "架构、KMP、API、Cloudflare 和运营文档", "规划完整，门禁未关闭", "G-01 至 G-07 按最晚关闭点完成"),
     ),
 )}
@@ -389,22 +396,22 @@ App 版本：1.0
 
 - 92 个 Page ID 均有页面目标、角色、入口、结构、主次操作、状态、权限、出口和验收条件。
 - 54 个 P0 页面除默认状态外均提供一个关键异常、受限、冲突或处理中状态。
-- 通知列表、通知详情、金币钱包、金币明细和金币分录详情已完成 23 个 Figma 最终状态。
-- 客户 DOCX 中同 Page ID、同状态优先使用 Figma 最终图，不再展示对应旧占位图。
+- Figma 最终文件完整覆盖 92 个 Page ID、349 个需求状态、92 个流程预览和 2,284 个有效交互动作。
+- 客户 DOCX 保留 146 张基础逐页图与通知/金币 23 张逐状态导出图，共 169 个确定性图片映射。
 
 ### 5.2 不得混淆的边界
 
 - “功能/交互冻结”表示信息结构、业务规则、权限、状态、文案含义和跨页出口不再被下游人员自行改变。
 - “像素级视觉冻结”表示颜色、字体、间距、图片裁切、组件形态和动效参数已经获得设计确认。
-- 当前可以签署产品和交互基线；除 5 个 Figma 最终页面外，其余页面不能被描述为已完成全量像素级视觉冻结。
+- 全量像素级视觉设计已完成，但只有客户/设计负责人签署后才能把“设计已完成”改为“视觉已冻结”。
 - 管理后台 UI 要求低于用户 App，但权限、状态、审批、并发冲突和审计交互仍必须按逐页规格验收。
 
-### 5.3 建议的视觉定稿波次
+### 5.3 最终视觉确认方法
 
-1. 先冻结移动端 P0 的剩余页面，重点覆盖登录、发现、真人详情、会员申请、发起话题、会话和安全。
-2. 再冻结移动端 P1 的账号、设备、数据权利和系统状态页面。
-3. 管理后台先冻结 P0 高风险工作台，再处理 P1/P2 运营增强页面。
-4. 每个波次继续使用稳定 Page ID；视觉细化不得改变已确认的业务规则和权限边界。
+1. 先通过 `40｜Delivery Index` 按 Page ID 核对 92 页和 349 个状态。
+2. 再通过 `30｜Prototype Flows` 核对 92 个流程的主操作、异常状态和安全出口。
+3. 客户意见必须引用 Page ID、状态和目标调整；只描述截图位置的意见不进入冻结清单。
+4. 修改后重新执行文字、Icon、热区、溢出、交互目标和产品边界 QA。
 
 ## 6. 冻结生效条件
 
@@ -414,7 +421,7 @@ App 版本：1.0
 2. 产品需求确认书的总确认结论已签署。
 3. 逐页交互设计确认册的修改意见已关闭，或形成带 Page ID、状态、责任人和关闭日期的例外清单。
 4. 客户调整已同步到客户 PRD、开发需求规格、产品决策基线、开放问题、Feature PRD、追踪矩阵、页面目录、原型和 DOCX。
-5. 92 页、146 张基础原型、23 张 Figma 最终状态、169 个映射的自动校验继续通过。
+5. 92 页、349 个 Figma 最终状态、2,284 个有效动作和 169 个客户文档图片映射的自动校验继续通过。
 6. 阻塞下一阶段的专业门禁已按 G-01 至 G-07 的最晚关闭点完成。
 7. 产品 Owner、客户代表、设计负责人和技术负责人共同确认冻结结论。
 
@@ -434,7 +441,7 @@ App 版本：1.0
 
 - [ ] 同意 C-01 至 C-08 的建议基线，进入需求冻结。
 - [ ] 原则同意，但需按本清单的客户调整意见同步后再冻结。
-- [ ] 只同意产品范围与功能交互；像素级视觉按后续波次继续确认。
+- [ ] 只同意产品范围与功能交互；Figma 最终视觉需按所列 Page ID 修改后再次确认。
 - [ ] 暂不确认，需要重新讨论产品定位、范围或服务承诺。
 
 客户/项目方：____________________________
@@ -460,7 +467,7 @@ App 版本：1.0
 2. 重新生成两份完整客户 DOCX、逐页原型清单和本确认单。
 3. 运行需求、Page ID、原型、DOCX、无障碍和全页渲染校验。
 4. 由 Owner 将文档状态改为“App 1.0 需求已冻结”并记录冻结指纹。
-5. 先完成剩余 P0 视觉定稿和阻塞工程门禁，再进入 API/DTO 数据契约冻结与 KMP 脚手架。
+5. 关闭客户视觉意见和阻塞工程门禁，再进入 API/DTO 数据契约冻结与 KMP 脚手架。
 """
     MD_OUTPUT.write_text(text, encoding="utf-8")
 
@@ -630,7 +637,8 @@ def add_title_block(doc: Document, fingerprint: str) -> None:
     pd.add_inline_content(
         paragraph,
         "产品范围、功能和页面交互已具备客户确认条件；"
-        "当前仍有 8 项客户决策、7 组专业门禁和剩余页面视觉定稿工作，"
+        "Figma 92 页/349 状态最终设计已完成；当前仍有 8 项客户决策、"
+        "7 组专业门禁和客户视觉签署，"
         "因此尚未授权开发。",
         base_size=10.5,
         base_color=pd.BRAND_DARK,
@@ -681,8 +689,8 @@ def add_status_summary(doc: Document) -> None:
     paragraph = doc.add_paragraph()
     pd.add_inline_content(
         paragraph,
-        "本次基线覆盖 92 个 Page ID，包含 146 张基础原型和 23 张 Figma 最终状态，"
-        "169/169 个确定性映射已经校验。",
+        "本次基线覆盖 92 个 Page ID、349 个 Figma 最终状态、92 个流程预览和 "
+        "2,284 个有效交互动作；客户文档 169/169 个确定性图片映射已经校验。",
         base_size=10,
         base_color=pd.BRAND_DARK,
         base_bold=True,
@@ -711,15 +719,15 @@ def add_status_summary(doc: Document) -> None:
             ),
             (
                 "原型映射",
-                "146 张基础 + 23 张 Figma 最终状态",
+                "146 张基础 + 23 张逐状态导出",
                 "169/169 已校验",
                 "映射与需求继续保持一致",
             ),
             (
                 "像素级视觉",
-                "5 页完成 Figma 多状态最终稿",
-                "部分冻结",
-                "其余页面按实施波次完成视觉定稿",
+                "92 页 / 349 状态最终稿",
+                "已完成，待签署",
+                "按 Page ID 关闭客户与设计意见",
             ),
             (
                 "开发授权",
@@ -783,8 +791,8 @@ def add_visual_evidence(doc: Document) -> None:
     pd.add_inline_content(
         paragraph,
         "92 页已经具备独立的信息结构、交互状态、业务规则和验收条件。"
-        "其中通知与金币 5 页已完成 23 个 Figma 多状态最终稿；"
-        "其余 87 页是页面级需求原型，可用于功能确认，但不宣称像素级视觉全部冻结。",
+        "Figma 最终文件完整覆盖移动端 49 页/186 状态、管理后台 43 页/163 状态，"
+        "并完成 92 个流程预览与 2,284 个有效交互动作；当前等待客户和设计负责人签署。",
         base_size=10.2,
     )
 
@@ -844,12 +852,12 @@ def add_visual_evidence(doc: Document) -> None:
     )
     caption.paragraph_format.keep_with_next = False
 
-    heading = doc.add_paragraph("建议视觉定稿顺序", style="Heading 2")
+    heading = doc.add_paragraph("最终视觉确认顺序", style="Heading 2")
     steps = (
-        "先完成移动端 P0 剩余页面，覆盖登录、发现、真人详情、会员申请、发起话题、会话与安全。",
-        "再完成移动端 P1 的账号、设备、数据权利与系统状态。",
-        "管理后台先冻结 P0 高风险工作台，再排 P1/P2 运营增强页面。",
-        "始终复用稳定 Page ID；视觉细化不得改变已确认的业务和权限。",
+        "通过 40｜Delivery Index 按 Page ID 核对 92 页和 349 个状态。",
+        "通过 30｜Prototype Flows 核对 92 个流程的主操作、异常状态和安全出口。",
+        "意见必须引用 Page ID、状态和目标调整，不以截图位置替代设计定位。",
+        "修改后重新执行文字、Icon、热区、溢出、交互目标和产品边界 QA。",
     )
     num_id = create_compact_numbering(doc, "decimal")
     for step in steps:
@@ -983,7 +991,7 @@ def add_freeze_rules(doc: Document) -> None:
         "产品需求确认书总确认结论已签署。",
         "逐页确认册意见已关闭，或形成带 Page ID、状态、责任人与关闭日期的例外清单。",
         "所有调整已同步到 PRD、开发规格、决策基线、Feature PRD、追踪矩阵、页面目录、原型和 DOCX。",
-        "92 页、146 张基础原型、23 张 Figma 最终状态、169 个映射继续通过自动校验。",
+        "92 页、349 个 Figma 最终状态、2,284 个有效动作和 169 个客户图片映射继续通过自动校验。",
         "阻塞下一阶段的 G-01 至 G-07 已按最晚关闭点完成。",
         "产品 Owner、客户代表、设计负责人和技术负责人共同确认冻结结论。",
     )
@@ -1084,7 +1092,7 @@ def add_signoff(doc: Document) -> None:
     paragraph = doc.add_paragraph()
     pd.add_inline_content(
         paragraph,
-        "请选择一项总确认结论。若选择“原则同意”或“仅同意功能交互”，"
+        "请选择一项总确认结论。若选择“原则同意”或“视觉需修改”，"
         "必须附上具体 C/G/Page ID 和调整意见。",
         base_size=10,
         base_color=pd.BRAND_DARK,
@@ -1093,7 +1101,7 @@ def add_signoff(doc: Document) -> None:
     options = (
         "□ 同意 C-01 至 C-08 的建议基线，进入需求冻结。",
         "□ 原则同意，但需按本确认单的调整意见同步后再冻结。",
-        "□ 只同意产品范围与功能交互；像素级视觉按后续波次继续确认。",
+        "□ 只同意产品范围与功能交互；Figma 最终视觉需按所列 Page ID 修改后再次确认。",
         "□ 暂不确认，需要重新讨论产品定位、范围或服务承诺。",
     )
     for option in options:
@@ -1123,7 +1131,7 @@ def add_signoff(doc: Document) -> None:
         "重新生成两份完整客户 DOCX、原型清单和本确认单。",
         "完成需求、Page ID、原型、DOCX、无障碍和全页渲染校验。",
         "由 Owner 记录冻结状态、组合指纹、签署人和日期。",
-        "先完成剩余 P0 视觉定稿和阻塞工程门禁，再进入 API/DTO 数据契约冻结与 KMP 脚手架。",
+        "关闭客户视觉意见和阻塞工程门禁，再进入 API/DTO 数据契约冻结与 KMP 脚手架。",
     )
     num_id = create_compact_numbering(doc, "decimal")
     for step in steps:

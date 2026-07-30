@@ -17,6 +17,9 @@ def natural_page_key(path: Path) -> int:
 def find_font(size: int):
     for candidate in (
         "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        "/private/tmp/meigallery-fonts/ArialUnicode.ttf",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
     ):
         if Path(candidate).exists():

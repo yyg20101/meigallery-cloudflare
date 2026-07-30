@@ -10,7 +10,7 @@ App 版本：1.0
 
 ## 1. 文档定位与使用规则
 
-1. 本文是 App 1.0 面向开发的单一入口，覆盖产品范围、需求编号、技术边界、92 个页面级实现对象、146 张基础逐页原型、23 张 Figma 最终状态原型和开发验收。
+1. 本文是 App 1.0 面向开发的单一入口，覆盖产品范围、需求编号、技术边界、92 个页面级实现对象、349 个 Figma 最终设计状态、169 个客户文档图片映射和开发验收。
 2. 客户意见先同步到产品总需求、发布范围、Feature PRD 和页面目录，再重新生成本文与客户 DOCX；不得直接在 DOCX 中维护独立需求。
 3. 开发任务、接口、测试用例、缺陷和变更必须至少引用一个 `PRD/SCP` 编号和一个 Page ID；纯后端门禁可引用需求编号并标注“无独立页面”。
 4. 原型用于确认信息层级、交互和状态表达，不替代服务端权限、数据状态机、API 契约或安全门禁。
@@ -28,12 +28,24 @@ App 版本：1.0
 | 默认状态原型 | 92 |
 | P0 关键状态原型 | 54 |
 | 基础逐页原型 | 146 |
-| Figma 最终细化页面 | 5 |
-| Figma 最终状态原型 | 23 |
-| 清单原型映射总数 | 169 |
+| Figma 最终设计页面 | 92 |
+| Figma 最终设计状态 | 349（移动端 186 / 后台 163） |
+| Figma 页面内 / 流程动作 | 1790 / 494 |
+| Figma 有效交互动作总数 | 2284 |
+| 通知与金币逐状态本地导出 | 5 页 / 23 张 |
+| 客户文档图片映射总数 | 169 |
 | 已建立需求追踪的页面 | 92 |
 
-### 2.1 App 1.0 实现范围
+### 2.1 Figma 最终设计交付
+
+- 最终文件：[Peachmote UI 借鉴审查板 - MeiGallery](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery)；最终版本 ID：`2381987656588552168`。
+- `10｜Mobile Pages` 覆盖 49 个 Page ID、186 个状态；`20｜Admin Pages` 覆盖 43 个 Page ID、163 个状态。
+- `30｜Prototype Flows` 覆盖 92 个流程预览；页面内与流程动作合计 2284 个，缺失目标为 0。
+- `40｜Delivery Index` 按 Page ID 提供页面索引和需求追踪；`50｜QA & Handoff` 提供视觉、交互、边界和交付门禁。
+- 最终 QA 中未发现未绑定文字样式、原始填充/描边、缺失字体、文字溢出或移动端不足 44dp 的关键点击热区。
+- 开发以 Page ID、状态名称和需求追踪键定位设计；客户文档中的 169 张图用于离线逐页确认，不替代 Figma 中 349 个最终状态。
+
+### 2.2 App 1.0 实现范围
 
 - Android/iOS 观看者客户端：KMP + Compose Multiplatform，共享业务、状态、网络、缓存和主要 UI。
 - 桌面运营端：现有 Nuxt 管理后台，覆盖真人供给、认证发布、推荐运营、平台话题、会员申请与发放、金币调整、安全审核和审计。
@@ -41,7 +53,7 @@ App 版本：1.0
 - 商业能力：只做五级会员展示、站内申请、管理员手动发放、金币余额与追加式明细。
 - 通知：站内拉取和实时刷新完成全部核心流程，不依赖系统推送。
 
-### 2.2 App 1.0 明确不实现
+### 2.3 App 1.0 明确不实现
 
 - 在线支付、自动续订、金币充值、礼物、头像框、主页皮肤、聊天皮肤、订单和退款。
 - 系统推送、图片消息、音视频通话、直播、公开评论和用户上传公开媒体。
@@ -195,6 +207,7 @@ App 版本：1.0
 - **PRD-AC-012**：App 1.0 的 92 个 Page ID 均能追踪到至少一个产品需求编号、发布范围编号和 Feature PRD，且页面名称、优先级、状态和原型文件使用同一清单。
 - **PRD-AC-013**：92 个页面均具有默认状态原型，54 个 P0 页面均额外具有关键状态原型；原型总数为 146 张，文档中不存在凭章节顺序猜测图片的映射。
 - **PRD-AC-014**：礼物、装扮、在线支付、金币充值、系统推送、媒体消息、真人认领和普通用户桌面端在 App 1.0 追踪矩阵中标记为未来范围，不生成可执行页面、占位入口或上线验收项。
+- **PRD-AC-015**：Figma 最终文件包含 49 个移动端页面/186 个状态、43 个后台页面/163 个状态和 92 个流程预览；2,284 个有效交互动作无缺失目标，正式页不存在未绑定文字样式、缺失字体或文字溢出。
 
 ### 6.4 发布范围验收
 
@@ -251,6 +264,8 @@ App 版本：1.0
 
 **页面状态：** 首次、恢复中、离线、升级、维护
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-01`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-AUTH-01 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
@@ -299,6 +314,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 正常、输入错误、验证中、频控、账号受限
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-02`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -349,6 +366,8 @@ App 版本：1.0
 
 **页面状态：** 正常、标识占用、验证码失效、地区不可用
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-AUTH-03 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
@@ -398,6 +417,8 @@ App 版本：1.0
 
 **页面状态：** 等待、失败、次数限制
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-AUTH-04 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
@@ -443,6 +464,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空目录、保存失败、非个性化说明
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-AUTH-05 → PRD-FR-001,PRD-FR-002,PRD-FR-003,PRD-FR-004 → SCP-FR-001,SCP-FR-013 → F-01/ACC-FR-*`
@@ -487,6 +510,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 正常、加载失败、版本更新
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-06`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -541,6 +566,8 @@ App 版本：1.0
 
 **页面状态：** 正常、首次空、骨架、分页、离线缓存、规则刷新
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-01`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-DSC-01 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-05/ROP-FR-*`
@@ -589,6 +616,8 @@ App 版本：1.0
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
 **页面状态：** 正常、定位未使用、目录更新、无结果
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -639,6 +668,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空分类、目录失效
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-DSC-03 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*`
@@ -683,6 +714,8 @@ App 版本：1.0
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
 **页面状态：** 初始、输入中、有结果、无结果、历史关闭
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-04`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -733,6 +766,8 @@ App 版本：1.0
 
 **页面状态：** 正常、权益门槛、目录冲突、无结果
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-DSC-05 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*`
@@ -782,6 +817,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空、额度满、标签已合并
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-06`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-DSC-06 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*`
@@ -826,6 +863,8 @@ App 版本：1.0
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
 **页面状态：** 正常、下架、受限、离线摘要、媒体不可用
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-07`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -876,6 +915,8 @@ App 版本：1.0
 
 **页面状态：** 正常、凭证刷新、加载失败、内容隐藏
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-08`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-DSC-08 → PRD-FR-030,PRD-FR-031,PRD-FR-032 → SCP-FR-002,SCP-FR-003 → F-02–F-05/DSP-FR-*`
@@ -924,6 +965,8 @@ App 版本：1.0
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
 **页面状态：** 正常、认证失效、资料变化
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-09`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -978,6 +1021,8 @@ App 版本：1.0
 
 **页面状态：** 正常、首次空、无更新、资料下架
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-INT-01 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*`
@@ -1026,6 +1071,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 正常、空、资料不可用
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -1076,6 +1123,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空、额度满、离线
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-INT-03 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*`
@@ -1121,6 +1170,8 @@ App 版本：1.0
 
 **页面状态：** 正常、文件夹已删除、资料下架
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-INT-04 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*`
@@ -1165,6 +1216,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 正常、空、保留到期、清除失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -1215,6 +1268,8 @@ App 版本：1.0
 
 **页面状态：** 正常、首次空、离线、会话受限
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-MSG-01 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*`
@@ -1263,6 +1318,8 @@ App 版本：1.0
 **数据与权限：** 读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。
 
 **页面状态：** 正常、无会员、额度尽、资料失效、已有话题
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-02`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -1313,6 +1370,8 @@ App 版本：1.0
 
 **页面状态：** 正常、补拉、审核中、只读、冻结、关闭
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-03`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-MSG-03 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*`
@@ -1362,6 +1421,8 @@ App 版本：1.0
 
 **页面状态：** 正常、操作失败、已关闭
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-MSG-04 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056 → SCP-FR-005,SCP-FR-006,SCP-FR-007,SCP-FR-008,SCP-FR-015 → F-07、A-06/MOP-FR-*`
@@ -1410,6 +1471,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号可见的用户安全通知；摘要不得包含完整话题正文、内部备注、证件、访问凭证或其他敏感数据。
 
 **页面状态：** 正常、全部已读、首次空、分页失败、实时离线
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-05`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -1506,6 +1569,8 @@ App 版本：1.0
 
 **页面状态：** 正常、目标失效、无权限、需要升级
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-06`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-MSG-06 → PRD-FR-080,PRD-FR-081 → SCP-FR-009 → F-12/NTF-FR-*`
@@ -1595,6 +1660,8 @@ App 版本：1.0
 
 **页面状态：** 免费、已有申请、待生效、同步失败
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MBR-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-MBR-01 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066 → SCP-FR-004,SCP-FR-005,SCP-FR-005A,SCP-FR-005B → F-09、A-08/MBR-FR-*`
@@ -1643,6 +1710,8 @@ App 版本：1.0
 **数据与权限：** 读取会员目录、当前 grant 与申请状态；申请写入不等同于权限生效。
 
 **页面状态：** 正常、即将到期、到期、撤销、受限
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MBR-02`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -1693,6 +1762,8 @@ App 版本：1.0
 
 **页面状态：** 未申请、已提交、处理中、待补充、已通过、已拒绝、已取消
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MBR-03`，共 7 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-MBR-03 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066 → SCP-FR-004,SCP-FR-005,SCP-FR-005A,SCP-FR-005B → F-09、A-08/MBR-FR-*`
@@ -1741,6 +1812,8 @@ App 版本：1.0
 **数据与权限：** 只读取余额与有效分录；客户端不得直接修改余额，申诉只创建独立案件。
 
 **页面状态：** 正常、空钱包、离线缓存、同步失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-WAL-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -1826,6 +1899,8 @@ App 版本：1.0
 **数据与权限：** 只读取余额与有效分录；客户端不得直接修改余额，申诉只创建独立案件。
 
 **页面状态：** 正常、增加筛选、扣减筛选、首次空、分页加载、对账维护
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-WAL-02`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -1932,6 +2007,8 @@ App 版本：1.0
 
 **页面状态：** 正常、业务单号已复制、分录不可用、冲正中
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-WAL-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-WAL-03 → PRD-FR-070,PRD-FR-071,PRD-FR-074 → SCP-FR-010,SCP-FR-011 → F-10、A-10/WAL-FR-*`
@@ -2021,6 +2098,8 @@ App 版本：1.0
 
 **页面状态：** 正常、账号受限、摘要同步失败
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-01`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SET-01 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
@@ -2070,6 +2149,8 @@ App 版本：1.0
 
 **页面状态：** 正常、保存失败、需要重新验证
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SET-02 → PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-001,PRD-FR-002 → SCP-FR-013 → F-13/PDR-FR-*,F-01/ACC-FR-*`
@@ -2114,6 +2195,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 正常、仅当前设备、撤销失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -2160,6 +2243,8 @@ App 版本：1.0
 
 **页面状态：** 正常、保存冲突、政策更新
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SET-04 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
@@ -2205,6 +2290,8 @@ App 版本：1.0
 
 **页面状态：** 正常、同步失败、策略变化
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-05`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SET-05 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
@@ -2249,6 +2336,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 正常、空、解除失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-06`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -2299,6 +2388,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空、状态延迟
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-07`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SET-07 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*,A-07/MOD-FR-*`
@@ -2347,6 +2438,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 正常、已有处理中、提交失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-08`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -2397,6 +2490,8 @@ App 版本：1.0
 
 **页面状态：** 正常、处理中、失败、已过期、需要重新验证
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-09`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SET-09 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
@@ -2442,6 +2537,8 @@ App 版本：1.0
 
 **页面状态：** 正常、存在阻塞项、处理中、失败
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-10`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SET-10 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
@@ -2486,6 +2583,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 正常、离线、无结果
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-11`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -2536,6 +2635,8 @@ App 版本：1.0
 
 **页面状态：** 正常、文档不可用
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-12`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SET-12 → PRD-FR-080,PRD-FR-081,PRD-FR-082 → SCP-FR-013 → F-13/PDR-FR-*`
@@ -2585,6 +2686,8 @@ App 版本：1.0
 
 **页面状态：** 必须升级、商店不可用
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-01`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SYS-01 → PRD-FR-080 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*`
@@ -2630,6 +2733,8 @@ App 版本：1.0
 
 **页面状态：** 维护中、部分恢复
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-02`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SYS-02 → PRD-FR-080 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*`
@@ -2674,6 +2779,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 部分受限、全部受限
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-03`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -2724,6 +2831,8 @@ App 版本：1.0
 
 **页面状态：** 已下架、无权限、已删除
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`APP-SYS-04 → PRD-FR-013,PRD-FR-032 → SCP-FR-031,SCP-FR-032,SCP-FR-033 → App 1.0 范围/SCP-FR-*`
@@ -2772,6 +2881,8 @@ App 版本：1.0
 **数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
 
 **页面状态：** 未开放、政策变化
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-05`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -2822,6 +2933,8 @@ App 版本：1.0
 
 **页面状态：** 正常、数据延迟、质量异常、部分无权限
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-OV-01 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014,SCP-FR-015 → A-13/OAU-FR-*`
@@ -2867,6 +2980,8 @@ App 版本：1.0
 
 **页面状态：** 正常、P0/P1、未分配、已缓解
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-OV-02 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014,SCP-FR-015 → A-13/OAU-FR-*`
@@ -2911,6 +3026,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、影响扩大、并发更新、证据不足
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -2961,6 +3078,8 @@ App 版本：1.0
 
 **页面状态：** 正常、草稿、待审、已发布、已暂停、争议
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-01`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-PER-01 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*`
@@ -3009,6 +3128,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、缺少来源、重复候选、媒体失败
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3059,6 +3180,8 @@ App 版本：1.0
 
 **页面状态：** 正常、认证待审、发布待审、授权过期
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-PER-03 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-01–A-02/SRC-FR-*`
@@ -3107,6 +3230,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、校验中、部分失败、已暂停、已完成
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-04`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3157,6 +3282,8 @@ App 版本：1.0
 
 **页面状态：** 正常、证据不足、版本冲突、需要复核
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-PER-05 → PRD-FR-010,PRD-FR-011,PRD-FR-012,PRD-FR-013,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-014 → A-03/VER-FR-*`
@@ -3205,6 +3332,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、未认证、授权失效、投影失败
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-06`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3259,6 +3388,8 @@ App 版本：1.0
 
 **页面状态：** 正常、草稿目录、生效目录、归档目录
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-TAX-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-TAX-01 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-04/TAX-FR-*`
@@ -3303,6 +3434,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、被引用、合并冲突、版本过期
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-TAX-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3349,6 +3482,8 @@ App 版本：1.0
 
 **页面状态：** 正常、未知引用、客户端不兼容、待复核
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-TAX-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-TAX-03 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-04/TAX-FR-*`
@@ -3393,6 +3528,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、当前生效、灰度中、已回滚
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-REC-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3439,6 +3576,8 @@ App 版本：1.0
 
 **页面状态：** 正常、Schema 错误、触碰安全过滤、并发冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-REC-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-REC-02 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*`
@@ -3484,6 +3623,8 @@ App 版本：1.0
 
 **页面状态：** 正常、样本不足、数据延迟
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-REC-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-REC-03 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → A-05/ROP-FR-*`
@@ -3528,6 +3669,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、时间冲突、资料下架
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-REC-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3578,6 +3721,8 @@ App 版本：1.0
 
 **页面状态：** 正常、待分配、待平台、待用户、安全审核
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MSG-01`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-MSG-01 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*`
@@ -3626,6 +3771,8 @@ App 版本：1.0
 **数据与权限：** 正文访问受领取租约、对象范围和最小必要原则限制；发送身份固定为平台运营。
 
 **页面状态：** 正常、租约冲突、只读、冻结、关闭
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MSG-02`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3676,6 +3823,8 @@ App 版本：1.0
 
 **页面状态：** 正常、无值班、过载、配置冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MSG-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-MSG-03 → PRD-FR-050,PRD-FR-051,PRD-FR-052,PRD-FR-053,PRD-FR-054,PRD-FR-055,PRD-FR-056,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-007,SCP-FR-008,SCP-FR-012,SCP-FR-015 → F-07、A-06/MOP-FR-*`
@@ -3724,6 +3873,8 @@ App 版本：1.0
 **数据与权限：** 正文访问受领取租约、对象范围和最小必要原则限制；发送身份固定为平台运营。
 
 **页面状态：** 正常、无正文授权、披露缺失
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MSG-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3778,6 +3929,8 @@ App 版本：1.0
 
 **页面状态：** 正常、P0、超时、未分配
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-SAF-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-SAF-01 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*`
@@ -3826,6 +3979,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、证据受限、并发冲突、已冻结
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-SAF-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3876,6 +4031,8 @@ App 版本：1.0
 
 **页面状态：** 正常、原审核人隔离、逾期
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-SAF-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-SAF-03 → PRD-FR-032,PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-015 → A-07/MOD-FR-*`
@@ -3924,6 +4081,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、证据不足、需要升级
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-SAF-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -3978,6 +4137,8 @@ App 版本：1.0
 
 **页面状态：** 正常、草稿、生效、待回滚
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-MBR-01 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
@@ -4023,6 +4184,8 @@ App 版本：1.0
 
 **页面状态：** 正常、未知客户端、合并冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-MBR-02 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
@@ -4067,6 +4230,8 @@ App 版本：1.0
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
 **页面状态：** 待处理、处理中、待补充、已通过、已拒绝、直接发放
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-03`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -4117,6 +4282,8 @@ App 版本：1.0
 
 **页面状态：** 正常、账号错误、高风险、重复业务单
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-04`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-MBR-04 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
@@ -4165,6 +4332,8 @@ App 版本：1.0
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
 **页面状态：** 正常、发起人冲突、账号状态已变
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-05`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -4215,6 +4384,8 @@ App 版本：1.0
 
 **页面状态：** 正常、证据不足、映射冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-06`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-MBR-06 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
@@ -4259,6 +4430,8 @@ App 版本：1.0
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
 **页面状态：** 正常、账号受限、对账异常
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-01`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -4309,6 +4482,8 @@ App 版本：1.0
 
 **页面状态：** 正常、余额锁定、Sequence 异常
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-WAL-02 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*`
@@ -4357,6 +4532,8 @@ App 版本：1.0
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
 **页面状态：** 正常、预计负余额、高风险、重复业务单
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -4407,6 +4584,8 @@ App 版本：1.0
 
 **页面状态：** 正常、余额已变化、发起人冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-WAL-04 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*`
@@ -4456,6 +4635,8 @@ App 版本：1.0
 
 **页面状态：** 正常、部分成功、重复项、总额异常
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-WAL-05 → PRD-FR-070,PRD-FR-071,PRD-FR-074,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-010,SCP-FR-012 → F-10、A-10/WAL-FR-*`
@@ -4500,6 +4681,8 @@ App 版本：1.0
 **数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
 
 **页面状态：** 正常、钱包冻结、差异未解释
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-06`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -4554,6 +4737,8 @@ App 版本：1.0
 
 **页面状态：** 正常、未登记、已停用
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-NTF-01`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-NTF-01 → PRD-FR-080,PRD-FR-081,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-009,SCP-FR-012 → F-12/NTF-FR-*`
@@ -4598,6 +4783,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、变量缺失、地区冲突、语言冲突
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-NTF-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -4644,6 +4831,8 @@ App 版本：1.0
 
 **页面状态：** 正常、积压、模板失败、重复抑制
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-NTF-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-NTF-03 → PRD-FR-080,PRD-FR-081,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-009,SCP-FR-012 → F-12/NTF-FR-*`
@@ -4688,6 +4877,8 @@ App 版本：1.0
 **数据与权限：** 仅允许具备审计 capability 的管理员按授权范围读取脱敏事件；导出必须申请、复核、短期授权并记录审计。
 
 **页面状态：** 正常、范围过大、完整性告警
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-01`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
 
@@ -4738,6 +4929,8 @@ App 版本：1.0
 
 **页面状态：** 正常、关联缺失、敏感字段受限
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-AUD-02 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
@@ -4787,6 +4980,8 @@ App 版本：1.0
 
 **页面状态：** 正常、Sequence 缺口、业务无审计
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-AUD-03 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
@@ -4832,6 +5027,8 @@ App 版本：1.0
 
 **页面状态：** 正常、待批准、已过期、范围变化
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-04`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **实现追踪：**
 
 - 追踪键：`ADM-AUD-04 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
@@ -4867,7 +5064,7 @@ App 版本：1.0
 ## 10. 完成定义（Definition of Done）
 
 - 每个实现任务引用需求编号和 Page ID，满足逐页开发验收与关联 Feature PRD 的 Given/When/Then。
-- 客户端与后台覆盖本页声明的全部状态；P0 页面完成关键受限/异常状态视觉回归。
+- 客户端与后台覆盖本页声明的全部状态；实现截图与 Figma 同一 Page ID、同一状态在相同视口下完成视觉回归。
 - 所有对象级授权、会员、媒体、消息、账本和后台写操作通过服务端验证；越权与过期用例有自动化测试。
 - API/DTO/事件与冻结 Schema 一致，未知字段和枚举兼容测试通过，重试不产生重复业务结果。
 - 关键操作具备审计、最小化日志、指标和告警；敏感字段未进入日志、埋点或崩溃报告。

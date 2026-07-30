@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""校验 92 页、146 张基础原型及 23 张 Figma 最终状态图。"""
+"""校验 92 页、349 个 Figma 最终状态及 169 个客户文档图片映射。"""
 
 from __future__ import annotations
 
@@ -57,6 +57,14 @@ def validate_counts(manifest: dict) -> None:
         "detailedFigmaPages": 5,
         "detailedFigmaStateCaptures": 23,
         "documentPrototypeMappings": 169,
+        "figmaDesignedPages": 92,
+        "figmaDesignedStates": 349,
+        "figmaMobileStates": 186,
+        "figmaAdminStates": 163,
+        "figmaFlowPreviews": 92,
+        "figmaPageActions": 1790,
+        "figmaFlowActions": 494,
+        "figmaTotalActions": 2284,
         "groups": 14,
     }
     for key, value in expected.items():
@@ -66,8 +74,8 @@ def validate_counts(manifest: dict) -> None:
     page_ids = [page["pageId"] for page in manifest["pages"]]
     if len(page_ids) != len(set(page_ids)):
         raise ValueError("Page ID 存在重复")
-    if int(manifest.get("schemaVersion", 0)) < 3:
-        raise ValueError("原型清单缺少 Figma 最终状态 schema")
+    if int(manifest.get("schemaVersion", 0)) < 4:
+        raise ValueError("原型清单缺少 Figma 全量最终交付 schema")
 
 
 def all_captures(manifest: dict) -> list[dict]:

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "appVersion": "1.0",
   "generatedAt": "2026-07-30",
   "source": "docs/app/interactive-prototype/page-catalog.js",
@@ -9,15 +9,33 @@
   },
   "figmaFinal": {
     "fileKey": "LaNSwwGsznwcpV8msj7BQC",
-    "pageId": "9:8",
-    "scope": "APP-MSG-05/06、APP-WAL-01/02/03",
-    "status": "visual-and-interaction-audited",
+    "fileUrl": "https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery",
+    "finalVersionId": "2381987656588552168",
+    "scope": "移动端 49 页、管理后台 43 页及全部 349 个需求状态",
+    "status": "final-deliverable",
+    "officialPages": {
+      "mobile": "10｜Mobile Pages",
+      "admin": "20｜Admin Pages",
+      "flows": "30｜Prototype Flows",
+      "deliveryIndex": "40｜Delivery Index",
+      "qaHandoff": "50｜QA & Handoff"
+    },
     "audit": {
-      "pageCoverage": "49/49",
-      "nodeConnections": 161,
+      "pageCoverage": "92/92",
+      "stateCoverage": "349/349",
+      "mobileStateCoverage": "186/186",
+      "adminStateCoverage": "163/163",
+      "flowPreviews": 92,
+      "pageActions": 1790,
+      "flowActions": 494,
+      "totalActions": 2284,
       "missingDestinations": 0,
-      "undersizedTapTargets": 0,
-      "layoutIssues": 0
+      "undersizedMobileTouchTargets": 0,
+      "unstyledText": 0,
+      "rawFills": 0,
+      "rawStrokes": 0,
+      "missingFonts": 0,
+      "textOverflow": 0
     }
   },
   "counts": {
@@ -33,6 +51,14 @@
     "detailedFigmaPages": 5,
     "detailedFigmaStateCaptures": 23,
     "documentPrototypeMappings": 169,
+    "figmaDesignedPages": 92,
+    "figmaDesignedStates": 349,
+    "figmaMobileStates": 186,
+    "figmaAdminStates": 163,
+    "figmaFlowPreviews": 92,
+    "figmaPageActions": 1790,
+    "figmaFlowActions": 494,
+    "figmaTotalActions": 2284,
     "groups": 14
   },
   "pages": [
@@ -68,6 +94,8 @@
       "nextPageId": "APP-AUTH-02",
       "keyState": "离线",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“冷启动、回到前台或深链唤起”能够进入，页面明确显示 APP-AUTH-01、页面名称、设计路由和返回路径。",
         "主要操作“继续进入”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -140,6 +168,8 @@
       "nextPageId": "APP-DSC-01",
       "keyState": "账号受限",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“启动页、权限门槛或登录后回跳”能够进入，页面明确显示 APP-AUTH-02、页面名称、设计路由和返回路径。",
         "主要操作“手机号登录”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -210,6 +240,8 @@
       "nextPageId": "APP-AUTH-05",
       "keyState": "验证码失效",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“登录页选择注册”能够进入，页面明确显示 APP-AUTH-03、页面名称、设计路由和返回路径。",
         "主要操作“创建观看者账号”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -279,6 +311,8 @@
       "nextPageId": "APP-DSC-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“登录风险、设备变化或敏感操作”能够进入，页面明确显示 APP-AUTH-04、页面名称、设计路由和返回路径。",
         "主要操作“完成验证”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -349,6 +383,8 @@
       "nextPageId": "APP-DSC-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“首次注册成功”能够进入，页面明确显示 APP-AUTH-05、页面名称、设计路由和返回路径。",
         "主要操作“保存偏好”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -418,6 +454,8 @@
       "nextPageId": "APP-AUTH-02",
       "keyState": "加载失败",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“登录、注册、设置与关于页”能够进入，页面明确显示 APP-AUTH-06、页面名称、设计路由和返回路径。",
         "主要操作“返回原页面”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -492,6 +530,8 @@
       "nextPageId": "APP-DSC-07",
       "keyState": "离线缓存",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 6,
       "acceptance": [
         "从“登录完成、底部推荐 Tab 或返回首页”能够进入，页面明确显示 APP-DSC-01、页面名称、设计路由和返回路径。",
         "主要操作“查看真人详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -569,6 +609,8 @@
       "nextPageId": "APP-DSC-01",
       "keyState": "无结果",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“推荐页地区入口或筛选页”能够进入，页面明确显示 APP-DSC-02、页面名称、设计路由和返回路径。",
         "主要操作“应用地区”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -645,6 +687,8 @@
       "nextPageId": "APP-DSC-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“推荐频道或搜索入口”能够进入，页面明确显示 APP-DSC-03、页面名称、设计路由和返回路径。",
         "主要操作“进入分类”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -723,6 +767,8 @@
       "nextPageId": "APP-DSC-07",
       "keyState": "无结果",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“推荐页搜索框”能够进入，页面明确显示 APP-DSC-04、页面名称、设计路由和返回路径。",
         "主要操作“提交搜索”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -800,6 +846,8 @@
       "nextPageId": "APP-DSC-04",
       "keyState": "权益门槛",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“搜索页或推荐页筛选入口”能够进入，页面明确显示 APP-DSC-05、页面名称、设计路由和返回路径。",
         "主要操作“应用筛选”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -877,6 +925,8 @@
       "nextPageId": "APP-DSC-04",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“筛选页保存入口或我的页面”能够进入，页面明确显示 APP-DSC-06、页面名称、设计路由和返回路径。",
         "主要操作“使用条件”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -958,6 +1008,8 @@
       "nextPageId": "APP-MSG-02",
       "keyState": "受限",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“推荐、搜索、关注、喜欢、收藏或历史”能够进入，页面明确显示 APP-DSC-07、页面名称、设计路由和返回路径。",
         "主要操作“发起话题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1029,6 +1081,8 @@
       "nextPageId": "APP-DSC-07",
       "keyState": "加载失败",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“真人详情媒体区域”能够进入，页面明确显示 APP-DSC-08、页面名称、设计路由和返回路径。",
         "主要操作“查看下一张”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1098,6 +1152,8 @@
       "nextPageId": "APP-DSC-07",
       "keyState": "认证失效",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“真人详情认证标识”能够进入，页面明确显示 APP-DSC-09、页面名称、设计路由和返回路径。",
         "主要操作“返回真人详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1174,6 +1230,8 @@
       "nextPageId": "APP-DSC-07",
       "keyState": "资料下架",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“底部关注 Tab”能够进入，页面明确显示 APP-INT-01、页面名称、设计路由和返回路径。",
         "主要操作“查看更新”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1240,6 +1298,8 @@
       "nextPageId": "APP-DSC-07",
       "keyState": "资料不可用",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“我的页面或互动入口”能够进入，页面明确显示 APP-INT-02、页面名称、设计路由和返回路径。",
         "主要操作“查看真人”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1308,6 +1368,8 @@
       "nextPageId": "APP-INT-04",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“我的页面或详情收藏动作”能够进入，页面明确显示 APP-INT-03、页面名称、设计路由和返回路径。",
         "主要操作“打开收藏夹”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1375,6 +1437,8 @@
       "nextPageId": "APP-DSC-07",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“收藏夹列表”能够进入，页面明确显示 APP-INT-04、页面名称、设计路由和返回路径。",
         "主要操作“查看真人”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1442,6 +1506,8 @@
       "nextPageId": "APP-DSC-07",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“我的页面”能够进入，页面明确显示 APP-INT-05、页面名称、设计路由和返回路径。",
         "主要操作“查看历史详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1509,6 +1575,8 @@
       "nextPageId": "APP-MSG-03",
       "keyState": "会话受限",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“底部消息 Tab”能够进入，页面明确显示 APP-MSG-01、页面名称、设计路由和返回路径。",
         "主要操作“打开话题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1590,6 +1658,8 @@
       "nextPageId": "APP-MSG-03",
       "keyState": "无会员",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“真人详情“发起话题”按钮”能够进入，页面明确显示 APP-MSG-02、页面名称、设计路由和返回路径。",
         "主要操作“确认发起话题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1673,6 +1743,8 @@
       "nextPageId": "APP-MSG-04",
       "keyState": "冻结",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 6,
       "acceptance": [
         "从“平台话题列表或发起确认”能够进入，页面明确显示 APP-MSG-03、页面名称、设计路由和返回路径。",
         "主要操作“发送消息”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1753,6 +1825,8 @@
       "nextPageId": "APP-MSG-01",
       "keyState": "操作失败",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“会话页右上角菜单”能够进入，页面明确显示 APP-MSG-04、页面名称、设计路由和返回路径。",
         "主要操作“保存会话设置”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -1890,6 +1964,8 @@
           "prototypeUrl": "https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-53483&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A53483&show-proto-sidebar=1&page-id=9%3A8"
         }
       ],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“推荐页铃铛或消息页通知入口”能够进入，页面明确显示 APP-MSG-05、页面名称、设计路由和返回路径。",
         "主要操作“打开通知”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2004,6 +2080,8 @@
           "prototypeUrl": "https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54288&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54288&show-proto-sidebar=1&page-id=9%3A8"
         }
       ],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“通知列表”能够进入，页面明确显示 APP-MSG-06、页面名称、设计路由和返回路径。",
         "主要操作“前往相关页面”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2073,6 +2151,8 @@
       "nextPageId": "APP-MBR-03",
       "keyState": "同步失败",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“真人详情门槛或我的会员卡”能够进入，页面明确显示 APP-MBR-01、页面名称、设计路由和返回路径。",
         "主要操作“提交会员申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2153,6 +2233,8 @@
       "nextPageId": "APP-MBR-03",
       "keyState": "受限",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“我的会员卡或会员目录”能够进入，页面明确显示 APP-MBR-02、页面名称、设计路由和返回路径。",
         "主要操作“查看权益说明”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2236,6 +2318,8 @@
       "nextPageId": "APP-MBR-02",
       "keyState": "已拒绝",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 7,
       "acceptance": [
         "从“会员目录或权益页”能够进入，页面明确显示 APP-MBR-03、页面名称、设计路由和返回路径。",
         "主要操作“提交会员申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2360,6 +2444,8 @@
           "prototypeUrl": "https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54977&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54977&show-proto-sidebar=1&page-id=9%3A8"
         }
       ],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“我的金币卡”能够进入，页面明确显示 APP-WAL-01、页面名称、设计路由和返回路径。",
         "主要操作“查看金币明细”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2498,6 +2584,8 @@
           "prototypeUrl": "https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-55962&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A55962&show-proto-sidebar=1&page-id=9%3A8"
         }
       ],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 6,
       "acceptance": [
         "从“钱包页”能够进入，页面明确显示 APP-WAL-02、页面名称、设计路由和返回路径。",
         "主要操作“查看分录详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2612,6 +2700,8 @@
           "prototypeUrl": "https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-56598&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A56598&show-proto-sidebar=1&page-id=9%3A8"
         }
       ],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“金币明细”能够进入，页面明确显示 APP-WAL-03、页面名称、设计路由和返回路径。",
         "主要操作“提交申诉”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2681,6 +2771,8 @@
       "nextPageId": "APP-SET-02",
       "keyState": "账号受限",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“底部我的 Tab”能够进入，页面明确显示 APP-SET-01、页面名称、设计路由和返回路径。",
         "主要操作“查看账号资料”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2748,6 +2840,8 @@
       "nextPageId": "APP-SET-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“我的页面”能够进入，页面明确显示 APP-SET-02、页面名称、设计路由和返回路径。",
         "主要操作“保存账号资料”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2822,6 +2916,8 @@
       "nextPageId": "APP-SET-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“我的页面账号与安全”能够进入，页面明确显示 APP-SET-03、页面名称、设计路由和返回路径。",
         "主要操作“退出其他设备”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2897,6 +2993,8 @@
       "nextPageId": "APP-SET-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“我的页面隐私入口”能够进入，页面明确显示 APP-SET-04、页面名称、设计路由和返回路径。",
         "主要操作“保存隐私设置”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -2963,6 +3061,8 @@
       "nextPageId": "APP-SET-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“我的页面通知设置”能够进入，页面明确显示 APP-SET-05、页面名称、设计路由和返回路径。",
         "主要操作“保存通知偏好”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3030,6 +3130,8 @@
       "nextPageId": "APP-SET-01",
       "keyState": "解除失败",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“我的页面隐私与安全”能够进入，页面明确显示 APP-SET-06、页面名称、设计路由和返回路径。",
         "主要操作“解除拉黑”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3102,6 +3204,8 @@
       "nextPageId": "APP-SET-01",
       "keyState": "状态延迟",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“我的页面帮助与安全”能够进入，页面明确显示 APP-SET-07、页面名称、设计路由和返回路径。",
         "主要操作“查看举报进度”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3175,6 +3279,8 @@
       "nextPageId": "APP-SET-07",
       "keyState": "已有处理中",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“账号受限、举报记录或分录详情”能够进入，页面明确显示 APP-SET-08、页面名称、设计路由和返回路径。",
         "主要操作“提交申诉”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3250,6 +3356,8 @@
       "nextPageId": "APP-SET-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“我的页面数据权利”能够进入，页面明确显示 APP-SET-09、页面名称、设计路由和返回路径。",
         "主要操作“创建导出任务”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3318,6 +3426,8 @@
       "nextPageId": "APP-AUTH-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“我的页面数据权利”能够进入，页面明确显示 APP-SET-10、页面名称、设计路由和返回路径。",
         "主要操作“提交注销申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3385,6 +3495,8 @@
       "nextPageId": "APP-SET-01",
       "keyState": "离线",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“登录、设置、错误和业务说明入口”能够进入，页面明确显示 APP-SET-11、页面名称、设计路由和返回路径。",
         "主要操作“打开帮助主题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3451,6 +3563,8 @@
       "nextPageId": "APP-AUTH-06",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 2,
       "acceptance": [
         "从“我的页面”能够进入，页面明确显示 APP-SET-12、页面名称、设计路由和返回路径。",
         "主要操作“查看法律文档”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3517,6 +3631,8 @@
       "nextPageId": "APP-AUTH-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 2,
       "acceptance": [
         "从“启动检查或未知能力门槛”能够进入，页面明确显示 APP-SYS-01、页面名称、设计路由和返回路径。",
         "主要操作“更新 App”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3583,6 +3699,8 @@
       "nextPageId": "APP-AUTH-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 2,
       "acceptance": [
         "从“启动或任意服务请求”能够进入，页面明确显示 APP-SYS-02、页面名称、设计路由和返回路径。",
         "主要操作“重新尝试”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3650,6 +3768,8 @@
       "nextPageId": "APP-SET-08",
       "keyState": "全部受限",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 2,
       "acceptance": [
         "从“登录、敏感操作或安全事件”能够进入，页面明确显示 APP-SYS-03、页面名称、设计路由和返回路径。",
         "主要操作“查看限制详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3719,6 +3839,8 @@
       "nextPageId": "APP-DSC-01",
       "keyState": "无权限",
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“对象深链或状态刷新”能够进入，页面明确显示 APP-SYS-04、页面名称、设计路由和返回路径。",
         "主要操作“返回推荐”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3786,6 +3908,8 @@
       "nextPageId": "APP-AUTH-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "10｜Mobile Pages",
+      "figmaDesignedStateCount": 2,
       "acceptance": [
         "从“注册、登录或地区切换”能够进入，页面明确显示 APP-SYS-05、页面名称、设计路由和返回路径。",
         "主要操作“查看地区说明”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3856,6 +3980,8 @@
       "nextPageId": "ADM-OV-02",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“后台登录后的默认首页”能够进入，页面明确显示 ADM-OV-01、页面名称、设计路由和返回路径。",
         "主要操作“进入专题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -3929,6 +4055,8 @@
       "nextPageId": "ADM-OV-03",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“运营总览异常卡或全局任务入口”能够进入，页面明确显示 ADM-OV-02、页面名称、设计路由和返回路径。",
         "主要操作“认领异常”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4003,6 +4131,8 @@
       "nextPageId": "ADM-OV-02",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“异常中心”能够进入，页面明确显示 ADM-OV-03、页面名称、设计路由和返回路径。",
         "主要操作“添加处置记录”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4079,6 +4209,8 @@
       "nextPageId": "ADM-PER-02",
       "keyState": "争议",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 6,
       "acceptance": [
         "从“真人与内容导航”能够进入，页面明确显示 ADM-PER-01、页面名称、设计路由和返回路径。",
         "主要操作“新建真人”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4156,6 +4288,8 @@
       "nextPageId": "ADM-PER-03",
       "keyState": "媒体失败",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“真人列表主操作”能够进入，页面明确显示 ADM-PER-02、页面名称、设计路由和返回路径。",
         "主要操作“保存草稿”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4234,6 +4368,8 @@
       "nextPageId": "ADM-PER-05",
       "keyState": "授权过期",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“真人列表或导入结果”能够进入，页面明确显示 ADM-PER-03、页面名称、设计路由和返回路径。",
         "主要操作“发起认证审核”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4313,6 +4449,8 @@
       "nextPageId": "ADM-PER-03",
       "keyState": "部分失败",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“真人列表批量导入”能够进入，页面明确显示 ADM-PER-04、页面名称、设计路由和返回路径。",
         "主要操作“执行导入”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4391,6 +4529,8 @@
       "nextPageId": "ADM-PER-06",
       "keyState": "版本冲突",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“真人工作台提交认证”能够进入，页面明确显示 ADM-PER-05、页面名称、设计路由和返回路径。",
         "主要操作“通过认证”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4469,6 +4609,8 @@
       "nextPageId": "ADM-PER-01",
       "keyState": "授权失效",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“认证通过后发起发布”能够进入，页面明确显示 ADM-PER-06、页面名称、设计路由和返回路径。",
         "主要操作“发布到 App”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4546,6 +4688,8 @@
       "nextPageId": "ADM-TAX-02",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“发现运营导航”能够进入，页面明确显示 ADM-TAX-01、页面名称、设计路由和返回路径。",
         "主要操作“新建词条”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4623,6 +4767,8 @@
       "nextPageId": "ADM-TAX-03",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“目录树选择词条”能够进入，页面明确显示 ADM-TAX-02、页面名称、设计路由和返回路径。",
         "主要操作“保存词条草稿”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4700,6 +4846,8 @@
       "nextPageId": "ADM-TAX-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“目录版本页”能够进入，页面明确显示 ADM-TAX-03、页面名称、设计路由和返回路径。",
         "主要操作“提交目录发布”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4777,6 +4925,8 @@
       "nextPageId": "ADM-REC-02",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“发现运营导航”能够进入，页面明确显示 ADM-REC-01、页面名称、设计路由和返回路径。",
         "主要操作“创建规则草稿”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4853,6 +5003,8 @@
       "nextPageId": "ADM-REC-03",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“规则版本列表”能够进入，页面明确显示 ADM-REC-02、页面名称、设计路由和返回路径。",
         "主要操作“提交规则审核”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -4928,6 +5080,8 @@
       "nextPageId": "ADM-REC-02",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“规则编辑页”能够进入，页面明确显示 ADM-REC-03、页面名称、设计路由和返回路径。",
         "主要操作“运行对比”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5003,6 +5157,8 @@
       "nextPageId": "ADM-REC-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“发现运营导航”能够进入，页面明确显示 ADM-REC-04、页面名称、设计路由和返回路径。",
         "主要操作“创建排期”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5080,6 +5236,8 @@
       "nextPageId": "ADM-MSG-02",
       "keyState": "安全审核",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“互动与安全导航”能够进入，页面明确显示 ADM-MSG-01、页面名称、设计路由和返回路径。",
         "主要操作“领取会话”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5165,6 +5323,8 @@
       "nextPageId": "ADM-MSG-01",
       "keyState": "租约冲突",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 5,
       "acceptance": [
         "从“会话队列”能够进入，页面明确显示 ADM-MSG-02、页面名称、设计路由和返回路径。",
         "主要操作“以平台身份回复”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5248,6 +5408,8 @@
       "nextPageId": "ADM-MSG-01",
       "keyState": "配置冲突",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“会话管理导航”能够进入，页面明确显示 ADM-MSG-03、页面名称、设计路由和返回路径。",
         "主要操作“保存分配规则”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5330,6 +5492,8 @@
       "nextPageId": "ADM-MSG-01",
       "keyState": "无正文授权",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“平台话题运营组长质量入口”能够进入，页面明确显示 ADM-MSG-04、页面名称、设计路由和返回路径。",
         "主要操作“记录抽检结论”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5413,6 +5577,8 @@
       "nextPageId": "ADM-SAF-02",
       "keyState": "超时",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“互动与安全导航或举报事件”能够进入，页面明确显示 ADM-SAF-01、页面名称、设计路由和返回路径。",
         "主要操作“领取案件”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5490,6 +5656,8 @@
       "nextPageId": "ADM-SAF-01",
       "keyState": "证据受限",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“安全审核队列”能够进入，页面明确显示 ADM-SAF-02、页面名称、设计路由和返回路径。",
         "主要操作“提交处置”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5566,6 +5734,8 @@
       "nextPageId": "ADM-SAF-04",
       "keyState": "原审核人隔离",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“安全与申诉导航”能够进入，页面明确显示 ADM-SAF-03、页面名称、设计路由和返回路径。",
         "主要操作“分配申诉”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5643,6 +5813,8 @@
       "nextPageId": "ADM-SAF-03",
       "keyState": "证据不足",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“申诉队列”能够进入，页面明确显示 ADM-SAF-04、页面名称、设计路由和返回路径。",
         "主要操作“提交复核结论”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5720,6 +5892,8 @@
       "nextPageId": "ADM-MBR-02",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“会员与金币导航”能够进入，页面明确显示 ADM-MBR-01、页面名称、设计路由和返回路径。",
         "主要操作“新建目录版本”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5803,6 +5977,8 @@
       "nextPageId": "ADM-MBR-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“会员目录或技术配置入口”能够进入，页面明确显示 ADM-MBR-02、页面名称、设计路由和返回路径。",
         "主要操作“新建 Entitlement”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5890,6 +6066,8 @@
       "nextPageId": "ADM-MBR-04",
       "keyState": "已拒绝",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 6,
       "acceptance": [
         "从“会员与金币导航”能够进入，页面明确显示 ADM-MBR-03、页面名称、设计路由和返回路径。",
         "主要操作“受理会员申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -5974,6 +6152,8 @@
       "nextPageId": "ADM-MBR-05",
       "keyState": "账号错误",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“发放记录主操作”能够进入，页面明确显示 ADM-MBR-04、页面名称、设计路由和返回路径。",
         "主要操作“提交发放申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6057,6 +6237,8 @@
       "nextPageId": "ADM-MBR-03",
       "keyState": "发起人冲突",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“复核任务队列”能够进入，页面明确显示 ADM-MBR-05、页面名称、设计路由和返回路径。",
         "主要操作“批准发放”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6140,6 +6322,8 @@
       "nextPageId": "ADM-MBR-03",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“迁移工作台”能够进入，页面明确显示 ADM-MBR-06、页面名称、设计路由和返回路径。",
         "主要操作“执行迁移”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6223,6 +6407,8 @@
       "nextPageId": "ADM-WAL-02",
       "keyState": "账号受限",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“会员与金币导航”能够进入，页面明确显示 ADM-WAL-01、页面名称、设计路由和返回路径。",
         "主要操作“查看钱包”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6297,6 +6483,8 @@
       "nextPageId": "ADM-WAL-03",
       "keyState": "余额锁定",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“钱包查询”能够进入，页面明确显示 ADM-WAL-02、页面名称、设计路由和返回路径。",
         "主要操作“新建调币申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6372,6 +6560,8 @@
       "nextPageId": "ADM-WAL-04",
       "keyState": "预计负余额",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“钱包详情”能够进入，页面明确显示 ADM-WAL-03、页面名称、设计路由和返回路径。",
         "主要操作“提交调币申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6446,6 +6636,8 @@
       "nextPageId": "ADM-WAL-02",
       "keyState": "发起人冲突",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“复核任务队列”能够进入，页面明确显示 ADM-WAL-04、页面名称、设计路由和返回路径。",
         "主要操作“批准并入账”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6522,6 +6714,8 @@
       "nextPageId": "ADM-WAL-06",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“钱包运营工具”能够进入，页面明确显示 ADM-WAL-05、页面名称、设计路由和返回路径。",
         "主要操作“提交批量复核”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6596,6 +6790,8 @@
       "nextPageId": "ADM-WAL-02",
       "keyState": "钱包冻结",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“运营总览或钱包异常入口”能够进入，页面明确显示 ADM-WAL-06、页面名称、设计路由和返回路径。",
         "主要操作“认领差异”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6670,6 +6866,8 @@
       "nextPageId": "ADM-NTF-02",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“站内通知导航”能够进入，页面明确显示 ADM-NTF-01、页面名称、设计路由和返回路径。",
         "主要操作“查看事件版本”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6744,6 +6942,8 @@
       "nextPageId": "ADM-NTF-03",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“通知事件定义”能够进入，页面明确显示 ADM-NTF-02、页面名称、设计路由和返回路径。",
         "主要操作“提交模板审核”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6818,6 +7018,8 @@
       "nextPageId": "ADM-NTF-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“站内通知导航或异常卡”能够进入，页面明确显示 ADM-NTF-03、页面名称、设计路由和返回路径。",
         "主要操作“查看生成详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6891,6 +7093,8 @@
       "nextPageId": "ADM-AUD-02",
       "keyState": "范围过大",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“审计导航或业务对象审计入口”能够进入，页面明确显示 ADM-AUD-01、页面名称、设计路由和返回路径。",
         "主要操作“执行审计查询”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -6962,6 +7166,8 @@
       "nextPageId": "ADM-AUD-01",
       "keyState": "敏感字段受限",
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“审计查询结果”能够进入，页面明确显示 ADM-AUD-02、页面名称、设计路由和返回路径。",
         "主要操作“查看关联事件”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -7033,6 +7239,8 @@
       "nextPageId": "ADM-AUD-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 3,
       "acceptance": [
         "从“审计导航或异常中心”能够进入，页面明确显示 ADM-AUD-03、页面名称、设计路由和返回路径。",
         "主要操作“运行完整性校验”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",
@@ -7105,6 +7313,8 @@
       "nextPageId": "ADM-AUD-01",
       "keyState": null,
       "figmaStates": [],
+      "figmaDesignPage": "20｜Admin Pages",
+      "figmaDesignedStateCount": 4,
       "acceptance": [
         "从“审计查询”能够进入，页面明确显示 ADM-AUD-04、页面名称、设计路由和返回路径。",
         "主要操作“提交导出申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。",

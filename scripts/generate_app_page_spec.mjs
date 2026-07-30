@@ -117,6 +117,27 @@ const layoutDescriptions = {
 const FIGMA_FILE_KEY = 'LaNSwwGsznwcpV8msj7BQC'
 const FIGMA_FILE_SLUG = 'Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery'
 const FIGMA_PAGE_ID = '9:8'
+const FIGMA_FINAL_VERSION_ID = '2381987656588552168'
+const FIGMA_DESIGN_URL = `https://www.figma.com/design/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}`
+const FIGMA_FINAL_DELIVERY = Object.freeze({
+  designedPages: 92,
+  designedStates: 349,
+  mobileStates: 186,
+  adminStates: 163,
+  flowPreviews: 92,
+  mobilePageActions: 382,
+  mobileFlowActions: 128,
+  adminPageActions: 1408,
+  adminFlowActions: 366,
+  totalActions: 2284,
+  missingDestinations: 0,
+  undersizedMobileTouchTargets: 0,
+  unstyledText: 0,
+  rawFills: 0,
+  rawStrokes: 0,
+  missingFonts: 0,
+  textOverflow: 0
+})
 
 function figmaPrototypeUrl(frameId) {
   const nodeId = frameId.replace(':', '-')
@@ -824,6 +845,10 @@ const enrichedPages = catalog.pages.map((page, index) => {
     nextPageId: page.next || null,
     keyState,
     figmaStates: detailedFigmaStateSpecs[page.id] || [],
+    figmaDesignPage: page.platform === 'mobile'
+      ? '10｜Mobile Pages'
+      : '20｜Admin Pages',
+    figmaDesignedStateCount: page.states.length,
     acceptance: acceptanceFor(page),
     requirements: requirementTraceFor(page)
   }
@@ -933,6 +958,18 @@ const counts = {
   detailedFigmaPages: enrichedPages.filter(page => page.figmaStates.length).length,
   detailedFigmaStateCaptures: figmaStateCaptures.length,
   documentPrototypeMappings: captures.length + figmaStateCaptures.length,
+  figmaDesignedPages: FIGMA_FINAL_DELIVERY.designedPages,
+  figmaDesignedStates: FIGMA_FINAL_DELIVERY.designedStates,
+  figmaMobileStates: FIGMA_FINAL_DELIVERY.mobileStates,
+  figmaAdminStates: FIGMA_FINAL_DELIVERY.adminStates,
+  figmaFlowPreviews: FIGMA_FINAL_DELIVERY.flowPreviews,
+  figmaPageActions:
+    FIGMA_FINAL_DELIVERY.mobilePageActions
+    + FIGMA_FINAL_DELIVERY.adminPageActions,
+  figmaFlowActions:
+    FIGMA_FINAL_DELIVERY.mobileFlowActions
+    + FIGMA_FINAL_DELIVERY.adminFlowActions,
+  figmaTotalActions: FIGMA_FINAL_DELIVERY.totalActions,
   groups: catalog.groups.length
 }
 
@@ -949,6 +986,14 @@ const expectedCounts = {
   detailedFigmaPages: 5,
   detailedFigmaStateCaptures: 23,
   documentPrototypeMappings: 169,
+  figmaDesignedPages: 92,
+  figmaDesignedStates: 349,
+  figmaMobileStates: 186,
+  figmaAdminStates: 163,
+  figmaFlowPreviews: 92,
+  figmaPageActions: 1790,
+  figmaFlowActions: 494,
+  figmaTotalActions: 2284,
   groups: 14
 }
 
@@ -986,22 +1031,45 @@ if (missingProductRequirements.length) {
 }
 
 const manifest = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   appVersion: '1.0',
   generatedAt: '2026-07-30',
   source: 'docs/app/interactive-prototype/page-catalog.js',
   captureViewport: { width: 1600, height: 1000 },
   figmaFinal: {
     fileKey: FIGMA_FILE_KEY,
-    pageId: FIGMA_PAGE_ID,
-    scope: 'APP-MSG-05/06、APP-WAL-01/02/03',
-    status: 'visual-and-interaction-audited',
+    fileUrl: FIGMA_DESIGN_URL,
+    finalVersionId: FIGMA_FINAL_VERSION_ID,
+    scope: '移动端 49 页、管理后台 43 页及全部 349 个需求状态',
+    status: 'final-deliverable',
+    officialPages: {
+      mobile: '10｜Mobile Pages',
+      admin: '20｜Admin Pages',
+      flows: '30｜Prototype Flows',
+      deliveryIndex: '40｜Delivery Index',
+      qaHandoff: '50｜QA & Handoff'
+    },
     audit: {
-      pageCoverage: '49/49',
-      nodeConnections: 161,
-      missingDestinations: 0,
-      undersizedTapTargets: 0,
-      layoutIssues: 0
+      pageCoverage: '92/92',
+      stateCoverage: '349/349',
+      mobileStateCoverage: '186/186',
+      adminStateCoverage: '163/163',
+      flowPreviews: FIGMA_FINAL_DELIVERY.flowPreviews,
+      pageActions:
+        FIGMA_FINAL_DELIVERY.mobilePageActions
+        + FIGMA_FINAL_DELIVERY.adminPageActions,
+      flowActions:
+        FIGMA_FINAL_DELIVERY.mobileFlowActions
+        + FIGMA_FINAL_DELIVERY.adminFlowActions,
+      totalActions: FIGMA_FINAL_DELIVERY.totalActions,
+      missingDestinations: FIGMA_FINAL_DELIVERY.missingDestinations,
+      undersizedMobileTouchTargets:
+        FIGMA_FINAL_DELIVERY.undersizedMobileTouchTargets,
+      unstyledText: FIGMA_FINAL_DELIVERY.unstyledText,
+      rawFills: FIGMA_FINAL_DELIVERY.rawFills,
+      rawStrokes: FIGMA_FINAL_DELIVERY.rawStrokes,
+      missingFonts: FIGMA_FINAL_DELIVERY.missingFonts,
+      textOverflow: FIGMA_FINAL_DELIVERY.textOverflow
     }
   },
   counts,
@@ -1051,6 +1119,12 @@ function detailedFigmaStateLines(page) {
   return lines
 }
 
+function figmaFinalMappingLine(page) {
+  return `**Figma 最终稿映射：** \`${page.figmaDesignPage}\` → `
+    + `\`${page.pageId}\`，共 ${page.figmaDesignedStateCount} 个需求状态；`
+    + `在 [Figma 最终设计文件](${FIGMA_DESIGN_URL}) 中按 Page ID 定位。`
+}
+
 function markdownForPage(page) {
   const defaultCapture = captures.find(capture => capture.pageId === page.pageId && capture.variant === 'default')
   const keyCapture = captures.find(capture => capture.pageId === page.pageId && capture.variant === 'key-state')
@@ -1082,6 +1156,8 @@ function markdownForPage(page) {
     `**模块 PRD：** ${page.requirements.features.map(feature => `[${feature.feature} ${feature.title}](${feature.document})（${feature.requirementGroup}）`).join('；')}`,
     '',
     `**页面状态：** ${page.states.join('、')}`,
+    '',
+    figmaFinalMappingLine(page),
     '',
     '**页面级验收：**',
     ''
@@ -1144,6 +1220,8 @@ function developmentMarkdownForPage(page) {
     '',
     `**页面状态：** ${page.states.join('、')}`,
     '',
+    figmaFinalMappingLine(page),
+    '',
     '**实现追踪：**',
     '',
     `- 追踪键：\`${page.requirements.traceKey}\``,
@@ -1187,7 +1265,7 @@ const markdown = [
   '',
   '本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。',
   '',
-  '基础逐页原型包含 92 张默认状态和 54 张 P0 关键状态，共 146 张；通知与金币 5 个页面另完成 23 张经视觉与交互审计的 Figma 最终状态原型。清单共维护 169 个确定性原型映射，最终状态原型优先于对应的基础占位状态，所有图片均通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。',
+  'Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 个需求状态，并建立 92 个流程预览与 2,284 个有效交互动作。客户文档继续保留 92 张默认状态、54 张 P0 关键状态和通知/金币 23 张逐状态本地导出图，共 169 个确定性图片映射；图片通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。',
   '',
   '## 2. 覆盖统计',
   '',
@@ -1200,9 +1278,12 @@ const markdown = [
   `| 默认状态原型 | ${counts.defaultCaptures} |`,
   `| P0 关键状态原型 | ${counts.keyStateCaptures} |`,
   `| 基础逐页原型 | ${counts.totalCaptures} |`,
-  `| Figma 最终细化页面 | ${counts.detailedFigmaPages} |`,
-  `| Figma 最终状态原型 | ${counts.detailedFigmaStateCaptures} |`,
-  `| 清单原型映射总数 | ${counts.documentPrototypeMappings} |`,
+  `| Figma 最终设计页面 | ${counts.figmaDesignedPages} |`,
+  `| Figma 最终设计状态 | ${counts.figmaDesignedStates}（移动端 ${counts.figmaMobileStates} / 后台 ${counts.figmaAdminStates}） |`,
+  `| Figma 流程预览 | ${counts.figmaFlowPreviews} |`,
+  `| Figma 有效交互动作 | ${counts.figmaTotalActions} |`,
+  `| 通知与金币逐状态本地导出 | ${counts.detailedFigmaPages} 页 / ${counts.detailedFigmaStateCaptures} 张 |`,
+  `| 客户文档图片映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.filter(page => page.requirements.traceKey).length} |`,
   '',
   '## 3. 逐页详细设计',
@@ -1264,7 +1345,7 @@ const developmentMarkdown = [
   '',
   '## 1. 文档定位与使用规则',
   '',
-  '1. 本文是 App 1.0 面向开发的单一入口，覆盖产品范围、需求编号、技术边界、92 个页面级实现对象、146 张基础逐页原型、23 张 Figma 最终状态原型和开发验收。',
+  '1. 本文是 App 1.0 面向开发的单一入口，覆盖产品范围、需求编号、技术边界、92 个页面级实现对象、349 个 Figma 最终设计状态、169 个客户文档图片映射和开发验收。',
   '2. 客户意见先同步到产品总需求、发布范围、Feature PRD 和页面目录，再重新生成本文与客户 DOCX；不得直接在 DOCX 中维护独立需求。',
   '3. 开发任务、接口、测试用例、缺陷和变更必须至少引用一个 `PRD/SCP` 编号和一个 Page ID；纯后端门禁可引用需求编号并标注“无独立页面”。',
   '4. 原型用于确认信息层级、交互和状态表达，不替代服务端权限、数据状态机、API 契约或安全门禁。',
@@ -1282,12 +1363,24 @@ const developmentMarkdown = [
   `| 默认状态原型 | ${counts.defaultCaptures} |`,
   `| P0 关键状态原型 | ${counts.keyStateCaptures} |`,
   `| 基础逐页原型 | ${counts.totalCaptures} |`,
-  `| Figma 最终细化页面 | ${counts.detailedFigmaPages} |`,
-  `| Figma 最终状态原型 | ${counts.detailedFigmaStateCaptures} |`,
-  `| 清单原型映射总数 | ${counts.documentPrototypeMappings} |`,
+  `| Figma 最终设计页面 | ${counts.figmaDesignedPages} |`,
+  `| Figma 最终设计状态 | ${counts.figmaDesignedStates}（移动端 ${counts.figmaMobileStates} / 后台 ${counts.figmaAdminStates}） |`,
+  `| Figma 页面内 / 流程动作 | ${counts.figmaPageActions} / ${counts.figmaFlowActions} |`,
+  `| Figma 有效交互动作总数 | ${counts.figmaTotalActions} |`,
+  `| 通知与金币逐状态本地导出 | ${counts.detailedFigmaPages} 页 / ${counts.detailedFigmaStateCaptures} 张 |`,
+  `| 客户文档图片映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.length} |`,
   '',
-  '### 2.1 App 1.0 实现范围',
+  '### 2.1 Figma 最终设计交付',
+  '',
+  `- 最终文件：[Peachmote UI 借鉴审查板 - MeiGallery](${FIGMA_DESIGN_URL})；最终版本 ID：\`${FIGMA_FINAL_VERSION_ID}\`。`,
+  `- \`10｜Mobile Pages\` 覆盖 ${counts.mobilePages} 个 Page ID、${counts.figmaMobileStates} 个状态；\`20｜Admin Pages\` 覆盖 ${counts.adminPages} 个 Page ID、${counts.figmaAdminStates} 个状态。`,
+  `- \`30｜Prototype Flows\` 覆盖 ${counts.figmaFlowPreviews} 个流程预览；页面内与流程动作合计 ${counts.figmaTotalActions} 个，缺失目标为 0。`,
+  '- `40｜Delivery Index` 按 Page ID 提供页面索引和需求追踪；`50｜QA & Handoff` 提供视觉、交互、边界和交付门禁。',
+  '- 最终 QA 中未发现未绑定文字样式、原始填充/描边、缺失字体、文字溢出或移动端不足 44dp 的关键点击热区。',
+  '- 开发以 Page ID、状态名称和需求追踪键定位设计；客户文档中的 169 张图用于离线逐页确认，不替代 Figma 中 349 个最终状态。',
+  '',
+  '### 2.2 App 1.0 实现范围',
   '',
   '- Android/iOS 观看者客户端：KMP + Compose Multiplatform，共享业务、状态、网络、缓存和主要 UI。',
   '- 桌面运营端：现有 Nuxt 管理后台，覆盖真人供给、认证发布、推荐运营、平台话题、会员申请与发放、金币调整、安全审核和审计。',
@@ -1295,7 +1388,7 @@ const developmentMarkdown = [
   '- 商业能力：只做五级会员展示、站内申请、管理员手动发放、金币余额与追加式明细。',
   '- 通知：站内拉取和实时刷新完成全部核心流程，不依赖系统推送。',
   '',
-  '### 2.2 App 1.0 明确不实现',
+  '### 2.3 App 1.0 明确不实现',
   '',
   '- 在线支付、自动续订、金币充值、礼物、头像框、主页皮肤、聊天皮肤、订单和退款。',
   '- 系统推送、图片消息、音视频通话、直播、公开评论和用户上传公开媒体。',
@@ -1402,7 +1495,7 @@ developmentMarkdown.push(
   '## 10. 完成定义（Definition of Done）',
   '',
   '- 每个实现任务引用需求编号和 Page ID，满足逐页开发验收与关联 Feature PRD 的 Given/When/Then。',
-  '- 客户端与后台覆盖本页声明的全部状态；P0 页面完成关键受限/异常状态视觉回归。',
+  '- 客户端与后台覆盖本页声明的全部状态；实现截图与 Figma 同一 Page ID、同一状态在相同视口下完成视觉回归。',
   '- 所有对象级授权、会员、媒体、消息、账本和后台写操作通过服务端验证；越权与过期用例有自动化测试。',
   '- API/DTO/事件与冻结 Schema 一致，未知字段和枚举兼容测试通过，重试不产生重复业务结果。',
   '- 关键操作具备审计、最小化日志、指标和告警；敏感字段未进入日志、埋点或崩溃报告。',
@@ -1430,7 +1523,7 @@ const traceability = [
   '',
   '## 1. 文档目的',
   '',
-  '本文把产品总需求、App 1.0 发布范围、Feature PRD、92 个 Page ID、146 张基础逐页原型与 23 张 Figma 最终状态原型建立确定性映射，并作为开发需求规格的追踪索引。任何页面或原型不得脱离需求编号单独成为实现依据；任何 App 1.0 用户可见需求也不得在没有 Page ID、明确非 UI 验收或未来范围说明的情况下进入开发。',
+  '本文把产品总需求、App 1.0 发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终设计状态与 169 个客户文档图片映射建立确定性关系，并作为开发需求规格的追踪索引。任何页面或原型不得脱离需求编号单独成为实现依据；任何 App 1.0 用户可见需求也不得在没有 Page ID、明确非 UI 验收或未来范围说明的情况下进入开发。',
   '',
   '## 2. 基线与冲突处理',
   '',
@@ -1450,9 +1543,11 @@ const traceability = [
   `| 默认状态原型 | ${counts.defaultCaptures} |`,
   `| P0 关键状态原型 | ${counts.keyStateCaptures} |`,
   `| 基础逐页原型 | ${counts.totalCaptures} |`,
-  `| Figma 最终细化页面 | ${counts.detailedFigmaPages} |`,
-  `| Figma 最终状态原型 | ${counts.detailedFigmaStateCaptures} |`,
-  `| 清单原型映射总数 | ${counts.documentPrototypeMappings} |`,
+  `| Figma 最终设计页面 | ${counts.figmaDesignedPages} |`,
+  `| Figma 最终设计状态 | ${counts.figmaDesignedStates} |`,
+  `| Figma 流程预览 / 有效动作 | ${counts.figmaFlowPreviews} / ${counts.figmaTotalActions} |`,
+  `| 通知与金币逐状态本地导出 | ${counts.detailedFigmaPages} 页 / ${counts.detailedFigmaStateCaptures} 张 |`,
+  `| 客户文档图片映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.length} |`,
   '',
   '## 4. App 1.0 无页面范围',
@@ -1492,7 +1587,9 @@ traceability.push(
   '',
   '- 每个 Page ID 必须同时存在页面目录、详细功能说明、默认状态原型和需求追踪键。',
   '- 54 个 P0 页面必须额外存在一张关键异常、受限、冲突或处理中状态原型。',
-  '- `APP-MSG-05`、`APP-MSG-06`、`APP-WAL-01`、`APP-WAL-02`、`APP-WAL-03` 必须完整包含 23 个 Figma 最终状态；每个状态都具备唯一 Frame ID、触发条件、关键交互、预期结果、权威边界和本地导出图。',
+  '- 92 个 Page ID 的 349 个需求状态必须全部存在于 Figma 最终页，并按 Page ID、状态名称、模块和需求追踪键定位；`30｜Prototype Flows` 必须覆盖 92 个流程预览。',
+  '- Figma 页面内与流程动作合计必须为 2,284 个，缺失目标为 0；移动端关键点击热区不得小于 44dp。',
+  '- `APP-MSG-05`、`APP-MSG-06`、`APP-WAL-01`、`APP-WAL-02`、`APP-WAL-03` 另外保留 23 张逐状态本地导出图；每张图都具备唯一 Frame ID、触发条件、关键交互、预期结果和权威边界。',
   '- Page ID、页面名称、优先级、默认状态、关键状态、图片文件名和需求追踪键由同一清单生成并自动校验。',
   '- `ADM-AUD-03` 的完整可视化页面属于 P2；审计完整性的最小自动校验与告警属于 P0 后端门禁，两者不得混为同一页面优先级。',
   '- 客户意见、设计修改、研发任务和测试用例必须引用 Page ID；涉及业务规则变化时还必须引用对应 PRD/SCP 需求编号。',

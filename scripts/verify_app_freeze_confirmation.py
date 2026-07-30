@@ -74,10 +74,10 @@ def verify_markdown(markdown: str) -> str:
     required = (
         "状态：冻结准备中，尚未授权开发",
         "92 个 Page ID",
-        "146 张基础原型",
-        "23 张 Figma 最终状态",
-        "169 个确定性映射",
-        "其余 87 页",
+        "349 个 Figma 最终状态",
+        "2,284 个有效交互动作",
+        "169 个确定性图片映射",
+        "全量像素级视觉设计已完成",
         "功能/交互冻结",
         "像素级视觉冻结",
         "不创建 KMP 工程",
@@ -118,10 +118,10 @@ def verify_docx(fingerprint: str) -> tuple[int, int]:
         "冻结准备中",
         "尚未授权开发",
         "92 个 Page ID",
-        "146 张基础",
-        "23 张 Figma 最终状态",
+        "349 个 Figma 最终状态",
+        "2,284 个有效交互动作",
         "169/169 已校验",
-        "其余 87 页",
+        "已完成，待签署",
         fingerprint,
     )
     for value in required:
@@ -193,6 +193,10 @@ def verify_manifest_counts() -> None:
         "detailedFigmaPages": 5,
         "detailedFigmaStateCaptures": 23,
         "documentPrototypeMappings": 169,
+        "figmaDesignedPages": 92,
+        "figmaDesignedStates": 349,
+        "figmaFlowPreviews": 92,
+        "figmaTotalActions": 2284,
     }
     for key, value in expected.items():
         if counts.get(key) != value:

@@ -10,10 +10,10 @@ App 版本：1.0
 
 ## 开发交付
 
-- [App 1.0 开发需求规格（Markdown）](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)：研发、测试、接口设计和任务拆分的单一入口，完整包含产品/发布需求、技术边界、92 个 Page ID、146 张基础逐页原型、23 张 Figma 最终状态、权限、需求追踪和完成定义。
-- [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、146 张基础原型和 23 张 Figma 最终状态建立确定性映射，并明确未来能力或非 UI 门禁。
+- [App 1.0 开发需求规格（Markdown）](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)：研发、测试、接口设计和任务拆分的单一入口，完整包含产品/发布需求、技术边界、92 个 Page ID、349 个 Figma 最终状态、169 个客户文档图片映射、权限、需求追踪和完成定义。
+- [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终状态和 169 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
-- [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录现有设计的文字、Icon、组件、变量、状态、热区和流程差距，并定义移动端 49 页、后台 43 页最终 UI 的分阶段交付门禁。
+- [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、92 页/349 状态覆盖、2,284 个有效交互动作、排版与 Icon 修正、QA 结果和交付门禁。
 - [Figma Design System Phase 1](./FIGMA_DESIGN_SYSTEM_PHASE1.md)：记录已落入 Figma 的 5 个变量集合、103 个变量、三端 Code Syntax、13 个文字样式、4 个效果样式、回滚点和校验结果。
 - [Figma 文件结构 Phase 2](./FIGMA_FILE_STRUCTURE_PHASE2.md)：记录正式交付页、历史无损归档、92 Page ID Delivery Index、命名与 Spec Card 规则及原型目标校验。
 
@@ -29,7 +29,7 @@ App 版本：1.0
 - [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)：可点击体验 8 个移动端与后台关键旅程，包含业务规则、建议操作、预期结果、响应式布局和状态反馈。
 - [App 1.0 逐页交互设计库](./interactive-prototype/pages.html)：覆盖移动端 49 页和管理后台 43 页，共 92 个可独立访问、搜索、切换状态和操作的页面设计。
 - [App 1.0 逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)：逐页列出页面目标、主操作、必备状态、跨页旅程和验收方法。
-- [逐页客户确认原型图](./assets/page-prototypes/)：92 张页面默认状态 + 54 张 P0 关键状态，共 146 张基础原型；通知与金币 5 页另有 23 张 874 × 1792 Figma 最终状态图。`manifest.json` 共记录 169 个 Page ID/状态/图片确定性映射及 SHA-256。
+- [逐页客户确认原型图](./assets/page-prototypes/)：92 张页面默认状态 + 54 张 P0 关键状态，共 146 张基础原型；通知与金币 5 页另有 23 张 874 × 1792 Figma 逐状态导出图。`manifest.json` 共记录 169 个 Page ID/状态/图片确定性映射及 SHA-256，并同步 Figma 92 页/349 状态/2,284 动作的最终交付事实。
 - [逐页原型 QA 联系表](./assets/page-prototypes/qa/contact-sheets/)：14 个基础功能组加 1 张 Figma 最终状态总览，共 15 组视觉与映射复核图。
 
 ## 1. 产品定位
@@ -69,7 +69,7 @@ App 版本：1.0
 
 | 文档 | 解决的问题 |
 |------|------------|
-| [App 1.0 开发需求规格](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md) | 将产品/发布需求、技术边界、Feature PRD、92 个 Page ID、146 张基础原型、23 张 Figma 最终状态和开发验收合并为研发单一入口 |
+| [App 1.0 开发需求规格](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md) | 将产品/发布需求、技术边界、Feature PRD、92 个 Page ID、349 个 Figma 最终状态、169 个客户图片映射和开发验收合并为研发单一入口 |
 | [需求冻结准备清单](./APP_1_0_REQUIREMENTS_FREEZE_CHECKLIST.md) | 汇总 8 项客户决策、7 组专业门禁、冻结基线指纹、变更规则和签署后执行顺序 |
 | [需求冻结确认单 DOCX](./deliverables/MeiGallery_App_1.0_需求冻结确认单.docx) | 供客户和项目负责人先用 15 页短版集中选择结论、填写调整意见并签署 |
 | [客户确认书生成源](./MEIGALLERY_APP_1_0_CLIENT_PRD.md) | 将分散的产品、交互、原型、验收与客户待确认参数合并为 DOCX 生成源 |
@@ -106,7 +106,7 @@ App 版本：1.0
 | [数据模型与迁移方案](./DATA_AND_MIGRATION.md) | 真人主体建模、MeiGallery 映射、影子迁移和回滚 |
 | [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md) | API 资源、鉴权、幂等、消息事件和错误模型 |
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
-| [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) | 审计 Figma 当前成熟度、排版与 Icon 一致性、状态覆盖、原型连线和最终交付计划 |
+| [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) | 固化 Figma 最终文件、排版与 Icon 一致性、92 页/349 状态覆盖、原型连线、QA 和交付门禁 |
 | [Figma Design System Phase 1](./FIGMA_DESIGN_SYSTEM_PHASE1.md) | Figma 变量、跨端代码映射、Noto Sans SC 排版、基础效果与校验证据 |
 | [Figma 文件结构 Phase 2](./FIGMA_FILE_STRUCTURE_PHASE2.md) | Figma 正式交付区、历史归档、Delivery Index、命名和 Spec Card 规范 |
 | [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md) | Android/iOS Screen ID、设计路由、页面目录、关键旅程和关键页面结构 |
@@ -122,7 +122,7 @@ App 版本：1.0
 ## 5. 评审顺序
 
 1. 客户先使用需求冻结确认单评审 C-01～C-08；需要查看完整业务依据时，再回到产品需求确认书对应章节。
-2. 客户和设计负责人按 Page ID 逐页评审 92 页设计库；功能交互可以先确认，但除通知与金币 5 页外，不把其余页面误标为像素级视觉已冻结。
+2. 客户和设计负责人按 `40｜Delivery Index` 的 Page ID 逐页评审 92 页/349 状态；Figma 最终文件作为像素级视觉和交互依据，DOCX 的 169 张图片用于离线签署与需求映射。
 3. Owner、产品和运营根据客户结论同步发布范围、详细 Feature PRD、五级会员定位与路线优先级。
 4. 内容、法务、安全、隐私、财务、运营和技术负责人按 G-01～G-07 补齐责任人、结论日期与证据链接。
 5. 架构、后端、KMP 和 Web 负责人评审模块级总体架构、KMP 模块、Cloudflare 后端、后台 RBAC 和契约冻结计划，并按最晚关闭点关闭实现前问题。
@@ -143,10 +143,10 @@ App 版本：1.0
 ## 7. 交付物维护
 
 - `scripts/generate_app_product_assets.py`：生成客户文档使用的流程总览和原始参考对照图。
-- `scripts/generate_app_page_spec.mjs`：从产品总需求、发布范围和页面目录生成开发需求规格、92 页详细规格、需求追踪矩阵、146 张基础截图任务、23 张 Figma 最终状态和 169 个确定性映射。
+- `scripts/generate_app_page_spec.mjs`：从产品总需求、发布范围和页面目录生成开发需求规格、92 页详细规格、需求追踪矩阵、146 张基础截图任务、23 张逐状态导出图和 169 个确定性图片映射，并同步 Figma 92 页/349 状态/2,284 动作的最终交付事实。
 - `scripts/verify_app_page_prototypes.py`：校验截图数量、尺寸、真实 PNG、哈希重复、Frame 映射和清单引用，并生成 15 组联系表。
 - `scripts/generate_app_product_docs.py`：根据当前 Markdown 和已验证原型清单生成两份 DOCX，避免手工副本与需求基线分叉。
-- `scripts/verify_app_product_docs.py`：校验两份 DOCX 是否完整包含 92 个 Page ID、逐页需求追踪键、146 个基础映射、23 个 Figma 最终状态映射和图片替代文本。
+- `scripts/verify_app_product_docs.py`：校验两份 DOCX 是否完整包含 92 个 Page ID、逐页需求追踪键、146 个基础映射、23 个逐状态导出映射、349/2,284 最终交付事实和图片替代文本。
 - `scripts/generate_app_freeze_confirmation.py`：根据两份完整客户 DOCX、开发规格、追踪矩阵和原型清单生成需求冻结准备清单与 15 页客户确认单，并记录组合基线指纹。
 - `scripts/verify_app_freeze_confirmation.py`：校验 C-01～C-08、G-01～G-07、92/146/23/169 数量、基线哈希、DOCX 表头、图片替代文本和页面几何。
 - `scripts/create_docx_contact_sheets.py`：将 DOCX 全页渲染结果整理为可配置的视觉复核联系表。

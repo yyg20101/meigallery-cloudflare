@@ -1,0 +1,161 @@
+{
+  "runId": "meigallery-app-1.0-figma-final-20260730",
+  "appVersion": "1.0",
+  "status": "completed",
+  "figmaFile": {
+    "name": "Peachmote UI 借鉴审查板 - MeiGallery",
+    "fileKey": "LaNSwwGsznwcpV8msj7BQC",
+    "url": "https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery",
+    "finalVersionId": "2381987656588552168",
+    "mobileCheckpointVersionId": "2381975076605262200"
+  },
+  "coverage": {
+    "pages": 92,
+    "mobilePages": 49,
+    "adminPages": 43,
+    "states": 349,
+    "mobileStates": 186,
+    "adminStates": 163,
+    "prototypeFlowPreviews": 92,
+    "deliveryIndexCards": 92
+  },
+  "interactions": {
+    "mobilePageActions": 382,
+    "mobileFlowActions": 128,
+    "adminPageActions": 1408,
+    "adminFlowActions": 366,
+    "totalActions": 2284,
+    "missingDestinations": 0,
+    "undersizedMobileTouchTargets": 0
+  },
+  "visualQa": {
+    "mobileTextNodes": 4301,
+    "adminTextNodes": 8120,
+    "mobileUnstyledText": 0,
+    "adminUnstyledText": 0,
+    "mobileRawFills": 0,
+    "adminRawFills": 0,
+    "mobileRawStrokes": 0,
+    "adminRawStrokes": 0,
+    "mobileMissingFonts": 0,
+    "adminMissingFonts": 0,
+    "mobileTextOverflow": 0,
+    "adminTextOverflow": 0,
+    "mobileIconContainersChecked": 1807,
+    "mobileOffCenterIcons": 0
+  },
+  "officialPages": {
+    "00｜封面": "145:57035",
+    "01｜设计原则": "145:57036",
+    "02｜Foundations": "145:57037",
+    "03｜Icons": "145:57038",
+    "04｜Mobile Components": "145:57039",
+    "05｜Admin Components": "145:57040",
+    "10｜Mobile Pages": "145:57041",
+    "20｜Admin Pages": "145:57042",
+    "30｜Prototype Flows": "145:57043",
+    "40｜Delivery Index": "145:57044",
+    "50｜QA & Handoff": "145:57045"
+  },
+  "modules": [
+    {
+      "platform": "mobile",
+      "name": "启动与认证",
+      "pages": 6,
+      "states": 24
+    },
+    {
+      "platform": "mobile",
+      "name": "发现与真人",
+      "pages": 9,
+      "states": 38
+    },
+    {
+      "platform": "mobile",
+      "name": "互动与历史",
+      "pages": 5,
+      "states": 18
+    },
+    {
+      "platform": "mobile",
+      "name": "平台话题与通知",
+      "pages": 6,
+      "states": 27
+    },
+    {
+      "platform": "mobile",
+      "name": "会员与金币",
+      "pages": 6,
+      "states": 30
+    },
+    {
+      "platform": "mobile",
+      "name": "我的与设置",
+      "pages": 12,
+      "states": 38
+    },
+    {
+      "platform": "mobile",
+      "name": "系统状态",
+      "pages": 5,
+      "states": 11
+    },
+    {
+      "platform": "admin",
+      "name": "总览与异常",
+      "pages": 3,
+      "states": 12
+    },
+    {
+      "platform": "admin",
+      "name": "真人与内容",
+      "pages": 6,
+      "states": 27
+    },
+    {
+      "platform": "admin",
+      "name": "发现运营",
+      "pages": 7,
+      "states": 26
+    },
+    {
+      "platform": "admin",
+      "name": "平台话题运营",
+      "pages": 4,
+      "states": 17
+    },
+    {
+      "platform": "admin",
+      "name": "安全与申诉",
+      "pages": 4,
+      "states": 14
+    },
+    {
+      "platform": "admin",
+      "name": "会员与金币",
+      "pages": 12,
+      "states": 43
+    },
+    {
+      "platform": "admin",
+      "name": "通知与审计",
+      "pages": 7,
+      "states": 24
+    }
+  ],
+  "evidence": [
+    "docs/app/assets/figma-qa/phase3/comparison-discovery-reference-vs-official-20260730.png",
+    "docs/app/assets/figma-qa/phase3/mobile-auth-pages-20260730.png",
+    "docs/app/assets/figma-qa/phase3/mobile-membership-catalog-20260730.png",
+    "docs/app/assets/figma-qa/phase3/mobile-platform-topic-chat-20260730.png",
+    "docs/app/assets/figma-qa/phase3/admin-dashboard-normal-20260730.jpeg",
+    "docs/app/assets/figma-qa/phase3/admin-person-workbench-normal-20260730.jpeg",
+    "docs/app/assets/figma-qa/phase3/admin-conversation-workbench-normal-20260730.jpeg",
+    "docs/app/assets/figma-qa/phase3/admin-membership-catalog-normal-fixed-20260730.jpeg",
+    "docs/app/assets/figma-qa/phase3/admin-wallet-detail-normal-20260730.jpeg",
+    "docs/app/assets/figma-qa/phase3/prototype-flows-overview-20260730.png",
+    "docs/app/assets/figma-qa/phase3/admin-prototype-flows-overview-20260730.jpeg",
+    "docs/app/assets/figma-qa/phase3/delivery-index-summary-20260730.jpeg",
+    "docs/app/assets/figma-qa/phase3/qa-handoff-release-gate-20260730.jpeg"
+  ]
+}

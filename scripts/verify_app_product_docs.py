@@ -46,8 +46,8 @@ def main() -> None:
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     if manifest.get("status") != "verified":
         raise ValueError("逐页原型清单未通过验证")
-    if int(manifest.get("schemaVersion", 0)) < 3:
-        raise ValueError("逐页原型清单缺少 Figma 最终状态与需求追踪 schema")
+    if int(manifest.get("schemaVersion", 0)) < 4:
+        raise ValueError("逐页原型清单缺少 Figma 全量最终交付与需求追踪 schema")
     if manifest["counts"]["pages"] != 92:
         raise ValueError("页面清单不是 92 页")
     if manifest["counts"]["totalCaptures"] != 146:
@@ -58,6 +58,12 @@ def main() -> None:
         raise ValueError("Figma 最终状态原型不是 23 张")
     if manifest["counts"]["documentPrototypeMappings"] != 169:
         raise ValueError("客户文档原型映射不是 169 个")
+    if manifest["counts"]["figmaDesignedPages"] != 92:
+        raise ValueError("Figma 最终设计页面不是 92 页")
+    if manifest["counts"]["figmaDesignedStates"] != 349:
+        raise ValueError("Figma 最终设计状态不是 349 个")
+    if manifest["counts"]["figmaTotalActions"] != 2284:
+        raise ValueError("Figma 有效交互动作不是 2,284 个")
     if (
         manifest["counts"]["p0Pages"],
         manifest["counts"]["p1Pages"],
@@ -112,6 +118,11 @@ def main() -> None:
             )
         if "原型图片暂不可用" in text:
             raise ValueError(f"{path.name} 包含缺图回退文案")
+        for required_text in ("349", "2,284", "2381987656588552168"):
+            if required_text not in text:
+                raise ValueError(
+                    f"{path.name} 缺少 Figma 最终交付事实：{required_text}"
+                )
         if len(document.inline_shapes) < 169:
             raise ValueError(
                 f"{path.name} 图片数量不足：{len(document.inline_shapes)}"
@@ -122,7 +133,10 @@ def main() -> None:
             f"Page ID={len(expected_page_ids)}，"
             f"需求追踪={len(expected_trace_keys)}，"
             f"基础逐页原型={len(expected_alts)}，"
-            f"Figma 最终状态={len(expected_figma_alts)}，"
+            f"Figma 逐状态导出={len(expected_figma_alts)}，"
+            f"Figma 最终设计={manifest['counts']['figmaDesignedPages']} 页/"
+            f"{manifest['counts']['figmaDesignedStates']} 状态/"
+            f"{manifest['counts']['figmaTotalActions']} 动作，"
             f"内嵌图片={len(document.inline_shapes)}，"
             f"图片替代文本={len(image_alts)}。"
         )

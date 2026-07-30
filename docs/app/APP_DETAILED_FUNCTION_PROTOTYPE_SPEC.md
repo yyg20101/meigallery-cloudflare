@@ -10,7 +10,7 @@ App 版本：1.0
 
 本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。
 
-基础逐页原型包含 92 张默认状态和 54 张 P0 关键状态，共 146 张；通知与金币 5 个页面另完成 23 张经视觉与交互审计的 Figma 最终状态原型。清单共维护 169 个确定性原型映射，最终状态原型优先于对应的基础占位状态，所有图片均通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。
+Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 个需求状态，并建立 92 个流程预览与 2,284 个有效交互动作。客户文档继续保留 92 张默认状态、54 张 P0 关键状态和通知/金币 23 张逐状态本地导出图，共 169 个确定性图片映射；图片通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。
 
 ## 2. 覆盖统计
 
@@ -23,9 +23,12 @@ App 版本：1.0
 | 默认状态原型 | 92 |
 | P0 关键状态原型 | 54 |
 | 基础逐页原型 | 146 |
-| Figma 最终细化页面 | 5 |
-| Figma 最终状态原型 | 23 |
-| 清单原型映射总数 | 169 |
+| Figma 最终设计页面 | 92 |
+| Figma 最终设计状态 | 349（移动端 186 / 后台 163） |
+| Figma 流程预览 | 92 |
+| Figma 有效交互动作 | 2284 |
+| 通知与金币逐状态本地导出 | 5 页 / 23 张 |
+| 客户文档图片映射总数 | 169 |
 | 已建立需求追踪的页面 | 92 |
 
 ## 3. 逐页详细设计
@@ -59,6 +62,8 @@ App 版本：1.0
 **模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
 
 **页面状态：** 首次、恢复中、离线、升级、维护
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-01`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -110,6 +115,8 @@ App 版本：1.0
 
 **页面状态：** 正常、输入错误、验证中、频控、账号受限
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-02`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“启动页、权限门槛或登录后回跳”能够进入，页面明确显示 APP-AUTH-02、页面名称、设计路由和返回路径。
@@ -159,6 +166,8 @@ App 版本：1.0
 **模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
 
 **页面状态：** 正常、标识占用、验证码失效、地区不可用
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -210,6 +219,8 @@ App 版本：1.0
 
 **页面状态：** 等待、失败、次数限制
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“登录风险、设备变化或敏感操作”能够进入，页面明确显示 APP-AUTH-04、页面名称、设计路由和返回路径。
@@ -256,6 +267,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空目录、保存失败、非个性化说明
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“首次注册成功”能够进入，页面明确显示 APP-AUTH-05、页面名称、设计路由和返回路径。
@@ -301,6 +314,8 @@ App 版本：1.0
 **模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
 
 **页面状态：** 正常、加载失败、版本更新
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-06`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -356,6 +371,8 @@ App 版本：1.0
 
 **页面状态：** 正常、首次空、骨架、分页、离线缓存、规则刷新
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-01`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“登录完成、底部推荐 Tab 或返回首页”能够进入，页面明确显示 APP-DSC-01、页面名称、设计路由和返回路径。
@@ -405,6 +422,8 @@ App 版本：1.0
 **模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
 
 **页面状态：** 正常、定位未使用、目录更新、无结果
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -456,6 +475,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空分类、目录失效
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“推荐频道或搜索入口”能够进入，页面明确显示 APP-DSC-03、页面名称、设计路由和返回路径。
@@ -501,6 +522,8 @@ App 版本：1.0
 **模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
 
 **页面状态：** 初始、输入中、有结果、无结果、历史关闭
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-04`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -552,6 +575,8 @@ App 版本：1.0
 
 **页面状态：** 正常、权益门槛、目录冲突、无结果
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“搜索页或推荐页筛选入口”能够进入，页面明确显示 APP-DSC-05、页面名称、设计路由和返回路径。
@@ -602,6 +627,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空、额度满、标签已合并
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-06`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“筛选页保存入口或我的页面”能够进入，页面明确显示 APP-DSC-06、页面名称、设计路由和返回路径。
@@ -647,6 +674,8 @@ App 版本：1.0
 **模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）
 
 **页面状态：** 正常、下架、受限、离线摘要、媒体不可用
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-07`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -698,6 +727,8 @@ App 版本：1.0
 
 **页面状态：** 正常、凭证刷新、加载失败、内容隐藏
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-08`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“真人详情媒体区域”能够进入，页面明确显示 APP-DSC-08、页面名称、设计路由和返回路径。
@@ -747,6 +778,8 @@ App 版本：1.0
 **模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-03 真人认证与发布审核](../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md)（VER-FR-*）
 
 **页面状态：** 正常、认证失效、资料变化
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-DSC-09`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -802,6 +835,8 @@ App 版本：1.0
 
 **页面状态：** 正常、首次空、无更新、资料下架
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“底部关注 Tab”能够进入，页面明确显示 APP-INT-01、页面名称、设计路由和返回路径。
@@ -851,6 +886,8 @@ App 版本：1.0
 **模块 PRD：** [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*）
 
 **页面状态：** 正常、空、资料不可用
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -902,6 +939,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空、额度满、离线
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“我的页面或详情收藏动作”能够进入，页面明确显示 APP-INT-03、页面名称、设计路由和返回路径。
@@ -948,6 +987,8 @@ App 版本：1.0
 
 **页面状态：** 正常、文件夹已删除、资料下架
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“收藏夹列表”能够进入，页面明确显示 APP-INT-04、页面名称、设计路由和返回路径。
@@ -993,6 +1034,8 @@ App 版本：1.0
 **模块 PRD：** [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*）
 
 **页面状态：** 正常、空、保留到期、清除失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -1044,6 +1087,8 @@ App 版本：1.0
 
 **页面状态：** 正常、首次空、离线、会话受限
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“底部消息 Tab”能够进入，页面明确显示 APP-MSG-01、页面名称、设计路由和返回路径。
@@ -1093,6 +1138,8 @@ App 版本：1.0
 **模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
 
 **页面状态：** 正常、无会员、额度尽、资料失效、已有话题
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-02`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -1144,6 +1191,8 @@ App 版本：1.0
 
 **页面状态：** 正常、补拉、审核中、只读、冻结、关闭
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-03`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“平台话题列表或发起确认”能够进入，页面明确显示 APP-MSG-03、页面名称、设计路由和返回路径。
@@ -1194,6 +1243,8 @@ App 版本：1.0
 
 **页面状态：** 正常、操作失败、已关闭
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“会话页右上角菜单”能够进入，页面明确显示 APP-MSG-04、页面名称、设计路由和返回路径。
@@ -1243,6 +1294,8 @@ App 版本：1.0
 **模块 PRD：** [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*）
 
 **页面状态：** 正常、全部已读、首次空、分页失败、实时离线
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-05`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -1340,6 +1393,8 @@ App 版本：1.0
 
 **页面状态：** 正常、目标失效、无权限、需要升级
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-06`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“通知列表”能够进入，页面明确显示 APP-MSG-06、页面名称、设计路由和返回路径。
@@ -1430,6 +1485,8 @@ App 版本：1.0
 
 **页面状态：** 免费、已有申请、待生效、同步失败
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MBR-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“真人详情门槛或我的会员卡”能够进入，页面明确显示 APP-MBR-01、页面名称、设计路由和返回路径。
@@ -1479,6 +1536,8 @@ App 版本：1.0
 **模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
 
 **页面状态：** 正常、即将到期、到期、撤销、受限
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MBR-02`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -1530,6 +1589,8 @@ App 版本：1.0
 
 **页面状态：** 未申请、已提交、处理中、待补充、已通过、已拒绝、已取消
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MBR-03`，共 7 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“会员目录或权益页”能够进入，页面明确显示 APP-MBR-03、页面名称、设计路由和返回路径。
@@ -1579,6 +1640,8 @@ App 版本：1.0
 **模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、空钱包、离线缓存、同步失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-WAL-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -1665,6 +1728,8 @@ App 版本：1.0
 **模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、增加筛选、扣减筛选、首次空、分页加载、对账维护
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-WAL-02`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -1772,6 +1837,8 @@ App 版本：1.0
 
 **页面状态：** 正常、业务单号已复制、分录不可用、冲正中
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-WAL-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“金币明细”能够进入，页面明确显示 APP-WAL-03、页面名称、设计路由和返回路径。
@@ -1862,6 +1929,8 @@ App 版本：1.0
 
 **页面状态：** 正常、账号受限、摘要同步失败
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-01`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“底部我的 Tab”能够进入，页面明确显示 APP-SET-01、页面名称、设计路由和返回路径。
@@ -1912,6 +1981,8 @@ App 版本：1.0
 
 **页面状态：** 正常、保存失败、需要重新验证
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“我的页面”能够进入，页面明确显示 APP-SET-02、页面名称、设计路由和返回路径。
@@ -1957,6 +2028,8 @@ App 版本：1.0
 **模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
 
 **页面状态：** 正常、仅当前设备、撤销失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -2004,6 +2077,8 @@ App 版本：1.0
 
 **页面状态：** 正常、保存冲突、政策更新
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“我的页面隐私入口”能够进入，页面明确显示 APP-SET-04、页面名称、设计路由和返回路径。
@@ -2050,6 +2125,8 @@ App 版本：1.0
 
 **页面状态：** 正常、同步失败、策略变化
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-05`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“我的页面通知设置”能够进入，页面明确显示 APP-SET-05、页面名称、设计路由和返回路径。
@@ -2095,6 +2172,8 @@ App 版本：1.0
 **模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
 
 **页面状态：** 正常、空、解除失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-06`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -2146,6 +2225,8 @@ App 版本：1.0
 
 **页面状态：** 正常、空、状态延迟
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-07`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“我的页面帮助与安全”能够进入，页面明确显示 APP-SET-07、页面名称、设计路由和返回路径。
@@ -2195,6 +2276,8 @@ App 版本：1.0
 **模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
 
 **页面状态：** 正常、已有处理中、提交失败
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-08`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -2246,6 +2329,8 @@ App 版本：1.0
 
 **页面状态：** 正常、处理中、失败、已过期、需要重新验证
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-09`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“我的页面数据权利”能够进入，页面明确显示 APP-SET-09、页面名称、设计路由和返回路径。
@@ -2292,6 +2377,8 @@ App 版本：1.0
 
 **页面状态：** 正常、存在阻塞项、处理中、失败
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-10`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“我的页面数据权利”能够进入，页面明确显示 APP-SET-10、页面名称、设计路由和返回路径。
@@ -2337,6 +2424,8 @@ App 版本：1.0
 **模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）
 
 **页面状态：** 正常、离线、无结果
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-11`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -2388,6 +2477,8 @@ App 版本：1.0
 
 **页面状态：** 正常、文档不可用
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-12`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“我的页面”能够进入，页面明确显示 APP-SET-12、页面名称、设计路由和返回路径。
@@ -2438,6 +2529,8 @@ App 版本：1.0
 
 **页面状态：** 必须升级、商店不可用
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-01`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“启动检查或未知能力门槛”能够进入，页面明确显示 APP-SYS-01、页面名称、设计路由和返回路径。
@@ -2484,6 +2577,8 @@ App 版本：1.0
 
 **页面状态：** 维护中、部分恢复
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-02`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“启动或任意服务请求”能够进入，页面明确显示 APP-SYS-02、页面名称、设计路由和返回路径。
@@ -2529,6 +2624,8 @@ App 版本：1.0
 **模块 PRD：** [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*）
 
 **页面状态：** 部分受限、全部受限
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-03`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -2580,6 +2677,8 @@ App 版本：1.0
 
 **页面状态：** 已下架、无权限、已删除
 
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“对象深链或状态刷新”能够进入，页面明确显示 APP-SYS-04、页面名称、设计路由和返回路径。
@@ -2629,6 +2728,8 @@ App 版本：1.0
 **模块 PRD：** [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*）
 
 **页面状态：** 未开放、政策变化
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SYS-05`，共 2 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -2680,6 +2781,8 @@ App 版本：1.0
 
 **页面状态：** 正常、数据延迟、质量异常、部分无权限
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“后台登录后的默认首页”能够进入，页面明确显示 ADM-OV-01、页面名称、设计路由和返回路径。
@@ -2726,6 +2829,8 @@ App 版本：1.0
 
 **页面状态：** 正常、P0/P1、未分配、已缓解
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“运营总览异常卡或全局任务入口”能够进入，页面明确显示 ADM-OV-02、页面名称、设计路由和返回路径。
@@ -2771,6 +2876,8 @@ App 版本：1.0
 **模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
 
 **页面状态：** 正常、影响扩大、并发更新、证据不足
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -2822,6 +2929,8 @@ App 版本：1.0
 
 **页面状态：** 正常、草稿、待审、已发布、已暂停、争议
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-01`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“真人与内容导航”能够进入，页面明确显示 ADM-PER-01、页面名称、设计路由和返回路径。
@@ -2871,6 +2980,8 @@ App 版本：1.0
 **模块 PRD：** [A-01–A-02 真人来源、上传与 MeiGallery 导入](../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md)（SRC-FR-*）
 
 **页面状态：** 正常、缺少来源、重复候选、媒体失败
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -2922,6 +3033,8 @@ App 版本：1.0
 
 **页面状态：** 正常、认证待审、发布待审、授权过期
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“真人列表或导入结果”能够进入，页面明确显示 ADM-PER-03、页面名称、设计路由和返回路径。
@@ -2971,6 +3084,8 @@ App 版本：1.0
 **模块 PRD：** [A-01–A-02 真人来源、上传与 MeiGallery 导入](../ways-of-work/plan/real-person-discovery-platform/person-source-upload-and-meigallery-import/prd.md)（SRC-FR-*）
 
 **页面状态：** 正常、校验中、部分失败、已暂停、已完成
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-04`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -3022,6 +3137,8 @@ App 版本：1.0
 
 **页面状态：** 正常、证据不足、版本冲突、需要复核
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“真人工作台提交认证”能够进入，页面明确显示 ADM-PER-05、页面名称、设计路由和返回路径。
@@ -3071,6 +3188,8 @@ App 版本：1.0
 **模块 PRD：** [A-03 真人认证与发布审核](../ways-of-work/plan/real-person-discovery-platform/person-verification-and-publication/prd.md)（VER-FR-*）
 
 **页面状态：** 正常、未认证、授权失效、投影失败
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PER-06`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -3126,6 +3245,8 @@ App 版本：1.0
 
 **页面状态：** 正常、草稿目录、生效目录、归档目录
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-TAX-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“发现运营导航”能够进入，页面明确显示 ADM-TAX-01、页面名称、设计路由和返回路径。
@@ -3171,6 +3292,8 @@ App 版本：1.0
 **模块 PRD：** [A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）
 
 **页面状态：** 正常、被引用、合并冲突、版本过期
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-TAX-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -3218,6 +3341,8 @@ App 版本：1.0
 
 **页面状态：** 正常、未知引用、客户端不兼容、待复核
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-TAX-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“目录版本页”能够进入，页面明确显示 ADM-TAX-03、页面名称、设计路由和返回路径。
@@ -3263,6 +3388,8 @@ App 版本：1.0
 **模块 PRD：** [A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*）
 
 **页面状态：** 正常、当前生效、灰度中、已回滚
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-REC-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -3310,6 +3437,8 @@ App 版本：1.0
 
 **页面状态：** 正常、Schema 错误、触碰安全过滤、并发冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-REC-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“规则版本列表”能够进入，页面明确显示 ADM-REC-02、页面名称、设计路由和返回路径。
@@ -3356,6 +3485,8 @@ App 版本：1.0
 
 **页面状态：** 正常、样本不足、数据延迟
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-REC-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“规则编辑页”能够进入，页面明确显示 ADM-REC-03、页面名称、设计路由和返回路径。
@@ -3401,6 +3532,8 @@ App 版本：1.0
 **模块 PRD：** [A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*）
 
 **页面状态：** 正常、时间冲突、资料下架
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-REC-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -3452,6 +3585,8 @@ App 版本：1.0
 
 **页面状态：** 正常、待分配、待平台、待用户、安全审核
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MSG-01`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“互动与安全导航”能够进入，页面明确显示 ADM-MSG-01、页面名称、设计路由和返回路径。
@@ -3501,6 +3636,8 @@ App 版本：1.0
 **模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
 
 **页面状态：** 正常、租约冲突、只读、冻结、关闭
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MSG-02`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -3552,6 +3689,8 @@ App 版本：1.0
 
 **页面状态：** 正常、无值班、过载、配置冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MSG-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“会话管理导航”能够进入，页面明确显示 ADM-MSG-03、页面名称、设计路由和返回路径。
@@ -3601,6 +3740,8 @@ App 版本：1.0
 **模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
 
 **页面状态：** 正常、无正文授权、披露缺失
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MSG-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -3656,6 +3797,8 @@ App 版本：1.0
 
 **页面状态：** 正常、P0、超时、未分配
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-SAF-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“互动与安全导航或举报事件”能够进入，页面明确显示 ADM-SAF-01、页面名称、设计路由和返回路径。
@@ -3705,6 +3848,8 @@ App 版本：1.0
 **模块 PRD：** [A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
 
 **页面状态：** 正常、证据受限、并发冲突、已冻结
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-SAF-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -3756,6 +3901,8 @@ App 版本：1.0
 
 **页面状态：** 正常、原审核人隔离、逾期
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-SAF-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“安全与申诉导航”能够进入，页面明确显示 ADM-SAF-03、页面名称、设计路由和返回路径。
@@ -3805,6 +3952,8 @@ App 版本：1.0
 **模块 PRD：** [A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
 
 **页面状态：** 正常、证据不足、需要升级
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-SAF-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -3860,6 +4009,8 @@ App 版本：1.0
 
 **页面状态：** 正常、草稿、生效、待回滚
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“会员与金币导航”能够进入，页面明确显示 ADM-MBR-01、页面名称、设计路由和返回路径。
@@ -3906,6 +4057,8 @@ App 版本：1.0
 
 **页面状态：** 正常、未知客户端、合并冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“会员目录或技术配置入口”能够进入，页面明确显示 ADM-MBR-02、页面名称、设计路由和返回路径。
@@ -3951,6 +4104,8 @@ App 版本：1.0
 **模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
 
 **页面状态：** 待处理、处理中、待补充、已通过、已拒绝、直接发放
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-03`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -4002,6 +4157,8 @@ App 版本：1.0
 
 **页面状态：** 正常、账号错误、高风险、重复业务单
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-04`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“发放记录主操作”能够进入，页面明确显示 ADM-MBR-04、页面名称、设计路由和返回路径。
@@ -4051,6 +4208,8 @@ App 版本：1.0
 **模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
 
 **页面状态：** 正常、发起人冲突、账号状态已变
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-05`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -4102,6 +4261,8 @@ App 版本：1.0
 
 **页面状态：** 正常、证据不足、映射冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-06`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“迁移工作台”能够进入，页面明确显示 ADM-MBR-06、页面名称、设计路由和返回路径。
@@ -4147,6 +4308,8 @@ App 版本：1.0
 **模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、账号受限、对账异常
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-01`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -4198,6 +4361,8 @@ App 版本：1.0
 
 **页面状态：** 正常、余额锁定、Sequence 异常
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“钱包查询”能够进入，页面明确显示 ADM-WAL-02、页面名称、设计路由和返回路径。
@@ -4247,6 +4412,8 @@ App 版本：1.0
 **模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、预计负余额、高风险、重复业务单
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -4298,6 +4465,8 @@ App 版本：1.0
 
 **页面状态：** 正常、余额已变化、发起人冲突
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“复核任务队列”能够进入，页面明确显示 ADM-WAL-04、页面名称、设计路由和返回路径。
@@ -4348,6 +4517,8 @@ App 版本：1.0
 
 **页面状态：** 正常、部分成功、重复项、总额异常
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-05`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“钱包运营工具”能够进入，页面明确显示 ADM-WAL-05、页面名称、设计路由和返回路径。
@@ -4393,6 +4564,8 @@ App 版本：1.0
 **模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
 **页面状态：** 正常、钱包冻结、差异未解释
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-WAL-06`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -4448,6 +4621,8 @@ App 版本：1.0
 
 **页面状态：** 正常、未登记、已停用
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-NTF-01`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“站内通知导航”能够进入，页面明确显示 ADM-NTF-01、页面名称、设计路由和返回路径。
@@ -4493,6 +4668,8 @@ App 版本：1.0
 **模块 PRD：** [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*）
 
 **页面状态：** 正常、变量缺失、地区冲突、语言冲突
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-NTF-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -4540,6 +4717,8 @@ App 版本：1.0
 
 **页面状态：** 正常、积压、模板失败、重复抑制
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-NTF-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“站内通知导航或异常卡”能够进入，页面明确显示 ADM-NTF-03、页面名称、设计路由和返回路径。
@@ -4585,6 +4764,8 @@ App 版本：1.0
 **模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
 
 **页面状态：** 正常、范围过大、完整性告警
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-01`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
@@ -4636,6 +4817,8 @@ App 版本：1.0
 
 **页面状态：** 正常、关联缺失、敏感字段受限
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-02`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“审计查询结果”能够进入，页面明确显示 ADM-AUD-02、页面名称、设计路由和返回路径。
@@ -4686,6 +4869,8 @@ App 版本：1.0
 
 **页面状态：** 正常、Sequence 缺口、业务无审计
 
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
 **页面级验收：**
 
 - 从“审计导航或异常中心”能够进入，页面明确显示 ADM-AUD-03、页面名称、设计路由和返回路径。
@@ -4731,6 +4916,8 @@ App 版本：1.0
 **模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
 
 **页面状态：** 正常、待批准、已过期、范围变化
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-04`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 

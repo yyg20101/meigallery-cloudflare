@@ -16,7 +16,7 @@ App 版本：1.0
 
 客户确认本文后，产品、UI、技术和测试均以本文为需求基线。尚未确认的参数集中在第 17 章，不应由设计或开发人员自行决定。后续需要改变已确认范围时，应先完成影响评估，再更新同一 App 版本下的需求基线；讨论期不频繁增加文档版本号。
 
-配套的 [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html) 可直接操作登录、发现、详情、会员申请、平台话题、通知钱包、内容审核和运营调币八个场景。[App 1.0 逐页交互设计库](./interactive-prototype/pages.html) 进一步覆盖移动端 49 页和管理后台 43 页，共 92 个可独立访问的页面级需求原型，并支持切换每页的正常、空、错误、受限和冲突状态；通知与金币 5 页另提供 23 个可逐项确认的 Figma 最终交互状态。详细页面基线见 [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md) 和 [详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)；产品总需求、发布范围、Feature PRD 与 Page ID 的对应关系见 [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)；本阶段关键决策见 [App 1.0 产品决策基线](./APP_1_0_PRODUCT_DECISION_BASELINE.md)。
+配套的 [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html) 可直接操作登录、发现、详情、会员申请、平台话题、通知钱包、内容审核和运营调币八个场景。[App 1.0 逐页交互设计库](./interactive-prototype/pages.html) 进一步覆盖移动端 49 页和管理后台 43 页，共 92 个可独立访问的页面级需求原型。Figma 最终文件已覆盖 92 页、349 个需求状态、92 个流程预览和 2,284 个有效交互动作；客户文档另保留 169 个 Page ID/状态/图片确定性映射，方便离线逐页确认。详细页面基线见 [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md) 和 [详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)；产品总需求、发布范围、Feature PRD 与 Page ID 的对应关系见 [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)；本阶段关键决策见 [App 1.0 产品决策基线](./APP_1_0_PRODUCT_DECISION_BASELINE.md)。
 
 ### 1.1 本次要求客户重点确认
 
@@ -190,9 +190,54 @@ App 1.0 当前定义 92 个独立页面设计对象：
 | Android/iOS 移动端 | 49 | 启动认证、发现真人、单向互动、平台话题、站内通知、五级会员、金币钱包、我的与系统状态 |
 | Nuxt 管理后台 | 43 | 总览异常、真人供给、认证发布、目录推荐、代运营、安全申诉、会员金币、通知审计 |
 
-页面优先级为 P0 54 页、P1 31 页、P2 7 页。每个页面均有一张默认状态原型，54 个 P0 页面另有一张关键异常、受限、冲突或处理中状态原型，共 146 张基础逐页原型图。通知列表、通知详情、金币钱包、金币明细和金币分录详情另有 23 张 Figma 最终状态原型；基础与最终状态合计建立 169 个确定性映射，同名状态在客户文档中优先显示最终图。
+页面优先级为 P0 54 页、P1 31 页、P2 7 页。Figma 最终设计覆盖全部 92 个 Page ID 和 349 个需求状态，其中移动端 186 个、管理后台 163 个；`30｜Prototype Flows` 同步提供 92 个流程预览。为了支持脱离 Figma 的逐页签署，本文件仍内嵌 92 张默认状态、54 张 P0 关键状态，以及通知/金币 23 张逐状态本地导出图，共 169 个确定性图片映射。
 
 每个页面必须有稳定 Page ID、设计路由、页面目标、进入方式、主次操作、必备状态、成功出口、失败下一步、需求追踪键和页面级验收。客户可在 [逐页设计库](./interactive-prototype/pages.html) 搜索 Page ID 并单独评审；评审意见应引用 Page ID，涉及业务规则变化时还应引用对应 PRD/SCP 编号，避免只描述截图位置。92 页是完整需求覆盖，不代表 92 页同时进入首批开发；P0/P1/P2 的排期边界以第 3.1 节和产品决策基线为准。
+
+### 5.4 Figma 最终设计交付与评审入口
+
+Figma 最终文件：[Peachmote UI 借鉴审查板 - MeiGallery](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery)
+
+最终版本 ID：`2381987656588552168`
+
+| 交付区域 | 覆盖 | 客户评审重点 |
+|---|---:|---|
+| `10｜Mobile Pages` | 49 页 / 186 状态 | 页面层级、文字排版、Icon、44dp 热区、状态与返回路径 |
+| `20｜Admin Pages` | 43 页 / 163 状态 | 工作台密度、筛选表格、审批、审计、异常与并发状态 |
+| `30｜Prototype Flows` | 92 个流程预览 / 494 个流程动作 | 从入口到成功、失败、受限和安全出口是否完整 |
+| 页面内交互 | 1,790 个动作 | 主次操作、跨页目标、危险操作和幂等反馈 |
+| `40｜Delivery Index` | 92 个 Page ID | 需求、页面、状态、原型和交付证据的定位 |
+| `50｜QA & Handoff` | 视觉/交互/边界/交付门禁 | 是否达到实现、测试和客户签署所需完整度 |
+
+最终 QA：92/92 页面、349/349 状态全部覆盖；2,284 个有效交互动作的缺失目标为 0；移动端关键点击热区小于 44dp 为 0；正式页未发现未绑定文字样式、原始填充/描边、缺失字体或文字溢出。客户审阅时可先查看下列最终视觉总览，再到附录 A/B/C 按 Page ID 逐页确认功能和状态。
+
+![原始视觉参考与 APP-DSC-01 最终发现页对照](./assets/figma-qa/phase3/comparison-discovery-reference-vs-official-20260730.png)
+
+![APP-AUTH-01 至 APP-AUTH-06 移动端启动与认证最终设计总览](./assets/figma-qa/phase3/mobile-auth-pages-20260730.png)
+
+![APP-MBR-01 至 APP-MBR-03 移动端五级会员最终设计总览](./assets/figma-qa/phase3/mobile-membership-catalog-20260730.png)
+
+![APP-MSG-01 至 APP-MSG-04 移动端平台话题最终设计总览](./assets/figma-qa/phase3/mobile-platform-topic-chat-20260730.png)
+
+![APP-SET-01 至 APP-SET-12 移动端我的与设置最终设计总览](./assets/figma-qa/phase3/mobile-profile-settings-20260730.png)
+
+![ADM-OV-01 管理后台运营总览最终设计](./assets/figma-qa/phase3/admin-dashboard-normal-20260730.jpeg)
+
+![ADM-PER-03 管理后台真人工作台最终设计](./assets/figma-qa/phase3/admin-person-workbench-normal-20260730.jpeg)
+
+![ADM-MSG-02 管理后台平台话题工作台最终设计](./assets/figma-qa/phase3/admin-conversation-workbench-normal-20260730.jpeg)
+
+![ADM-MBR-01 管理后台五级会员目录最终设计](./assets/figma-qa/phase3/admin-membership-catalog-normal-fixed-20260730.jpeg)
+
+![ADM-WAL-02 管理后台钱包详情最终设计](./assets/figma-qa/phase3/admin-wallet-detail-normal-20260730.jpeg)
+
+![移动端 49 页 Prototype Flows 总览](./assets/figma-qa/phase3/prototype-flows-overview-20260730.png)
+
+![管理后台 43 页 Prototype Flows 总览](./assets/figma-qa/phase3/admin-prototype-flows-overview-20260730.jpeg)
+
+![92 个 Page ID Delivery Index 总览](./assets/figma-qa/phase3/delivery-index-summary-20260730.jpeg)
+
+![Figma QA 与 Handoff 最终门禁](./assets/figma-qa/phase3/qa-handoff-release-gate-20260730.jpeg)
 
 ## 6. 端到端业务流程
 
@@ -446,7 +491,7 @@ App 1.0 当前定义 92 个独立页面设计对象：
 - App 1.0 不显示充值、礼物、转账、提现或兑换入口。
 - 钱包页固定说明“金币仅用于记录平台调整，当前不可购买、消费、转赠、兑换或提现，不具有现金价值”；零余额账号仍可查看规则和历史，不用促销方式强调余额。
 
-### 8.9.1 通知与金币 Figma 最终状态确认
+### 8.9.1 通知与金币 Figma 逐状态导出确认
 
 客户 DOCX 的附录 C 将以下 23 个状态逐页展示，每页都包含对应截图、触发条件、关键交互、预期结果、服务端权威边界、Figma Frame ID 和单独确认栏：
 
@@ -458,7 +503,7 @@ App 1.0 当前定义 92 个独立页面设计对象：
 | `APP-WAL-02` | 金币明细 | 正常、增加筛选、扣减筛选、首次空、分页加载、对账维护 |
 | `APP-WAL-03` | 金币分录详情 | 正常、业务单号已复制、分录不可用、冲正中 |
 
-这 23 个状态已经完成移动端 49/49 页面覆盖与 161 条连接审计，缺失跳转、点击热区不足、布局或文字溢出均为 0。原型用于确认视觉与交互；未读、权限、目标状态、余额、分录与冲正关系仍必须以服务端实时结果为准。
+这 23 张逐状态导出图是 349 个 Figma 最终状态中的深度确认样本；全量最终稿已经覆盖移动端 49 页/186 状态、后台 43 页/163 状态和 2,284 个有效交互动作，缺失目标、移动端关键点击热区不足和文字溢出均为 0。原型用于确认视觉与交互；未读、权限、目标状态、余额、分录与冲正关系仍必须以服务端实时结果为准。
 
 ### 8.10 我的、设置和数据权利
 
@@ -809,7 +854,8 @@ App 1.0 首次业务发布采用限量邀请，不在功能完成后直接公开
 - 客户端收到未知 entitlement、事件或未来功能时安全忽略，不崩溃、不扩大权限。
 - 49 个移动端 Page ID、43 个管理后台 Page ID、P0/P1/P2 的 54/31/7 页面数量与需求追踪矩阵一致。
 - 92 个 Page ID 均包含产品需求编号、发布范围编号、Feature PRD、默认状态原型和页面级验收；54 个 P0 页面另有关键状态原型，总计 146 张基础原型。
-- 通知与金币 5 页完整包含 23 个 Figma 最终状态；基础与最终状态共建立 169 个确定性映射，同名状态在 DOCX 中使用最终图。
+- Figma 最终设计完整覆盖 92 页、349 个需求状态和 92 个流程预览；页面内与流程动作合计 2,284 个，缺失目标为 0。
+- 客户 DOCX 保留 146 张基础逐页图与通知/金币 23 张逐状态导出图，共 169 个确定性图片映射；同名状态优先使用逐状态导出图。
 - 客户确认书和逐页交互设计确认册中的每张原型都以 Page ID 和状态确定性映射，不存在功能说明与图片错位。
 
 ## 17. 客户产品与业务确认事项
@@ -874,7 +920,7 @@ App 1.0 首次业务发布采用限量邀请，不在功能完成后直接公开
 | 原型 08 | 移动端逐页设计库、推荐首页与单页说明 |
 | 原型 09 | 管理后台逐页设计库、认证审核与单页说明 |
 
-以上图片来自 [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)，用于快速确认主流程。完整的 [92 页逐页交互设计库](./interactive-prototype/pages.html) 用于逐页确认信息结构、视觉方向、主次操作和必备状态；其中关键旅程是可连续操作的高保真原型，其余页面是页面级需求原型。[逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md) 提供对应的书面页面目录、优先级和验收方法；[详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md) 逐页嵌入 146 张基础原型，并对通知与金币 5 页使用 23 张 Figma 最终状态图；[需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md) 记录产品需求、发布范围、Feature PRD 与 Page ID 的对应关系。客户 DOCX 附录 C 会逐页呈现这 23 个最终状态和确认栏。后续研发可在不改变已确认身份披露、权限门槛、状态和业务规则的前提下，继续细化字体、颜色、图片、间距和动效参数。
+以上图片来自 [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)，用于快速确认主流程。完整的 [92 页逐页交互设计库](./interactive-prototype/pages.html) 用于逐页确认信息结构、主次操作和必备状态；Figma 最终文件负责像素级视觉、完整状态和原型连线。[逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md) 提供页面目录、优先级和验收方法；[详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md) 逐页嵌入 146 张基础原型，并对通知与金币 5 页使用 23 张逐状态导出图；[需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md) 记录产品需求、发布范围、Feature PRD 与 Page ID 的对应关系。客户 DOCX 附录 A/B/C 会按 Page ID 展示 169 个图片映射和确认栏，Figma 的 349 个最终状态仍是实现视觉与交互的权威来源。
 
 ## 附录 B：需求文档关系
 

@@ -958,6 +958,14 @@ def load_page_manifest() -> dict[str, Any]:
         "detailedFigmaPages": 5,
         "detailedFigmaStateCaptures": 23,
         "documentPrototypeMappings": 169,
+        "figmaDesignedPages": 92,
+        "figmaDesignedStates": 349,
+        "figmaMobileStates": 186,
+        "figmaAdminStates": 163,
+        "figmaFlowPreviews": 92,
+        "figmaPageActions": 1790,
+        "figmaFlowActions": 494,
+        "figmaTotalActions": 2284,
     }
     for key, value in expected.items():
         if counts.get(key) != value:
@@ -966,8 +974,8 @@ def load_page_manifest() -> dict[str, Any]:
             )
     if manifest.get("status") != "verified":
         raise ValueError("逐页原型清单尚未完成校验，拒绝生成客户文档")
-    if int(manifest.get("schemaVersion", 0)) < 3:
-        raise ValueError("逐页原型清单缺少 Figma 最终状态与需求追踪 schema")
+    if int(manifest.get("schemaVersion", 0)) < 4:
+        raise ValueError("逐页原型清单缺少 Figma 全量最终交付与需求追踪 schema")
     for page in manifest.get("pages", []):
         requirements = page.get("requirements", {})
         if not requirements.get("traceKey"):
@@ -1031,14 +1039,14 @@ def figma_capture_map(
     expected = manifest["counts"]["detailedFigmaStateCaptures"]
     if len(captures) != expected:
         raise ValueError(
-            f"Figma 最终状态截图数量异常：{len(captures)}，应为 {expected}"
+            f"Figma 逐状态导出图数量异常：{len(captures)}，应为 {expected}"
         )
     result: dict[tuple[str, str], dict[str, Any]] = {}
     for capture in captures:
         key = (capture["pageId"], capture["state"])
         if key in result:
             raise ValueError(
-                f"Figma 最终状态映射重复：{capture['pageId']} / {capture['state']}"
+                f"Figma 逐状态导出映射重复：{capture['pageId']} / {capture['state']}"
             )
         result[key] = capture
     return result
@@ -1117,7 +1125,8 @@ def add_page_confirmation_unit(
     add_inline_content(
         metadata,
         f"设计路由：`{page['route']}`　默认状态：{capture['state']}　"
-        f"角色：{page['roles']}",
+        f"角色：{page['roles']}　Figma：{page['figmaDesignPage']} / "
+        f"{page['figmaDesignedStateCount']} 个状态",
         base_size=8.4,
         base_color=MUTED,
     )
@@ -1409,7 +1418,7 @@ def add_detailed_figma_state_appendix(
         )
 
     heading = doc.add_paragraph(
-        "附录 C：通知与金币 23 个 Figma 最终交互状态",
+        "附录 C：通知与金币 23 张 Figma 逐状态导出图",
         style="Heading 1",
     )
     heading.paragraph_format.page_break_before = True
@@ -1417,17 +1426,18 @@ def add_detailed_figma_state_appendix(
     paragraph = doc.add_paragraph()
     add_inline_content(
         paragraph,
-        "本附录覆盖通知列表、通知详情、金币钱包、金币明细和金币分录详情 "
-        "5 个页面，共 23 个可独立验收状态。每个状态均绑定 Page ID、状态名、"
+        "Figma 最终设计已覆盖 92 页、349 个需求状态；本附录另外保留通知列表、"
+        "通知详情、金币钱包、金币明细和金币分录详情 5 个页面的 23 张逐状态本地导出图。"
+        "每个导出状态均绑定 Page ID、状态名、"
         "Figma Frame ID、触发条件、关键交互、预期结果与服务端权威边界。",
         base_size=10,
     )
     paragraph = doc.add_paragraph()
     add_inline_content(
         paragraph,
-        "Figma 交互审计结果：移动端页面覆盖 49/49、连接 161 条、缺失目标 0、"
-        "点击热区不足 0、布局或文字溢出 0。附录 A/B 中这 5 个页面的同名状态"
-        "已自动使用本批最终图，不再展示旧占位原型。",
+        "最终交互审计结果：移动端 49 页/186 状态、后台 43 页/163 状态全部覆盖；"
+        "页面内与流程动作共 2,284 个，缺失目标 0，移动端不足 44dp 的关键热区 0，"
+        "文字溢出 0。附录 A/B 中这 5 个页面的同名状态已自动使用逐状态导出图。",
         base_size=9.5,
         base_color=BRAND_DARK,
         base_bold=True,
@@ -1453,9 +1463,16 @@ def add_final_delivery_confirmation(
         f"{counts['mobilePages']} 页、管理后台 {counts['adminPages']} 页。",
         f"P0 页面共 {counts['p0Pages']} 个，并分别纳入一个关键状态原型；"
         f"默认原型与关键状态合计 {counts['totalCaptures']} 张。",
-        f"通知与金币 {counts['detailedFigmaPages']} 个页面另纳入 "
-        f"{counts['detailedFigmaStateCaptures']} 个 Figma 最终交互状态；"
-        f"基础与最终状态共建立 {counts['documentPrototypeMappings']} 个确定性映射。",
+        f"Figma 最终设计覆盖 {counts['figmaDesignedPages']} 页、"
+        f"{counts['figmaDesignedStates']} 个需求状态和 "
+        f"{counts['figmaTotalActions']:,} 个有效交互动作；"
+        f"移动端/后台状态分别为 {counts['figmaMobileStates']}/"
+        f"{counts['figmaAdminStates']}。",
+        f"通知与金币 {counts['detailedFigmaPages']} 个页面另保留 "
+        f"{counts['detailedFigmaStateCaptures']} 张逐状态本地导出图；"
+        f"客户文档共建立 {counts['documentPrototypeMappings']} 个确定性图片映射。",
+        f"Figma 最终版本 ID 为 {manifest['figmaFinal']['finalVersionId']}；"
+        "开发和评审均应在 `40｜Delivery Index` 中按 Page ID 定位。",
         "每个 Page ID 均包含产品总需求编号、App 1.0 发布范围编号和 "
         "Feature PRD 需求组组成的追踪键。",
         "每张图片均通过 Page ID、页面名称、状态和文件清单建立确定性映射；"
@@ -1526,7 +1543,8 @@ def build_document(spec: DocumentSpec) -> None:
         "版式：standard_business_brief；首页：customer_pack；"
         "命名覆盖：MeiGallery 品牌粉色标题层级、Arial Unicode MS 中文字体；"
         "逐页原型：92 张默认状态 + 54 张 P0 关键状态；"
-        "Figma 最终细化：5 个页面、23 个状态；确定性映射共 169 个。"
+        "Figma 最终设计：92 页、349 个状态、2,284 个有效动作；"
+        "客户文档图片映射：169 个。"
     )
     doc.core_properties.last_modified_by = "MeiGallery 产品团队"
 

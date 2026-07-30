@@ -52,6 +52,14 @@ EXPECTED_COUNTS = {
     "detailedFigmaPages": 5,
     "detailedFigmaStateCaptures": 23,
     "documentPrototypeMappings": 169,
+    "figmaDesignedPages": 92,
+    "figmaDesignedStates": 349,
+    "figmaMobileStates": 186,
+    "figmaAdminStates": 163,
+    "figmaFlowPreviews": 92,
+    "figmaPageActions": 1790,
+    "figmaFlowActions": 494,
+    "figmaTotalActions": 2284,
     "groups": 14,
 }
 
@@ -98,8 +106,8 @@ def main() -> None:
     texts = {path: read(path) for path in BASELINE_DOCUMENTS}
     manifest = json.loads(read(MANIFEST_PATH))
 
-    if int(manifest.get("schemaVersion", 0)) < 3:
-        raise ValueError("逐页原型清单未包含 Figma 最终状态与需求追踪 schema")
+    if int(manifest.get("schemaVersion", 0)) < 4:
+        raise ValueError("逐页原型清单未包含 Figma 全量最终交付与需求追踪 schema")
     if manifest.get("status") != "verified":
         raise ValueError("逐页原型清单未通过图片验证")
     for key, expected in EXPECTED_COUNTS.items():
@@ -169,6 +177,8 @@ def main() -> None:
         require(text, "54", str(path.relative_to(ROOT)))
         require(text, "23", str(path.relative_to(ROOT)))
         require(text, "169", str(path.relative_to(ROOT)))
+        require(text, "349", str(path.relative_to(ROOT)))
+        require(text, "2,284", str(path.relative_to(ROOT)))
 
     require(texts[PAGE_DESIGN], "P0 54 页、P1 31 页、P2 7 页", "逐页产品设计")
     require(texts[TRACEABILITY], "54 / 31 / 7", "需求追踪矩阵")
@@ -262,7 +272,8 @@ def main() -> None:
         "需求一致性校验通过："
         f"{EXPECTED_COUNTS['pages']} 页、"
         f"{EXPECTED_COUNTS['totalCaptures']} 张基础原型、"
-        f"{EXPECTED_COUNTS['detailedFigmaStateCaptures']} 张 Figma 最终状态、"
+        f"{EXPECTED_COUNTS['figmaDesignedStates']} 个 Figma 最终设计状态、"
+        f"{EXPECTED_COUNTS['detailedFigmaStateCaptures']} 张逐状态导出图、"
         f"{EXPECTED_COUNTS['documentPrototypeMappings']} 个原型映射、"
         f"{len(IN_SCOPE_PRODUCT_REQUIREMENTS)} 个 App 1.0 产品需求编号、"
         f"{len(pages)} 个逐页追踪键。"
