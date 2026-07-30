@@ -114,6 +114,281 @@ const layoutDescriptions = {
   export: '范围、目的、独立复核、短期凭证和过期状态形成受控导出闭环。'
 }
 
+const FIGMA_FILE_KEY = 'LaNSwwGsznwcpV8msj7BQC'
+const FIGMA_FILE_SLUG = 'Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery'
+const FIGMA_PAGE_ID = '9:8'
+
+function figmaPrototypeUrl(frameId) {
+  const nodeId = frameId.replace(':', '-')
+  return `https://www.figma.com/proto/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}?node-id=${nodeId}&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=${encodeURIComponent(frameId)}&show-proto-sidebar=1&page-id=${encodeURIComponent(FIGMA_PAGE_ID)}`
+}
+
+function figmaState({
+  state,
+  screen,
+  frameId,
+  image,
+  trigger,
+  interaction,
+  expected,
+  authority
+}) {
+  return {
+    state,
+    screen,
+    frameId,
+    image: `figma-final/phase14/${image}`,
+    trigger,
+    interaction,
+    expected,
+    authority,
+    prototypeUrl: figmaPrototypeUrl(frameId)
+  }
+}
+
+const detailedFigmaStateSpecs = {
+  'APP-MSG-05': [
+    figmaState({
+      state: '正常',
+      screen: 'APP-MSG-05｜通知列表｜Default',
+      frameId: '145:52718',
+      image: 'phase14-01-noticeDefault.png',
+      trigger: '进入通知中心或 HTTP 刷新成功，且当前分类存在可见通知。',
+      interaction: '切换“全部/话题/互动/会员金币/安全”分类；点击通知先标记已读，再读取目标当前状态；“全部已读”只提交一次幂等请求。',
+      expected: '展示未读数量、分类、时间、摘要和必要通知标识；成功点击进入 APP-MSG-06，列表未读状态以服务端回读为准。',
+      authority: 'HTTP 查询结果是列表与未读权威；实时事件只触发失效与重新拉取。'
+    }),
+    figmaState({
+      state: '全部已读',
+      screen: 'APP-MSG-05｜通知列表｜Read',
+      frameId: '145:52918',
+      image: 'phase14-02-noticeRead.png',
+      trigger: '用户点击“全部已读”且服务端确认成功。',
+      interaction: '按钮进入处理中并防重复提交；成功后清除当前账号的未读标记，多设备差异通过下一次 HTTP 回读收敛。',
+      expected: '显示“全部已读”反馈，卡片内容继续保留；失败时恢复按钮并保留原未读状态。',
+      authority: '客户端不得仅本地清零；以服务端 unreadCount 和 readAt 为准。'
+    }),
+    figmaState({
+      state: '首次空',
+      screen: 'APP-MSG-05｜通知列表｜Empty',
+      frameId: '145:53118',
+      image: 'phase14-03-noticeEmpty.png',
+      trigger: '当前分类查询成功但没有任何可见通知。',
+      interaction: '用户可切回“全部”或查看其他分类；不展示虚构通知和占位营销内容。',
+      expected: '说明当前分类暂无通知并提供“查看全部通知”安全出口，底部导航仍可用。',
+      authority: '空状态来自成功响应的空集合，不与请求失败混淆。'
+    }),
+    figmaState({
+      state: '分页失败',
+      screen: 'APP-MSG-05｜通知列表｜Error',
+      frameId: '145:53287',
+      image: 'phase14-04-noticeError.png',
+      trigger: '已有列表可用，但加载下一页或刷新增量失败。',
+      interaction: '保留已加载通知和滚动位置；失败区块就近提供“重新加载后续通知”。',
+      expected: '用户仍可打开已有通知；重试复用原筛选条件和分页游标，不重复插入项目。',
+      authority: '失败页不得覆盖最近一次成功结果；新结果按稳定 notificationId 去重。'
+    }),
+    figmaState({
+      state: '实时离线',
+      screen: 'APP-MSG-05｜通知列表｜Offline',
+      frameId: '145:53483',
+      image: 'phase14-05-noticeOffline.png',
+      trigger: '实时连接断开，但最近一次 HTTP 列表仍可展示。',
+      interaction: '顶部显示非阻断提示；用户可手动重新连接并对账，仍可打开缓存列表中的通知。',
+      expected: '不宣称通知为最新；恢复后先 HTTP 补拉，再恢复实时监听。',
+      authority: '缓存只读，未读、目标状态和必要通知均需联网确认。'
+    })
+  ],
+  'APP-MSG-06': [
+    figmaState({
+      state: '正常',
+      screen: 'APP-MSG-06｜通知详情｜Default',
+      frameId: '145:53849',
+      image: 'phase14-06-detailDefault.png',
+      trigger: '通知存在、当前账号可见，且通知目标仍可安全访问。',
+      interaction: '展示事件时间、用户安全正文、接收主体说明和目标当前状态；主按钮按目标类型进入对应页面。',
+      expected: '进入目标前再次读取当前状态；平台话题通知明确由平台运营接收和处理。',
+      authority: '通知历史正文可读，但跳转能力以目标当前状态和当前 entitlement 为准。'
+    }),
+    figmaState({
+      state: '目标失效',
+      screen: 'APP-MSG-06｜通知详情｜Unavailable',
+      frameId: '145:53999',
+      image: 'phase14-07-detailUnavailable.png',
+      trigger: '通知仍存在，但关联资料、会话、内容或业务对象已下架、删除或关闭。',
+      interaction: '保留用户安全历史说明，不再执行原深链；提供返回通知列表和安全说明。',
+      expected: '不显示内部下架原因或访问凭证，不产生循环跳转。',
+      authority: '目标当前状态覆盖通知生成时的历史目标状态。'
+    }),
+    figmaState({
+      state: '无权限',
+      screen: 'APP-MSG-06｜通知详情｜Forbidden',
+      frameId: '145:54144',
+      image: 'phase14-08-detailForbidden.png',
+      trigger: '账号、会员或对象权限下降，当前用户不再具备目标 entitlement。',
+      interaction: '正文仅显示允许保留的历史摘要；主操作改为查看当前权益或返回列表。',
+      expected: '不因旧通知恢复过期能力，不把客户端缓存当作授权。',
+      authority: '服务端权限校验优先；客户端未知 entitlement 必须安全拒绝。'
+    }),
+    figmaState({
+      state: '需要升级',
+      screen: 'APP-MSG-06｜通知详情｜Upgrade',
+      frameId: '145:54288',
+      image: 'phase14-09-detailUpgrade.png',
+      trigger: '通知目标需要当前客户端尚未实现、但服务端已声明最低版本的新能力。',
+      interaction: '展示版本能力说明和安全返回；仅在存在可信更新渠道时提供更新入口。',
+      expected: '旧版本不渲染未知功能、不崩溃、不扩大权限。',
+      authority: '最低客户端版本和能力兼容由服务端配置与 App 版本共同判定。'
+    })
+  ],
+  'APP-WAL-01': [
+    figmaState({
+      state: '正常',
+      screen: 'APP-WAL-01｜金币钱包｜Default',
+      frameId: '145:54433',
+      image: 'phase14-10-walletDefault.png',
+      trigger: '余额投影和最近有效分录同步成功。',
+      interaction: '展示余额、最后同步时间、只读规则和最近分录；点击“查看金币明细”进入 APP-WAL-02。',
+      expected: '明确金币不具现金价值，页面不存在购买、充值、消费、兑换、转账或提现入口。',
+      authority: '余额来自有效分录投影；客户端不得直接修改或自行汇总覆盖。'
+    }),
+    figmaState({
+      state: '空钱包',
+      screen: 'APP-WAL-01｜金币钱包｜Empty',
+      frameId: '145:54618',
+      image: 'phase14-11-walletEmpty.png',
+      trigger: '账号余额为 0，且没有任何已生效分录。',
+      interaction: '保留规则说明和明细入口，不展示充值或消费引导。',
+      expected: '显示“还没有生效分录”，后续管理员调整生效后可正常刷新。',
+      authority: '0 是服务端权威结果，不用缺失值或请求失败替代。'
+    }),
+    figmaState({
+      state: '离线缓存',
+      screen: 'APP-WAL-01｜金币钱包｜Offline',
+      frameId: '145:54793',
+      image: 'phase14-12-walletOffline.png',
+      trigger: '当前离线，但本地存在最近一次成功同步的钱包快照。',
+      interaction: '显示缓存时间和“重新连接并刷新”；允许查看缓存明细，禁止执行任何写操作。',
+      expected: '明确“不是当前最新余额”；联网后先刷新权威余额再移除离线提示。',
+      authority: '离线快照仅用于只读展示，不能用于授权或业务结算。'
+    }),
+    figmaState({
+      state: '同步失败',
+      screen: 'APP-WAL-01｜金币钱包｜SyncFailed',
+      frameId: '145:54977',
+      image: 'phase14-13-walletFailed.png',
+      trigger: '同步请求失败或余额 projection 暂不可用。',
+      interaction: '保留最近一次成功余额并标记时间；提供重新同步和查看缓存明细。',
+      expected: '不把失败显示成 0，不覆盖缓存，不生成任何补偿分录。',
+      authority: '同步失败只影响展示新鲜度，分录与余额仍以服务端为唯一权威。'
+    })
+  ],
+  'APP-WAL-02': [
+    figmaState({
+      state: '正常',
+      screen: 'APP-WAL-02｜金币明细｜Default',
+      frameId: '145:55148',
+      image: 'phase14-14-ledgerDefault.png',
+      trigger: '全部方向的有效分录查询成功。',
+      interaction: '按时间倒序展示增加、扣减和冲正关系；点击分录进入 APP-WAL-03，加载更多使用稳定游标。',
+      expected: '每项显示方向、数量、原因、时间和安全业务引用；不展示内部备注。',
+      authority: '只展示已生效分录；原分录不可修改或删除。'
+    }),
+    figmaState({
+      state: '增加筛选',
+      screen: 'APP-WAL-02｜金币明细｜CreditFilter',
+      frameId: '145:55320',
+      image: 'phase14-15-ledgerCredit.png',
+      trigger: '用户选择“增加”。',
+      interaction: '重新以 direction=credit 查询并重置分页游标；切换筛选时保留页面结构。',
+      expected: '只显示增加、补偿或冲正增加等已生效分录，筛选结果为空时进入对应空状态。',
+      authority: '筛选由服务端执行，客户端不得隐藏不理解的分录后自行计算余额。'
+    }),
+    figmaState({
+      state: '扣减筛选',
+      screen: 'APP-WAL-02｜金币明细｜DebitFilter',
+      frameId: '145:55483',
+      image: 'phase14-16-ledgerDebit.png',
+      trigger: '用户选择“扣减”。',
+      interaction: '重新以 direction=debit 查询并重置分页游标；负向数量使用一致视觉语义。',
+      expected: '只显示管理员扣减、冲正扣减等已生效分录，不出现用户消费记录。',
+      authority: 'App 1.0 没有消费能力；扣减只能来自管理员受控调整或冲正。'
+    }),
+    figmaState({
+      state: '首次空',
+      screen: 'APP-WAL-02｜金币明细｜Empty',
+      frameId: '145:55637',
+      image: 'phase14-17-ledgerEmpty.png',
+      trigger: '当前筛选查询成功但没有已生效分录。',
+      interaction: '显示筛选相关空状态；允许切回全部或查看金币规则。',
+      expected: '不生成示例分录，不把待审批调整显示为已生效。',
+      authority: '空集合来自服务端成功响应。'
+    }),
+    figmaState({
+      state: '分页加载',
+      screen: 'APP-WAL-02｜金币明细｜Loading',
+      frameId: '145:55785',
+      image: 'phase14-18-ledgerLoading.png',
+      trigger: '用户点击加载更多且仍有 nextCursor。',
+      interaction: '按钮进入加载状态并防重复请求；成功后按 entryId 去重追加，失败保留已有分录。',
+      expected: '不打乱已加载顺序；nextCursor 为空时不再展示加载入口。',
+      authority: '分页游标由服务端签发，客户端不按本地页码推算。'
+    }),
+    figmaState({
+      state: '对账维护',
+      screen: 'APP-WAL-02｜金币明细｜Maintenance',
+      frameId: '145:55962',
+      image: 'phase14-19-ledgerMaintenance.png',
+      trigger: '钱包正在对账或投影存在可恢复延迟。',
+      interaction: '保留已验证历史，冻结最新余额摘要并提供刷新状态和帮助入口。',
+      expected: '不删除或改写历史分录；维护完成后整体回读权威余额和游标。',
+      authority: '对账修复只允许追加 forward-fix/冲正分录，不直接覆盖余额。'
+    })
+  ],
+  'APP-WAL-03': [
+    figmaState({
+      state: '正常',
+      screen: 'APP-WAL-03｜分录详情｜Default',
+      frameId: '145:56138',
+      image: 'phase14-20-entryDefault.png',
+      trigger: '分录存在、已生效且当前账号可见。',
+      interaction: '展示方向、数量、原因、发生时间、业务单号、执行结果和冲正关系；可复制业务单号或进入独立申诉。',
+      expected: '原分录明确不可编辑删除；申诉只创建案件，不改变余额。',
+      authority: '分录事实、状态和冲正关系由服务端返回。'
+    }),
+    figmaState({
+      state: '业务单号已复制',
+      screen: 'APP-WAL-03｜分录详情｜Copied',
+      frameId: '145:56296',
+      image: 'phase14-21-entryCopied.png',
+      trigger: '用户点击“复制业务单号”。',
+      interaction: '仅复制对用户安全的业务引用并展示短暂成功反馈；不复制内部审计 ID 或敏感备注。',
+      expected: '重复点击保持幂等，不改变分录状态。',
+      authority: '可复制字段由服务端 DTO 明确提供。'
+    }),
+    figmaState({
+      state: '分录不可用',
+      screen: 'APP-WAL-03｜分录详情｜Unavailable',
+      frameId: '145:56461',
+      image: 'phase14-22-entryUnavailable.png',
+      trigger: '分录不存在、已超出可见范围或引用失效。',
+      interaction: '不显示缓存详情；提供返回金币明细和帮助入口。',
+      expected: '不泄露其他账号分录是否存在，不把不可用解释为余额为 0。',
+      authority: '服务端对象级授权和返回状态优先。'
+    }),
+    figmaState({
+      state: '冲正中',
+      screen: 'APP-WAL-03｜分录详情｜Reversing',
+      frameId: '145:56598',
+      image: 'phase14-23-entryReversing.png',
+      trigger: '原分录已关联待执行或已执行的冲正流程。',
+      interaction: '展示冲正状态与关联引用；允许查看冲正进度，但原分录继续保留。',
+      expected: '冲正完成后追加反向分录并刷新关系，不修改或删除原记录。',
+      authority: '冲正由申请—复核—执行状态机驱动，客户端只读。'
+    })
+  ]
+}
+
 const featureSources = {
   account: {
     feature: 'F-01',
@@ -389,6 +664,9 @@ function groupFor(page) {
 }
 
 function rolesFor(page) {
+  if (['APP-MSG-05', 'APP-MSG-06'].includes(page.id)) {
+    return '已登录观看者、会员、受限账号（按服务端可见范围）'
+  }
   const mappings = [
     ['APP-AUTH', '游客、观看者'],
     ['APP-DSC', '观看者'],
@@ -413,6 +691,9 @@ function rolesFor(page) {
 }
 
 function preconditionsFor(page) {
+  if (['APP-MSG-05', 'APP-MSG-06'].includes(page.id)) {
+    return '用户已登录；通知可见范围、必要性、已读状态和目标当前状态均由服务端确认。'
+  }
   if (page.id.startsWith('APP-AUTH')) return '客户端已取得远程配置；涉及账号写操作时必须通过服务端验证、频控和风险校验。'
   if (page.id.startsWith('APP-DSC')) return '推荐目录可用；真人资料必须处于认证有效、授权有效、已发布且未被安全隐藏状态。'
   if (page.id.startsWith('APP-INT')) return '用户已登录；目标真人资料仍可访问；操作额度和对象状态由服务端重新校验。'
@@ -425,6 +706,9 @@ function preconditionsFor(page) {
 }
 
 function ruleFor(page) {
+  if (['APP-MSG-05', 'APP-MSG-06'].includes(page.id)) {
+    return 'HTTP 查询是通知权威，实时事件只触发刷新；账号、安全、会员、金币和数据权利等必要通知不可被营销开关屏蔽。'
+  }
   if (page.id.startsWith('APP-AUTH')) return '注册和登录只处理观看者账号，不创建公开真人资料。'
   if (page.id.startsWith('APP-DSC')) return '只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。'
   if (page.id.startsWith('APP-INT')) return '喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。'
@@ -442,6 +726,9 @@ function ruleFor(page) {
 
 function dataPermissionFor(page) {
   if (page.platform === 'mobile') {
+    if (['APP-MSG-05', 'APP-MSG-06'].includes(page.id)) {
+      return '只读取当前账号可见的用户安全通知；摘要不得包含完整话题正文、内部备注、证件、访问凭证或其他敏感数据。'
+    }
     if (page.id.startsWith('APP-MSG')) return '读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。'
     if (page.id.startsWith('APP-WAL')) return '只读取余额与有效分录；客户端不得直接修改余额，申诉只创建独立案件。'
     if (page.id.startsWith('APP-MBR')) return '读取会员目录、当前 grant 与申请状态；申请写入不等同于权限生效。'
@@ -455,6 +742,14 @@ function dataPermissionFor(page) {
 }
 
 function interactionFor(page) {
+  const overrides = {
+    'APP-MSG-05': '用户从推荐页铃铛或消息页通知入口进入。首次进入、切换分类和回到前台均以 HTTP 拉取权威列表；实时事件只触发重新拉取。点击通知先提交幂等已读，再读取目标当前状态并进入 APP-MSG-06；“全部已读”成功后必须服务端回读，多设备差异不得仅靠本地清零。分页失败保留已有列表，实时离线保留缓存并提示新鲜度。',
+    'APP-MSG-06': '用户从通知列表进入。页面展示事件时间、用户安全正文、目标当前状态和当前可执行动作；点击主操作前重新校验目标、账号和 entitlement。目标失效时保留安全历史说明并返回列表；无权限时进入当前权益或安全出口；未知能力需要升级时不渲染不可执行入口。',
+    'APP-WAL-01': '用户从“我的金币卡”进入。页面先读取权威余额投影和最近有效分录，再展示同步时间与只读规则；点击“查看金币明细”进入 APP-WAL-02。离线时只展示带时间戳缓存，同步失败不把余额改成 0，也不生成补偿分录；页面始终不出现充值、消费、转账、兑换或提现入口。',
+    'APP-WAL-02': '用户从钱包页进入。默认按时间倒序读取有效分录，可切换全部、增加和扣减筛选；切换筛选会重置服务端游标，加载更多复用 nextCursor 并按 entryId 去重。分页失败或维护状态保留已验证历史，不修改、隐藏或重新计算原分录。',
+    'APP-WAL-03': '用户从金币明细进入。页面展示方向、数量、原因、时间、安全业务单号、执行结果和冲正关系；复制只包含用户安全业务引用。提交申诉只创建独立案件并进入 APP-SET-08，不直接改余额；冲正通过新分录表达，原分录始终保留且不可编辑删除。'
+  }
+  if (overrides[page.id]) return overrides[page.id]
   const secondary = page.secondary.length ? page.secondary.join('、') : '返回上一页'
   const next = catalog.pages.find(item => item.id === page.next)
   return `用户从“${page.entry}”进入。主要操作为“${page.primary}”，执行时显示处理中状态；服务端确认成功后刷新权威数据${next ? `并可进入 ${next.id}「${next.name}」` : ''}。次要操作包括：${secondary}。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。`
@@ -528,12 +823,17 @@ const enrichedPages = catalog.pages.map((page, index) => {
     dataPermission: dataPermissionFor(page),
     nextPageId: page.next || null,
     keyState,
+    figmaStates: detailedFigmaStateSpecs[page.id] || [],
     acceptance: acceptanceFor(page),
     requirements: requirementTraceFor(page)
   }
 })
 
 const captures = []
+const legacyKeyStateCaptureIndexes = new Map([
+  ['APP-MSG-05', 3],
+  ['APP-WAL-02', 4]
+])
 for (const page of enrichedPages) {
   const platformDirectory = page.platform === 'mobile' ? 'mobile' : 'admin'
   const defaultState = page.states[0]
@@ -558,6 +858,9 @@ for (const page of enrichedPages) {
 
   if (page.priority === 'P0') {
     const stateIndex = page.states.indexOf(page.keyState) + 1
+    // 新增细化状态前，部分基础关键态已使用旧序号生成并进入追踪清单。
+    // 路径继续保持稳定；视觉验收由同 Page ID、同状态的 Figma 最终图覆盖。
+    const captureFileIndex = legacyKeyStateCaptureIndexes.get(page.pageId) || stateIndex
     captures.push({
       pageId: page.pageId,
       platform: page.platform,
@@ -568,7 +871,7 @@ for (const page of enrichedPages) {
       state: page.keyState,
       stateIndex,
       variant: 'key-state',
-      image: `${platformDirectory}/${screenshotBaseName(page)}__state-${String(stateIndex).padStart(2, '0')}.png`,
+      image: `${platformDirectory}/${screenshotBaseName(page)}__state-${String(captureFileIndex).padStart(2, '0')}.png`,
       sourceUrl: sourceUrl(page, page.keyState),
       alt: `${page.pageId} ${page.pageName}关键状态“${page.keyState}”原型`,
       expectedWidth: 1600,
@@ -578,6 +881,44 @@ for (const page of enrichedPages) {
     })
   }
 }
+
+const figmaStateCaptures = enrichedPages.flatMap(page => {
+  if (!page.figmaStates.length) return []
+  const catalogStates = page.states.join('|')
+  const figmaStates = page.figmaStates.map(item => item.state).join('|')
+  if (catalogStates !== figmaStates) {
+    throw new Error(
+      `${page.pageId} 的页面状态与 Figma 最终状态顺序不一致：`
+      + `${catalogStates} != ${figmaStates}`
+    )
+  }
+  return page.figmaStates.map((item, index) => ({
+    pageId: page.pageId,
+    platform: page.platform,
+    module: page.module,
+    priority: page.priority,
+    route: page.route,
+    pageName: page.pageName,
+    state: item.state,
+    stateIndex: index + 1,
+    stateCount: page.figmaStates.length,
+    variant: 'figma-final',
+    screen: item.screen,
+    frameId: item.frameId,
+    image: item.image,
+    sourceUrl: item.prototypeUrl,
+    prototypeUrl: item.prototypeUrl,
+    trigger: item.trigger,
+    interaction: item.interaction,
+    expected: item.expected,
+    authority: item.authority,
+    alt: `${page.pageId} ${page.pageName} Figma 最终状态“${item.state}”原型`,
+    expectedWidth: 874,
+    expectedHeight: 1792,
+    sha256: null,
+    bytes: null
+  }))
+})
 
 const counts = {
   pages: enrichedPages.length,
@@ -589,6 +930,9 @@ const counts = {
   defaultCaptures: captures.filter(capture => capture.variant === 'default').length,
   keyStateCaptures: captures.filter(capture => capture.variant === 'key-state').length,
   totalCaptures: captures.length,
+  detailedFigmaPages: enrichedPages.filter(page => page.figmaStates.length).length,
+  detailedFigmaStateCaptures: figmaStateCaptures.length,
+  documentPrototypeMappings: captures.length + figmaStateCaptures.length,
   groups: catalog.groups.length
 }
 
@@ -602,6 +946,9 @@ const expectedCounts = {
   defaultCaptures: 92,
   keyStateCaptures: 54,
   totalCaptures: 146,
+  detailedFigmaPages: 5,
+  detailedFigmaStateCaptures: 23,
+  documentPrototypeMappings: 169,
   groups: 14
 }
 
@@ -639,23 +986,76 @@ if (missingProductRequirements.length) {
 }
 
 const manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   appVersion: '1.0',
-  generatedAt: '2026-07-28',
+  generatedAt: '2026-07-30',
   source: 'docs/app/interactive-prototype/page-catalog.js',
   captureViewport: { width: 1600, height: 1000 },
+  figmaFinal: {
+    fileKey: FIGMA_FILE_KEY,
+    pageId: FIGMA_PAGE_ID,
+    scope: 'APP-MSG-05/06、APP-WAL-01/02/03',
+    status: 'visual-and-interaction-audited',
+    audit: {
+      pageCoverage: '49/49',
+      nodeConnections: 161,
+      missingDestinations: 0,
+      undersizedTapTargets: 0,
+      layoutIssues: 0
+    }
+  },
   counts,
   pages: enrichedPages,
-  captures
+  captures,
+  figmaStateCaptures
 }
 
 function imagePathFor(capture) {
   return `./assets/page-prototypes/${capture.image}`
 }
 
+function figmaCaptureFor(pageId, state) {
+  return figmaStateCaptures.find(
+    capture => capture.pageId === pageId && capture.state === state
+  )
+}
+
+function preferredCaptureFor(page, capture) {
+  return figmaCaptureFor(page.pageId, capture.state) || capture
+}
+
+function detailedFigmaStateLines(page) {
+  const pageCaptures = figmaStateCaptures.filter(
+    capture => capture.pageId === page.pageId
+  )
+  if (!pageCaptures.length) return []
+  const lines = [
+    `**Figma 最终交互状态：** 本页已完成 ${pageCaptures.length} 个独立状态设计；`
+      + '以下 Frame、触发条件、操作结果和权威边界共同构成实现与验收基线。',
+    ''
+  ]
+  for (const capture of pageCaptures) {
+    lines.push(
+      `**状态 ${capture.stateIndex}｜${capture.state}｜\`${capture.frameId}\`**`,
+      '',
+      `- 触发条件：${capture.trigger}`,
+      `- 关键交互：${capture.interaction}`,
+      `- 预期结果：${capture.expected}`,
+      `- 权威边界：${capture.authority}`,
+      `- [打开 Figma 交互原型](${capture.prototypeUrl})`,
+      '',
+      `![${capture.alt}](${imagePathFor(capture)})`,
+      ''
+    )
+  }
+  return lines
+}
+
 function markdownForPage(page) {
   const defaultCapture = captures.find(capture => capture.pageId === page.pageId && capture.variant === 'default')
   const keyCapture = captures.find(capture => capture.pageId === page.pageId && capture.variant === 'key-state')
+  const preferredDefault = preferredCaptureFor(page, defaultCapture)
+  const preferredKey = keyCapture ? preferredCaptureFor(page, keyCapture) : null
   const lines = [
     `### ${page.pageId} ${page.pageName}`,
     '',
@@ -687,9 +1087,13 @@ function markdownForPage(page) {
     ''
   ]
   for (const item of page.acceptance) lines.push(`- ${item}`)
-  lines.push('', `![${defaultCapture.alt}](${imagePathFor(defaultCapture)})`, '')
-  if (keyCapture) {
-    lines.push(`**P0 关键状态：** ${page.keyState}`, '', `![${keyCapture.alt}](${imagePathFor(keyCapture)})`, '')
+  if (page.figmaStates.length) {
+    lines.push('', ...detailedFigmaStateLines(page))
+  } else {
+    lines.push('', `![${preferredDefault.alt}](${imagePathFor(preferredDefault)})`, '')
+    if (keyCapture) {
+      lines.push(`**P0 关键状态：** ${page.keyState}`, '', `![${preferredKey.alt}](${imagePathFor(preferredKey)})`, '')
+    }
   }
   lines.push(
     '**客户确认：**',
@@ -715,6 +1119,8 @@ function requirementLines(source, prefix) {
 function developmentMarkdownForPage(page) {
   const defaultCapture = captures.find(capture => capture.pageId === page.pageId && capture.variant === 'default')
   const keyCapture = captures.find(capture => capture.pageId === page.pageId && capture.variant === 'key-state')
+  const preferredDefault = preferredCaptureFor(page, defaultCapture)
+  const preferredKey = keyCapture ? preferredCaptureFor(page, keyCapture) : null
   const lines = [
     `#### ${page.pageId} ${page.pageName}`,
     '',
@@ -754,12 +1160,15 @@ function developmentMarkdownForPage(page) {
   lines.push(
     '- UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。',
     '- 加载、空、错误、离线、无权限、对象失效和服务端状态变化必须按本页状态集合安全收敛。',
-    '',
-    `![${defaultCapture.alt}](${imagePathFor(defaultCapture)})`,
     ''
   )
-  if (keyCapture) {
-    lines.push(`**P0 关键状态：** ${page.keyState}`, '', `![${keyCapture.alt}](${imagePathFor(keyCapture)})`, '')
+  if (page.figmaStates.length) {
+    lines.push(...detailedFigmaStateLines(page))
+  } else {
+    lines.push(`![${preferredDefault.alt}](${imagePathFor(preferredDefault)})`, '')
+    if (keyCapture) {
+      lines.push(`**P0 关键状态：** ${page.keyState}`, '', `![${preferredKey.alt}](${imagePathFor(preferredKey)})`, '')
+    }
   }
   lines.push('---', '')
   return lines
@@ -770,7 +1179,7 @@ const markdown = [
   '',
   'App 版本：1.0',
   '',
-  '更新日期：2026-07-28',
+  '更新日期：2026-07-30',
   '',
   '状态：需求讨论中，待客户确认',
   '',
@@ -778,7 +1187,7 @@ const markdown = [
   '',
   '本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。',
   '',
-  '默认状态原型共 92 张；54 个 P0 页面各补充 1 张关键异常、受限或处理中状态原型，共 146 张。所有截图由同一页面目录与同一映射清单生成，不通过章节位置猜测图片。',
+  '基础逐页原型包含 92 张默认状态和 54 张 P0 关键状态，共 146 张；通知与金币 5 个页面另完成 23 张经视觉与交互审计的 Figma 最终状态原型。清单共维护 169 个确定性原型映射，最终状态原型优先于对应的基础占位状态，所有图片均通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。',
   '',
   '## 2. 覆盖统计',
   '',
@@ -790,7 +1199,10 @@ const markdown = [
   `| P0 页面 | ${counts.p0Pages} |`,
   `| 默认状态原型 | ${counts.defaultCaptures} |`,
   `| P0 关键状态原型 | ${counts.keyStateCaptures} |`,
-  `| 原型图总数 | ${counts.totalCaptures} |`,
+  `| 基础逐页原型 | ${counts.totalCaptures} |`,
+  `| Figma 最终细化页面 | ${counts.detailedFigmaPages} |`,
+  `| Figma 最终状态原型 | ${counts.detailedFigmaStateCaptures} |`,
+  `| 清单原型映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.filter(page => page.requirements.traceKey).length} |`,
   '',
   '## 3. 逐页详细设计',
@@ -844,7 +1256,7 @@ const developmentMarkdown = [
   '',
   'App 版本：1.0',
   '',
-  '更新日期：2026-07-28',
+  '更新日期：2026-07-30',
   '',
   '状态：需求讨论中；客户确认结论同步后作为开发排期与实现验收基线',
   '',
@@ -852,7 +1264,7 @@ const developmentMarkdown = [
   '',
   '## 1. 文档定位与使用规则',
   '',
-  '1. 本文是 App 1.0 面向开发的单一入口，覆盖产品范围、需求编号、技术边界、92 个页面级实现对象、146 张原型和开发验收。',
+  '1. 本文是 App 1.0 面向开发的单一入口，覆盖产品范围、需求编号、技术边界、92 个页面级实现对象、146 张基础逐页原型、23 张 Figma 最终状态原型和开发验收。',
   '2. 客户意见先同步到产品总需求、发布范围、Feature PRD 和页面目录，再重新生成本文与客户 DOCX；不得直接在 DOCX 中维护独立需求。',
   '3. 开发任务、接口、测试用例、缺陷和变更必须至少引用一个 `PRD/SCP` 编号和一个 Page ID；纯后端门禁可引用需求编号并标注“无独立页面”。',
   '4. 原型用于确认信息层级、交互和状态表达，不替代服务端权限、数据状态机、API 契约或安全门禁。',
@@ -869,7 +1281,10 @@ const developmentMarkdown = [
   `| P0 / P1 / P2 | ${counts.p0Pages} / ${counts.p1Pages} / ${counts.p2Pages} |`,
   `| 默认状态原型 | ${counts.defaultCaptures} |`,
   `| P0 关键状态原型 | ${counts.keyStateCaptures} |`,
-  `| 原型总数 | ${counts.totalCaptures} |`,
+  `| 基础逐页原型 | ${counts.totalCaptures} |`,
+  `| Figma 最终细化页面 | ${counts.detailedFigmaPages} |`,
+  `| Figma 最终状态原型 | ${counts.detailedFigmaStateCaptures} |`,
+  `| 清单原型映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.length} |`,
   '',
   '### 2.1 App 1.0 实现范围',
@@ -1009,13 +1424,13 @@ const traceability = [
   '',
   'App 版本：1.0',
   '',
-  '更新时间：2026-07-28',
+  '更新时间：2026-07-30',
   '',
   '状态：需求讨论中，待客户确认',
   '',
   '## 1. 文档目的',
   '',
-  '本文把产品总需求、App 1.0 发布范围、Feature PRD、92 个 Page ID 与 146 张逐页原型建立确定性映射，并作为开发需求规格的追踪索引。任何页面或原型不得脱离需求编号单独成为实现依据；任何 App 1.0 用户可见需求也不得在没有 Page ID、明确非 UI 验收或未来范围说明的情况下进入开发。',
+  '本文把产品总需求、App 1.0 发布范围、Feature PRD、92 个 Page ID、146 张基础逐页原型与 23 张 Figma 最终状态原型建立确定性映射，并作为开发需求规格的追踪索引。任何页面或原型不得脱离需求编号单独成为实现依据；任何 App 1.0 用户可见需求也不得在没有 Page ID、明确非 UI 验收或未来范围说明的情况下进入开发。',
   '',
   '## 2. 基线与冲突处理',
   '',
@@ -1034,7 +1449,10 @@ const traceability = [
   `| P0 / P1 / P2 | ${counts.p0Pages} / ${counts.p1Pages} / ${counts.p2Pages} |`,
   `| 默认状态原型 | ${counts.defaultCaptures} |`,
   `| P0 关键状态原型 | ${counts.keyStateCaptures} |`,
-  `| 原型图总数 | ${counts.totalCaptures} |`,
+  `| 基础逐页原型 | ${counts.totalCaptures} |`,
+  `| Figma 最终细化页面 | ${counts.detailedFigmaPages} |`,
+  `| Figma 最终状态原型 | ${counts.detailedFigmaStateCaptures} |`,
+  `| 清单原型映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.length} |`,
   '',
   '## 4. App 1.0 无页面范围',
@@ -1074,6 +1492,7 @@ traceability.push(
   '',
   '- 每个 Page ID 必须同时存在页面目录、详细功能说明、默认状态原型和需求追踪键。',
   '- 54 个 P0 页面必须额外存在一张关键异常、受限、冲突或处理中状态原型。',
+  '- `APP-MSG-05`、`APP-MSG-06`、`APP-WAL-01`、`APP-WAL-02`、`APP-WAL-03` 必须完整包含 23 个 Figma 最终状态；每个状态都具备唯一 Frame ID、触发条件、关键交互、预期结果、权威边界和本地导出图。',
   '- Page ID、页面名称、优先级、默认状态、关键状态、图片文件名和需求追踪键由同一清单生成并自动校验。',
   '- `ADM-AUD-03` 的完整可视化页面属于 P2；审计完整性的最小自动校验与告警属于 P0 后端门禁，两者不得混为同一页面优先级。',
   '- 客户意见、设计修改、研发任务和测试用例必须引用 Page ID；涉及业务规则变化时还必须引用对应 PRD/SCP 需求编号。',

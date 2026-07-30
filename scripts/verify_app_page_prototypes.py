@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""校验 92 页 / 146 张逐页原型图，并生成视觉复核联系表。"""
+"""校验 92 页、146 张基础原型及 23 张 Figma 最终状态图。"""
 
 from __future__ import annotations
 
@@ -54,6 +54,9 @@ def validate_counts(manifest: dict) -> None:
         "defaultCaptures": 92,
         "keyStateCaptures": 54,
         "totalCaptures": 146,
+        "detailedFigmaPages": 5,
+        "detailedFigmaStateCaptures": 23,
+        "documentPrototypeMappings": 169,
         "groups": 14,
     }
     for key, value in expected.items():
@@ -63,11 +66,20 @@ def validate_counts(manifest: dict) -> None:
     page_ids = [page["pageId"] for page in manifest["pages"]]
     if len(page_ids) != len(set(page_ids)):
         raise ValueError("Page ID 存在重复")
+    if int(manifest.get("schemaVersion", 0)) < 3:
+        raise ValueError("原型清单缺少 Figma 最终状态 schema")
+
+
+def all_captures(manifest: dict) -> list[dict]:
+    return [
+        *manifest["captures"],
+        *manifest.get("figmaStateCaptures", []),
+    ]
 
 
 def normalize_images(manifest: dict) -> None:
     """浏览器截图可能返回 JPEG 字节；统一转换为与扩展名一致的无损 PNG。"""
-    for capture in manifest["captures"]:
+    for capture in all_captures(manifest):
         path = ASSET_DIR / capture["image"]
         if not path.exists():
             continue
@@ -83,7 +95,7 @@ def validate_images(manifest: dict) -> None:
     expected_files: set[Path] = set()
     hashes: dict[str, str] = {}
 
-    for capture in manifest["captures"]:
+    for capture in all_captures(manifest):
         relative_path = Path(capture["image"])
         path = ASSET_DIR / relative_path
         expected_files.add(path.resolve())
@@ -122,15 +134,19 @@ def validate_images(manifest: dict) -> None:
 
     actual_files = {
         path.resolve()
-        for platform in ("mobile", "admin")
-        for path in (ASSET_DIR / platform).glob("*.png")
+        for directory in (
+            ASSET_DIR / "mobile",
+            ASSET_DIR / "admin",
+            ASSET_DIR / "figma-final",
+        )
+        for path in directory.rglob("*.png")
     }
     extra = sorted(actual_files - expected_files)
     if extra:
         formatted = "、".join(str(path.relative_to(ROOT)) for path in extra)
         raise ValueError(f"存在未被清单引用的原型图：{formatted}")
 
-    manifest["verifiedAt"] = "2026-07-28"
+    manifest["verifiedAt"] = "2026-07-30"
     manifest["status"] = "verified"
     MANIFEST_PATH.write_text(
         f"{json.dumps(manifest, ensure_ascii=False, indent=2)}\n",
@@ -203,6 +219,73 @@ def contact_sheet(
     canvas.save(output, format="PNG", optimize=True)
 
 
+def figma_contact_sheet(
+    captures: list[dict],
+    output: Path,
+) -> None:
+    columns = 4
+    tile_width = 260
+    image_width = 228
+    image_height = 468
+    label_height = 70
+    tile_height = image_height + label_height + 18
+    gap = 16
+    header_height = 92
+    rows = (len(captures) + columns - 1) // columns
+    width = columns * tile_width + (columns + 1) * gap
+    height = header_height + rows * tile_height + (rows + 1) * gap
+    canvas = Image.new("RGB", (width, height), "#f8eef3")
+    draw = ImageDraw.Draw(canvas)
+    draw.text(
+        (gap, 16),
+        "15 · 移动端 · 通知与金币 Figma 最终状态",
+        fill="#8f244b",
+        font=font(29),
+    )
+    draw.text(
+        (gap, 54),
+        f"共 {len(captures)} 张 · Page ID / 状态 / Frame ID 确定性映射",
+        fill="#666a78",
+        font=font(16),
+    )
+
+    for index, capture in enumerate(captures):
+        row, column = divmod(index, columns)
+        x = gap + column * (tile_width + gap)
+        y = header_height + gap + row * (tile_height + gap)
+        draw.rounded_rectangle(
+            (x, y, x + tile_width, y + tile_height),
+            radius=14,
+            fill="#ffffff",
+            outline="#e5bacb",
+            width=2,
+        )
+        with Image.open(ASSET_DIR / capture["image"]) as source:
+            image = ImageOps.contain(
+                source.convert("RGB"),
+                (image_width, image_height),
+                method=Image.Resampling.LANCZOS,
+            )
+        image_x = x + (tile_width - image.width) // 2
+        image_y = y + 10
+        canvas.paste(image, (image_x, image_y))
+        draw.text(
+            (x + 10, y + image_height + 16),
+            f"{capture['pageId']} · {capture['state']}",
+            fill="#30323a",
+            font=font(14),
+        )
+        draw.text(
+            (x + 10, y + image_height + 40),
+            f"Frame {capture['frameId']}",
+            fill="#8f244b",
+            font=font(13),
+        )
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(output, format="PNG", optimize=True)
+
+
 def generate_contact_sheets(manifest: dict) -> None:
     grouped: OrderedDict[tuple[str, str], list[dict]] = OrderedDict()
     for page in manifest["pages"]:
@@ -221,6 +304,10 @@ def generate_contact_sheets(manifest: dict) -> None:
             captures,
             output,
         )
+
+    figma_output = QA_DIR / "15-mobile-figma-final.png"
+    expected_sheets.add(figma_output.resolve())
+    figma_contact_sheet(manifest["figmaStateCaptures"], figma_output)
 
     actual_sheets = {path.resolve() for path in QA_DIR.glob("*.png")}
     for path in actual_sheets - expected_sheets:
@@ -246,8 +333,9 @@ def main() -> None:
     print(
         "逐页原型校验通过："
         f"{manifest['counts']['pages']} 页，"
-        f"{manifest['counts']['totalCaptures']} 张截图，"
-        f"{manifest['counts']['groups']} 组联系表。"
+        f"{manifest['counts']['totalCaptures']} 张基础截图，"
+        f"{manifest['counts']['detailedFigmaStateCaptures']} 张 Figma 最终状态，"
+        f"{manifest['counts']['groups'] + 1} 组联系表。"
     )
 
 

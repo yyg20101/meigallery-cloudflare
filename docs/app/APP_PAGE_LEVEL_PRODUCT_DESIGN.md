@@ -4,7 +4,7 @@ App 版本：1.0
 
 文档状态：需求讨论中
 
-更新时间：2026-07-28
+更新时间：2026-07-30
 
 ## 1. 文档目标
 
@@ -12,7 +12,7 @@ App 版本：1.0
 
 [打开 92 页逐页交互设计库](./interactive-prototype/pages.html)
 
-[查看 92 页详细功能与 146 张原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)
+[查看 92 页详细功能、146 张基础原型与 23 张 Figma 最终状态](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)
 
 [查看产品需求、发布范围、Feature PRD 与 Page ID 追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)
 
@@ -26,9 +26,23 @@ App 版本：1.0
 - 操作页面内主按钮、标签、筛选、开关、前后页和关键跨页入口。
 - 在右侧同步查看页面目标、入口、路由、主次操作、状态、不可变规则和验收条件。
 
-当前原型交付包含 92 张默认状态原型，以及 54 个 P0 页面的关键异常、受限、冲突或处理中状态原型，共 146 张。页面优先级为 P0 54 页、P1 31 页、P2 7 页。
+当前原型交付包含 92 张默认状态原型，以及 54 个 P0 页面的关键异常、受限、冲突或处理中状态原型，共 146 张基础原型。通知与金币 5 个页面另完成 23 张经视觉与交互审计的 Figma 最终状态原型；清单合计 169 个确定性映射。页面优先级为 P0 54 页、P1 31 页、P2 7 页。
 
 本文、[需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)、[移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md)、[管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) 与逐页设计库共同构成页面设计基线；研发统一从 [App 1.0 开发需求规格](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md) 进入。出现冲突时，客户 DOCX 的已确认结论决定产品边界，产品总需求和发布范围决定功能边界，Feature PRD 决定模块规则，页面规格决定详细交互，服务端契约决定最终业务事实。
+
+### 1.1 已完成的 Figma 最终状态
+
+以下 5 页不再以基础占位原型作为视觉验收依据；附录、开发文档和客户 DOCX 均优先使用相同 Page ID、相同状态的 Figma 最终图。每个状态同时固定触发条件、关键交互、预期结果和服务端权威边界。
+
+| Page ID | 最终状态 | 数量 | Figma 入口 |
+|---|---|---:|---|
+| `APP-MSG-05` 通知列表 | 正常、全部已读、首次空、分页失败、实时离线 | 5 | [打开正常态](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-52718&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A52718&show-proto-sidebar=1&page-id=9%3A8) |
+| `APP-MSG-06` 通知详情 | 正常、目标失效、无权限、需要升级 | 4 | [打开正常态](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-53849&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A53849&show-proto-sidebar=1&page-id=9%3A8) |
+| `APP-WAL-01` 金币钱包 | 正常、空钱包、离线缓存、同步失败 | 4 | [打开正常态](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54433&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54433&show-proto-sidebar=1&page-id=9%3A8) |
+| `APP-WAL-02` 金币明细 | 正常、增加筛选、扣减筛选、首次空、分页加载、对账维护 | 6 | [打开正常态](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-55148&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A55148&show-proto-sidebar=1&page-id=9%3A8) |
+| `APP-WAL-03` 金币分录详情 | 正常、业务单号已复制、分录不可用、冲正中 | 4 | [打开正常态](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-56138&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A56138&show-proto-sidebar=1&page-id=9%3A8) |
+
+审计结果：移动端页面覆盖 49/49、原型连接 161 条、缺失目标 0、点击热区不足 0、布局或文字溢出 0。视觉验收以本批 23 张导出图为准，权限、未读、余额、分录和目标状态仍以服务端契约为权威。
 
 ## 2. 页面级设计记录标准
 
@@ -104,14 +118,14 @@ App 版本：1.0
 | [APP-MSG-02](./interactive-prototype/pages.html?page=APP-MSG-02) | 发起话题确认 | 创建前披露接收主体、会员资格和额度 | 确认发起话题 | 正常、无会员、额度尽、资料失效、已有会话 |
 | [APP-MSG-03](./interactive-prototype/pages.html?page=APP-MSG-03) | 平台会话 | 让有效会员发送文本并持续披露平台运营 | 发送消息 | 正常、补拉、审核中、只读、冻结、关闭 |
 | [APP-MSG-04](./interactive-prototype/pages.html?page=APP-MSG-04) | 会话设置 | 管理静音、举报、拉黑和关闭 | 保存会话设置 | 正常、操作失败、已关闭 |
-| [APP-MSG-05](./interactive-prototype/pages.html?page=APP-MSG-05) | 通知列表 | 按类别展示站内通知和未读状态 | 打开通知 | 正常、首次空、分页失败、实时离线 |
+| [APP-MSG-05](./interactive-prototype/pages.html?page=APP-MSG-05) | 通知列表 | 按类别展示站内通知和未读状态 | 打开通知 | 正常、全部已读、首次空、分页失败、实时离线 |
 | [APP-MSG-06](./interactive-prototype/pages.html?page=APP-MSG-06) | 通知详情 | 展示安全正文、事件时间和当前目标状态 | 前往相关页面 | 正常、目标失效、无权限、需要升级 |
 | [APP-MBR-01](./interactive-prototype/pages.html?page=APP-MBR-01) | 五级会员目录 | 展示五级会员差异和人工获取方式 | 提交会员申请 | 免费、已提交、处理中、同步失败 |
 | [APP-MBR-02](./interactive-prototype/pages.html?page=APP-MBR-02) | 当前权益 | 展示当前等级、有效期和额度事实 | 查看权益说明 | 正常、即将到期、到期、撤销、受限 |
 | [APP-MBR-03](./interactive-prototype/pages.html?page=APP-MBR-03) | 会员申请与进度 | 提交申请并查看人工处理状态 | 提交会员申请 | 未申请、已提交、处理中、待补充、已通过、已拒绝 |
 | [APP-WAL-01](./interactive-prototype/pages.html?page=APP-WAL-01) | 金币钱包 | 只读展示余额、同步时间和调整规则 | 查看金币明细 | 正常、空钱包、离线缓存、同步失败 |
-| [APP-WAL-02](./interactive-prototype/pages.html?page=APP-WAL-02) | 金币明细 | 按方向查看不可覆盖的有效分录 | 查看分录详情 | 正常、首次空、分页、对账维护 |
-| [APP-WAL-03](./interactive-prototype/pages.html?page=APP-WAL-03) | 金币分录详情 | 展示数量、原因、业务单号和冲正关系 | 提交申诉 | 正常、分录不可用、冲正中 |
+| [APP-WAL-02](./interactive-prototype/pages.html?page=APP-WAL-02) | 金币明细 | 按方向查看不可覆盖的有效分录 | 查看分录详情 | 正常、增加筛选、扣减筛选、首次空、分页加载、对账维护 |
+| [APP-WAL-03](./interactive-prototype/pages.html?page=APP-WAL-03) | 金币分录详情 | 展示数量、原因、业务单号和冲正关系 | 提交申诉 | 正常、业务单号已复制、分录不可用、冲正中 |
 | [APP-SET-01](./interactive-prototype/pages.html?page=APP-SET-01) | 我的 | 汇总私有账号、会员、金币和设置入口 | 查看账号资料 | 正常、账号受限、摘要同步失败 |
 | [APP-SET-02](./interactive-prototype/pages.html?page=APP-SET-02) | 账号资料 | 编辑私有昵称头像且不生成真人资料 | 保存账号资料 | 正常、保存失败、需要重新验证 |
 | [APP-SET-03](./interactive-prototype/pages.html?page=APP-SET-03) | 设备管理 | 查看设备并远程退出其他会话 | 退出其他设备 | 正常、仅当前设备、撤销失败 |
@@ -268,6 +282,7 @@ App 版本：1.0
 9. 移动端可完成键盘、返回、滚动和无障碍操作；后台可完成键盘焦点和高风险确认。
 10. 埋点不采集消息正文、认证证据、内部备注或非必要敏感字段。
 11. 页面具有唯一需求追踪键，产品需求编号、发布范围编号和 Feature PRD 与 [需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md) 一致。
+12. 上述 5 个 Figma 最终细化页面必须逐一复现 23 个状态，Frame ID、触发条件、交互结果、权威边界和导出图与原型清单一致。
 
 ## 10. 客户逐页确认方法
 
@@ -277,6 +292,7 @@ App 版本：1.0
 2. 再评审后台关键闭环：`ADM-PER-05`、`ADM-PER-06`、`ADM-MSG-02`、`ADM-MBR-05`、`ADM-WAL-04`、`ADM-AUD-02`。
 3. 对每页确认页面目标、主操作、必备状态、身份披露、需求编号和下一页面。
 4. 意见必须引用 Page ID；若改变业务规则，还需引用对应 PRD/SCP 编号。例如“APP-MSG-02 / PRD-FR-050 的无会员状态需调整”，避免只使用截图位置描述。
-5. 关键闭环确认后，再按目录评审其余页面和异常状态。
+5. 对通知与金币 5 页按第 1.1 节逐一评审 23 个 Figma 最终状态，不以旧占位图替代。
+6. 关键闭环确认后，再按目录评审其余页面和异常状态。
 
 本阶段确认的是产品范围、页面结构、交互规则、状态和视觉方向；人物名称、图片、账号、金额、日期和业务单号均为虚构演示数据，不代表生产内容。

@@ -2,7 +2,7 @@
 
 App 版本：1.0
 
-更新日期：2026-07-28
+更新日期：2026-07-30
 
 状态：需求讨论中，待客户确认
 
@@ -10,7 +10,7 @@ App 版本：1.0
 
 本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。
 
-默认状态原型共 92 张；54 个 P0 页面各补充 1 张关键异常、受限或处理中状态原型，共 146 张。所有截图由同一页面目录与同一映射清单生成，不通过章节位置猜测图片。
+基础逐页原型包含 92 张默认状态和 54 张 P0 关键状态，共 146 张；通知与金币 5 个页面另完成 23 张经视觉与交互审计的 Figma 最终状态原型。清单共维护 169 个确定性原型映射，最终状态原型优先于对应的基础占位状态，所有图片均通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。
 
 ## 2. 覆盖统计
 
@@ -22,7 +22,10 @@ App 版本：1.0
 | P0 页面 | 54 |
 | 默认状态原型 | 92 |
 | P0 关键状态原型 | 54 |
-| 原型图总数 | 146 |
+| 基础逐页原型 | 146 |
+| Figma 最终细化页面 | 5 |
+| Figma 最终状态原型 | 23 |
+| 清单原型映射总数 | 169 |
 | 已建立需求追踪的页面 | 92 |
 
 ## 3. 逐页详细设计
@@ -1221,39 +1224,85 @@ App 版本：1.0
 
 **用户价值：** 按消息、互动、会员金币、系统安全和营销分类展示站内通知。
 
-**适用角色：** 有效会员、受限状态下的已登录观看者
+**适用角色：** 已登录观看者、会员、受限账号（按服务端可见范围）
 
-**前置条件：** 用户已登录；发送或新建话题时具有有效会员资格；目标资料与会话未被冻结或关闭。
+**前置条件：** 用户已登录；通知可见范围、必要性、已读状态和目标当前状态均由服务端确认。
 
 **进入路径：** 推荐页铃铛或消息页通知入口
 
 **页面结构：** 通知按业务分类和时间排列，必要通知与可选通知有明确差异。
 
-**详细交互：** 用户从“推荐页铃铛或消息页通知入口”进入。主要操作为“打开通知”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-MSG-06「通知详情」。次要操作包括：全部已读、切换分类。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从推荐页铃铛或消息页通知入口进入。首次进入、切换分类和回到前台均以 HTTP 拉取权威列表；实时事件只触发重新拉取。点击通知先提交幂等已读，再读取目标当前状态并进入 APP-MSG-06；“全部已读”成功后必须服务端回读，多设备差异不得仅靠本地清零。分页失败保留已有列表，实时离线保留缓存并提示新鲜度。
 
-**业务规则：** 话题由平台管理员接收与处理；只有有效会员可以新建和发送。
+**业务规则：** HTTP 查询是通知权威，实时事件只触发刷新；账号、安全、会员、金币和数据权利等必要通知不可被营销开关屏蔽。
 
-**数据与权限：** 读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。
+**数据与权限：** 只读取当前账号可见的用户安全通知；摘要不得包含完整话题正文、内部备注、证件、访问凭证或其他敏感数据。
 
 **需求追踪：** `APP-MSG-05 → PRD-FR-080,PRD-FR-081 → SCP-FR-009 → F-12/NTF-FR-*`
 
 **模块 PRD：** [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*）
 
-**页面状态：** 正常、首次空、分页失败、实时离线
+**页面状态：** 正常、全部已读、首次空、分页失败、实时离线
 
 **页面级验收：**
 
 - 从“推荐页铃铛或消息页通知入口”能够进入，页面明确显示 APP-MSG-05、页面名称、设计路由和返回路径。
 - 主要操作“打开通知”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、首次空、分页失败、实时离线”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 页面覆盖“正常、全部已读、首次空、分页失败、实时离线”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
-- 话题由平台管理员接收与处理；只有有效会员可以新建和发送。
+- HTTP 查询是通知权威，实时事件只触发刷新；账号、安全、会员、金币和数据权利等必要通知不可被营销开关屏蔽。
 
-![APP-MSG-05 通知列表默认状态“正常”原型](./assets/page-prototypes/mobile/app-msg-05__default.png)
+**Figma 最终交互状态：** 本页已完成 5 个独立状态设计；以下 Frame、触发条件、操作结果和权威边界共同构成实现与验收基线。
 
-**P0 关键状态：** 分页失败
+**状态 1｜正常｜`145:52718`**
 
-![APP-MSG-05 通知列表关键状态“分页失败”原型](./assets/page-prototypes/mobile/app-msg-05__state-03.png)
+- 触发条件：进入通知中心或 HTTP 刷新成功，且当前分类存在可见通知。
+- 关键交互：切换“全部/话题/互动/会员金币/安全”分类；点击通知先标记已读，再读取目标当前状态；“全部已读”只提交一次幂等请求。
+- 预期结果：展示未读数量、分类、时间、摘要和必要通知标识；成功点击进入 APP-MSG-06，列表未读状态以服务端回读为准。
+- 权威边界：HTTP 查询结果是列表与未读权威；实时事件只触发失效与重新拉取。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-52718&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A52718&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-MSG-05 通知列表 Figma 最终状态“正常”原型](./assets/page-prototypes/figma-final/phase14/phase14-01-noticeDefault.png)
+
+**状态 2｜全部已读｜`145:52918`**
+
+- 触发条件：用户点击“全部已读”且服务端确认成功。
+- 关键交互：按钮进入处理中并防重复提交；成功后清除当前账号的未读标记，多设备差异通过下一次 HTTP 回读收敛。
+- 预期结果：显示“全部已读”反馈，卡片内容继续保留；失败时恢复按钮并保留原未读状态。
+- 权威边界：客户端不得仅本地清零；以服务端 unreadCount 和 readAt 为准。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-52918&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A52918&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-MSG-05 通知列表 Figma 最终状态“全部已读”原型](./assets/page-prototypes/figma-final/phase14/phase14-02-noticeRead.png)
+
+**状态 3｜首次空｜`145:53118`**
+
+- 触发条件：当前分类查询成功但没有任何可见通知。
+- 关键交互：用户可切回“全部”或查看其他分类；不展示虚构通知和占位营销内容。
+- 预期结果：说明当前分类暂无通知并提供“查看全部通知”安全出口，底部导航仍可用。
+- 权威边界：空状态来自成功响应的空集合，不与请求失败混淆。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-53118&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A53118&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-MSG-05 通知列表 Figma 最终状态“首次空”原型](./assets/page-prototypes/figma-final/phase14/phase14-03-noticeEmpty.png)
+
+**状态 4｜分页失败｜`145:53287`**
+
+- 触发条件：已有列表可用，但加载下一页或刷新增量失败。
+- 关键交互：保留已加载通知和滚动位置；失败区块就近提供“重新加载后续通知”。
+- 预期结果：用户仍可打开已有通知；重试复用原筛选条件和分页游标，不重复插入项目。
+- 权威边界：失败页不得覆盖最近一次成功结果；新结果按稳定 notificationId 去重。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-53287&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A53287&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-MSG-05 通知列表 Figma 最终状态“分页失败”原型](./assets/page-prototypes/figma-final/phase14/phase14-04-noticeError.png)
+
+**状态 5｜实时离线｜`145:53483`**
+
+- 触发条件：实时连接断开，但最近一次 HTTP 列表仍可展示。
+- 关键交互：顶部显示非阻断提示；用户可手动重新连接并对账，仍可打开缓存列表中的通知。
+- 预期结果：不宣称通知为最新；恢复后先 HTTP 补拉，再恢复实时监听。
+- 权威边界：缓存只读，未读、目标状态和必要通知均需联网确认。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-53483&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A53483&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-MSG-05 通知列表 Figma 最终状态“实时离线”原型](./assets/page-prototypes/figma-final/phase14/phase14-05-noticeOffline.png)
 
 **客户确认：**
 
@@ -1271,19 +1320,19 @@ App 版本：1.0
 
 **用户价值：** 展示用户安全正文、事件时间、目标当前状态和可执行下一步。
 
-**适用角色：** 有效会员、受限状态下的已登录观看者
+**适用角色：** 已登录观看者、会员、受限账号（按服务端可见范围）
 
-**前置条件：** 用户已登录；发送或新建话题时具有有效会员资格；目标资料与会话未被冻结或关闭。
+**前置条件：** 用户已登录；通知可见范围、必要性、已读状态和目标当前状态均由服务端确认。
 
 **进入路径：** 通知列表
 
 **页面结构：** 正文、事件时间、目标当前状态和安全下一步构成单一通知详情。
 
-**详细交互：** 用户从“通知列表”进入。主要操作为“前往相关页面”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-SET-01「我的」。次要操作包括：返回列表、查看帮助。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从通知列表进入。页面展示事件时间、用户安全正文、目标当前状态和当前可执行动作；点击主操作前重新校验目标、账号和 entitlement。目标失效时保留安全历史说明并返回列表；无权限时进入当前权益或安全出口；未知能力需要升级时不渲染不可执行入口。
 
-**业务规则：** 话题由平台管理员接收与处理；只有有效会员可以新建和发送。
+**业务规则：** HTTP 查询是通知权威，实时事件只触发刷新；账号、安全、会员、金币和数据权利等必要通知不可被营销开关屏蔽。
 
-**数据与权限：** 读取当前账号可见的话题摘要或会话；发送动作由服务端校验会员、会话状态、额度和内容安全策略。
+**数据与权限：** 只读取当前账号可见的用户安全通知；摘要不得包含完整话题正文、内部备注、证件、访问凭证或其他敏感数据。
 
 **需求追踪：** `APP-MSG-06 → PRD-FR-080,PRD-FR-081 → SCP-FR-009 → F-12/NTF-FR-*`
 
@@ -1297,9 +1346,49 @@ App 版本：1.0
 - 主要操作“前往相关页面”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、目标失效、无权限、需要升级”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
-- 话题由平台管理员接收与处理；只有有效会员可以新建和发送。
+- HTTP 查询是通知权威，实时事件只触发刷新；账号、安全、会员、金币和数据权利等必要通知不可被营销开关屏蔽。
 
-![APP-MSG-06 通知详情默认状态“正常”原型](./assets/page-prototypes/mobile/app-msg-06__default.png)
+**Figma 最终交互状态：** 本页已完成 4 个独立状态设计；以下 Frame、触发条件、操作结果和权威边界共同构成实现与验收基线。
+
+**状态 1｜正常｜`145:53849`**
+
+- 触发条件：通知存在、当前账号可见，且通知目标仍可安全访问。
+- 关键交互：展示事件时间、用户安全正文、接收主体说明和目标当前状态；主按钮按目标类型进入对应页面。
+- 预期结果：进入目标前再次读取当前状态；平台话题通知明确由平台运营接收和处理。
+- 权威边界：通知历史正文可读，但跳转能力以目标当前状态和当前 entitlement 为准。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-53849&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A53849&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-MSG-06 通知详情 Figma 最终状态“正常”原型](./assets/page-prototypes/figma-final/phase14/phase14-06-detailDefault.png)
+
+**状态 2｜目标失效｜`145:53999`**
+
+- 触发条件：通知仍存在，但关联资料、会话、内容或业务对象已下架、删除或关闭。
+- 关键交互：保留用户安全历史说明，不再执行原深链；提供返回通知列表和安全说明。
+- 预期结果：不显示内部下架原因或访问凭证，不产生循环跳转。
+- 权威边界：目标当前状态覆盖通知生成时的历史目标状态。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-53999&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A53999&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-MSG-06 通知详情 Figma 最终状态“目标失效”原型](./assets/page-prototypes/figma-final/phase14/phase14-07-detailUnavailable.png)
+
+**状态 3｜无权限｜`145:54144`**
+
+- 触发条件：账号、会员或对象权限下降，当前用户不再具备目标 entitlement。
+- 关键交互：正文仅显示允许保留的历史摘要；主操作改为查看当前权益或返回列表。
+- 预期结果：不因旧通知恢复过期能力，不把客户端缓存当作授权。
+- 权威边界：服务端权限校验优先；客户端未知 entitlement 必须安全拒绝。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54144&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54144&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-MSG-06 通知详情 Figma 最终状态“无权限”原型](./assets/page-prototypes/figma-final/phase14/phase14-08-detailForbidden.png)
+
+**状态 4｜需要升级｜`145:54288`**
+
+- 触发条件：通知目标需要当前客户端尚未实现、但服务端已声明最低版本的新能力。
+- 关键交互：展示版本能力说明和安全返回；仅在存在可信更新渠道时提供更新入口。
+- 预期结果：旧版本不渲染未知功能、不崩溃、不扩大权限。
+- 权威边界：最低客户端版本和能力兼容由服务端配置与 App 版本共同判定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54288&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54288&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-MSG-06 通知详情 Figma 最终状态“需要升级”原型](./assets/page-prototypes/figma-final/phase14/phase14-09-detailUpgrade.png)
 
 **客户确认：**
 
@@ -1479,7 +1568,7 @@ App 版本：1.0
 
 **页面结构：** 余额、同步时间、只读规则和明细入口组成钱包首页。
 
-**详细交互：** 用户从“我的金币卡”进入。主要操作为“查看金币明细”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-WAL-02「金币明细」。次要操作包括：查看规则、刷新余额。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“我的金币卡”进入。页面先读取权威余额投影和最近有效分录，再展示同步时间与只读规则；点击“查看金币明细”进入 APP-WAL-02。离线时只展示带时间戳缓存，同步失败不把余额改成 0，也不生成补偿分录；页面始终不出现充值、消费、转账、兑换或提现入口。
 
 **业务规则：** 金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。
 
@@ -1499,11 +1588,47 @@ App 版本：1.0
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。
 
-![APP-WAL-01 金币钱包默认状态“正常”原型](./assets/page-prototypes/mobile/app-wal-01__default.png)
+**Figma 最终交互状态：** 本页已完成 4 个独立状态设计；以下 Frame、触发条件、操作结果和权威边界共同构成实现与验收基线。
 
-**P0 关键状态：** 同步失败
+**状态 1｜正常｜`145:54433`**
 
-![APP-WAL-01 金币钱包关键状态“同步失败”原型](./assets/page-prototypes/mobile/app-wal-01__state-04.png)
+- 触发条件：余额投影和最近有效分录同步成功。
+- 关键交互：展示余额、最后同步时间、只读规则和最近分录；点击“查看金币明细”进入 APP-WAL-02。
+- 预期结果：明确金币不具现金价值，页面不存在购买、充值、消费、兑换、转账或提现入口。
+- 权威边界：余额来自有效分录投影；客户端不得直接修改或自行汇总覆盖。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54433&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54433&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-01 金币钱包 Figma 最终状态“正常”原型](./assets/page-prototypes/figma-final/phase14/phase14-10-walletDefault.png)
+
+**状态 2｜空钱包｜`145:54618`**
+
+- 触发条件：账号余额为 0，且没有任何已生效分录。
+- 关键交互：保留规则说明和明细入口，不展示充值或消费引导。
+- 预期结果：显示“还没有生效分录”，后续管理员调整生效后可正常刷新。
+- 权威边界：0 是服务端权威结果，不用缺失值或请求失败替代。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54618&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54618&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-01 金币钱包 Figma 最终状态“空钱包”原型](./assets/page-prototypes/figma-final/phase14/phase14-11-walletEmpty.png)
+
+**状态 3｜离线缓存｜`145:54793`**
+
+- 触发条件：当前离线，但本地存在最近一次成功同步的钱包快照。
+- 关键交互：显示缓存时间和“重新连接并刷新”；允许查看缓存明细，禁止执行任何写操作。
+- 预期结果：明确“不是当前最新余额”；联网后先刷新权威余额再移除离线提示。
+- 权威边界：离线快照仅用于只读展示，不能用于授权或业务结算。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54793&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54793&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-01 金币钱包 Figma 最终状态“离线缓存”原型](./assets/page-prototypes/figma-final/phase14/phase14-12-walletOffline.png)
+
+**状态 4｜同步失败｜`145:54977`**
+
+- 触发条件：同步请求失败或余额 projection 暂不可用。
+- 关键交互：保留最近一次成功余额并标记时间；提供重新同步和查看缓存明细。
+- 预期结果：不把失败显示成 0，不覆盖缓存，不生成任何补偿分录。
+- 权威边界：同步失败只影响展示新鲜度，分录与余额仍以服务端为唯一权威。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54977&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54977&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-01 金币钱包 Figma 最终状态“同步失败”原型](./assets/page-prototypes/figma-final/phase14/phase14-13-walletFailed.png)
 
 **客户确认：**
 
@@ -1529,7 +1654,7 @@ App 版本：1.0
 
 **页面结构：** 不可覆盖的有效分录按方向和时间筛选，并保留对账维护说明。
 
-**详细交互：** 用户从“钱包页”进入。主要操作为“查看分录详情”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-WAL-03「金币分录详情」。次要操作包括：筛选方向、加载更多。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从钱包页进入。默认按时间倒序读取有效分录，可切换全部、增加和扣减筛选；切换筛选会重置服务端游标，加载更多复用 nextCursor 并按 entryId 去重。分页失败或维护状态保留已验证历史，不修改、隐藏或重新计算原分录。
 
 **业务规则：** 金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。
 
@@ -1539,21 +1664,77 @@ App 版本：1.0
 
 **模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
-**页面状态：** 正常、首次空、分页、对账维护
+**页面状态：** 正常、增加筛选、扣减筛选、首次空、分页加载、对账维护
 
 **页面级验收：**
 
 - 从“钱包页”能够进入，页面明确显示 APP-WAL-02、页面名称、设计路由和返回路径。
 - 主要操作“查看分录详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、首次空、分页、对账维护”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 页面覆盖“正常、增加筛选、扣减筛选、首次空、分页加载、对账维护”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。
 
-![APP-WAL-02 金币明细默认状态“正常”原型](./assets/page-prototypes/mobile/app-wal-02__default.png)
+**Figma 最终交互状态：** 本页已完成 6 个独立状态设计；以下 Frame、触发条件、操作结果和权威边界共同构成实现与验收基线。
 
-**P0 关键状态：** 对账维护
+**状态 1｜正常｜`145:55148`**
 
-![APP-WAL-02 金币明细关键状态“对账维护”原型](./assets/page-prototypes/mobile/app-wal-02__state-04.png)
+- 触发条件：全部方向的有效分录查询成功。
+- 关键交互：按时间倒序展示增加、扣减和冲正关系；点击分录进入 APP-WAL-03，加载更多使用稳定游标。
+- 预期结果：每项显示方向、数量、原因、时间和安全业务引用；不展示内部备注。
+- 权威边界：只展示已生效分录；原分录不可修改或删除。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-55148&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A55148&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-02 金币明细 Figma 最终状态“正常”原型](./assets/page-prototypes/figma-final/phase14/phase14-14-ledgerDefault.png)
+
+**状态 2｜增加筛选｜`145:55320`**
+
+- 触发条件：用户选择“增加”。
+- 关键交互：重新以 direction=credit 查询并重置分页游标；切换筛选时保留页面结构。
+- 预期结果：只显示增加、补偿或冲正增加等已生效分录，筛选结果为空时进入对应空状态。
+- 权威边界：筛选由服务端执行，客户端不得隐藏不理解的分录后自行计算余额。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-55320&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A55320&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-02 金币明细 Figma 最终状态“增加筛选”原型](./assets/page-prototypes/figma-final/phase14/phase14-15-ledgerCredit.png)
+
+**状态 3｜扣减筛选｜`145:55483`**
+
+- 触发条件：用户选择“扣减”。
+- 关键交互：重新以 direction=debit 查询并重置分页游标；负向数量使用一致视觉语义。
+- 预期结果：只显示管理员扣减、冲正扣减等已生效分录，不出现用户消费记录。
+- 权威边界：App 1.0 没有消费能力；扣减只能来自管理员受控调整或冲正。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-55483&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A55483&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-02 金币明细 Figma 最终状态“扣减筛选”原型](./assets/page-prototypes/figma-final/phase14/phase14-16-ledgerDebit.png)
+
+**状态 4｜首次空｜`145:55637`**
+
+- 触发条件：当前筛选查询成功但没有已生效分录。
+- 关键交互：显示筛选相关空状态；允许切回全部或查看金币规则。
+- 预期结果：不生成示例分录，不把待审批调整显示为已生效。
+- 权威边界：空集合来自服务端成功响应。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-55637&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A55637&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-02 金币明细 Figma 最终状态“首次空”原型](./assets/page-prototypes/figma-final/phase14/phase14-17-ledgerEmpty.png)
+
+**状态 5｜分页加载｜`145:55785`**
+
+- 触发条件：用户点击加载更多且仍有 nextCursor。
+- 关键交互：按钮进入加载状态并防重复请求；成功后按 entryId 去重追加，失败保留已有分录。
+- 预期结果：不打乱已加载顺序；nextCursor 为空时不再展示加载入口。
+- 权威边界：分页游标由服务端签发，客户端不按本地页码推算。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-55785&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A55785&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-02 金币明细 Figma 最终状态“分页加载”原型](./assets/page-prototypes/figma-final/phase14/phase14-18-ledgerLoading.png)
+
+**状态 6｜对账维护｜`145:55962`**
+
+- 触发条件：钱包正在对账或投影存在可恢复延迟。
+- 关键交互：保留已验证历史，冻结最新余额摘要并提供刷新状态和帮助入口。
+- 预期结果：不删除或改写历史分录；维护完成后整体回读权威余额和游标。
+- 权威边界：对账修复只允许追加 forward-fix/冲正分录，不直接覆盖余额。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-55962&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A55962&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-02 金币明细 Figma 最终状态“对账维护”原型](./assets/page-prototypes/figma-final/phase14/phase14-19-ledgerMaintenance.png)
 
 **客户确认：**
 
@@ -1579,7 +1760,7 @@ App 版本：1.0
 
 **页面结构：** 方向、数量、原因、业务单号、冲正关系和申诉入口集中展示。
 
-**详细交互：** 用户从“金币明细”进入。主要操作为“提交申诉”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-SET-08「申诉」。次要操作包括：复制业务单号、查看冲正。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从金币明细进入。页面展示方向、数量、原因、时间、安全业务单号、执行结果和冲正关系；复制只包含用户安全业务引用。提交申诉只创建独立案件并进入 APP-SET-08，不直接改余额；冲正通过新分录表达，原分录始终保留且不可编辑删除。
 
 **业务规则：** 金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。
 
@@ -1589,17 +1770,57 @@ App 版本：1.0
 
 **模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
-**页面状态：** 正常、分录不可用、冲正中
+**页面状态：** 正常、业务单号已复制、分录不可用、冲正中
 
 **页面级验收：**
 
 - 从“金币明细”能够进入，页面明确显示 APP-WAL-03、页面名称、设计路由和返回路径。
 - 主要操作“提交申诉”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、分录不可用、冲正中”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 页面覆盖“正常、业务单号已复制、分录不可用、冲正中”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。
 
-![APP-WAL-03 金币分录详情默认状态“正常”原型](./assets/page-prototypes/mobile/app-wal-03__default.png)
+**Figma 最终交互状态：** 本页已完成 4 个独立状态设计；以下 Frame、触发条件、操作结果和权威边界共同构成实现与验收基线。
+
+**状态 1｜正常｜`145:56138`**
+
+- 触发条件：分录存在、已生效且当前账号可见。
+- 关键交互：展示方向、数量、原因、发生时间、业务单号、执行结果和冲正关系；可复制业务单号或进入独立申诉。
+- 预期结果：原分录明确不可编辑删除；申诉只创建案件，不改变余额。
+- 权威边界：分录事实、状态和冲正关系由服务端返回。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-56138&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A56138&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-03 金币分录详情 Figma 最终状态“正常”原型](./assets/page-prototypes/figma-final/phase14/phase14-20-entryDefault.png)
+
+**状态 2｜业务单号已复制｜`145:56296`**
+
+- 触发条件：用户点击“复制业务单号”。
+- 关键交互：仅复制对用户安全的业务引用并展示短暂成功反馈；不复制内部审计 ID 或敏感备注。
+- 预期结果：重复点击保持幂等，不改变分录状态。
+- 权威边界：可复制字段由服务端 DTO 明确提供。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-56296&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A56296&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-03 金币分录详情 Figma 最终状态“业务单号已复制”原型](./assets/page-prototypes/figma-final/phase14/phase14-21-entryCopied.png)
+
+**状态 3｜分录不可用｜`145:56461`**
+
+- 触发条件：分录不存在、已超出可见范围或引用失效。
+- 关键交互：不显示缓存详情；提供返回金币明细和帮助入口。
+- 预期结果：不泄露其他账号分录是否存在，不把不可用解释为余额为 0。
+- 权威边界：服务端对象级授权和返回状态优先。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-56461&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A56461&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-03 金币分录详情 Figma 最终状态“分录不可用”原型](./assets/page-prototypes/figma-final/phase14/phase14-22-entryUnavailable.png)
+
+**状态 4｜冲正中｜`145:56598`**
+
+- 触发条件：原分录已关联待执行或已执行的冲正流程。
+- 关键交互：展示冲正状态与关联引用；允许查看冲正进度，但原分录继续保留。
+- 预期结果：冲正完成后追加反向分录并刷新关系，不修改或删除原记录。
+- 权威边界：冲正由申请—复核—执行状态机驱动，客户端只读。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-56598&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A56598&show-proto-sidebar=1&page-id=9%3A8)
+
+![APP-WAL-03 金币分录详情 Figma 最终状态“冲正中”原型](./assets/page-prototypes/figma-final/phase14/phase14-23-entryReversing.png)
 
 **客户确认：**
 

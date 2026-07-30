@@ -49,6 +49,9 @@ EXPECTED_COUNTS = {
     "defaultCaptures": 92,
     "keyStateCaptures": 54,
     "totalCaptures": 146,
+    "detailedFigmaPages": 5,
+    "detailedFigmaStateCaptures": 23,
+    "documentPrototypeMappings": 169,
     "groups": 14,
 }
 
@@ -95,8 +98,8 @@ def main() -> None:
     texts = {path: read(path) for path in BASELINE_DOCUMENTS}
     manifest = json.loads(read(MANIFEST_PATH))
 
-    if int(manifest.get("schemaVersion", 0)) < 2:
-        raise ValueError("逐页原型清单未包含需求追踪 schema")
+    if int(manifest.get("schemaVersion", 0)) < 3:
+        raise ValueError("逐页原型清单未包含 Figma 最终状态与需求追踪 schema")
     if manifest.get("status") != "verified":
         raise ValueError("逐页原型清单未通过图片验证")
     for key, expected in EXPECTED_COUNTS.items():
@@ -164,6 +167,8 @@ def main() -> None:
         text = texts[path]
         require(text, "146", str(path.relative_to(ROOT)))
         require(text, "54", str(path.relative_to(ROOT)))
+        require(text, "23", str(path.relative_to(ROOT)))
+        require(text, "169", str(path.relative_to(ROOT)))
 
     require(texts[PAGE_DESIGN], "P0 54 页、P1 31 页、P2 7 页", "逐页产品设计")
     require(texts[TRACEABILITY], "54 / 31 / 7", "需求追踪矩阵")
@@ -184,9 +189,43 @@ def main() -> None:
         r"!\[[^\]]+\]\(\./assets/page-prototypes/([^)]+)\)",
         texts[DEVELOPMENT],
     )
-    expected_capture_paths = [capture["image"] for capture in manifest["captures"]]
+    figma_captures = manifest.get("figmaStateCaptures", [])
+    figma_page_ids = {capture["pageId"] for capture in figma_captures}
+    if len(figma_captures) != EXPECTED_COUNTS["detailedFigmaStateCaptures"]:
+        raise ValueError("Figma 最终状态截图数量与基线不一致")
+    if len({capture["frameId"] for capture in figma_captures}) != len(
+        figma_captures
+    ):
+        raise ValueError("Figma Frame ID 存在重复")
+
+    expected_capture_paths: list[str] = []
+    for page in pages:
+        page_id = page["pageId"]
+        source = (
+            figma_captures
+            if page_id in figma_page_ids
+            else manifest["captures"]
+        )
+        expected_capture_paths.extend(
+            capture["image"]
+            for capture in source
+            if capture["pageId"] == page_id
+        )
     if development_capture_paths != expected_capture_paths:
         raise ValueError("开发需求规格的逐页原型顺序或覆盖与原型清单不一致")
+
+    for capture in figma_captures:
+        for path in (PAGE_DETAIL, DEVELOPMENT):
+            text = texts[path]
+            label = str(path.relative_to(ROOT))
+            for value in (
+                capture["frameId"],
+                capture["trigger"],
+                capture["interaction"],
+                capture["expected"],
+                capture["authority"],
+            ):
+                require(text, value, label)
 
     for requirement in sorted(
         IN_SCOPE_PRODUCT_REQUIREMENTS
@@ -222,7 +261,9 @@ def main() -> None:
     print(
         "需求一致性校验通过："
         f"{EXPECTED_COUNTS['pages']} 页、"
-        f"{EXPECTED_COUNTS['totalCaptures']} 张原型、"
+        f"{EXPECTED_COUNTS['totalCaptures']} 张基础原型、"
+        f"{EXPECTED_COUNTS['detailedFigmaStateCaptures']} 张 Figma 最终状态、"
+        f"{EXPECTED_COUNTS['documentPrototypeMappings']} 个原型映射、"
         f"{len(IN_SCOPE_PRODUCT_REQUIREMENTS)} 个 App 1.0 产品需求编号、"
         f"{len(pages)} 个逐页追踪键。"
     )

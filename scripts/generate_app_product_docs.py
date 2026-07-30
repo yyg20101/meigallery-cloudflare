@@ -5,7 +5,8 @@
 - 基础预设：standard_business_brief。
 - 首页模板：customer_pack。
 - 命名覆盖：标题与标题层级使用 MeiGallery 品牌粉色；为保证中文在
-  Word、LibreOffice 与 macOS 预览中均可读，正文统一使用 Arial Unicode MS。
+  Word、LibreOffice 与 macOS 预览中均可读，正文统一使用 Arial Unicode MS，
+  缺少该字体的办公环境由系统中文字体替代。
   正文尺寸、间距、列表缩进、表格几何仍严格沿用预设。
 """
 
@@ -25,6 +26,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor, Twips
+from PIL import Image as PILImage
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -505,7 +507,7 @@ def add_cover(doc: Document, spec: DocumentSpec) -> None:
     table = doc.add_table(rows=2, cols=4)
     values = (
         ("产品", "MeiGallery App", "版本", "1.0"),
-        ("状态", "待客户确认", "日期", "2026-07-28"),
+        ("状态", "待客户确认", "日期", "2026-07-30"),
     )
     for row_index, row_values in enumerate(values):
         for col_index, value in enumerate(row_values):
@@ -712,12 +714,31 @@ def set_image_alt(inline_shape, alt: str) -> None:
     doc_pr.set("title", alt)
 
 
+def fitted_picture_width(
+    path: Path,
+    *,
+    max_width,
+    max_height,
+):
+    """按原图比例同时约束宽高，避免竖版 Figma 截图跨页裁切。"""
+    with PILImage.open(path) as image:
+        width_px, height_px = image.size
+    if width_px <= 0 or height_px <= 0:
+        return max_width
+    width_inches = min(
+        max_width.inches,
+        max_height.inches * width_px / height_px,
+    )
+    return Inches(width_inches)
+
+
 def add_image(
     doc: Document,
     alt: str,
     path: Path,
     *,
     width=Inches(6.35),
+    max_height=Inches(5.8),
 ) -> None:
     if not path.exists():
         p = doc.add_paragraph()
@@ -733,7 +754,14 @@ def add_image(
     p.paragraph_format.space_before = Pt(4)
     p.paragraph_format.space_after = Pt(0)
     run = p.add_run()
-    shape = run.add_picture(str(path), width=width)
+    shape = run.add_picture(
+        str(path),
+        width=fitted_picture_width(
+            path,
+            max_width=width,
+            max_height=max_height,
+        ),
+    )
     set_image_alt(shape, alt)
     caption = doc.add_paragraph(f"图：{alt}", style="Caption")
     caption.paragraph_format.keep_with_next = False
@@ -927,6 +955,9 @@ def load_page_manifest() -> dict[str, Any]:
         "defaultCaptures": 92,
         "keyStateCaptures": 54,
         "totalCaptures": 146,
+        "detailedFigmaPages": 5,
+        "detailedFigmaStateCaptures": 23,
+        "documentPrototypeMappings": 169,
     }
     for key, value in expected.items():
         if counts.get(key) != value:
@@ -935,8 +966,8 @@ def load_page_manifest() -> dict[str, Any]:
             )
     if manifest.get("status") != "verified":
         raise ValueError("逐页原型清单尚未完成校验，拒绝生成客户文档")
-    if int(manifest.get("schemaVersion", 0)) < 2:
-        raise ValueError("逐页原型清单缺少需求追踪 schema")
+    if int(manifest.get("schemaVersion", 0)) < 3:
+        raise ValueError("逐页原型清单缺少 Figma 最终状态与需求追踪 schema")
     for page in manifest.get("pages", []):
         requirements = page.get("requirements", {})
         if not requirements.get("traceKey"):
@@ -993,14 +1024,65 @@ def capture_maps(
     return defaults, key_states
 
 
+def figma_capture_map(
+    manifest: dict[str, Any],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    captures = manifest.get("figmaStateCaptures", [])
+    expected = manifest["counts"]["detailedFigmaStateCaptures"]
+    if len(captures) != expected:
+        raise ValueError(
+            f"Figma 最终状态截图数量异常：{len(captures)}，应为 {expected}"
+        )
+    result: dict[tuple[str, str], dict[str, Any]] = {}
+    for capture in captures:
+        key = (capture["pageId"], capture["state"])
+        if key in result:
+            raise ValueError(
+                f"Figma 最终状态映射重复：{capture['pageId']} / {capture['state']}"
+            )
+        result[key] = capture
+    return result
+
+
+def preferred_capture(
+    capture: dict[str, Any],
+    final_states: dict[tuple[str, str], dict[str, Any]],
+) -> dict[str, Any]:
+    """用已审计的 Figma 最终图替换同 Page ID、同状态的基础占位图。
+
+    基础映射的 alt 和 variant 继续保留，以便 146 个既有追踪键不失效；
+    图片、Frame 和交互链接来自最终状态，避免客户看到过时原型。
+    """
+    final = final_states.get((capture["pageId"], capture["state"]))
+    if final is None:
+        return capture
+    merged = dict(capture)
+    for key in (
+        "image",
+        "expectedWidth",
+        "expectedHeight",
+        "width",
+        "height",
+        "sha256",
+        "bytes",
+        "sourceUrl",
+        "prototypeUrl",
+        "frameId",
+        "screen",
+    ):
+        if key in final:
+            merged[key] = final[key]
+    merged["usesFigmaFinalState"] = True
+    return merged
+
+
 def add_page_confirmation_unit(
     doc: Document,
     page: dict[str, Any],
     capture: dict[str, Any],
 ) -> None:
-    doc.add_page_break()
-
     kicker = doc.add_paragraph()
+    kicker.paragraph_format.page_break_before = True
     kicker.paragraph_format.space_before = Pt(0)
     kicker.paragraph_format.space_after = Pt(2)
     kicker.paragraph_format.keep_with_next = True
@@ -1045,6 +1127,7 @@ def add_page_confirmation_unit(
         capture["alt"],
         PAGE_ASSET_ROOT / capture["image"],
         width=Inches(6.15),
+        max_height=Inches(4.3),
     )
 
     add_compact_field(
@@ -1090,8 +1173,9 @@ def add_page_catalog_appendix(
     manifest: dict[str, Any],
 ) -> None:
     defaults, _ = capture_maps(manifest)
-    doc.add_page_break()
+    final_states = figma_capture_map(manifest)
     heading = doc.add_paragraph("附录 A：92 页详细需求与默认原型", style="Heading 1")
+    heading.paragraph_format.page_break_before = True
     set_keep_with_next(heading)
     paragraph = doc.add_paragraph()
     add_inline_content(
@@ -1116,7 +1200,11 @@ def add_page_catalog_appendix(
         capture = defaults.get(page["pageId"])
         if capture is None:
             raise ValueError(f"缺少默认原型：{page['pageId']}")
-        add_page_confirmation_unit(doc, page, capture)
+        add_page_confirmation_unit(
+            doc,
+            page,
+            preferred_capture(capture, final_states),
+        )
 
 
 def add_key_state_image(
@@ -1147,7 +1235,11 @@ def add_key_state_image(
     image_paragraph.paragraph_format.keep_with_next = True
     shape = image_paragraph.add_run().add_picture(
         str(image_path),
-        width=Inches(6.05),
+        width=fitted_picture_width(
+            image_path,
+            max_width=Inches(6.05),
+            max_height=Inches(3.75),
+        ),
     )
     set_image_alt(shape, capture["alt"])
 
@@ -1165,6 +1257,7 @@ def add_key_state_appendix(
     manifest: dict[str, Any],
 ) -> None:
     _, key_states = capture_maps(manifest)
+    final_states = figma_capture_map(manifest)
     pages_by_id = {page["pageId"]: page for page in manifest["pages"]}
     captures = [
         capture
@@ -1178,8 +1271,8 @@ def add_key_state_appendix(
         )
     captures.sort(key=lambda item: pages_by_id[item["pageId"]]["order"])
 
-    doc.add_page_break()
     heading = doc.add_paragraph("附录 B：54 个 P0 关键状态原型", style="Heading 1")
+    heading.paragraph_format.page_break_before = True
     set_keep_with_next(heading)
     paragraph = doc.add_paragraph()
     add_inline_content(
@@ -1201,7 +1294,150 @@ def add_key_state_appendix(
             page = pages_by_id[capture["pageId"]]
             if key_states.get(page["pageId"]) != capture:
                 raise ValueError(f"关键状态映射冲突：{page['pageId']}")
-            add_key_state_image(doc, page, capture)
+            add_key_state_image(
+                doc,
+                page,
+                preferred_capture(capture, final_states),
+            )
+
+
+def add_detailed_figma_state_page(
+    doc: Document,
+    page: dict[str, Any],
+    capture: dict[str, Any],
+) -> None:
+    image_path = PAGE_ASSET_ROOT / capture["image"]
+    if not image_path.exists():
+        raise FileNotFoundError(f"Figma 最终状态原型不存在：{image_path}")
+
+    kicker = doc.add_paragraph()
+    kicker.paragraph_format.page_break_before = True
+    kicker.paragraph_format.space_before = Pt(0)
+    kicker.paragraph_format.space_after = Pt(2)
+    kicker.paragraph_format.keep_with_next = True
+    add_inline_content(
+        kicker,
+        f"Figma 最终交互 · 状态 {capture['stateIndex']}/{capture['stateCount']} · "
+        f"Frame `{capture['frameId']}`",
+        base_size=8.5,
+        base_color=BRAND,
+        base_bold=True,
+    )
+
+    heading = doc.add_paragraph(
+        f"{page['pageId']}  {page['pageName']}｜{capture['state']}",
+        style="Heading 1",
+    )
+    heading.paragraph_format.space_before = Pt(0)
+    heading.paragraph_format.space_after = Pt(2)
+
+    metadata = doc.add_paragraph()
+    metadata.paragraph_format.space_after = Pt(2)
+    add_inline_content(
+        metadata,
+        f"页面优先级：{page['priority']}　适用角色：{page['roles']}",
+        base_size=8.2,
+        base_color=MUTED,
+    )
+
+    image_paragraph = doc.add_paragraph()
+    image_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    image_paragraph.paragraph_format.space_before = Pt(0)
+    image_paragraph.paragraph_format.space_after = Pt(1)
+    shape = image_paragraph.add_run().add_picture(
+        str(image_path),
+        width=Inches(2.15),
+    )
+    set_image_alt(shape, capture["alt"])
+
+    caption = doc.add_paragraph(
+        f"图：{capture['screen']}；本地导出与 Figma Frame 一一对应。",
+        style="Caption",
+    )
+    caption.paragraph_format.space_before = Pt(1)
+    caption.paragraph_format.space_after = Pt(2)
+
+    add_compact_field(
+        doc,
+        "触发条件",
+        capture["trigger"],
+        size=7.75,
+    )
+    add_compact_field(
+        doc,
+        "关键交互",
+        capture["interaction"],
+        size=7.75,
+    )
+    add_compact_field(
+        doc,
+        "预期结果",
+        capture["expected"],
+        size=7.75,
+    )
+    add_compact_field(
+        doc,
+        "权威边界",
+        capture["authority"],
+        size=7.75,
+    )
+
+    link = doc.add_paragraph()
+    link.paragraph_format.space_before = Pt(1)
+    link.paragraph_format.space_after = Pt(2)
+    add_inline_content(
+        link,
+        f"[打开 Figma 交互原型]({capture['prototypeUrl']})",
+        base_size=8.1,
+        base_color=BRAND_DARK,
+        base_bold=True,
+    )
+    add_confirmation_line(doc, "________________________________")
+
+
+def add_detailed_figma_state_appendix(
+    doc: Document,
+    manifest: dict[str, Any],
+) -> None:
+    captures = manifest.get("figmaStateCaptures", [])
+    pages_by_id = {page["pageId"]: page for page in manifest["pages"]}
+    page_ids = list(dict.fromkeys(capture["pageId"] for capture in captures))
+    if len(page_ids) != manifest["counts"]["detailedFigmaPages"]:
+        raise ValueError(
+            f"Figma 最终细化页面数量异常：{len(page_ids)}，"
+            f"应为 {manifest['counts']['detailedFigmaPages']}"
+        )
+
+    heading = doc.add_paragraph(
+        "附录 C：通知与金币 23 个 Figma 最终交互状态",
+        style="Heading 1",
+    )
+    heading.paragraph_format.page_break_before = True
+    set_keep_with_next(heading)
+    paragraph = doc.add_paragraph()
+    add_inline_content(
+        paragraph,
+        "本附录覆盖通知列表、通知详情、金币钱包、金币明细和金币分录详情 "
+        "5 个页面，共 23 个可独立验收状态。每个状态均绑定 Page ID、状态名、"
+        "Figma Frame ID、触发条件、关键交互、预期结果与服务端权威边界。",
+        base_size=10,
+    )
+    paragraph = doc.add_paragraph()
+    add_inline_content(
+        paragraph,
+        "Figma 交互审计结果：移动端页面覆盖 49/49、连接 161 条、缺失目标 0、"
+        "点击热区不足 0、布局或文字溢出 0。附录 A/B 中这 5 个页面的同名状态"
+        "已自动使用本批最终图，不再展示旧占位原型。",
+        base_size=9.5,
+        base_color=BRAND_DARK,
+        base_bold=True,
+    )
+
+    for capture in captures:
+        page = pages_by_id.get(capture["pageId"])
+        if page is None:
+            raise ValueError(f"Figma 最终状态缺少页面：{capture['pageId']}")
+        add_detailed_figma_state_page(doc, page, capture)
 
 
 def add_final_delivery_confirmation(
@@ -1217,6 +1453,9 @@ def add_final_delivery_confirmation(
         f"{counts['mobilePages']} 页、管理后台 {counts['adminPages']} 页。",
         f"P0 页面共 {counts['p0Pages']} 个，并分别纳入一个关键状态原型；"
         f"默认原型与关键状态合计 {counts['totalCaptures']} 张。",
+        f"通知与金币 {counts['detailedFigmaPages']} 个页面另纳入 "
+        f"{counts['detailedFigmaStateCaptures']} 个 Figma 最终交互状态；"
+        f"基础与最终状态共建立 {counts['documentPrototypeMappings']} 个确定性映射。",
         "每个 Page ID 均包含产品总需求编号、App 1.0 发布范围编号和 "
         "Feature PRD 需求组组成的追踪键。",
         "每张图片均通过 Page ID、页面名称、状态和文件清单建立确定性映射；"
@@ -1276,6 +1515,7 @@ def build_document(spec: DocumentSpec) -> None:
     render_markdown(doc, spec.source)
     add_page_catalog_appendix(doc, manifest)
     add_key_state_appendix(doc, manifest)
+    add_detailed_figma_state_appendix(doc, manifest)
     add_final_delivery_confirmation(doc, manifest)
 
     doc.core_properties.title = spec.title.replace("\n", " ")
@@ -1284,8 +1524,9 @@ def build_document(spec: DocumentSpec) -> None:
     doc.core_properties.keywords = "MeiGallery, App 1.0, PRD, 交互设计, 客户确认"
     doc.core_properties.comments = (
         "版式：standard_business_brief；首页：customer_pack；"
-        "命名覆盖：MeiGallery 品牌粉色标题层级、Arial Unicode MS 跨平台中文字体；"
-        "逐页原型：92 张默认状态 + 54 张 P0 关键状态。"
+        "命名覆盖：MeiGallery 品牌粉色标题层级、Arial Unicode MS 中文字体；"
+        "逐页原型：92 张默认状态 + 54 张 P0 关键状态；"
+        "Figma 最终细化：5 个页面、23 个状态；确定性映射共 169 个。"
     )
     doc.core_properties.last_modified_by = "MeiGallery 产品团队"
 
