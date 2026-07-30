@@ -13,6 +13,7 @@ App 版本：1.0
 - [App 1.0 开发需求规格（Markdown）](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)：研发、测试、接口设计和任务拆分的单一入口，完整包含产品/发布需求、技术边界、92 个 Page ID、146 张基础逐页原型、23 张 Figma 最终状态、权限、需求追踪和完成定义。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、146 张基础原型和 23 张 Figma 最终状态建立确定性映射，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
+- [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录现有设计的文字、Icon、组件、变量、状态、热区和流程差距，并定义移动端 49 页、后台 43 页最终 UI 的分阶段交付门禁。
 
 ## 客户确认交付
 
@@ -103,6 +104,7 @@ App 版本：1.0
 | [数据模型与迁移方案](./DATA_AND_MIGRATION.md) | 真人主体建模、MeiGallery 映射、影子迁移和回滚 |
 | [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md) | API 资源、鉴权、幂等、消息事件和错误模型 |
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
+| [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) | 审计 Figma 当前成熟度、排版与 Icon 一致性、状态覆盖、原型连线和最终交付计划 |
 | [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md) | Android/iOS Screen ID、设计路由、页面目录、关键旅程和关键页面结构 |
 | [Nuxt 管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) | 后台 Page ID、角色、工作台、审批状态、并发和页面结构 |
 | [统一 UI 状态、文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) | 状态/文案/事件 key、错误映射、危险操作、组件矩阵和验收 |
