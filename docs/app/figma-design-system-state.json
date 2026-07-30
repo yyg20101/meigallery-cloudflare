@@ -1,0 +1,44 @@
+{
+  "runId": "meigallery-app-1.0-ds-20260730",
+  "appVersion": "1.0",
+  "figmaFileKey": "LaNSwwGsznwcpV8msj7BQC",
+  "figmaFileName": "Peachmote UI 借鉴审查板 - MeiGallery",
+  "phase": "P1",
+  "status": "completed",
+  "rollbackVersion": {
+    "title": "App 1.0｜Phase 1 前基线",
+    "versionId": "2381931297467463900"
+  },
+  "collections": {
+    "MeiGallery / Primitives": 25,
+    "MeiGallery / Semantic": 38,
+    "MeiGallery / Dimension": 28,
+    "MeiGallery / Motion": 8,
+    "MeiGallery / Breakpoint": 4
+  },
+  "validation": {
+    "totalVariables": 103,
+    "missingWebCodeSyntax": 0,
+    "missingAndroidCodeSyntax": 0,
+    "missingIosCodeSyntax": 0,
+    "allScopes": 0,
+    "duplicateVariables": 0,
+    "brokenAliases": 0,
+    "semanticRawValues": 0,
+    "textStyles": 13,
+    "effectStyles": 4
+  },
+  "completedTaskIds": [
+    "P1.a",
+    "P1.b",
+    "P1.c",
+    "P1.d",
+    "P1.e",
+    "P1.f",
+    "P1.g",
+    "P1.h"
+  ],
+  "evidence": [
+    "docs/app/assets/figma-qa/phase1-variables-20260730.jpeg"
+  ]
+}
