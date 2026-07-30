@@ -2,7 +2,7 @@
 
 App 版本：1.0
 
-文档状态：Phase 0 审计完成；Phase 1 基础变量与样式完成
+文档状态：Phase 0 审计、Phase 1 Foundations、Phase 2 文件结构与 Delivery Index 已完成
 
 审计日期：2026-07-30
 
@@ -248,11 +248,15 @@ Phase 1 基础产出与校验见 [Figma Design System Phase 1](./FIGMA_DESIGN_SY
 
 ### Phase 2：Figma 文件重构
 
-1. 保留现有历史页作为只读归档。
-2. 按 Foundation、Icon、Mobile Components、Admin Components、Mobile Pages、Admin Pages、Prototype Flows、Delivery Index 分页。
-3. 每个正式画板使用 `Page ID｜页面名｜状态` 命名。
-4. Spec Card 放在画板外，记录路由、触发、交互、结果、权限和服务端权威边界。
-5. 建立 92 Page ID 的交付索引和状态矩阵。
+当前状态：已完成。
+
+1. 已把原有 10 页无损归档为 `90｜Archive`，未删除历史画板。
+2. 已建立 11 个正式交付页，覆盖 Foundation、Icon、Mobile Components、Admin Components、Mobile Pages、Admin Pages、Prototype Flows、Delivery Index 和 QA。
+3. 已固定 `Page ID｜页面名｜状态` 命名规则。
+4. 已固定画板外 Spec Card 必填字段和用户界面标注边界。
+5. 已建立 92 Page ID、14 个模块和 349 个状态数量的 Delivery Index。
+
+Phase 2 结构、Page ID、校验与证据见 [Figma 文件结构 Phase 2](./FIGMA_FILE_STRUCTURE_PHASE2.md)。
 
 ### Phase 3：移动端最终 UI
 
@@ -338,6 +342,14 @@ Phase 1 证据：
 - `assets/figma-qa/phase1-variables-20260730.jpeg`：5 个变量集合、数量和语义别名。
 - `FIGMA_DESIGN_SYSTEM_PHASE1.md`：变量、代码映射、文字、效果和结构校验记录。
 
+Phase 2 证据：
+
+- `assets/figma-qa/phase2/01-page-structure.jpeg`：正式交付页和 Delivery Index 全景。
+- `assets/figma-qa/phase2/02-delivery-index-overview.jpeg`：Delivery Index 顶部与模块结构。
+- `assets/figma-qa/phase2/03-delivery-index-detail.jpeg`：Page ID 行、路由、状态数和设计状态排版。
+- `assets/figma-qa/phase2/04-design-principles.jpeg`：命名、Spec Card 和标注边界。
+- `FIGMA_FILE_STRUCTURE_PHASE2.md`：21 页结构、92 Page ID 和原型目标校验记录。
+
 ## 9. 决策门禁
 
 进入 Phase 1 前需要确认的 5 项决策已由用户批准：
@@ -348,4 +360,4 @@ Phase 1 证据：
 4. 现有 Figma 历史画板保留为归档，新的最终页按稳定 Page ID 重构。
 5. 先完成 Design System 和 P0 高风险流程，再分批完成全部页面；每批均执行视觉与交互 QA。
 
-当前已按批准范围完成 Phase 1 基础变量与样式；历史业务画板尚未批量改写，后续仍按阶段门禁和 QA 逐批推进。
+当前已按批准范围完成 Phase 1 和 Phase 2；历史业务画板已无损归档，尚未批量迁移到新的正式页面。后续仍按阶段门禁和 QA 逐批推进。

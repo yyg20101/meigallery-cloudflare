@@ -33,6 +33,7 @@
 - 已新增需求冻结准备清单与 15 页客户短版确认单，集中列出 8 项客户决策和 7 组专业门禁，并明确“功能交互冻结”与“像素级视觉冻结”必须分别记录；当前仍是冻结准备中，尚未授权开发。
 - 已完成 Figma 最终交付 Phase 0 只读审计：现有文件包含 181 张正式移动端画板并覆盖 49 个 Page ID，但只有通知与金币 5 页、23 个状态进入正式最终映射；43 个后台 Page ID 尚无 Figma 最终 UI，原型流程页为空。审计同时确认多批次画板存在文字样式、字体、Icon、变量绑定、点击热区和状态数量不一致，下一阶段需先统一 Design System，再完成移动端 186 个、后台 163 个需求状态。审计证据和待确认方案见 `docs/app/FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md`。
 - Figma 最终交付方案已获批准，并完成 Phase 1 基础变量与样式：当前 Figma 有 5 个变量集合、103 个变量、13 个 Noto Sans SC 文字样式和 4 个效果样式；全部变量已提供 Web、Android、iOS Code Syntax，重复变量、断裂别名、Semantic 直接颜色值和 `ALL_SCOPES` 均为 0。回滚点、变量清单和证据见 `docs/app/FIGMA_DESIGN_SYSTEM_PHASE1.md`。
+- Figma Phase 2 文件结构已完成：原有 10 页无损归档，新增 11 个正式交付页；`40｜Delivery Index` 已覆盖 92 个唯一 Page ID、14 个功能模块和 349 个状态数量，正式区 688 个文字节点全部绑定 Text Style。全文件 936 个 reaction 节点引用 120 个唯一目标，失效目标为 0。结构、命名、Spec Card、校验和证据见 `docs/app/FIGMA_FILE_STRUCTURE_PHASE2.md`。
 - 最终 MD、两份完整客户 DOCX 与冻结确认资料已通过 92 个 Page ID、146 张基础原型、23 个 Figma 最终状态、169 个原型映射、41 个 App 1.0 产品需求编号、92 个逐页追踪键和冻结基线 SHA-256 的一致性校验。
 - 两份完整客户 DOCX 已通过压缩包完整性、图片替代文本、表格表头、无障碍审计和干净目录全页渲染目检；LibreOffice 基准渲染分别为 189 页和 163 页。15 页冻结确认单同样通过结构、无障碍与全页视觉复核，均无异常空白页、图片缺失、内容错位、溢出或裁切。
 - 逐页原型清单、SHA-256、15 组功能联系表和设计 QA 证据位于 `docs/app/assets/page-prototypes/` 与 `docs/app/interactive-prototype/design-qa.md`。

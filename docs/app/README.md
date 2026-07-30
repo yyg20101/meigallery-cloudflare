@@ -15,6 +15,7 @@ App 版本：1.0
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
 - [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录现有设计的文字、Icon、组件、变量、状态、热区和流程差距，并定义移动端 49 页、后台 43 页最终 UI 的分阶段交付门禁。
 - [Figma Design System Phase 1](./FIGMA_DESIGN_SYSTEM_PHASE1.md)：记录已落入 Figma 的 5 个变量集合、103 个变量、三端 Code Syntax、13 个文字样式、4 个效果样式、回滚点和校验结果。
+- [Figma 文件结构 Phase 2](./FIGMA_FILE_STRUCTURE_PHASE2.md)：记录正式交付页、历史无损归档、92 Page ID Delivery Index、命名与 Spec Card 规则及原型目标校验。
 
 ## 客户确认交付
 
@@ -107,6 +108,7 @@ App 版本：1.0
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
 | [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) | 审计 Figma 当前成熟度、排版与 Icon 一致性、状态覆盖、原型连线和最终交付计划 |
 | [Figma Design System Phase 1](./FIGMA_DESIGN_SYSTEM_PHASE1.md) | Figma 变量、跨端代码映射、Noto Sans SC 排版、基础效果与校验证据 |
+| [Figma 文件结构 Phase 2](./FIGMA_FILE_STRUCTURE_PHASE2.md) | Figma 正式交付区、历史归档、Delivery Index、命名和 Spec Card 规范 |
 | [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md) | Android/iOS Screen ID、设计路由、页面目录、关键旅程和关键页面结构 |
 | [Nuxt 管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) | 后台 Page ID、角色、工作台、审批状态、并发和页面结构 |
 | [统一 UI 状态、文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) | 状态/文案/事件 key、错误映射、危险操作、组件矩阵和验收 |
