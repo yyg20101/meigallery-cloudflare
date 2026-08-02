@@ -2,9 +2,9 @@
 
 App 版本：1.0
 
-日期：2026-07-28
+日期：2026-08-02
 
-状态：需求讨论中
+状态：需求讨论中；人物供给 M1 最小闭环已进入开发验证
 
 文档类型：Reference
 
@@ -14,7 +14,9 @@ App 版本：1.0
 
 43 个后台 Page ID 均已进入 [App 1.0 逐页交互设计库](./interactive-prototype/pages.html)，可独立访问、切换必备状态并查看页面目标、入口、主次操作和验收说明；完整目录见 [逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)，逐页角色、规则、权限、需求编号、验收与原型见 [详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)，上游需求对应关系见 [需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)。
 
-本文不创建后台页面或 API，不改变现有生产后台；技术实现前还需把设计路由映射到 Nuxt route、RBAC 和 `/api/v2/admin/*` 契约。
+本文仍是 43 个目标后台 Page ID 的设计事实源。当前仅落地人物供给 M1 最小闭环：`/admin/app/persons`、`/admin/app/persons/new` 和 `/admin/app/persons/{personId}`，认证与发布复核暂时嵌入单人物工作台，复用现有 admin+ 会话和 `/api/admin/app/persons/*`。其余页面仍未实现；任何 production migration、真实人物/证据导入和生产后台变更均未授权。
+
+M1 页面已实现的交互边界：三轴状态、内容/线上版本并列、`expectedVersion` 冲突保护、用途授权登记/撤销、四项认证提交/通过/退回/撤销、全门禁发布/退回/暂停、审批历史与证据引用。正式职责分离尚未冻结，因此当前通用骨架只记录操作员与完整审计，不把“同人不可审批”等策略硬编码；生产启用前必须按 G-02 决定。
 
 上游事实源：
 

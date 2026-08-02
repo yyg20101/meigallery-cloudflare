@@ -42,7 +42,8 @@ paths:
       summary: 获取公开人物发现列表
       description: >-
         只返回认证状态为 verified、发布状态为 published、授权状态为 active、可见状态为
-        visible、授权未过期且来源图库仍为 published 的公开投影。现有图库不会自动进入此列表。
+        visible、授权已开始且未过期、认证未过期且来源图库仍为 published 的公开投影。
+        现有图库不会自动进入此列表。
       parameters:
         - name: sort
           in: query

@@ -29,6 +29,7 @@ onUnmounted(() => {
 const navItems = [
   { to: '/admin', label: '概览', exact: true, icon: 'grid' },
   { to: '/admin/galleries', label: '图库管理', icon: 'image' },
+  { to: '/admin/app/persons', label: 'App 人物供给', icon: 'users' },
   { to: '/admin/tags', label: '标签管理', icon: 'tag' },
   { to: '/admin/users', label: '会员管理', icon: 'users' },
   { to: '/admin/import', label: '导入任务', icon: 'upload' },
@@ -80,7 +81,7 @@ async function handleLogout() {
           <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
       </div>
-      <nav class="flex-1 py-2">
+      <nav class="flex-1 overflow-y-auto py-2">
         <NuxtLink
           v-for="item in navItems"
           :key="item.to"

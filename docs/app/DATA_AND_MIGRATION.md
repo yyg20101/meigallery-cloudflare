@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-02
 
-状态：需求讨论中
+状态：需求讨论中；M0 公开投影与 M1 空权威表已进入开发验证
 
 范围说明：目标模型覆盖长期产品，但 App 1.0 只要求会员目录/grant/entitlement、钱包账本和管理员调币。`products`、`orders`、礼物和装扮表在未来商业化 Feature 冻结后再创建 production migration，不能因出现在目标模型中而默认进入 1.0 实现。
 
@@ -105,10 +105,22 @@ erDiagram
 
 - 表默认为空，migration 不包含 seed、回填或从 `galleries` 自动插入的 SQL。
 - `source_gallery_id` 只表示管理员明确批准后复用的媒体来源；仅有 published gallery 不会生成 Person/Profile。
-- 公开查询同时检查 `verification_status=verified`、`publication_status=published`、`authorization_status=active`、授权未过期、`visibility_status=visible` 和来源图库仍发布。
+- 公开查询同时检查 `verification_status=verified`、`publication_status=published`、`authorization_status=active`、授权已开始且未过期、认证未过期、`visibility_status=visible` 和来源图库仍发布。
 - `tags_json`、地区、运营披露和推荐原因是发布时生成的审核快照，避免直接把 legacy 自由标签当公开真人事实。
 - 认证、授权或可见性撤回后，投影写入方必须立即更新/删除记录；在后台写流程落地前不得向生产手工灌入人物数据。
 - 权威表完成后由单向 projector 重建此表；客户端契约继续只消费 stable `per_`/`pp_` ID，不感知 legacy ID。
+
+#### 3.3.2 M1 人物供给实施边界
+
+`0068_app_person_supply_workflow.sql` 已创建空的 `persons`、`person_profiles`、`person_authorizations`、`person_verifications` 和 `person_publication_reviews`，并为公开投影增加授权开始时间、认证到期时间、内容版本和三类审批记录 ID：
+
+- `person_profiles.content_version` 只标识内容快照；`lock_version` 独立承担后台乐观并发，避免一次状态审批导致已有认证错误失效。
+- 用途授权和认证记录都绑定 `profile_id + profile_version`；证据只保存私有引用，不复制敏感原件。
+- 认证检查至少覆盖身份/真实存在、授权或代理关系、资料一致性、媒体权利四项；正式证据强度和对外声明仍是生产门禁。
+- 发布复核只能读取当前内容版本的有效授权与认证；通过后单向 upsert `profile_public_projections`，并记录授权、认证、发布和投影版本引用。
+- 编辑已经发布的资料只增加草稿内容版本，线上投影继续保留旧审定快照；暂停或撤销立即把投影设为不可见。
+- 当前 API 仅支持管理员单笔创建候选，不从 legacy 图库自动生成人物。未来批量候选导入必须是独立任务、默认草稿、逐项失败和人工复核，不得复用公开投影作为写主。
+- M1 migration 尚未执行 production，且没有任何真实人物、证据、seed 或回填数据。
 
 ### 3.4 会话与代运营
 
@@ -194,9 +206,9 @@ erDiagram
 
 退出条件：映射可重复运行且结果幂等，Web 仍以 legacy 为写主。
 
-### 阶段 2：真人资料候选导入
+### 阶段 2：真人资料候选创建与受控导入
 
-- 按图库/标签生成候选 `Person` 和 `PersonProfile` 草稿。
+- 当前由管理员从明确来源图库单笔创建候选 `Person` 和 `PersonProfile` 草稿；未来如启用批量方式，只能生成默认不可见候选，不能自动发布。
 - 导入来源与授权证据引用，未知或不足的标为待补证。
 - 管理员逐项认证和发布；任何候选默认不可公开。
 

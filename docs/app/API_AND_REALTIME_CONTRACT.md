@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-02
 
-状态：整体需求讨论中；M0 公共发现只读契约已冻结并进入开发验证
+状态：整体需求讨论中；M0 公共发现只读契约已冻结，M1 人物供给进入保守开发验证
 
 ## 1. 契约原则
 
@@ -31,7 +31,13 @@ App 版本：1.0
 - `GET /api/v2/person-profiles/:profileId`：返回同一公开资格边界下的基础详情投影。
 - 四个 M0 响应统一返回 `Cache-Control: no-store`，避免资格撤回、授权到期或源图库下线后被中间缓存继续展示；后续只有在完成可撤销缓存设计后才能调整。
 
-该局部冻结不包含账号体系、真人认领、认证证据结构、管理员写入流程、互动、会员、消息、钱包和媒体访问；这些领域仍按开放问题与专业门禁逐项冻结。migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
+该局部冻结不包含账号体系、真人认领、互动、会员、消息、钱包和媒体访问；这些领域仍按开放问题与专业门禁逐项冻结。migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
+
+### 1.3 M1 人物供给开发边界
+
+M1 在现有 Web 管理员会话域内使用 `/api/admin/app/persons`，先验证候选、用途授权、认证、发布和暂停的完整后台闭环。该前缀是当前 Nuxt 后台的受保护管理接口，不是 KMP 客户端公开契约；未来若统一为 `/api/v2/admin`，必须通过服务层复用或兼容适配迁移，不能形成第二套人物事实表或第二条投影链路。
+
+M1 管理命令全部要求 `expectedVersion`，认证和授权绑定具体 `contentVersion`。发布决定再次校验全门禁后才写入公开投影；授权/认证撤销与人工暂停立即下线。当前不导入真实人物或证据，不执行 production migration，认证正式声明和职责分离仍是生产门禁。
 
 ## 2. 通用请求
 
@@ -179,7 +185,7 @@ Accept-Language: zh-CN
 }
 ```
 
-公开 API 只读取 `verified + published + authorization active/unexpired + visible` 且来源图库仍发布的投影。客户端不得依赖字段缺失自行判断状态；现有图库没有管理员明确创建的合格投影时，列表必须为空。
+公开 API 只读取 `verified + published + authorization active/started/unexpired + verification unexpired + visible` 且来源图库仍发布的投影。客户端不得依赖字段缺失自行判断状态；现有图库没有管理员明确创建的合格投影时，列表必须为空。
 
 ## 7. 单向互动 API
 
@@ -332,6 +338,8 @@ App 1.0 钱包路由只读，余额来自追加式分录/受控快照，客户�
 ## 14. 管理 API
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
+
+M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。它只供 admin+ Web 会话使用；所有写命令写审计并以条件批次防止旧 `expectedVersion` 留下状态、投影或假审计。下表 `/api/v2/admin` 仍表示长期统一目标。
 
 | 资源 | 主要能力 |
 |------|----------|

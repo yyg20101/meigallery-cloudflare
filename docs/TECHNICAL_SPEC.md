@@ -232,6 +232,12 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | POST | `/api/conversions/events` | 公开转化事件入口，仅接受有效联系；受限流保护，服务端清洗 metadata，明确拒绝完成注册、`Lead`、`StartTrial`、会员发放或敏感字段 |
 | GET | `/api/invites/:code/status` | 公开校验邀请码状态，只返回可展示字段和失败原因，不泄露 `code_hash` |
 | GET | `/api/settings/public` | 公开站点设置和过滤后的首页广告数组 `home_ads` |
+| GET | `/api/v2/app/bootstrap` | App 1.0 能力开关与发现配置；M0 只读契约 |
+| GET | `/api/v2/discovery/feed` | 只读公开人物投影；推荐/热门/最新、地区筛选和不透明游标 |
+| GET | `/api/v2/discovery/regions` | 只统计当前仍具公开资格的人物地区 |
+| GET | `/api/v2/person-profiles/:profileId` | 按稳定公开资料 ID 重新校验并返回基础详情 |
+
+App 公开人物查询统一要求：认证有效、发布有效、用途授权已开始且未到期、认证未到期、投影可见、来源图库仍为 `published`。任一条件失败时不得回退读取人物草稿或图库表。
 
 ### 外部导入 API `[当前实现]`
 
@@ -251,6 +257,18 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | PATCH | `/api/admin/galleries/:id` | 编辑图库 | admin+ |
 | POST | `/api/admin/galleries/:id/publish` | 发布图库 | admin+ |
 | POST | `/api/admin/galleries/:id/unpublish` | 下架图库 | admin+ |
+| GET | `/api/admin/app/persons` | App 人物候选列表，返回授权/认证/发布三轴状态和线上版本 | admin+ |
+| POST | `/api/admin/app/persons` | 从明确来源图库创建不可见人物候选 | admin+ |
+| GET | `/api/admin/app/persons/:personId` | 人物供给工作台、发布门禁和审批历史 | admin+ |
+| PATCH | `/api/admin/app/persons/:personId` | 以 `expectedVersion` 创建新内容草稿版本，不覆盖线上投影 | admin+ |
+| POST | `/api/admin/app/persons/:personId/authorization` | 为当前内容版本登记 App 公开用途授权 | admin+ |
+| POST | `/api/admin/app/persons/:personId/authorization/revoke` | 撤销授权并立即暂停引用它的公开投影 | admin+ |
+| POST | `/api/admin/app/persons/:personId/verification/submit` | 提交当前内容版本认证复核 | admin+ |
+| POST | `/api/admin/app/persons/:personId/verification/decision` | 记录四项认证通过或退回结论 | admin+ |
+| POST | `/api/admin/app/persons/:personId/verification/revoke` | 撤销认证并立即暂停引用它的公开投影 | admin+ |
+| POST | `/api/admin/app/persons/:personId/publication/submit` | 全门禁预检后提交发布复核 | admin+ |
+| POST | `/api/admin/app/persons/:personId/publication/decision` | 发布时再次校验门禁并单向写公开投影，或退回草稿 | admin+ |
+| POST | `/api/admin/app/persons/:personId/publication/pause` | 立即暂停公开投影，保留版本和审批历史 | admin+ |
 | GET | `/api/admin/cases` | 真实案例列表（含草稿） | admin+ |
 | POST | `/api/admin/cases` | 创建真实案例草稿 | admin+ |
 | GET | `/api/admin/cases/:id` | 真实案例详情 | admin+ |
@@ -409,6 +427,30 @@ CREATE INDEX idx_galleries_slug ON galleries(slug);
 CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 ```
 
+### App 人物供给与公开投影 `[开发验证]`
+
+`0067_app_public_profile_projection.sql` 创建空的 `profile_public_projections` 只读投影；`0068_app_person_supply_workflow.sql` 创建以下权威表并扩展投影追溯字段，两项 migration 均不包含人物 seed、图库自动映射或真实数据回填：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `persons` | 真人主体稳定 ID 与生命周期 | `per_*`；只允许 active/suspended/archived |
+| `person_profiles` | 当前可编辑资料聚合 | `pp_*`；内容版本与并发锁版本分离；授权、认证、发布三轴独立 |
+| `person_authorizations` | App 公开用途授权记录 | 绑定 `profile_id + profile_version`；证据仅存内部引用；支持开始、到期和撤销 |
+| `person_verifications` | 认证提交与复核历史 | 绑定具体内容版本；记录身份存在、授权关系、资料一致性、媒体权利四项检查 |
+| `person_publication_reviews` | 发布、退回和暂停历史 | 发布决定追溯到内容、授权、认证和投影版本 |
+| `profile_public_projections` | App 公开只读快照 | 仅发布动作单向写入；公开 API 不回退权威草稿；暂停/撤销立即失去资格 |
+
+版本规则：
+
+- `content_version` 只在公开内容字段变化时递增，认证和授权必须绑定该版本。
+- `lock_version` 在每次管理写操作后递增，所有命令必须提交 `expectedVersion`；不匹配返回 `VERSION_CONFLICT`。
+- 已发布人物被编辑时，线上投影继续保留已审定的旧内容版本，新草稿不会静默覆盖线上。
+- 发布前和发布写入时都校验人物、来源图库、封面、安全、运营披露、用途授权、认证与有效期；发布写入使用带随机 `mutation_token` 的条件批次，未取得并发锁的命令不能写审批、投影或审计记录。
+- 授权/认证撤销和人工暂停会把投影改为不可见；到期无需后台任务，公开查询按请求时间动态拒绝。
+- 当前开发验证只开放 `platform_managed`，公开披露为“消息由平台运营接收”；`self_managed` 只保留 schema 兼容位，不开放后台选择。
+
+当前状态仍是开发验证：未执行 production migration，未导入真实人物或证据，认证正式声明、证据保留期和人员分离规则仍须在生产启用前完成专业门禁。
+
 ### media_assets
 
 ```sql
@@ -556,7 +598,7 @@ CREATE INDEX idx_audit_logs_admin ON admin_audit_logs(admin_id);
 CREATE INDEX idx_audit_logs_time ON admin_audit_logs(created_at);
 ```
 
-后台写操作必须在对应 service 或 route 内调用 `writeAuditLog` 并补测试；新增 `POST` / `PUT` / `PATCH` / `DELETE` 管理端路由时必须同步添加审计日志断言。
+后台写操作必须写入 `admin_audit_logs` 并补测试。普通单步写入可调用 `writeAuditLog`；高风险多语句工作流应把审计 `INSERT` 与状态变更放入同一受控 `db.batch`，并通过条件 `INSERT ... SELECT` 确保未取得并发锁时不会生成假审计。新增 `POST` / `PUT` / `PATCH` / `DELETE` 管理端路由时必须同步添加审计日志断言。
 
 ### site_settings
 
@@ -961,6 +1003,7 @@ queued → processing → completed
 - 标签搜索：单标签、多标签组合、空结果。
 - 密码哈希与验证。
 - Turnstile token 校验：登录、发送验证码、无邮箱验证码注册、后台导入任务创建和处理。
+- App 人物供给：未认证不公开、授权/认证版本绑定、四项认证完整性、双重发布门禁、草稿与线上版本隔离、授权/认证到期、撤销/暂停立即下线、`expectedVersion` 并发冲突和审计完整性。
 
 ### 上传限制验收 `[当前实现]`
 
@@ -980,6 +1023,7 @@ queued → processing → completed
 - 完整迁移流程：拉取 → 解析 → 入库 → 审核。
 - 媒体签名流程：请求 → 校验 → 签发 → 过期。
 - 审计日志：admin 写操作后检查日志记录；重点覆盖导入任务处理结果、旧站迁移批量入口、会员发放、媒体变更和站点设置。
+- App 人物发布：候选草稿 → 用途授权 → 认证提交/复核 → 发布提交/复核 → 公开 API 可见；编辑线上资料后 App 继续读取旧投影，重新发布后才切换版本。
 
 ### 端到端测试 `[当前实现 / 后续规划]`
 

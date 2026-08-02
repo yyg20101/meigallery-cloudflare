@@ -12,6 +12,10 @@ const MIGRATION = readFileSync(
   new URL('../../migrations/0067_app_public_profile_projection.sql', import.meta.url),
   'utf8',
 )
+const SUPPLY_MIGRATION = readFileSync(
+  new URL('../../migrations/0068_app_person_supply_workflow.sql', import.meta.url),
+  'utf8',
+)
 const NOW = new Date('2026-08-02T00:00:00.000Z')
 
 let miniflare: Miniflare
@@ -33,6 +37,7 @@ beforeAll(async () => {
     );
   `))
   await db.exec(executableSql(MIGRATION))
+  await db.exec(executableSql(SUPPLY_MIGRATION))
 })
 
 beforeEach(async () => {
@@ -156,6 +161,8 @@ async function seedEligibilityCases() {
     ['gal_shanghai', 'published'],
     ['gal_hidden', 'published'],
     ['gal_expired', 'published'],
+    ['gal_future_authorization', 'published'],
+    ['gal_expired_verification', 'published'],
     ['gal_unpublished', 'unpublished'],
   ] as const) {
     await insertGallery(id, status)
@@ -201,6 +208,18 @@ async function seedEligibilityCases() {
     recommendationScore: 200,
   })
   await insertProjection({
+    profileId: 'pp_future_authorization',
+    sourceGalleryId: 'gal_future_authorization',
+    authorizationValidFrom: '2026-08-03T00:00:00.000Z',
+    recommendationScore: 200,
+  })
+  await insertProjection({
+    profileId: 'pp_expired_verification',
+    sourceGalleryId: 'gal_expired_verification',
+    verificationValidUntil: '2026-08-01T00:00:00.000Z',
+    recommendationScore: 200,
+  })
+  await insertProjection({
     profileId: 'pp_unpublished_gallery',
     sourceGalleryId: 'gal_unpublished',
     recommendationScore: 200,
@@ -219,7 +238,9 @@ async function insertProjection(options: {
   verificationStatus?: string
   publicationStatus?: string
   authorizationStatus?: string
+  authorizationValidFrom?: string | null
   authorizationValidUntil?: string | null
+  verificationValidUntil?: string | null
   visibilityStatus?: string
   regionCode?: string
   regionLabel?: string
@@ -251,8 +272,10 @@ async function insertProjection(options: {
       recommendation_reason_code,
       recommendation_rule_version,
       published_at,
-      source_updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      source_updated_at,
+      authorization_valid_from,
+      verification_valid_until
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     options.profileId,
     personId,
@@ -276,6 +299,8 @@ async function insertProjection(options: {
     'discovery_v1',
     options.publishedAt ?? '2026-07-01T00:00:00.000Z',
     '2026-07-31T00:00:00.000Z',
+    options.authorizationValidFrom ?? null,
+    options.verificationValidUntil ?? null,
   ).run()
 }
 

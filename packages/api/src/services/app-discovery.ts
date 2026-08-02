@@ -99,16 +99,30 @@ export async function listPublicPersonProfiles(
     "p.authorization_status = 'active'",
     "p.visibility_status = 'visible'",
     `(
+      p.authorization_valid_from IS NULL
+      OR (
+        datetime(p.authorization_valid_from) IS NOT NULL
+        AND datetime(p.authorization_valid_from) <= datetime(?)
+      )
+    )`,
+    `(
       p.authorization_valid_until IS NULL
       OR (
         datetime(p.authorization_valid_until) IS NOT NULL
         AND datetime(p.authorization_valid_until) > datetime(?)
       )
     )`,
+    `(
+      p.verification_valid_until IS NULL
+      OR (
+        datetime(p.verification_valid_until) IS NOT NULL
+        AND datetime(p.verification_valid_until) > datetime(?)
+      )
+    )`,
     'datetime(p.published_at) IS NOT NULL',
     "g.status = 'published'",
   ]
-  const params: unknown[] = [now.toISOString()]
+  const params: unknown[] = [now.toISOString(), now.toISOString(), now.toISOString()]
 
   if (query.regionCode) {
     conditions.push('p.region_code = ?')
@@ -210,10 +224,24 @@ export async function listPublicDiscoveryRegions(
         AND p.authorization_status = 'active'
         AND p.visibility_status = 'visible'
         AND (
+          p.authorization_valid_from IS NULL
+          OR (
+            datetime(p.authorization_valid_from) IS NOT NULL
+            AND datetime(p.authorization_valid_from) <= datetime(?)
+          )
+        )
+        AND (
           p.authorization_valid_until IS NULL
           OR (
             datetime(p.authorization_valid_until) IS NOT NULL
             AND datetime(p.authorization_valid_until) > datetime(?)
+          )
+        )
+        AND (
+          p.verification_valid_until IS NULL
+          OR (
+            datetime(p.verification_valid_until) IS NOT NULL
+            AND datetime(p.verification_valid_until) > datetime(?)
           )
         )
         AND datetime(p.published_at) IS NOT NULL
@@ -224,7 +252,7 @@ export async function listPublicDiscoveryRegions(
       ORDER BY profile_count DESC, p.region_code ASC
       LIMIT 100
     `)
-    .bind(now.toISOString())
+    .bind(now.toISOString(), now.toISOString(), now.toISOString())
     .all<{ region_code: string; region_label: string; profile_count: number }>()
 
   return result.results.map(row => ({
@@ -270,17 +298,31 @@ export async function getPublicPersonProfile(
         AND p.authorization_status = 'active'
         AND p.visibility_status = 'visible'
         AND (
+          p.authorization_valid_from IS NULL
+          OR (
+            datetime(p.authorization_valid_from) IS NOT NULL
+            AND datetime(p.authorization_valid_from) <= datetime(?)
+          )
+        )
+        AND (
           p.authorization_valid_until IS NULL
           OR (
             datetime(p.authorization_valid_until) IS NOT NULL
             AND datetime(p.authorization_valid_until) > datetime(?)
           )
         )
+        AND (
+          p.verification_valid_until IS NULL
+          OR (
+            datetime(p.verification_valid_until) IS NOT NULL
+            AND datetime(p.verification_valid_until) > datetime(?)
+          )
+        )
         AND datetime(p.published_at) IS NOT NULL
         AND g.status = 'published'
       LIMIT 1
     `)
-    .bind(profileId, now.toISOString())
+    .bind(profileId, now.toISOString(), now.toISOString(), now.toISOString())
     .first<PublicProjectionRow>()
 
   return row ? mapPublicProfile(row, apiUrl) : null
