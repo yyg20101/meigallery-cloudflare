@@ -110,7 +110,7 @@ describe('0064 归因运行时瘦身 migration', () => {
   it('完整迁移链连续', () => {
     assert.deepEqual(
       migrationFiles.map(file => Number(file.slice(0, 4))),
-      Array.from({ length: 66 }, (_, index) => index + 1),
+      Array.from({ length: migrationFiles.length }, (_, index) => index + 1),
     )
   })
 

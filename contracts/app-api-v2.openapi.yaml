@@ -1,10 +1,12 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.0.0
+  version: 1.1.0
   description: >-
-    App 1.0 的 M0 公共发现只读契约。此文件只冻结 bootstrap、发现列表、地区目录和
-    公开人物详情；登录、认领、消息、会员、金币和媒体访问尚未纳入本次冻结。
+    App 1.0 的公共发现契约和 Auth-1 保守账号访问开发基线。账号能力必须同时具备
+    APP_AUTH_ENABLED、版本化文档和生产人机验证配置才会由 bootstrap 启用；默认关闭，
+    不代表首发地区、法定年龄、最终登录渠道或生产身份政策已经冻结。认领、消息、
+    会员申请、金币和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -13,6 +15,8 @@ servers:
   - url: http://127.0.0.1:8787
 tags:
   - name: Bootstrap
+  - name: Auth
+  - name: Account
   - name: Discovery
   - name: PersonProfile
 paths:
@@ -35,6 +39,203 @@ paths:
                 $ref: '#/components/schemas/BootstrapResponse'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v2/auth/email-challenges:
+    post:
+      tags: [Auth]
+      operationId: createAppEmailChallenge
+      summary: 请求注册邮箱验证码
+      description: 始终返回统一接收结果，不披露邮箱是否已经存在。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailChallengeRequest'
+      responses:
+        '200':
+          description: 请求已统一接收
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailChallengeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerAppAccount
+      summary: 创建观看者账号和当前设备会话
+      description: >-
+        只创建 Account、邮箱身份、版本化同意、设备和会话；不得创建 Person、
+        PersonProfile 或公开投影。验证码必须有效，文档版本必须与 bootstrap 一致。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 观看者账号创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginAppAccount
+      summary: 使用邮箱和密码登录观看者账号
+      description: >-
+        对已有 Web 账号只有在密码验证通过后才建立 App 邮箱身份映射。账号缺少当前
+        文档版本时必须在请求中重新提交同意，否则返回 CONSENT_REQUIRED。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshAppSession
+      summary: 旋转访问与续期凭证
+      description: >-
+        成功后旧访问凭证立即失效。已被替换的续期凭证再次出现时，服务端撤销该会话族。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: 凭证旋转成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logoutAppSession
+      summary: 退出当前设备会话
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 当前会话已撤销
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me:
+    get:
+      tags: [Account]
+      operationId: getAppMe
+      summary: 获取当前观看者账号和会员摘要
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 本人账号摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v2/me/devices:
+    get:
+      tags: [Account]
+      operationId: listAppDevices
+      summary: 获取本人设备列表
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 最多返回最近 50 台本人设备
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v2/me/devices/{deviceId}:
+    delete:
+      tags: [Account]
+      operationId: revokeAppDevice
+      summary: 远程退出本人其他设备
+      description: 幂等撤销目标设备的全部活跃 App 会话；当前设备必须使用 logout。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^dev_[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: 设备已退出或此前已经退出
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/v2/discovery/feed:
     get:
       tags: [Discovery]
@@ -124,6 +325,11 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
   headers:
     RequestId:
       description: 服务端生成的请求追踪 ID。
@@ -133,7 +339,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.0.0
+        const: 1.1.0
   responses:
     BadRequest:
       description: 查询参数或游标无效
@@ -143,6 +349,30 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: 资源不存在或当前不可见
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: 访问凭证缺失、无效、过期或已撤销
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: 能力未启用、账号受限或身份方式不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: 同意版本、当前状态或对象操作发生冲突
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: 账号、人机验证或邮件服务尚未完成安全配置
       content:
         application/json:
           schema:
@@ -172,7 +402,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.0.0
+          const: 1.1.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -204,10 +434,309 @@ components:
           $ref: '#/components/schemas/Error'
         meta:
           $ref: '#/components/schemas/Meta'
+    DeviceDescriptor:
+      type: object
+      additionalProperties: false
+      required: [installationId, platform, displayName, appVersion]
+      properties:
+        installationId:
+          type: string
+          minLength: 16
+          maxLength: 128
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: 客户端随机生成的安装标识；不得使用广告 ID、硬件序列号或精确位置。
+        platform:
+          type: string
+          enum: [android, ios]
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 80
+        appVersion:
+          type: string
+          minLength: 1
+          maxLength: 40
+    ConsentInput:
+      type: object
+      additionalProperties: false
+      required:
+        - termsVersion
+        - privacyVersion
+        - platformOperationVersion
+        - eligibilityVersion
+        - eligibilityConfirmed
+      properties:
+        termsVersion:
+          type: string
+        privacyVersion:
+          type: string
+        platformOperationVersion:
+          type: string
+        eligibilityVersion:
+          type: string
+        eligibilityConfirmed:
+          type: boolean
+          const: true
+          description: 只记录对当前必要资格说明的确认，不在本契约写死年龄数值。
+    EmailChallengeRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        challengeToken:
+          type: string
+    EmailChallengeResult:
+      type: object
+      additionalProperties: false
+      required: [accepted, cooldownSeconds]
+      properties:
+        accepted:
+          type: boolean
+          const: true
+        cooldownSeconds:
+          type: integer
+          minimum: 1
+    EmailChallengeResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/EmailChallengeResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, verificationCode, consents, device]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        nickname:
+          type: [string, 'null']
+          maxLength: 40
+        verificationCode:
+          type: string
+          pattern: '^\d{6}$'
+        consents:
+          $ref: '#/components/schemas/ConsentInput'
+        device:
+          $ref: '#/components/schemas/DeviceDescriptor'
+        challengeToken:
+          type: string
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, device]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        consents:
+          $ref: '#/components/schemas/ConsentInput'
+        device:
+          $ref: '#/components/schemas/DeviceDescriptor'
+        challengeToken:
+          type: string
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          minLength: 40
+          maxLength: 100
+          writeOnly: true
+    AccountSummary:
+      type: object
+      additionalProperties: false
+      required: [accountId, email, nickname, role, status]
+      properties:
+        accountId:
+          type: string
+          pattern: '^acc_[A-Za-z0-9_-]+$'
+        email:
+          type: string
+          format: email
+        nickname:
+          type: [string, 'null']
+        role:
+          type: string
+        status:
+          type: string
+          const: active
+    DeviceSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - deviceId
+        - platform
+        - displayName
+        - appVersion
+        - status
+        - signedIn
+        - current
+        - firstSeenAt
+        - lastSeenAt
+        - revokedAt
+      properties:
+        deviceId:
+          type: string
+          pattern: '^dev_[A-Za-z0-9_-]+$'
+        platform:
+          type: string
+          enum: [android, ios]
+        displayName:
+          type: string
+        appVersion:
+          type: string
+        status:
+          type: string
+          enum: [active, revoked]
+        signedIn:
+          type: boolean
+        current:
+          type: boolean
+        firstSeenAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: [string, 'null']
+          format: date-time
+    AuthTokenPair:
+      type: object
+      additionalProperties: false
+      required: [tokenType, accessToken, refreshToken, accessExpiresAt, refreshExpiresAt]
+      properties:
+        tokenType:
+          type: string
+          const: Bearer
+        accessToken:
+          type: string
+          writeOnly: true
+        refreshToken:
+          type: string
+          writeOnly: true
+        accessExpiresAt:
+          type: string
+          format: date-time
+        refreshExpiresAt:
+          type: string
+          format: date-time
+    AuthSession:
+      type: object
+      additionalProperties: false
+      required: [account, device, tokens]
+      properties:
+        account:
+          $ref: '#/components/schemas/AccountSummary'
+        device:
+          $ref: '#/components/schemas/DeviceSummary'
+        tokens:
+          $ref: '#/components/schemas/AuthTokenPair'
+    AuthSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/AuthSession'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    LogoutResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [loggedOut]
+          properties:
+            loggedOut:
+              type: boolean
+              const: true
+        meta:
+          $ref: '#/components/schemas/Meta'
+    MembershipSummary:
+      type: object
+      additionalProperties: false
+      required: [code, name, rank, expiresAt]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        rank:
+          type: integer
+          minimum: 0
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+    MeSummary:
+      type: object
+      additionalProperties: false
+      required: [account, membership, currentDeviceId]
+      properties:
+        account:
+          $ref: '#/components/schemas/AccountSummary'
+        membership:
+          $ref: '#/components/schemas/MembershipSummary'
+        currentDeviceId:
+          type: string
+    MeResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MeSummary'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    DeviceResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/DeviceSummary'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    DeviceListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/DeviceSummary'
+        meta:
+          $ref: '#/components/schemas/Meta'
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery]
+      required: [product, appVersion, capabilities, discovery, auth]
       properties:
         product:
           type: string
@@ -225,7 +754,6 @@ components:
               const: true
             auth:
               type: boolean
-              const: false
             messaging:
               type: boolean
               const: false
@@ -252,6 +780,67 @@ components:
             maxPageSize:
               type: integer
               const: 40
+        auth:
+          type: object
+          additionalProperties: false
+          required:
+            - methods
+            - registrationEnabled
+            - deviceManagementEnabled
+            - accessTokenTtlSeconds
+            - challenge
+            - documents
+          properties:
+            methods:
+              type: array
+              maxItems: 1
+              items:
+                type: string
+                const: email
+            registrationEnabled:
+              type: boolean
+            deviceManagementEnabled:
+              type: boolean
+            accessTokenTtlSeconds:
+              type: integer
+              minimum: 60
+            challenge:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      const: none
+                - type: object
+                  additionalProperties: false
+                  required: [type, siteKey]
+                  properties:
+                    type:
+                      type: string
+                      const: turnstile
+                    siteKey:
+                      type: string
+            documents:
+              oneOf:
+                - type: 'null'
+                - type: object
+                  additionalProperties: false
+                  required:
+                    - termsVersion
+                    - privacyVersion
+                    - platformOperationVersion
+                    - eligibilityVersion
+                  properties:
+                    termsVersion:
+                      type: string
+                    privacyVersion:
+                      type: string
+                    platformOperationVersion:
+                      type: string
+                    eligibilityVersion:
+                      type: string
     BootstrapResponse:
       type: object
       additionalProperties: false

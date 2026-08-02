@@ -72,10 +72,26 @@
 
 ### 会话管理 `[当前实现]`
 
+- Web/Nuxt 会话继续使用下述 Cookie 方案；独立 App 不复用 Cookie，也不把 Web session token 当作移动端凭证。
 - 使用 HttpOnly + Secure + SameSite=Lax 的 cookie 存储 session token。
 - session token 由服务端签发，使用 `SESSION_SECRET` 签名。
 - 会话有效期 30 天，滑动续期：剩余不足 15 天时自动续期 30 天并同步刷新 cookie。
 - 登出时服务端销毁 session 记录。
+
+### 独立 App 账号与设备会话 `[开发验证，默认关闭]`
+
+`0069_app_account_access.sql` 和 App API v2 `1.1.0` 已建立 Auth-1 保守账号基线：
+
+- 现有 `users` 继续作为唯一账号主体；`app_account_security.account_public_id` 提供不可枚举的 `acc_*` API ID，不向客户端暴露 D1 自增 ID。
+- App 只启用邮箱开发适配器。旧 Web 账号只有在密码验证成功后才创建 `app_account_identities` 映射；相同邮箱、昵称或头像不能触发静默合并。
+- 注册必须使用邮箱验证码并提交与 bootstrap 一致的条款、隐私、平台运营说明和必要资格说明版本；只创建观看者账号，不创建 Person/Profile。
+- 每次登录建立服务端 `app_devices` 和 `app_sessions`。安装标识必须是客户端随机值，服务端只保存其 SHA-256 摘要，不使用广告 ID、硬件序列号或精确位置。
+- Access Token 有效期 15 分钟；Refresh Token 旋转后重新获得 30 天有效期。两种 Token 均为 256-bit 随机不透明值，D1 只存 SHA-256 摘要。
+- 刷新在同一会话行替换 Access/Refresh 摘要，旧 Access 立即无效；`app_refresh_token_history` 用于发现旧 Refresh 重放，命中后撤销整个会话并写 `app_account_security_events`。
+- 每次 Bearer 鉴权都读取账号、设备、会话状态和两级 session version，并校验当前文档同意；账号禁用、设备远程退出、版本提升或文档更新在下一次 API 调用生效。
+- 远程退出先验证设备属于当前账号，再区分当前设备；重复退出已撤销设备返回相同终态，不泄露其他账号设备是否存在。
+
+运行时开关：`APP_AUTH_ENABLED`、`APP_AUTH_REGISTRATION_ENABLED`、`APP_AUTH_TERMS_VERSION`、`APP_AUTH_PRIVACY_VERSION`、`APP_AUTH_PLATFORM_NOTICE_VERSION`、`APP_AUTH_ELIGIBILITY_VERSION` 和 `APP_AUTH_TURNSTILE_SITE_KEY`。production 还必须配置 `TURNSTILE_SECRET_KEY`；任一必要条件缺失时 bootstrap 返回 `auth=false`。production/dev Wrangler 当前均显式保持关闭，不允许据此推断 G-01/G-03 已关闭。
 
 ### Turnstile 集成 `[当前实现]`
 
@@ -236,6 +252,14 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/v2/discovery/feed` | 只读公开人物投影；推荐/热门/最新、地区筛选和不透明游标 |
 | GET | `/api/v2/discovery/regions` | 只统计当前仍具公开资格的人物地区 |
 | GET | `/api/v2/person-profiles/:profileId` | 按稳定公开资料 ID 重新校验并返回基础详情 |
+| POST | `/api/v2/auth/email-challenges` | 默认关闭：申请注册邮箱验证码，统一响应不披露账号存在性 |
+| POST | `/api/v2/auth/register` | 默认关闭：创建观看者账号、当前同意、设备和 App 会话 |
+| POST | `/api/v2/auth/login` | 默认关闭：邮箱密码登录与当前同意校验 |
+| POST | `/api/v2/auth/refresh` | 默认关闭：旋转 Access/Refresh Token，旧 Refresh 重放撤销会话 |
+| POST | `/api/v2/auth/logout` | 默认关闭：撤销当前 App 会话 |
+| GET | `/api/v2/me` | 默认关闭：当前账号和会员摘要 |
+| GET | `/api/v2/me/devices` | 默认关闭：本人设备列表 |
+| DELETE | `/api/v2/me/devices/:deviceId` | 默认关闭：幂等远程退出其他设备 |
 
 App 公开人物查询统一要求：认证有效、发布有效、用途授权已开始且未到期、认证未到期、投影可见、来源图库仍为 `published`。任一条件失败时不得回退读取人物草稿或图库表。
 
@@ -450,6 +474,22 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 - 当前开发验证只开放 `platform_managed`，公开披露为“消息由平台运营接收”；`self_managed` 只保留 schema 兼容位，不开放后台选择。
 
 当前状态仍是开发验证：未执行 production migration，未导入真实人物或证据，认证正式声明、证据保留期和人员分离规则仍须在生产启用前完成专业门禁。
+
+### App 账号访问表族 `[开发验证，默认关闭]`
+
+`0069_app_account_access.sql` 不回填现有用户，只创建下列表与索引：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_account_security` | 内部用户到 `acc_*` 公共账号 ID、账号状态和 session version | 一名现有用户最多一条；不复制账号密码 |
+| `app_account_identities` | 邮箱登录身份映射 | provider subject 只存 SHA-256；同一 provider subject 唯一 |
+| `app_account_consents` | 条款、隐私、平台运营和资格说明的版本化决定 | 不保存硬编码年龄，只保存文档版本、决定和请求 ID |
+| `app_devices` | 本人设备目录和设备级 session version | 安装标识只存 SHA-256；账号内唯一；支持 active/revoked |
+| `app_sessions` | 可撤销 Access/Refresh 会话 | Token 只存摘要；每台设备最多一个 active 会话 |
+| `app_refresh_token_history` | 已替换 Refresh 摘要 | 用于重放检测，不返回客户端 |
+| `app_account_security_events` | 登录、刷新、退出、重放和设备撤销安全事件 | 不保存邮箱、Token、验证码或设备安装原值 |
+
+该表族是可回滚开发基线，不替代未来经 G-01/G-03 冻结后的完整身份、隐私和数据权利模型；没有 production migration、seed 或真实同意数据。
 
 ### media_assets
 
@@ -1004,6 +1044,7 @@ queued → processing → completed
 - 密码哈希与验证。
 - Turnstile token 校验：登录、发送验证码、无邮箱验证码注册、后台导入任务创建和处理。
 - App 人物供给：未认证不公开、授权/认证版本绑定、四项认证完整性、双重发布门禁、草稿与线上版本隔离、授权/认证到期、撤销/暂停立即下线、`expectedVersion` 并发冲突和审计完整性。
+- App 账号访问：能力默认关闭、注册不创建 Person、旧账号需密码验证、当前文档同意、Token 摘要、刷新轮换/重放撤权、会话过期、设备归属、当前设备限制、远程退出幂等和安全事件完整性。
 
 ### 上传限制验收 `[当前实现]`
 
@@ -1024,6 +1065,7 @@ queued → processing → completed
 - 媒体签名流程：请求 → 校验 → 签发 → 过期。
 - 审计日志：admin 写操作后检查日志记录；重点覆盖导入任务处理结果、旧站迁移批量入口、会员发放、媒体变更和站点设置。
 - App 人物发布：候选草稿 → 用途授权 → 认证提交/复核 → 发布提交/复核 → 公开 API 可见；编辑线上资料后 App 继续读取旧投影，重新发布后才切换版本。
+- App 账号访问：Web 账号密码验证 → 当前同意 → App 设备会话 → Bearer 本人信息 → Token 轮换 → 远程退出/重放撤权；生产配置缺失时 bootstrap 和所有账号命令保持关闭。
 
 ### 端到端测试 `[当前实现 / 后续规划]`
 

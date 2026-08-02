@@ -9,7 +9,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { Bindings, Variables } from '../index'
 
 export const APP_API_VERSION = '2' as const
-export const APP_CONTRACT_VERSION = '1.0.0' as const
+export const APP_CONTRACT_VERSION = '1.1.0' as const
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
@@ -26,9 +26,13 @@ function responseMeta(c: AppContext): AppApiMeta {
   }
 }
 
-export function appApiSuccess<T>(c: AppContext, data: T) {
+export function appApiSuccess<T>(
+  c: AppContext,
+  data: T,
+  status?: ContentfulStatusCode,
+) {
   const body: AppApiSuccess<T> = { data, meta: responseMeta(c) }
-  return c.json(body)
+  return status ? c.json(body, status) : c.json(body)
 }
 
 export function appApiListSuccess<T>(

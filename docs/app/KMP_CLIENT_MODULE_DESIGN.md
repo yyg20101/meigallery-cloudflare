@@ -4,11 +4,11 @@ App 版本：1.0
 
 日期：2026-08-02
 
-状态：最小技术脚手架与 M0 公共发现切片已落地；其余业务、导航与持久化仍为冻结候选
+状态：最小技术脚手架与 M0 公共发现切片已落地；Auth-1 服务端账号契约已就绪，KMP 登录与安全存储尚未接入
 
 ## 1. 文档目的
 
-本文把 [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md) 转换为 KMP 可实现的模块、依赖、页面状态、导航、本地数据、网络和平台端口。独立仓库 `meigallery-client` 已创建最小工程并实现 M0 公共发现读链路；未经 Spike 验证的其余功能库和业务模块仍不得视为依赖锁。
+本文把 [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md) 转换为 KMP 可实现的模块、依赖、页面状态、导航、本地数据、网络和平台端口。独立仓库 `meigallery-client` 已创建最小工程并实现 M0 公共发现读链路；Cloudflare 仓库已提供默认关闭的 App API v2 `1.1.0` 账号契约。KMP 尚未实现 Auth Repository、SecureStore 或登录页面，未经 Spike 验证的功能库和业务模块仍不得视为依赖锁。
 
 App 1.0 仅发布 Android/iOS。普通用户桌面端未立项；若未来立项，可以复用不依赖平台 UI 的领域和契约模块，但不得把当前设计解释为已承诺桌面兼容。
 
@@ -278,6 +278,8 @@ Request Builder
 - 401 只触发一次刷新；403 不刷新 Token；429 尊重服务端安全的重试时间。
 - 消息、数据导出和其他关键 POST 使用稳定客户端命令 ID/幂等键。
 - 网络日志不输出 Authorization、Cookie、正文、签名 URL、证据或完整错误详情。
+
+Auth-1 客户端接入必须以 `bootstrap.capabilities.auth` 为唯一入口开关，只在服务端返回 `methods=[email]` 时显示邮箱登录。客户端保存服务端 `acc_*`/`dev_*` ID，不保存或推导 D1 自增 ID；安装标识由客户端随机生成，不使用广告 ID 或硬件序列号。Access/Refresh Token 必须一次性原子写入 SecureStore，刷新使用 single-flight；服务端返回 `CONSENT_REQUIRED` 时只展示 bootstrap 当前四类文档版本并重新提交，不在客户端硬编码年龄或法律版本。
 
 ### 8.2 错误归一化
 

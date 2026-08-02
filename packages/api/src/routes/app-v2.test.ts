@@ -15,7 +15,7 @@ function createApp(db: unknown = {}) {
 }
 
 describe('App API v2 路由契约', () => {
-  it('bootstrap 显式关闭尚未实现的登录、消息、支付和系统推送能力', async () => {
+  it('bootstrap 默认关闭未配置的登录、消息、支付和系统推送能力', async () => {
     const { app, env } = createApp()
     const response = await app.fetch(
       new Request('https://api.test/api/v2/app/bootstrap'),
@@ -29,7 +29,7 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.0.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.1.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
@@ -40,7 +40,7 @@ describe('App API v2 路由契约', () => {
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.0.0',
+      contractVersion: '1.1.0',
     })
   })
 
@@ -79,7 +79,7 @@ describe('App API v2 路由契约', () => {
     })
   })
 
-  it('OpenAPI 只冻结本阶段四个只读路径', () => {
+  it('OpenAPI 同步公共发现与默认关闭的账号访问路径', () => {
     const contract = readFileSync(
       new URL('../../../../contracts/app-api-v2.openapi.yaml', import.meta.url),
       'utf8',
@@ -88,6 +88,12 @@ describe('App API v2 路由契约', () => {
     expect(contract).toContain('/api/v2/discovery/feed:')
     expect(contract).toContain('/api/v2/discovery/regions:')
     expect(contract).toContain('/api/v2/person-profiles/{profileId}:')
-    expect(contract).not.toContain('/api/v2/auth/login:')
+    expect(contract).toContain('/api/v2/auth/email-challenges:')
+    expect(contract).toContain('/api/v2/auth/register:')
+    expect(contract).toContain('/api/v2/auth/login:')
+    expect(contract).toContain('/api/v2/auth/refresh:')
+    expect(contract).toContain('/api/v2/auth/logout:')
+    expect(contract).toContain('/api/v2/me:')
+    expect(contract).toContain('/api/v2/me/devices:')
   })
 })

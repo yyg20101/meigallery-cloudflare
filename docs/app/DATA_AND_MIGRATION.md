@@ -58,6 +58,20 @@ erDiagram
 | `privacy_preferences` | `account_id`, `purpose`, `enabled`, `policy_version`, `updated_at` | 分用途隐私与推荐设置 |
 | `data_right_requests` | `id`, `account_id`, `type`, `status`, `workflow_ref`, `created_at` | 导出、清除和注销 Workflow |
 
+#### 3.1.1 Auth-1 账号访问实施边界
+
+`0069_app_account_access.sql` 采用“复用现有账号主体 + 增量 App 身份表族”的过渡方式，不创建第二套可登录用户表：
+
+- `users.id` 继续作为服务端内部账号主键；`app_account_security.account_public_id` 生成稳定 `acc_*` API ID，客户端不接触自增 ID。
+- `app_account_identities` 仅在邮箱验证码注册或现有账号密码验证成功后写入，provider subject 使用 SHA-256 摘要，不能仅凭相同邮箱静默合并。
+- `app_account_consents` 记录条款、隐私、平台运营说明和必要资格说明的文档版本、决定、请求 ID 与时间；当前不写死年龄数值、首发地区或证件材料。
+- `app_devices` 只保存随机安装标识摘要、平台、可理解设备名、App 版本和 session version；不保存广告 ID、硬件序列号或精确位置。
+- `app_sessions` 保存可撤销的 Access/Refresh Token 摘要和账号/设备版本；`app_refresh_token_history` 支持旋转凭证重放检测。
+- `app_account_security_events` 只记录安全事件引用和原因码，不保存邮箱、Token、验证码或安装标识原文。
+- migration 没有 seed、用户回填或 production 数据写入；Web Cookie 会话继续独立工作，App 能力由默认关闭的 feature flag 控制。
+
+该结构只支持 Auth-1 开发验证。正式账号 schema、文档版本、保留期、年龄/资格证明和地区字段仍须 G-01/G-03 关闭后再决定；不得把本表族命名直接解释为已冻结目标表名。
+
 ### 3.2 真人、资料和内容
 
 | 表 | 关键字段 | 说明 |
@@ -204,6 +218,8 @@ erDiagram
 - 全量生成不可见影子账号和内容映射，不改变前台行为。
 - 建立逐批哈希、数量和引用完整性对账。
 
+当前 Auth-1 只在用户完成 App 注册，或现有用户成功验证密码并接受当前文档后按需创建账号公共 ID、身份映射、同意和设备会话；尚未执行“全量生成不可见影子账号”，也没有离线回填现有用户。
+
 退出条件：映射可重复运行且结果幂等，Web 仍以 legacy 为写主。
 
 ### 阶段 2：真人资料候选创建与受控导入
@@ -298,3 +314,5 @@ erDiagram
 - **DATA-AC-006**：App 1.0 会员 grant 和余额在切换前后逐笔对账，无静默覆盖；订单在未来商业化阶段加入验收。
 - **DATA-AC-007**：认领后历史会话没有同意记录则真人账号不可读取。
 - **DATA-AC-008**：关闭 v2 feature flag 后，现有 Web 不受影响且新写入安全停止。
+- **DATA-AC-009**：Access/Refresh Token、邮箱 identity subject 和安装标识在 D1 只保存不可逆摘要，API、日志和安全事件不返回摘要或原值。
+- **DATA-AC-010**：旧 Refresh Token 重放、账号/设备撤权或 session version 变化后，相关旧 Access Token 在下一次请求被拒绝。

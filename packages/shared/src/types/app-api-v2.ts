@@ -1,7 +1,7 @@
 /**
- * App API v2 首条公开发现契约。
+ * App API v2 公共发现与保守账号访问契约。
  *
- * 这里仅包含已冻结的 M0 只读字段；登录、认领、消息、会员和钱包契约继续保持未冻结。
+ * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
 
 export type AppDiscoverySort = 'recommended' | 'popular' | 'latest'
@@ -10,7 +10,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.0.0'
+  contractVersion: '1.1.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -43,8 +43,8 @@ export interface AppBootstrapConfig {
   product: 'meigallery'
   appVersion: '1.0'
   capabilities: {
-    discovery: true
-    auth: false
+    discovery: boolean
+    auth: boolean
     messaging: false
     payments: false
     systemPush: false
@@ -55,6 +55,72 @@ export interface AppBootstrapConfig {
     defaultPageSize: number
     maxPageSize: number
   }
+  auth: {
+    methods: Array<'email'>
+    registrationEnabled: boolean
+    deviceManagementEnabled: boolean
+    accessTokenTtlSeconds: number
+    challenge: { type: 'none' } | { type: 'turnstile'; siteKey: string }
+    documents: null | {
+      termsVersion: string
+      privacyVersion: string
+      platformOperationVersion: string
+      eligibilityVersion: string
+    }
+  }
+}
+
+export interface AppDeviceDescriptor {
+  installationId: string
+  platform: 'android' | 'ios'
+  displayName: string
+  appVersion: string
+}
+
+export interface AppAccountSummary {
+  accountId: string
+  email: string
+  nickname: string | null
+  role: string
+  status: 'active'
+}
+
+export interface AppDeviceSummary {
+  deviceId: string
+  platform: 'android' | 'ios'
+  displayName: string
+  appVersion: string
+  status: 'active' | 'revoked'
+  signedIn: boolean
+  current: boolean
+  firstSeenAt: string
+  lastSeenAt: string
+  revokedAt: string | null
+}
+
+export interface AppAuthTokenPair {
+  tokenType: 'Bearer'
+  accessToken: string
+  refreshToken: string
+  accessExpiresAt: string
+  refreshExpiresAt: string
+}
+
+export interface AppAuthSession {
+  account: AppAccountSummary
+  device: AppDeviceSummary
+  tokens: AppAuthTokenPair
+}
+
+export interface AppMeSummary {
+  account: AppAccountSummary
+  membership: {
+    code: string
+    name: string
+    rank: number
+    expiresAt: string | null
+  }
+  currentDeviceId: string
 }
 
 export interface AppPersonRegion {

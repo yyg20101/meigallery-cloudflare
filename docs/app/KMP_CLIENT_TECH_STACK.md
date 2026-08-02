@@ -231,7 +231,7 @@ desktopMain（普通用户桌面客户端独立立项后再创建）
 首个 M0/P0 公共发现纵向切片已完成 Ktor、serialization、Coil、Android Host Test、Debug APK 与 iOS Kotlin/Native 编译验证。后续仍按业务切片验证：
 
 1. Lifecycle/ViewModel、Navigation 3、Paging、Room 和 DataStore 与当前 Ktor/Coil 基线能同时构建。
-2. Android 真机与 iOS 真机/模拟器完成公开图片、游标分页和错误映射；登录立项后再验证 Token 刷新。
+2. Android 真机与 iOS 真机/模拟器完成公开图片、游标分页和错误映射；Auth-1 服务端账号契约已就绪，下一 Spike 验证 Keystore/Keychain、Token 原子轮换、single-flight 刷新、同意更新和远程撤权。
 3. 受保护媒体立项后验证短期签名图；退出、远程登出和会员撤权后受保护缓存能够清理。
 4. WebSocket 完成连接、断线重连、sequence 补拉、重复事件去重和 HTTP 发送兜底。
 5. Media3 与 AVPlayer 播放同一条签名 HLS，覆盖过期、403、弱网、切后台、旋转/全屏和资源释放。

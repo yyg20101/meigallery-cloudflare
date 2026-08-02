@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-02
 
-状态：整体需求讨论中；M0 公共发现只读契约已冻结，M1 人物供给进入保守开发验证
+状态：整体需求讨论中；M0 公共发现只读契约已冻结，M1 人物供给与 Auth-1 账号访问进入保守开发验证
 
 ## 1. 契约原则
 
@@ -25,13 +25,13 @@ App 版本：1.0
 
 本轮只冻结并实现以下开发联调边界，唯一 HTTP 事实源为 [`contracts/app-api-v2.openapi.yaml`](../../contracts/app-api-v2.openapi.yaml)：
 
-- `GET /api/v2/app/bootstrap`：返回真实可用 capability；未实现的登录、消息、支付和系统推送必须为 `false`。
+- `GET /api/v2/app/bootstrap`：返回真实可用 capability；未启用的登录以及未实现的消息、支付和系统推送必须为 `false`。
 - `GET /api/v2/discovery/feed`：支持 `recommended`、`popular`、`latest` 三种稳定排序、地区筛选和不透明游标。
 - `GET /api/v2/discovery/regions`：只统计当前具有公开资格的人物。
 - `GET /api/v2/person-profiles/:profileId`：返回同一公开资格边界下的基础详情投影。
 - 四个 M0 响应统一返回 `Cache-Control: no-store`，避免资格撤回、授权到期或源图库下线后被中间缓存继续展示；后续只有在完成可撤销缓存设计后才能调整。
 
-该局部冻结不包含账号体系、真人认领、互动、会员、消息、钱包和媒体访问；这些领域仍按开放问题与专业门禁逐项冻结。migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
+账号体系不属于 M0 冻结范围；Auth-1 只以默认关闭的开发基线独立推进。真人认领、互动、会员、消息、钱包和媒体访问仍按开放问题与专业门禁逐项冻结。M0 migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
 
 ### 1.3 M1 人物供给开发边界
 
@@ -67,7 +67,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.0.0"
+    "contractVersion": "1.1.0"
   }
 }
 ```
@@ -127,14 +127,15 @@ Accept-Language: zh-CN
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v2/auth/register` | 创建观看者账号 |
-| POST | `/api/v2/auth/login` | 登录与风险验证 |
-| POST | `/api/v2/auth/refresh` | 刷新会话 |
-| POST | `/api/v2/auth/logout` | 当前设备退出 |
-| GET | `/api/v2/me` | 账号、角色、会员摘要和配置版本 |
+| POST | `/api/v2/auth/email-challenges` | Auth-1 已实现：统一响应的注册邮箱验证码申请 |
+| POST | `/api/v2/auth/register` | Auth-1 已实现：创建观看者账号、同意、设备和 App 会话 |
+| POST | `/api/v2/auth/login` | Auth-1 已实现：邮箱密码登录、风险挑战与当前同意校验 |
+| POST | `/api/v2/auth/refresh` | Auth-1 已实现：旋转 Access/Refresh Token，检测旧 Refresh Token 重放 |
+| POST | `/api/v2/auth/logout` | Auth-1 已实现：撤销当前 App 会话 |
+| GET | `/api/v2/me` | Auth-1 已实现：账号、角色、会员摘要和当前设备 |
 | PATCH | `/api/v2/me` | 修改仅用于账号识别的昵称、头像等允许字段 |
-| GET | `/api/v2/me/devices` | 设备列表 |
-| DELETE | `/api/v2/me/devices/:deviceId` | 远程退出设备 |
+| GET | `/api/v2/me/devices` | Auth-1 已实现：本人设备和登录状态列表 |
+| DELETE | `/api/v2/me/devices/:deviceId` | Auth-1 已实现：幂等远程退出其他设备 |
 | GET/PUT | `/api/v2/me/preferences` | 地区、偏好、推荐和隐私设置 |
 | GET | `/api/v2/me/blocks` | 本人拉黑名单 |
 | POST | `/api/v2/me/data-exports` | 创建数据导出 Workflow |
@@ -145,6 +146,10 @@ Accept-Language: zh-CN
 | DELETE | `/api/v2/me/deletion-requests/:requestId` | 在允许阶段取消注销 |
 
 注册响应不得返回 `personId` 或 `profileId`，除非该账号以后通过独立认领流程绑定真人。
+
+Auth-1 当前是默认关闭的开发基线：`APP_AUTH_ENABLED`、注册开关、四类文档版本和 production Turnstile 必须同时满足，bootstrap 才返回 `auth=true`。本阶段只启用邮箱身份，不写死年龄或地区，不开放手机号/第三方登录。现有 `users` 是唯一账号主体；旧 Web 账号只有在密码校验成功后才生成 App 身份映射，不按邮箱静默合并。
+
+Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D1 只保存 SHA-256 摘要。每次授权校验账号、设备、App session version、状态、有效期和当前文档同意。成功刷新会替换当前 Access/Refresh Token，使旧 Access Token 立即失效；旧 Refresh Token 重放将撤销该会话并写安全事件。客户端必须串行刷新并把两种 Token 仅存入 Keystore/Keychain。
 
 ## 6. 真人发现 API
 

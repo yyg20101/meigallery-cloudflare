@@ -61,6 +61,13 @@ export type Bindings = {
   AD_TIKTOK_QUEUE?: Queue<AdPlatformQueueMessage>
   AD_GOOGLE_QUEUE?: Queue<AdPlatformQueueMessage>
   RELEASE_COMMIT?: string
+  APP_AUTH_ENABLED?: string
+  APP_AUTH_REGISTRATION_ENABLED?: string
+  APP_AUTH_TERMS_VERSION?: string
+  APP_AUTH_PRIVACY_VERSION?: string
+  APP_AUTH_PLATFORM_NOTICE_VERSION?: string
+  APP_AUTH_ELIGIBILITY_VERSION?: string
+  APP_AUTH_TURNSTILE_SITE_KEY?: string
 }
 
 /** 应用级变量 */
@@ -68,6 +75,13 @@ export type Variables = {
   userId: number | null
   userRole: string | null
   appRequestId?: string
+  appAccountId?: number
+  appAccountPublicId?: string
+  appSessionId?: string
+  appDeviceId?: string
+  appAccountEmail?: string
+  appAccountNickname?: string | null
+  appAccountRole?: string
 }
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -139,6 +153,13 @@ app.use('/api/v2/*', async (c, next) => {
 // 登录/注册接口速率限制兜底：每 IP 每分钟 5 次
 app.use('/api/auth/*', rateLimiter({
   name: 'auth',
+  keyBy: 'ip',
+  limit: authRateLimit.requests,
+  windowMs: rateLimitWindowMs(authRateLimit.window),
+}))
+
+app.use('/api/v2/auth/*', rateLimiter({
+  name: 'app-auth',
   keyBy: 'ip',
   limit: authRateLimit.requests,
   windowMs: rateLimitWindowMs(authRateLimit.window),

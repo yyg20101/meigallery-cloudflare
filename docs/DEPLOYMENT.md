@@ -144,6 +144,21 @@ TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT
 TELEGRAM_BOT_TOKEN_OPS_CASE_BOT
 ```
 
+独立 App 账号能力当前默认关闭。只有 G-01/G-03 结论、正式文档版本和客户端安全存储验收完成后，才可在目标环境同时配置：
+
+```text
+APP_AUTH_ENABLED=true
+APP_AUTH_REGISTRATION_ENABLED=true
+APP_AUTH_TERMS_VERSION=<正式条款版本>
+APP_AUTH_PRIVACY_VERSION=<正式隐私版本>
+APP_AUTH_PLATFORM_NOTICE_VERSION=<正式平台运营说明版本>
+APP_AUTH_ELIGIBILITY_VERSION=<正式必要资格说明版本>
+APP_AUTH_TURNSTILE_SITE_KEY=<App 人机验证公开 Site Key>
+TURNSTILE_SECRET_KEY=<对应 Secret>
+```
+
+任一必要值缺失时 bootstrap 必须保持 `auth=false`。当前 `wrangler.toml` 的 production/dev 都显式设置 `APP_AUTH_ENABLED=false` 和 `APP_AUTH_REGISTRATION_ENABLED=false`；不得仅为联调修改 production 值。`0069_app_account_access.sql` 在正式身份数据接入前仍需生产备份、隐私/保留期评审和独立 migration 授权。
+
 仅主密钥轮换窗口配置：
 
 ```text
