@@ -57,26 +57,20 @@ flowchart LR
 
 ### 3.1 KMP/CMP 模块
 
+用户客户端位于同级独立仓库 `meigallery-client`，不加入 `meigallery-cloudflare` 的 pnpm workspace。当前已经落地的物理结构为：
+
 ```text
 apps/
 ├── androidApp
 ├── iosApp
-├── desktopApp（未来独立立项后再创建）
 └── shared
-    ├── core-model
-    ├── core-network
-    ├── core-database
-    ├── core-auth
-    ├── core-design
-    ├── feature-discovery
-    ├── feature-person
-    ├── feature-interaction
-    ├── feature-messaging
-    ├── feature-membership
-    ├── feature-wallet
-    ├── feature-cosmetic
-    └── feature-settings
+    ├── core
+    ├── domain
+    ├── feature
+    └── app
 ```
+
+`core-*`、`domain-*` 和 `feature-*` 仍是目标逻辑边界；只有具备独立编译、测试、所有权或复用收益时才继续拆成物理 Gradle project。`desktopApp` 仅在普通用户桌面客户端独立立项后创建。
 
 - `commonMain`：领域模型、用例、状态机、网络契约、本地缓存、共享 ViewModel 和大部分 Compose UI。
 - `androidMain/iosMain`：App 1.0 深链、安全存储和系统适配；商店购买、系统推送、媒体选择和身份核验在未来 Feature 立项后加入。`desktopMain` 只在桌面客户端立项后创建。
@@ -86,6 +80,8 @@ apps/
 ### 3.2 客户端库基线与平台边界
 
 客户端稳定基线采用：Compose Multiplatform、Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite、DataStore Preferences、Ktor Client、kotlinx.serialization 和 Coil 3。完整版本矩阵、候选库、缓存规则和技术 Spike 见 [KMP 客户端技术栈与库选型](./KMP_CLIENT_TECH_STACK.md)。
+
+最小脚手架当前锁定 Kotlin 2.4.10、Compose Multiplatform 1.11.1、AGP 9.0.1、Gradle 9.6.1、JDK 21，Android `minSdk = 26`、`compileSdk/targetSdk = 36`。首轮只引入 Compose Runtime、Foundation、UI 和 Activity Compose；其余功能库按纵向切片逐批验证后加入。
 
 - 网络：公共层使用 Ktor Client；Android 使用 OkHttp 引擎，iOS 使用 Darwin 引擎。
 - 图片：公共层使用 Coil 3 + Ktor 3 网络模块；公开媒体和受保护媒体使用不同缓存策略。

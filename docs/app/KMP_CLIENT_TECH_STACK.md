@@ -2,15 +2,15 @@
 
 App 版本：1.0
 
-日期：2026-07-20
+日期：2026-08-02
 
-状态：需求讨论中；作为客户端脚手架和技术 Spike 的依赖基线
+状态：最小构建矩阵已落地；功能库组合继续按技术 Spike 冻结
 
 ## 1. 文档目的
 
 本文面向客户端架构、Android、iOS、后端和测试人员，说明独立 App 在 Kotlin Multiplatform（KMP）与 Compose Multiplatform（CMP）下采用哪些公共库、哪些能力必须保留平台实现，以及正式编码前需要验证的兼容性和安全边界。
 
-本文是选型参考，不是已经生成的 Gradle 依赖锁。表中版本表示 2026-07-20 调研时可采用的稳定基线；创建客户端工程时仍需统一锁定 Kotlin、CMP、Gradle、Android Gradle Plugin、KSP、JDK、Xcode 和最低操作系统版本，并通过 Android/iOS 构建验证后落入 Version Catalog。
+本文同时记录选型方向和已落地的最小依赖锁。Kotlin、CMP、Gradle、Android Gradle Plugin、JDK 与 Android SDK 已进入 `meigallery-client/gradle/libs.versions.toml`；KSP、Xcode 最终版本、iOS 最低系统和功能库组合仍需在对应 Spike 中关闭。
 
 App 1.0 不接入支付和系统推送。相关能力不进入首轮依赖和技术 Spike，未来 Feature 立项时再增加平台适配实现并正常升级 App。
 
@@ -31,11 +31,26 @@ App 1.0 不接入支付和系统推送。相关能力不进入首轮依赖和技
 
 Google 将 Android、iOS 和 JVM 列为 Jetpack KMP 的 Tier 1 平台：包含完整 CI 测试，并跟踪源码和二进制兼容性。Windows、JavaScript 和 Wasm 当前保障级别较低，因此 App 1.0 只以 Android/iOS 为发布目标；普通用户 Desktop 未立项，未来若启动再单独锁定平台矩阵。参考：[Google Jetpack KMP 支持矩阵](https://developer.android.com/kotlin/multiplatform)。
 
+### 2.1 已落地的最小构建矩阵
+
+| 项目 | 锁定值 | 验证结论 |
+|---|---:|---|
+| Kotlin / KGP | 2.4.10 | Android 与 iOS Kotlin/Native 编译通过 |
+| Compose Multiplatform | 1.11.1 | Runtime、Foundation、UI 跨端编译通过 |
+| Android Gradle Plugin | 9.0.1 | Android Application 与 KMP Android Library 构建通过 |
+| Gradle Wrapper | 9.6.1 | 当前 Gradle 9.x 最新正式版，使用官方 SHA-256 校验 |
+| JDK | 21.0.10 | 使用 Android Studio 2026.1 内置 JBR |
+| Android SDK | min 26 / compile 36 / target 36 | Host Test 与 Debug APK 通过 |
+| iOS | deployment target 16.0（候选） | Simulator Kotlin/Native 编译通过；Framework 链接等待完整 Xcode/iOS SDK |
+| KSP | 未引入 | 在 Room 等需要代码生成的 Spike 中单独锁定 |
+
+Gradle 9.6.1 完整告警模式下，AGP 9.0.1 内部会报告面向 Gradle 10 弃用的 Project 依赖表示法；告警不是本工程脚本产生，当前不阻断 Gradle 9.6.1 构建。后续升级 Android Studio/AGP 时必须重新验证并消除。版本依据：[Gradle 9.6.1 正式版](https://docs.gradle.org/9.6.1/release-notes.html)、[AGP 与 Gradle 兼容表](https://developer.android.com/build/releases/about-agp)。
+
 ## 3. Jetpack KMP 稳定基线
 
 | 分类 | 库 | 调研稳定版本 | App 用途 |
 |------|----|--------------|----------|
-| UI | Compose | 1.11.4 | 共享页面、组件、动画和设计系统 |
+| UI | Jetpack Compose（AndroidX） | 1.11.4 | 共享页面所用 AndroidX 组件版本线；CMP Gradle 插件版本见 2.1 |
 | 生命周期 | Lifecycle | 2.11.0 | 生命周期感知状态收集 |
 | 状态 | ViewModel / ViewModel Compose | 2.11.0 | 共享页面状态、用例编排和状态恢复 |
 | 导航 | Navigation | 2.9.8 | Navigation 3 不满足场景时的稳定回退 |
@@ -207,7 +222,9 @@ desktopMain（普通用户桌面客户端独立立项后再创建）
 
 ## 8. 实现前技术 Spike
 
-正式创建功能模块前，以一个最小 Android/iOS 工程验证：
+最小脚手架阶段已经完成以下验证：Gradle 工程模型可解析，四个共享模块 Android Host Test 通过，Android Debug APK 生成，四个共享模块的 iOS Simulator Kotlin/Native 编译通过。iOS Framework 链接已确认只被本机缺少完整 Xcode/iOS SDK 阻塞。
+
+正式创建业务功能模块前，以首个 P0 纵向切片继续验证：
 
 1. Compose、Lifecycle/ViewModel、Navigation 3、Paging、Room、DataStore、Ktor 和 Coil 的统一版本能同时构建。
 2. Android 真机与 iOS 真机/模拟器完成登录、Token 刷新、游标分页和错误映射。
@@ -217,7 +234,7 @@ desktopMain（普通用户桌面客户端独立立项后再创建）
 6. Room migration schema、KSP 生成、iOS 链接和并发访问通过测试。
 7. Release 构建不包含网络明文日志、测试证书、固定 Token 或可长期使用的媒体 URL。
 
-Spike 通过后才能把调研版本转为工程依赖锁；未通过时记录最小复现、替代库、平台差异和是否影响产品范围。
+只有对应功能 Spike 通过，Lifecycle、Navigation 3、Paging、Room、DataStore、Ktor、Coil、Media3、KSP 等调研版本才能转为工程依赖锁；未通过时记录最小复现、替代库、平台差异和是否影响产品范围。
 
 ## 9. 验收标准
 

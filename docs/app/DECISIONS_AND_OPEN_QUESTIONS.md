@@ -2,7 +2,7 @@
 
 App 版本：1.0
 
-日期：2026-07-28
+日期：2026-08-02
 
 状态：需求讨论中
 
@@ -35,7 +35,7 @@ App 版本：1.0
 | D-017 | 支持金币、礼物、头像框、主页皮肤和聊天皮肤 | 用户确认商业化方向 |
 | D-018 | 金币不可提现或用户间转账；礼物不向真人形成可提现收益 | 产品边界 |
 | D-019 | 管理员可加币、扣币和冲正，但只能追加账本并提供原因、审计和高风险复核 | 用户确认 + 财务控制 |
-| D-020 | 当前阶段只编写文档，不创建客户端工程、API 或数据库变更 | 用户明确要求 |
+| D-020 | 当前已授权创建独立 KMP 最小技术脚手架并执行构建验证；App 业务功能、App 专用 API、schema/migration 和生产发布仍受需求与专业门禁约束 | 用户确认开始项目开发并批准建议方案 |
 | D-021 | KMP 客户端公共基线采用稳定版 Jetpack Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite、DataStore Preferences、Ktor Client、kotlinx.serialization 和 Coil 3 | 技术调研；详见 KMP 客户端技术栈文档 |
 | D-022 | 视频不依赖社区统一播放器作为核心：共享播放契约和控制 UI，Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit | 技术调研；与 Cloudflare Stream HLS 兼容 |
 | D-023 | Android App 1.0 使用 `minSdk = 26`，不支持、不测试 API 25 及以下；可以基于安全、媒体或商店要求继续提高，但不得静默降低 | 用户确认不做低版本兼容；技术默认值 |
@@ -44,6 +44,7 @@ App 版本：1.0
 | D-026 | App 1.0 不接入商店支付、金币充值和 APNs/FCM 系统推送；核心流程不得依赖这些能力 | 用户明确“暂时不考虑支付、推送” |
 | D-027 | App 1.0 不开放礼物和装扮交易，但保留长期 PRD 与领域边界；未来启用原生能力允许正常升级 App | 用户范围确认 + 当前发布范围基线 |
 | D-028 | 普通用户桌面客户端不属于已承诺范围；桌面运营由 Nuxt 管理后台承担 | 用户说明桌面端很后且可能只做管理后台 |
+| D-029 | 客户端使用同级独立仓库 `meigallery-client`；本仓库继续承载 Web、管理后台、Hono API、Cloudflare 数据与迁移，跨仓只共享版本化 OpenAPI/JSON Schema/事件契约 | 工程边界评估与用户批准 |
 
 ### 2.1 本轮建议基线（尚未视为客户确认）
 
@@ -98,7 +99,7 @@ App 版本：1.0
 
 | ID | 问题 | 推荐默认值 | 影响 | 最晚关闭点 | 责任角色 |
 |----|------|------------|------|------------|----------|
-| OQ-026 | Kotlin、Compose、Gradle、AGP、KSP、JDK 和 Xcode 的可构建版本矩阵及最终依赖锁是什么？ | 库组合已按 KMP 技术栈文档确定；创建最小 Android/iOS 工程验证后写入 Version Catalog | 构建和升级 | 客户端脚手架前 | 客户端架构负责人 |
+| OQ-026 | Kotlin、Compose、Gradle、AGP、KSP、JDK 和 Xcode 的可构建版本矩阵及最终依赖锁是什么？ | 最小矩阵已锁定并验证 Kotlin 2.4.10、CMP 1.11.1、Gradle 9.6.1、AGP 9.0.1、JDK 21；Android Host Test/APK 与 iOS Kotlin/Native 编译通过。KSP 尚未引入，完整 Xcode Framework 链接和后续功能库组合仍待 Spike | 构建和升级 | 首个业务纵向切片前 | 客户端架构负责人 |
 | OQ-027 | iOS 最低版本是什么，Android 是否需要从 API 26 继续提高？ | Android 已确定 `minSdk = 26`；iOS 和进一步提高以设备分布、安全更新与商店要求决定 | 测试、SDK 和包体 | 客户端实现前 | 产品 + 客户端 |
 | OQ-028 | 消息实时层的容量和恢复基线是什么？ | Durable Objects + D1 投影；先验证休眠、重连、导出和灾备 | 消息可靠性和成本 | App 1.0 平台话题技术设计前 | 后端 + SRE |
 | OQ-029 | 未来是否需要普通用户 Windows/macOS 客户端？ | 当前不立项；真实用户需求、维护成本和分发能力达到阈值后再决定 | 可选桌面路线和分发 | 未来桌面立项前 | 产品 + 客户端 + 运营 |

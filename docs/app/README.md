@@ -1,6 +1,6 @@
 # 独立 App 与共享业务平台文档总览
 
-更新时间：2026-07-30
+更新时间：2026-08-02
 
 App 版本：1.0
 
@@ -52,7 +52,7 @@ App 版本：1.0
 - 用户客户端采用 KMP + Compose Multiplatform，App 1.0 只发布 Android/iOS；普通用户 Windows/macOS 客户端未承诺立项，桌面运营使用 Nuxt 管理后台。
 - Nuxt Web 和管理后台继续保留；Kotlin 与 TypeScript 通过 OpenAPI、JSON Schema 和实时事件 schema 共享契约。
 - 权限以数值 `rank` 和 entitlement 判断，不硬编码会员名称。
-- 当前阶段只产出文档，不创建 KMP 工程、不新增 API 或数据库 migration。
+- KMP 最小技术脚手架已在同级独立仓库 `meigallery-client` 创建并通过 Android 构建、共享模块测试和 iOS Kotlin/Native 编译；当前仍不新增 App API、数据库 migration 或业务功能实现。
 
 ## 3. 六卷文档体系
 
