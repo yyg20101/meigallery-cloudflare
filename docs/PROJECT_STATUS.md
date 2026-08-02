@@ -26,7 +26,9 @@
 - 已在同级独立仓库 `meigallery-client` 创建 KMP + Compose Multiplatform 最小技术脚手架；客户端与本仓库继续通过版本化契约协作，不放入当前 pnpm monorepo。
 - 客户端当前锁定 Kotlin 2.4.10、Compose Multiplatform 1.11.1、AGP 9.0.1、Gradle 9.6.1、JDK 21，Android `minSdk = 26`、`compileSdk/targetSdk = 36`。
 - 四个共享模块的 Android Host Test、Android Debug APK 和 iOS Simulator Kotlin/Native 编译均已通过；iOS Framework 链接因本机未安装完整 Xcode/iOS SDK 暂未完成。
-- 当前只授权技术脚手架与构建验证，尚未创建 App 专用 API、数据库 migration 或业务功能实现。
+- 已进入 M0 首条业务纵向切片：`contracts/app-api-v2.openapi.yaml` 局部冻结 bootstrap、发现 feed、地区目录和公开人物基础详情四个只读路径；完整 App 契约仍处于逐域冻结中。
+- 已新增 `0067_app_public_profile_projection.sql` 空读投影和 App API v2 查询实现，强制 `verified + published + authorization active/unexpired + visible + source gallery published`；migration 不含 seed、回填或 legacy 自动映射，尚未执行生产 migration 或部署生产路由。
+- KMP 客户端 M0 公共发现纵向切片已完成：capability、地区目录、推荐/热门/最新、地区筛选、游标分页、公开人物卡和基础详情均已接通；点击卡片会按稳定公开 ID 重新请求详情并复核最新公开资格，不直接信任列表快照。Android 模拟器已回归筛选、排序、详情错误/重试/成功和长列表，未发现崩溃、文字溢出或底部导航遮挡。登录、正式应用 ID、管理员投影写流程、互动、会员、消息、钱包和媒体访问继续受各自门禁约束。
 - 已完成移动端 49 页和管理后台 43 页的页面级产品设计。
 - Figma 最终文件已完成移动端 49 页/186 状态、管理后台 43 页/163 状态，共 92 个 Page ID/349 个状态；`30｜Prototype Flows` 覆盖 92 个流程预览。
 - Figma 页面内与流程动作合计 2,284 个，缺失目标为 0；移动端关键点击热区不足为 0；正式页未绑定文字样式、原始填充/描边、缺失字体和文字溢出均为 0。
@@ -36,7 +38,7 @@
 - 已同步 `docs/app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`，作为研发、测试与验收的 App 1.0 唯一开发需求基线；文档覆盖当前范围、未来兼容方向、非功能要求、技术基线、92 页逐页规格、349 个 Figma 状态、169 个客户文档图片映射、需求追踪、DoR 与 DoD。
 - 已生成 `docs/app/APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md`，逐页覆盖角色、前置、入口、结构、交互、业务规则、数据权限、状态和验收。
 - 客户产品需求确认书和逐页交互设计确认册已按 Figma 最终口径重新生成；每个 Page ID 的功能说明、需求追踪和原型图保持同页映射。产品需求确认书内嵌 199 张图，逐页交互设计确认册内嵌 169 张图。
-- 已新增需求冻结准备清单与 15 页客户短版确认单，集中列出 8 项客户决策和 7 组专业门禁，并明确“功能交互冻结”与“像素级视觉冻结”必须分别记录；当前仍是冻结准备中，除最小技术脚手架外尚未授权业务功能开发。
+- 已新增需求冻结准备清单与 15 页客户短版确认单，集中列出 8 项客户决策和 7 组专业门禁，并明确“功能交互冻结”与“像素级视觉冻结”必须分别记录；整体仍是冻结准备中，当前仅授权不依赖未决参数的 M0 公共发现开发验证，不等于授权生产发布。
 - Figma Phase 0 审计、Phase 1 Design System、Phase 2 文件结构、最终页面/流程/QA 的完成记录分别见 `FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md`、`FIGMA_DESIGN_SYSTEM_PHASE1.md` 和 `FIGMA_FILE_STRUCTURE_PHASE2.md`。
 - 最终 MD、两份完整客户 DOCX 与冻结确认资料已通过 92 个 Page ID、349 个 Figma 最终状态、2,284 个有效交互动作、169 个客户文档原型映射、41 个 App 1.0 产品需求编号、92 个逐页追踪键和冻结基线 SHA-256 的一致性校验。
 - 三份客户 DOCX 已通过压缩包完整性、图片替代文本、表格表头、无障碍审计和中文字体环境下的全页渲染目检；LibreOffice 基准渲染分别为 197 页、165 页和 15 页，未发现异常空白页、图片缺失、内容错位、溢出或裁切。

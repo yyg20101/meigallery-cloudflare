@@ -2,15 +2,27 @@
 
 App 版本：1.0
 
-日期：2026-07-20
+日期：2026-08-02
 
-状态：需求讨论中；实现启动前执行计划
+状态：整体需求讨论中；M0 公共发现只读切片已完成局部冻结
 
 ## 1. 文档目的
 
-本文定义从需求讨论进入实现前，如何冻结 HTTP API、实时事件、Kotlin/TypeScript DTO、D1 表、状态机、错误码和迁移契约。它不表示当前 schema 已冻结，也不授权创建路由、生成代码或执行 migration。
+本文定义从需求讨论进入实现前，如何冻结 HTTP API、实时事件、Kotlin/TypeScript DTO、D1 表、状态机、错误码和迁移契约。除下述 M0 局部冻结记录外，它不表示完整 schema 已冻结，也不授权部署生产或执行生产 migration。
 
 冻结的目标不是让所有字段永远不变，而是建立事实源、兼容规则、评审顺序和可验证产物，使 Android、iOS、Nuxt、Hono、D1、DO 和迁移任务不会各自解释产品规则。
+
+### 1.1 M0 局部冻结范围
+
+2026-08-02 经项目负责人继续开发确认，允许先实现不依赖未决身份与合规参数的公共发现读链路：
+
+- OpenAPI：`contracts/app-api-v2.openapi.yaml`，契约版本 `1.0.0`，API 主版本 `2`。
+- 路由：bootstrap、发现 feed、地区目录和公开人物基础详情共四个 GET 路径。
+- D1：`0067_app_public_profile_projection.sql` 仅创建空的可重建公开投影及四个真实查询索引。
+- 安全边界：查询强制验证认证、发布、授权、有效期、可见性和来源图库发布状态；migration 没有 seed、回填或 legacy 自动映射。
+- 客户端：手写 transport model 必须接受未知字段，但未知 enum/capability 安全降级；不得把 transport DTO 直接作为 Domain model。
+
+登录方式、正式应用 ID、真人/授权证据权威表、管理员投影写入、互动、会员、消息、钱包、媒体访问及生产启用仍未冻结。本次实现的投影表是可删除重建的读模型，不替代未来的 Person、Authorization、Verification 和审计权威表。
 
 ## 2. 契约事实源
 

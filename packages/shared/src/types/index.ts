@@ -339,3 +339,16 @@ export type InviteCodeStatusResponse =
     }
 
 export type { ContactMethod, ContactMethodAdmin } from './contact'
+export type {
+  AppApiError,
+  AppApiErrorResponse,
+  AppApiListMeta,
+  AppApiListSuccess,
+  AppApiMeta,
+  AppApiSuccess,
+  AppBootstrapConfig,
+  AppDiscoveryRegion,
+  AppDiscoverySort,
+  AppPersonProfile,
+  AppPersonRegion,
+} from './app-api-v2'

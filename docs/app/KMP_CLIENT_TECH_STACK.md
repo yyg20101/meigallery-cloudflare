@@ -4,13 +4,13 @@ App 版本：1.0
 
 日期：2026-08-02
 
-状态：最小构建矩阵已落地；功能库组合继续按技术 Spike 冻结
+状态：最小构建矩阵与 M0 公共发现网络/图片 Spike 已落地；其余功能库继续逐批冻结
 
 ## 1. 文档目的
 
 本文面向客户端架构、Android、iOS、后端和测试人员，说明独立 App 在 Kotlin Multiplatform（KMP）与 Compose Multiplatform（CMP）下采用哪些公共库、哪些能力必须保留平台实现，以及正式编码前需要验证的兼容性和安全边界。
 
-本文同时记录选型方向和已落地的最小依赖锁。Kotlin、CMP、Gradle、Android Gradle Plugin、JDK 与 Android SDK 已进入 `meigallery-client/gradle/libs.versions.toml`；KSP、Xcode 最终版本、iOS 最低系统和功能库组合仍需在对应 Spike 中关闭。
+本文同时记录选型方向和已落地的依赖锁。Kotlin、CMP、Gradle、Android Gradle Plugin、JDK、Android SDK、Ktor、kotlinx.serialization、kotlinx.coroutines 和 Coil 已进入 `meigallery-client/gradle/libs.versions.toml`；KSP、Xcode 最终版本、iOS 最低系统和其余功能库组合仍需在对应 Spike 中关闭。
 
 App 1.0 不接入支付和系统推送。相关能力不进入首轮依赖和技术 Spike，未来 Feature 立项时再增加平台适配实现并正常升级 App。
 
@@ -42,6 +42,10 @@ Google 将 Android、iOS 和 JVM 列为 Jetpack KMP 的 Tier 1 平台：包含�
 | JDK | 21.0.10 | 使用 Android Studio 2026.1 内置 JBR |
 | Android SDK | min 26 / compile 36 / target 36 | Host Test 与 Debug APK 通过 |
 | iOS | deployment target 16.0（候选） | Simulator Kotlin/Native 编译通过；Framework 链接等待完整 Xcode/iOS SDK |
+| Ktor Client | 3.5.1 | OkHttp/Darwin、JSON、超时、错误映射和 MockEngine 测试通过 |
+| kotlinx.serialization | 1.11.0 | OpenAPI 手写 transport model 与未知字段兼容测试通过 |
+| kotlinx.coroutines | 1.11.0 | M0 页面加载与游标分页状态、公共异步测试通过 |
+| Coil | 3.5.0 | Android/iOS 公共封面组件编译通过；公开网络图真机 QA 待可用数据 |
 | KSP | 未引入 | 在 Room 等需要代码生成的 Spike 中单独锁定 |
 
 Gradle 9.6.1 完整告警模式下，AGP 9.0.1 内部会报告面向 Gradle 10 弃用的 Project 依赖表示法；告警不是本工程脚本产生，当前不阻断 Gradle 9.6.1 构建。后续升级 Android Studio/AGP 时必须重新验证并消除。版本依据：[Gradle 9.6.1 正式版](https://docs.gradle.org/9.6.1/release-notes.html)、[AGP 与 Gradle 兼容表](https://developer.android.com/build/releases/about-agp)。
@@ -224,17 +228,17 @@ desktopMain（普通用户桌面客户端独立立项后再创建）
 
 最小脚手架阶段已经完成以下验证：Gradle 工程模型可解析，四个共享模块 Android Host Test 通过，Android Debug APK 生成，四个共享模块的 iOS Simulator Kotlin/Native 编译通过。iOS Framework 链接已确认只被本机缺少完整 Xcode/iOS SDK 阻塞。
 
-正式创建业务功能模块前，以首个 P0 纵向切片继续验证：
+首个 M0/P0 公共发现纵向切片已完成 Ktor、serialization、Coil、Android Host Test、Debug APK 与 iOS Kotlin/Native 编译验证。后续仍按业务切片验证：
 
-1. Compose、Lifecycle/ViewModel、Navigation 3、Paging、Room、DataStore、Ktor 和 Coil 的统一版本能同时构建。
-2. Android 真机与 iOS 真机/模拟器完成登录、Token 刷新、游标分页和错误映射。
-3. Coil 加载公开图和短期签名图；退出、远程登出和会员撤权后受保护缓存能够清理。
+1. Lifecycle/ViewModel、Navigation 3、Paging、Room 和 DataStore 与当前 Ktor/Coil 基线能同时构建。
+2. Android 真机与 iOS 真机/模拟器完成公开图片、游标分页和错误映射；登录立项后再验证 Token 刷新。
+3. 受保护媒体立项后验证短期签名图；退出、远程登出和会员撤权后受保护缓存能够清理。
 4. WebSocket 完成连接、断线重连、sequence 补拉、重复事件去重和 HTTP 发送兜底。
 5. Media3 与 AVPlayer 播放同一条签名 HLS，覆盖过期、403、弱网、切后台、旋转/全屏和资源释放。
 6. Room migration schema、KSP 生成、iOS 链接和并发访问通过测试。
 7. Release 构建不包含网络明文日志、测试证书、固定 Token 或可长期使用的媒体 URL。
 
-只有对应功能 Spike 通过，Lifecycle、Navigation 3、Paging、Room、DataStore、Ktor、Coil、Media3、KSP 等调研版本才能转为工程依赖锁；未通过时记录最小复现、替代库、平台差异和是否影响产品范围。
+只有对应功能 Spike 通过，Lifecycle、Navigation 3、Paging、Room、DataStore、Media3、KSP 等调研版本才能转为工程依赖锁；Ktor、serialization、coroutines 和 Coil 已因 M0 通过转为依赖锁。未通过时记录最小复现、替代库、平台差异和是否影响产品范围。
 
 ## 9. 验收标准
 

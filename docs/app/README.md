@@ -52,7 +52,7 @@ App 版本：1.0
 - 用户客户端采用 KMP + Compose Multiplatform，App 1.0 只发布 Android/iOS；普通用户 Windows/macOS 客户端未承诺立项，桌面运营使用 Nuxt 管理后台。
 - Nuxt Web 和管理后台继续保留；Kotlin 与 TypeScript 通过 OpenAPI、JSON Schema 和实时事件 schema 共享契约。
 - 权限以数值 `rank` 和 entitlement 判断，不硬编码会员名称。
-- KMP 最小技术脚手架已在同级独立仓库 `meigallery-client` 创建并通过 Android 构建、共享模块测试和 iOS Kotlin/Native 编译；当前仍不新增 App API、数据库 migration 或业务功能实现。
+- KMP 最小技术脚手架已在同级独立仓库 `meigallery-client` 创建并通过 Android 构建、共享模块测试和 iOS Kotlin/Native 编译；M0 公共发现纵向切片已获开发验证授权，App API v2 四个只读路径、空公开投影 migration 与客户端发现链路进入实现，仍不代表允许生产迁移或发布。
 
 ## 3. 六卷文档体系
 

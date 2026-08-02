@@ -35,7 +35,7 @@ App 版本：1.0
 | D-017 | 支持金币、礼物、头像框、主页皮肤和聊天皮肤 | 用户确认商业化方向 |
 | D-018 | 金币不可提现或用户间转账；礼物不向真人形成可提现收益 | 产品边界 |
 | D-019 | 管理员可加币、扣币和冲正，但只能追加账本并提供原因、审计和高风险复核 | 用户确认 + 财务控制 |
-| D-020 | 当前已授权创建独立 KMP 最小技术脚手架并执行构建验证；App 业务功能、App 专用 API、schema/migration 和生产发布仍受需求与专业门禁约束 | 用户确认开始项目开发并批准建议方案 |
+| D-020 | 已授权创建独立 KMP 技术脚手架，并继续实现 M0 公共发现开发切片；只允许空公开投影、只读 App API 和客户端联调，不自动迁移现有图库、不启用未冻结 capability、不执行生产迁移或发布 | 用户确认开始项目开发、批准建议方案并要求继续下一阶段 |
 | D-021 | KMP 客户端公共基线采用稳定版 Jetpack Lifecycle/ViewModel、Navigation 3、Paging、Room/SQLite、DataStore Preferences、Ktor Client、kotlinx.serialization 和 Coil 3 | 技术调研；详见 KMP 客户端技术栈文档 |
 | D-022 | 视频不依赖社区统一播放器作为核心：共享播放契约和控制 UI，Android 使用 Media3 ExoPlayer，iOS 使用 AVPlayer/AVKit | 技术调研；与 Cloudflare Stream HLS 兼容 |
 | D-023 | Android App 1.0 使用 `minSdk = 26`，不支持、不测试 API 25 及以下；可以基于安全、媒体或商店要求继续提高，但不得静默降低 | 用户确认不做低版本兼容；技术默认值 |

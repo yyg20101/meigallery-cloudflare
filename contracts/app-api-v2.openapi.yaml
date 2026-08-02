@@ -1,0 +1,396 @@
+openapi: 3.1.0
+info:
+  title: MeiGallery App API v2
+  version: 1.0.0
+  description: >-
+    App 1.0 的 M0 公共发现只读契约。此文件只冻结 bootstrap、发现列表、地区目录和
+    公开人物详情；登录、认领、消息、会员、金币和媒体访问尚未纳入本次冻结。
+servers:
+  - url: https://{host}
+    variables:
+      host:
+        default: api.616618.xyz
+  - url: http://127.0.0.1:8787
+tags:
+  - name: Bootstrap
+  - name: Discovery
+  - name: PersonProfile
+paths:
+  /api/v2/app/bootstrap:
+    get:
+      tags: [Bootstrap]
+      operationId: getAppBootstrap
+      summary: 获取 App 能力与发现页配置
+      responses:
+        '200':
+          description: 当前客户端可用能力
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Contract-Version:
+              $ref: '#/components/headers/ContractVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v2/discovery/feed:
+    get:
+      tags: [Discovery]
+      operationId: listDiscoveryFeed
+      summary: 获取公开人物发现列表
+      description: >-
+        只返回认证状态为 verified、发布状态为 published、授权状态为 active、可见状态为
+        visible、授权未过期且来源图库仍为 published 的公开投影。现有图库不会自动进入此列表。
+      parameters:
+        - name: sort
+          in: query
+          schema:
+            $ref: '#/components/schemas/DiscoverySort'
+          description: 默认 recommended。
+        - name: region
+          in: query
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]{2,32}$'
+          description: 由地区目录返回的稳定 code。
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 40
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1024
+          description: 与当前排序、地区和规则版本绑定的不透明游标。
+      responses:
+        '200':
+          description: 公开人物列表
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Contract-Version:
+              $ref: '#/components/headers/ContractVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v2/discovery/regions:
+    get:
+      tags: [Discovery]
+      operationId: listDiscoveryRegions
+      summary: 获取当前存在公开人物的地区目录
+      responses:
+        '200':
+          description: 地区目录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegionListResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v2/person-profiles/{profileId}:
+    get:
+      tags: [PersonProfile]
+      operationId: getPublicPersonProfile
+      summary: 获取公开人物详情基础投影
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+      responses:
+        '200':
+          description: 公开人物详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  headers:
+    RequestId:
+      description: 服务端生成的请求追踪 ID。
+      schema:
+        type: string
+    ContractVersion:
+      description: 当前响应契约版本。
+      schema:
+        type: string
+        const: 1.0.0
+  responses:
+    BadRequest:
+      description: 查询参数或游标无效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 资源不存在或当前不可见
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: 服务暂时不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    DiscoverySort:
+      type: string
+      enum: [recommended, popular, latest]
+    Meta:
+      type: object
+      additionalProperties: false
+      required: [requestId, serverTime, apiVersion, contractVersion]
+      properties:
+        requestId:
+          type: string
+        serverTime:
+          type: string
+          format: date-time
+        apiVersion:
+          type: string
+          const: '2'
+        contractVersion:
+          type: string
+          const: 1.0.0
+    ListMeta:
+      allOf:
+        - $ref: '#/components/schemas/Meta'
+        - type: object
+          required: [nextCursor, hasMore]
+          properties:
+            nextCursor:
+              type: [string, 'null']
+            hasMore:
+              type: boolean
+      unevaluatedProperties: false
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        retryable:
+          type: boolean
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error, meta]
+      properties:
+        error:
+          $ref: '#/components/schemas/Error'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    Bootstrap:
+      type: object
+      additionalProperties: false
+      required: [product, appVersion, capabilities, discovery]
+      properties:
+        product:
+          type: string
+          const: meigallery
+        appVersion:
+          type: string
+          const: '1.0'
+        capabilities:
+          type: object
+          additionalProperties: false
+          required: [discovery, auth, messaging, payments, systemPush]
+          properties:
+            discovery:
+              type: boolean
+              const: true
+            auth:
+              type: boolean
+              const: false
+            messaging:
+              type: boolean
+              const: false
+            payments:
+              type: boolean
+              const: false
+            systemPush:
+              type: boolean
+              const: false
+        discovery:
+          type: object
+          additionalProperties: false
+          required: [defaultSort, allowedSorts, defaultPageSize, maxPageSize]
+          properties:
+            defaultSort:
+              $ref: '#/components/schemas/DiscoverySort'
+            allowedSorts:
+              type: array
+              items:
+                $ref: '#/components/schemas/DiscoverySort'
+            defaultPageSize:
+              type: integer
+              const: 20
+            maxPageSize:
+              type: integer
+              const: 40
+    BootstrapResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Bootstrap'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    Region:
+      type: object
+      additionalProperties: false
+      required: [code, label, precision]
+      properties:
+        code:
+          type: string
+        label:
+          type: string
+        precision:
+          type: string
+          enum: [city, province, country, broad]
+    Verification:
+      type: object
+      additionalProperties: false
+      required: [status, label]
+      properties:
+        status:
+          type: string
+          const: verified
+        label:
+          type: string
+    Operation:
+      type: object
+      additionalProperties: false
+      required: [mode, label]
+      properties:
+        mode:
+          type: string
+          enum: [platform_managed, self_managed]
+        label:
+          type: string
+    Recommendation:
+      type: object
+      additionalProperties: false
+      required: [mode, reasonCode, ruleVersion]
+      properties:
+        mode:
+          type: string
+          const: rule_based
+        reasonCode:
+          type: string
+        ruleVersion:
+          type: string
+    PersonProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - profileId
+        - personId
+        - displayName
+        - summary
+        - coverUrl
+        - verification
+        - operation
+        - region
+        - tags
+        - recommendation
+        - publishedAt
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_'
+        personId:
+          type: string
+          pattern: '^per_'
+        displayName:
+          type: string
+        summary:
+          type: [string, 'null']
+        coverUrl:
+          type: [string, 'null']
+          format: uri
+        verification:
+          $ref: '#/components/schemas/Verification'
+        operation:
+          $ref: '#/components/schemas/Operation'
+        region:
+          oneOf:
+            - $ref: '#/components/schemas/Region'
+            - type: 'null'
+        tags:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+        recommendation:
+          $ref: '#/components/schemas/Recommendation'
+        publishedAt:
+          type: string
+          format: date-time
+    ProfileResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/PersonProfile'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ProfileListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonProfile'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    DiscoveryRegion:
+      type: object
+      additionalProperties: false
+      required: [code, label, profileCount]
+      properties:
+        code:
+          type: string
+        label:
+          type: string
+        profileCount:
+          type: integer
+          minimum: 1
+    RegionListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiscoveryRegion'
+        meta:
+          $ref: '#/components/schemas/Meta'

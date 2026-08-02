@@ -17,6 +17,7 @@ import { analyticsRoutes } from './routes/analytics'
 import { conversionRoutes } from './routes/conversions'
 import { adAttributionRoutes } from './routes/ad-attribution'
 import { inviteRoutes } from './routes/invites'
+import { appV2Routes } from './routes/app-v2'
 import { PUBLIC_SETTING_KEYS } from './utils/site-settings'
 import { sanitizePublicSiteSetting, sanitizePublicSiteSettings } from './utils/public-site-settings'
 import { HOME_AD_PLACEMENT, type HomeAdRow, serializePublicHomeAd } from './utils/home-ads'
@@ -25,6 +26,7 @@ import { healthRoutes } from './routes/health'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/rate-limit'
 import { errorJson } from './utils/api-error'
+import { appApiError } from './utils/app-api-v2'
 import { parseStoredSettingValue } from './utils/stored-setting-value'
 import {
   aggregateAnalyticsDaily,
@@ -65,6 +67,7 @@ export type Bindings = {
 export type Variables = {
   userId: number | null
   userRole: string | null
+  appRequestId?: string
 }
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -94,7 +97,19 @@ app.use('*', cors({
     return allowed.includes(origin) ? origin : ''
   },
   credentials: true,
-  allowHeaders: ['Content-Type', 'Authorization', 'X-Analytics-Visitor-Id', 'X-Analytics-Session-Id'],
+  allowHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Analytics-Visitor-Id',
+    'X-Analytics-Session-Id',
+    'X-Client-Platform',
+    'X-Client-Version',
+    'X-Client-Build',
+    'X-Device-Id',
+    'X-Contract-Version',
+    'X-Request-Id',
+    'Idempotency-Key',
+  ],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   maxAge: 86400,
 }))
@@ -114,6 +129,12 @@ const externalImportRateLimit = RATE_LIMITS.EXTERNAL_IMPORT
 const analyticsIpRateLimit = RATE_LIMITS.ANALYTICS_IP
 const analyticsVisitorRateLimit = RATE_LIMITS.ANALYTICS_VISITOR
 const analyticsSessionRateLimit = RATE_LIMITS.ANALYTICS_SESSION
+
+app.use('/api/v2/*', async (c, next) => {
+  c.set('appRequestId', crypto.randomUUID())
+  c.header('Cache-Control', 'no-store')
+  await next()
+})
 
 // 登录/注册接口速率限制兜底：每 IP 每分钟 5 次
 app.use('/api/auth/*', rateLimiter({
@@ -147,6 +168,7 @@ for (const path of [
   '/api/contact-methods/*',
   '/api/invites/*',
   '/api/settings/public',
+  '/api/v2/*',
 ]) {
   app.use(path, rateLimiter({
     name: 'public-api',
@@ -224,6 +246,7 @@ app.route('/api/analytics', analyticsRoutes)
 app.route('/api/conversions', conversionRoutes)
 app.route('/api/ad-attribution', adAttributionRoutes)
 app.route('/api/invites', inviteRoutes)
+app.route('/api/v2', appV2Routes)
 // 公开站点信息（不需要登录）
 app.get('/api/settings/public', async (c) => {
   const db = c.env.DB
@@ -261,12 +284,18 @@ app.route('/api/admin', adminRoutes)
 
 // 404 fallback
 app.notFound((c) => {
+  if (c.req.path.startsWith('/api/v2/')) {
+    return appApiError(c, 404, 'ROUTE_NOT_FOUND', '接口不存在')
+  }
   return errorJson(c, 404, '接口不存在', { code: 'NOT_FOUND' })
 })
 
 // 全局错误处理
 app.onError((err, c) => {
   console.error('未处理异常:', err)
+  if (c.req.path.startsWith('/api/v2/')) {
+    return appApiError(c, 500, 'INTERNAL_ERROR', '服务暂时不可用，请稍后重试', true)
+  }
   return errorJson(c, 500, '服务器内部错误', { code: 'INTERNAL_ERROR' })
 })
 

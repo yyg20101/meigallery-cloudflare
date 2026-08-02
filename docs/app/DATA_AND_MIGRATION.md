@@ -2,7 +2,7 @@
 
 App 版本：1.0
 
-日期：2026-07-20
+日期：2026-08-02
 
 状态：需求讨论中
 
@@ -77,7 +77,7 @@ erDiagram
 
 | 表 | 关键字段 | 说明 |
 |----|----------|------|
-| `profile_public_projections` | `profile_id`, `version`, `payload`, `published_at` | 公开只读投影 |
+| `profile_public_projections` | `profile_id`, `person_id`, 公开展示快照、资格状态、地区、排序分数、`source_gallery_id`, `projection_version`, `published_at` | M0 已创建的可重建公开只读投影；不是认证/授权权威表 |
 | `taxonomy_terms` | `id`, `type`, `parent_id`, `status`, `version` | 标签、地区和分类 stable term |
 | `taxonomy_aliases` | `term_id`, `locale`, `alias`, `status` | 搜索别名和兼容名称 |
 | `taxonomy_mappings` | `source`, `source_term`, `target_term_id`, `mapping_version` | MeiGallery/外部值映射 |
@@ -98,6 +98,17 @@ erDiagram
 | `notification_preferences` | `account_id`, `category`, `enabled`, `updated_at` | 站内通知偏好；必要安全通知不可关闭 |
 
 `viewer_interactions` 不存在 reciprocal/matched 状态。
+
+#### 3.3.1 M0 公开投影实施边界
+
+`0067_app_public_profile_projection.sql` 是首条 App 读链路的过渡反腐层，不提前创建仍受 OQ-006～OQ-008、OQ-024 约束的 Person、Verification、Authorization 和 Media Rights 权威表：
+
+- 表默认为空，migration 不包含 seed、回填或从 `galleries` 自动插入的 SQL。
+- `source_gallery_id` 只表示管理员明确批准后复用的媒体来源；仅有 published gallery 不会生成 Person/Profile。
+- 公开查询同时检查 `verification_status=verified`、`publication_status=published`、`authorization_status=active`、授权未过期、`visibility_status=visible` 和来源图库仍发布。
+- `tags_json`、地区、运营披露和推荐原因是发布时生成的审核快照，避免直接把 legacy 自由标签当公开真人事实。
+- 认证、授权或可见性撤回后，投影写入方必须立即更新/删除记录；在后台写流程落地前不得向生产手工灌入人物数据。
+- 权威表完成后由单向 projector 重建此表；客户端契约继续只消费 stable `per_`/`pp_` ID，不感知 legacy ID。
 
 ### 3.4 会话与代运营
 

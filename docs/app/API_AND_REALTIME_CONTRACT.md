@@ -2,9 +2,9 @@
 
 App 版本：1.0
 
-日期：2026-07-20
+日期：2026-08-02
 
-状态：需求讨论中
+状态：整体需求讨论中；M0 公共发现只读契约已冻结并进入开发验证
 
 ## 1. 契约原则
 
@@ -21,6 +21,18 @@ App 版本：1.0
 - 仅保留未来契约：订单/商店验证、金币包、礼物、装扮、真人认领和系统推送。未立项前不部署生产路由，也不向 1.0 客户端下发可执行 capability。
 - 路由表中的“未来”表示长期兼容设计，不属于 App 1.0 上线验收。详细边界见 [App 1.0 发布范围](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)。
 
+### 1.2 M0 局部冻结记录
+
+本轮只冻结并实现以下开发联调边界，唯一 HTTP 事实源为 [`contracts/app-api-v2.openapi.yaml`](../../contracts/app-api-v2.openapi.yaml)：
+
+- `GET /api/v2/app/bootstrap`：返回真实可用 capability；未实现的登录、消息、支付和系统推送必须为 `false`。
+- `GET /api/v2/discovery/feed`：支持 `recommended`、`popular`、`latest` 三种稳定排序、地区筛选和不透明游标。
+- `GET /api/v2/discovery/regions`：只统计当前具有公开资格的人物。
+- `GET /api/v2/person-profiles/:profileId`：返回同一公开资格边界下的基础详情投影。
+- 四个 M0 响应统一返回 `Cache-Control: no-store`，避免资格撤回、授权到期或源图库下线后被中间缓存继续展示；后续只有在完成可撤销缓存设计后才能调整。
+
+该局部冻结不包含账号体系、真人认领、认证证据结构、管理员写入流程、互动、会员、消息、钱包和媒体访问；这些领域仍按开放问题与专业门禁逐项冻结。migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -28,8 +40,9 @@ App 版本：1.0
 ```text
 Authorization: Bearer <session-token>
 X-Client-Platform: android | ios | windows | macos | web
-X-Client-Version: <semver/build>
-X-Contract-Version: <schema-version>
+X-Client-Version: <semver>
+X-Client-Build: <build-number>
+X-Contract-Version: <contract-version>
 X-Request-Id: <uuid>
 Idempotency-Key: <unique-key>（关键写接口）
 Accept-Language: zh-CN
@@ -46,7 +59,9 @@ Accept-Language: zh-CN
   "data": {},
   "meta": {
     "requestId": "req_xxx",
-    "contractVersion": "2.0"
+    "serverTime": "2026-08-02T00:00:00.000Z",
+    "apiVersion": "2",
+    "contractVersion": "1.0.0"
   }
 }
 ```
@@ -79,6 +94,9 @@ Accept-Language: zh-CN
 | `ENTITLEMENT_REQUIRED` | 403 | 缺少会员权限 |
 | `ENTITLEMENT_QUOTA_EXCEEDED` | 429 | 周期额度不足 |
 | `PROFILE_NOT_AVAILABLE` | 404/410 | 真人资料未发布、暂停或归档 |
+| `INVALID_DISCOVERY_SORT` | 400 | 发现页排序值不受支持 |
+| `INVALID_REGION` | 400 | 地区 code 格式不合法 |
+| `INVALID_CURSOR` | 400 | 游标损坏或与当前排序、地区、规则版本不匹配 |
 | `CONVERSATION_FORBIDDEN` | 403 | 非参与方或已拉黑/关闭 |
 | `CONTENT_REVIEW_PENDING` | 202/409 | 内容需审核 |
 | `INSUFFICIENT_COINS` | 409 | 金币不足 |
@@ -126,14 +144,15 @@ Accept-Language: zh-CN
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v2/discovery/feed` | 个性化或非个性化推荐 |
-| GET | `/api/v2/discovery/regions` | 地区目录和模糊范围 |
-| GET | `/api/v2/discovery/popular` | 热门资料 |
-| GET | `/api/v2/discovery/latest` | 最新发布 |
-| GET | `/api/v2/discovery/categories` | 标签/分类入口 |
-| GET | `/api/v2/person-profiles` | 搜索和筛选 |
-| GET | `/api/v2/person-profiles/:profileId` | 真人公开详情 |
-| POST | `/api/v2/person-profiles/:profileId/media-access` | 受保护媒体短期凭证 |
+| GET | `/api/v2/app/bootstrap` | M0 已实现：能力与发现配置 |
+| GET | `/api/v2/discovery/feed` | M0 已实现：规则推荐、热门、最新、地区筛选和游标分页 |
+| GET | `/api/v2/discovery/regions` | M0 已实现：当前可用地区目录 |
+| GET | `/api/v2/discovery/popular` | 后续兼容别名；M0 使用 `feed?sort=popular` |
+| GET | `/api/v2/discovery/latest` | 后续兼容别名；M0 使用 `feed?sort=latest` |
+| GET | `/api/v2/discovery/categories` | 待标签目录冻结后实现 |
+| GET | `/api/v2/person-profiles` | 待搜索与筛选契约冻结后实现 |
+| GET | `/api/v2/person-profiles/:profileId` | M0 已实现：公开基础详情投影 |
+| POST | `/api/v2/person-profiles/:profileId/media-access` | 待媒体授权契约冻结后实现 |
 
 推荐项关键字段：
 
@@ -150,17 +169,17 @@ Accept-Language: zh-CN
     "mode": "platform_managed",
     "label": "消息由平台运营接收"
   },
-  "region": { "label": "北京市", "precision": "city" },
+  "region": { "code": "cn-bj", "label": "北京市", "precision": "city" },
   "tags": [],
   "recommendation": {
-    "mode": "personalized",
+    "mode": "rule_based",
     "reasonCode": "PREFERRED_STYLE",
-    "ruleVersion": "rec_2026_07_01"
+    "ruleVersion": "discovery_v1"
   }
 }
 ```
 
-公开 API 只从已认证且已发布投影读取。客户端不得依赖字段缺失自行判断状态。
+公开 API 只读取 `verified + published + authorization active/unexpired + visible` 且来源图库仍发布的投影。客户端不得依赖字段缺失自行判断状态；现有图库没有管理员明确创建的合格投影时，列表必须为空。
 
 ## 7. 单向互动 API
 
