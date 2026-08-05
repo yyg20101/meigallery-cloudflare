@@ -105,6 +105,19 @@
 
 App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载原生 WebView，不使用 JavaScript bridge。登录、请求注册验证码和注册提交分别使用 `app_login`、`app_email_challenge`、`app_register` action，token 不得复用。服务端使用 `TURNSTILE_SECRET_KEY` 调用 Cloudflare Siteverify，发送幂等 ID 和可信客户端 IP，校验 action；production 额外校验 hostname。Cloudflare 官方 always-pass 测试密钥的 `test`/缺失 action 只允许在 `APP_ENV=local` 兼容，不适用于 dev、production 或真实密钥。网络异常、非 2xx 和响应异常均 fail closed 为可重试 503。完整安全约束见 `docs/app/AUTH_1_CROSS_REPO_INTEGRATION.md`。
 
+### 独立 App 单向互动 `[开发验证，默认随 Auth 关闭]`
+
+`0070_app_viewer_interactions.sql` 和 App API v2 `1.3.0` 建立 Interaction-1 喜欢/关注保守基线：
+
+- `app_viewer_interactions` 只保存 `account_id`、稳定 `profile_id`、`like|follow` 关系类型和 ISO 创建时间；复合主键保证幂等，migration 不 seed、不回填 legacy 互动、不生成聚合计数。
+- `GET /api/v2/person-profiles/:profileId/interactions`、`PUT|DELETE .../like|follow` 和 `GET /api/v2/me/likes|follows` 全部复用 App Bearer 会话中间件，请求体不接收账号 ID。
+- PUT 通过参数化条件写入在 D1 内重新校验当前资料的认证、发布、授权时间、可见性和来源图库状态；DELETE 不依赖资料仍公开，便于用户清理已失效关系。
+- 本人列表以 `created_at DESC, profile_id ASC` 稳定分页，不透明游标绑定账号公开作用域和关系类型。资料已失效时只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不泄露历史封面、地区、标签或简介。
+- bootstrap 只在 Auth 安全配置整体可用时返回 `interactions.like=true` 和 `interactions.follow=true`；`favorite` 与 `history` 继续为 false。production/dev 现有 Auth 开关默认关闭，本实现不改变上线状态。
+- 不提供按目标资料查看互动者的产品 API，不创建匹配、会话、目标侧通知、关注更新事件或推荐信号。收藏/收藏夹与历史必须在后续独立冻结，不得由当前关系表替代。
+
+完整跨仓边界与验收要求见 `docs/app/INTERACTION_1_CROSS_REPO_INTEGRATION.md`。
+
 ### 速率限制 `[当前实现 / 外部配置]`
 
 当前实现分两层：

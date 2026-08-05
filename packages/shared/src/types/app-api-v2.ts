@@ -1,5 +1,5 @@
 /**
- * App API v2 公共发现与保守账号访问契约。
+ * App API v2 公共发现、保守账号访问与 Interaction-1 契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -10,7 +10,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.2.0'
+  contractVersion: '1.3.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -45,6 +45,12 @@ export interface AppBootstrapConfig {
   capabilities: {
     discovery: boolean
     auth: boolean
+    interactions: {
+      like: boolean
+      follow: boolean
+      favorite: false
+      history: false
+    }
     messaging: false
     payments: false
     systemPush: false
@@ -166,4 +172,22 @@ export interface AppDiscoveryRegion {
   code: string
   label: string
   profileCount: number
+}
+
+export type AppViewerInteractionType = 'like' | 'follow'
+
+export interface AppViewerInteractionState {
+  profileId: string
+  liked: boolean
+  followed: boolean
+  likedAt: string | null
+  followedAt: string | null
+}
+
+export interface AppViewerInteractionListItem {
+  profileId: string
+  interactionType: AppViewerInteractionType
+  createdAt: string
+  profile: AppPersonProfile | null
+  unavailableReason: 'PROFILE_NOT_AVAILABLE' | null
 }

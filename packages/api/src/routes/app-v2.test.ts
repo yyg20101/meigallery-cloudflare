@@ -1,17 +1,25 @@
+import type { AppBootstrapConfig } from '@meigallery/shared'
 import { readFileSync } from 'node:fs'
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import type { Bindings, Variables } from '../index'
 import { appV2Routes } from './app-v2'
 
-function createApp(db: unknown = {}) {
+function createApp(db: unknown = {}, overrides: Partial<Bindings> = {}) {
   const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
   app.use('*', async (c, next) => {
     c.set('appRequestId', 'req_app_test')
     await next()
   })
   app.route('/api/v2', appV2Routes)
-  return { app, env: { DB: db, APP_ENV: 'development' } as unknown as Bindings }
+  return {
+    app,
+    env: {
+      DB: db,
+      APP_ENV: 'development',
+      ...overrides,
+    } as unknown as Bindings,
+  }
 }
 
 describe('App API v2 路由契约', () => {
@@ -23,16 +31,22 @@ describe('App API v2 路由契约', () => {
       {} as ExecutionContext,
     )
     const body = await response.json<{
-      data: { capabilities: Record<string, boolean> }
+      data: AppBootstrapConfig
       meta: { requestId: string; apiVersion: string; contractVersion: string }
     }>()
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.2.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.3.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
+      interactions: {
+        like: false,
+        follow: false,
+        favorite: false,
+        history: false,
+      },
       messaging: false,
       payments: false,
       systemPush: false,
@@ -40,7 +54,47 @@ describe('App API v2 路由契约', () => {
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.2.0',
+      contractVersion: '1.3.0',
+    })
+  })
+
+  it('只在账号配置完整时开放喜欢与关注，未开放时路由拒绝访问', async () => {
+    const configured = createApp({}, {
+      APP_AUTH_ENABLED: 'true',
+      APP_AUTH_TERMS_VERSION: 'terms-1',
+      APP_AUTH_PRIVACY_VERSION: 'privacy-1',
+      APP_AUTH_PLATFORM_NOTICE_VERSION: 'platform-1',
+      APP_AUTH_ELIGIBILITY_VERSION: 'eligibility-1',
+      APP_AUTH_TERMS_URL: 'https://legal.test/terms',
+      APP_AUTH_PRIVACY_URL: 'https://legal.test/privacy',
+      APP_AUTH_PLATFORM_NOTICE_URL: 'https://legal.test/platform',
+      APP_AUTH_ELIGIBILITY_URL: 'https://legal.test/eligibility',
+    })
+    const configuredResponse = await configured.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      configured.env,
+      {} as ExecutionContext,
+    )
+    const configuredBody = await configuredResponse.json<{ data: AppBootstrapConfig }>()
+    expect(configuredBody.data.capabilities).toMatchObject({
+      auth: true,
+      interactions: {
+        like: true,
+        follow: true,
+        favorite: false,
+        history: false,
+      },
+    })
+
+    const disabled = createApp()
+    const disabledResponse = await disabled.app.fetch(
+      new Request('https://api.test/api/v2/me/likes'),
+      disabled.env,
+      {} as ExecutionContext,
+    )
+    expect(disabledResponse.status).toBe(403)
+    expect(await disabledResponse.json()).toMatchObject({
+      error: { code: 'FEATURE_DISABLED', retryable: false },
     })
   })
 
@@ -97,5 +151,10 @@ describe('App API v2 路由契约', () => {
     expect(contract).toContain('/api/v2/auth/logout:')
     expect(contract).toContain('/api/v2/me:')
     expect(contract).toContain('/api/v2/me/devices:')
+    expect(contract).toContain('/api/v2/person-profiles/{profileId}/interactions:')
+    expect(contract).toContain('/api/v2/person-profiles/{profileId}/like:')
+    expect(contract).toContain('/api/v2/person-profiles/{profileId}/follow:')
+    expect(contract).toContain('/api/v2/me/likes:')
+    expect(contract).toContain('/api/v2/me/follows:')
   })
 })

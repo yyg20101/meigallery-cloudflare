@@ -15,7 +15,7 @@ const DISCOVERY_RULE_VERSION = 'discovery_v1'
 const REGION_CODE_PATTERN = /^[a-z0-9-]{2,32}$/
 const PROFILE_ID_PATTERN = /^pp_[A-Za-z0-9_-]{1,77}$/
 
-type PublicProjectionRow = {
+export type PublicProjectionRow = {
   profile_id: string
   person_id: string
   display_name: string
@@ -328,13 +328,77 @@ export async function getPublicPersonProfile(
   return row ? mapPublicProfile(row, apiUrl) : null
 }
 
+export async function getPublicPersonProfilesByIds(
+  db: D1Database,
+  profileIds: string[],
+  apiUrl: string,
+  now = new Date(),
+): Promise<Map<string, AppPersonProfile>> {
+  const ids = [...new Set(profileIds.filter(profileId => PROFILE_ID_PATTERN.test(profileId)))].slice(0, 40)
+  if (ids.length === 0) return new Map()
+  const placeholders = ids.map(() => '?').join(', ')
+  const result = await db.prepare(`
+    SELECT
+      p.profile_id,
+      p.person_id,
+      p.display_name,
+      p.summary,
+      p.source_gallery_id,
+      g.cover_key,
+      p.tags_json,
+      p.operation_mode,
+      p.operation_label,
+      p.region_code,
+      p.region_label,
+      p.region_precision,
+      p.recommendation_score,
+      p.heat_score,
+      p.recommendation_reason_code,
+      p.recommendation_rule_version,
+      p.published_at
+    FROM profile_public_projections p
+    JOIN galleries g ON g.id = p.source_gallery_id
+    WHERE p.profile_id IN (${placeholders})
+      AND p.verification_status = 'verified'
+      AND p.publication_status = 'published'
+      AND p.authorization_status = 'active'
+      AND p.visibility_status = 'visible'
+      AND (
+        p.authorization_valid_from IS NULL
+        OR (
+          datetime(p.authorization_valid_from) IS NOT NULL
+          AND datetime(p.authorization_valid_from) <= datetime(?)
+        )
+      )
+      AND (
+        p.authorization_valid_until IS NULL
+        OR (
+          datetime(p.authorization_valid_until) IS NOT NULL
+          AND datetime(p.authorization_valid_until) > datetime(?)
+        )
+      )
+      AND (
+        p.verification_valid_until IS NULL
+        OR (
+          datetime(p.verification_valid_until) IS NOT NULL
+          AND datetime(p.verification_valid_until) > datetime(?)
+        )
+      )
+      AND datetime(p.published_at) IS NOT NULL
+      AND g.status = 'published'
+  `).bind(...ids, now.toISOString(), now.toISOString(), now.toISOString())
+    .all<PublicProjectionRow>()
+
+  return new Map(result.results.map(row => [row.profile_id, mapPublicProfile(row, apiUrl)]))
+}
+
 function scoreColumnFor(sort: AppDiscoverySort): 'recommendation_score' | 'heat_score' | null {
   if (sort === 'recommended') return 'recommendation_score'
   if (sort === 'popular') return 'heat_score'
   return null
 }
 
-function mapPublicProfile(row: PublicProjectionRow, apiUrl: string): AppPersonProfile {
+export function mapPublicProfile(row: PublicProjectionRow, apiUrl: string): AppPersonProfile {
   const region = mapRegion(row)
   const operationMode = row.operation_mode === 'self_managed' ? 'self_managed' : 'platform_managed'
   const operationLabel = operationMode === 'platform_managed'

@@ -67,7 +67,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.1.0"
+    "contractVersion": "1.3.0"
   }
 }
 ```
@@ -196,6 +196,7 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | `/api/v2/person-profiles/:profileId/interactions` | Interaction-1：本人喜欢/关注权威状态 |
 | PUT/DELETE | `/api/v2/person-profiles/:profileId/like` | 喜欢/取消喜欢 |
 | PUT/DELETE | `/api/v2/person-profiles/:profileId/follow` | 关注/取消关注 |
 | PUT/DELETE | `/api/v2/person-profiles/:profileId/favorite` | 收藏/取消收藏 |
@@ -208,7 +209,9 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 | GET/DELETE | `/api/v2/me/search-history` | 搜索历史查询/全部清除 |
 | DELETE | `/api/v2/me/search-history/:historyId` | 删除单条搜索历史 |
 
-这些接口不返回 reciprocal/matched 等字段，也不创建会话。
+Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
+
+收藏/收藏夹、浏览历史、关注更新事件和推荐信号仍未冻结，现阶段不得以扁平收藏关系替代。所有互动接口不返回 reciprocal/matched 等字段，不创建会话，也不向目标真人或运营人员发送具体观看者通知。
 
 ## 8. 会员和目录 API
 

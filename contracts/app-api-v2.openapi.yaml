@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.2.0
+  version: 1.3.0
   description: >-
-    App 1.0 的公共发现契约和 Auth-1 保守账号访问开发基线。账号能力必须同时具备
+    App 1.0 的公共发现契约、Auth-1 保守账号访问与 Interaction-1 喜欢/关注开发基线。账号能力必须同时具备
     APP_AUTH_ENABLED、版本化文档、可阅读正文 URL 和生产人机验证配置才会由 bootstrap 启用；默认关闭，
     不代表首发地区、法定年龄、最终登录渠道或生产身份政策已经冻结。认领、消息、
     会员申请、金币和媒体访问仍未纳入本次契约。
@@ -19,6 +19,7 @@ tags:
   - name: Account
   - name: Discovery
   - name: PersonProfile
+  - name: Interaction
 paths:
   /api/v2/app/bootstrap:
     get:
@@ -281,6 +282,54 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/v2/me/likes:
+    get:
+      tags: [Interaction]
+      operationId: listAppViewerLikes
+      summary: 获取本人的喜欢列表
+      description: 资料已失效时只返回最小不可用占位，不返回历史公开内容。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 本人的喜欢关系
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerInteractionListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v2/me/follows:
+    get:
+      tags: [Interaction]
+      operationId: listAppViewerFollows
+      summary: 获取本人的已关注列表
+      description: Interaction-1 只提供关系列表；公开内容更新流与通知尚未启用。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 本人的关注关系
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerInteractionListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/v2/discovery/feed:
     get:
       tags: [Discovery]
@@ -369,6 +418,112 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v2/person-profiles/{profileId}/interactions:
+    get:
+      tags: [Interaction]
+      operationId: getAppViewerInteractionState
+      summary: 获取本人对当前人物资料的喜欢与关注状态
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 服务端权威关系状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerInteractionStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v2/person-profiles/{profileId}/like:
+    put:
+      tags: [Interaction]
+      operationId: likeAppPersonProfile
+      summary: 幂等喜欢当前可用人物资料
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 喜欢后的权威状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerInteractionStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Interaction]
+      operationId: unlikeAppPersonProfile
+      summary: 幂等取消喜欢
+      description: 即使资料已失效也允许本人清理既有关系。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 取消后的权威状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerInteractionStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v2/person-profiles/{profileId}/follow:
+    put:
+      tags: [Interaction]
+      operationId: followAppPersonProfile
+      summary: 幂等关注当前可用人物资料
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 关注后的权威状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerInteractionStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Interaction]
+      operationId: unfollowAppPersonProfile
+      summary: 幂等取消关注
+      description: 即使资料已失效也允许本人清理既有关系。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 取消后的权威状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewerInteractionStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 components:
   securitySchemes:
     BearerAuth:
@@ -384,7 +539,31 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.2.0
+        const: 1.3.0
+  parameters:
+    ProfileId:
+      name: profileId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+    ListLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 40
+        default: 20
+    ListCursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 1024
+      description: 与当前账号和关系类型隔离的不透明游标。
   responses:
     BadRequest:
       description: 查询参数或游标无效
@@ -447,7 +626,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.2.0
+          const: 1.3.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -795,13 +974,28 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, auth, messaging, payments, systemPush]
+          required: [discovery, auth, interactions, messaging, payments, systemPush]
           properties:
             discovery:
               type: boolean
               const: true
             auth:
               type: boolean
+            interactions:
+              type: object
+              additionalProperties: false
+              required: [like, follow, favorite, history]
+              properties:
+                like:
+                  type: boolean
+                follow:
+                  type: boolean
+                favorite:
+                  type: boolean
+                  const: false
+                history:
+                  type: boolean
+                  const: false
             messaging:
               type: boolean
               const: false
@@ -920,6 +1114,67 @@ components:
           $ref: '#/components/schemas/Bootstrap'
         meta:
           $ref: '#/components/schemas/Meta'
+    ViewerInteractionType:
+      type: string
+      enum: [like, follow]
+    ViewerInteractionState:
+      type: object
+      additionalProperties: false
+      required: [profileId, liked, followed, likedAt, followedAt]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        liked:
+          type: boolean
+        followed:
+          type: boolean
+        likedAt:
+          type: [string, 'null']
+          format: date-time
+        followedAt:
+          type: [string, 'null']
+          format: date-time
+    ViewerInteractionStateResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ViewerInteractionState'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ViewerInteractionListItem:
+      type: object
+      additionalProperties: false
+      required: [profileId, interactionType, createdAt, profile, unavailableReason]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        interactionType:
+          $ref: '#/components/schemas/ViewerInteractionType'
+        createdAt:
+          type: string
+          format: date-time
+        profile:
+          oneOf:
+            - $ref: '#/components/schemas/PersonProfile'
+            - type: 'null'
+        unavailableReason:
+          enum: [null, PROFILE_NOT_AVAILABLE]
+    ViewerInteractionListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/ViewerInteractionListItem'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
     Region:
       type: object
       additionalProperties: false

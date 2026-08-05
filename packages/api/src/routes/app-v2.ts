@@ -23,6 +23,13 @@ import {
   revokeAppDevice,
   type AppSessionPrincipal,
 } from '../services/app-account-access'
+import {
+  AppViewerInteractionError,
+  getViewerInteractionState,
+  listViewerInteractions,
+  parseAppViewerInteractionQuery,
+  setViewerInteraction,
+} from '../services/app-viewer-interactions'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -37,7 +44,13 @@ appV2Routes.get('/app/bootstrap', (c) => {
 
 appV2Routes.route('/auth', appAuthRoutes)
 
-for (const path of ['/me', '/me/*']) {
+for (const path of [
+  '/me',
+  '/me/*',
+  '/person-profiles/:profileId/interactions',
+  '/person-profiles/:profileId/like',
+  '/person-profiles/:profileId/follow',
+]) {
   appV2Routes.use(path, async (c, next) => {
     try {
       const config = getAppAuthRuntimeConfig(c.env)
@@ -120,6 +133,84 @@ appV2Routes.get('/person-profiles/:profileId', async (c) => {
   return appApiSuccess(c, profile)
 })
 
+appV2Routes.get('/person-profiles/:profileId/interactions', async (c) => {
+  try {
+    return appApiSuccess(c, await getViewerInteractionState(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('profileId'),
+      c.req.url,
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+for (const interactionType of ['like', 'follow'] as const) {
+  appV2Routes.put(`/person-profiles/:profileId/${interactionType}`, async (c) => {
+    try {
+      return appApiSuccess(c, await setViewerInteraction(
+        c.env.DB,
+        appPrincipal(c).accountInternalId,
+        c.req.param('profileId'),
+        interactionType,
+        true,
+      ))
+    }
+    catch (error) {
+      return appInteractionError(c, error)
+    }
+  })
+
+  appV2Routes.delete(`/person-profiles/:profileId/${interactionType}`, async (c) => {
+    try {
+      return appApiSuccess(c, await setViewerInteraction(
+        c.env.DB,
+        appPrincipal(c).accountInternalId,
+        c.req.param('profileId'),
+        interactionType,
+        false,
+      ))
+    }
+    catch (error) {
+      return appInteractionError(c, error)
+    }
+  })
+}
+
+for (const [path, interactionType] of [
+  ['/me/likes', 'like'],
+  ['/me/follows', 'follow'],
+] as const) {
+  appV2Routes.get(path, async (c) => {
+    try {
+      const principal = appPrincipal(c)
+      const query = parseAppViewerInteractionQuery({
+        limit: c.req.query('limit'),
+        cursor: c.req.query('cursor'),
+        accountScope: principal.accountId,
+        interactionType,
+      })
+      const result = await listViewerInteractions(
+        c.env.DB,
+        principal.accountInternalId,
+        principal.accountId,
+        interactionType,
+        query,
+        c.req.url,
+      )
+      return appApiListSuccess(c, result.data, {
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
+      })
+    }
+    catch (error) {
+      return appInteractionError(c, error)
+    }
+  })
+}
+
 function bootstrapConfig(env: Bindings): AppBootstrapConfig {
   const auth = getAppAuthRuntimeConfig(env)
   return {
@@ -128,6 +219,12 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
     capabilities: {
       discovery: true,
       auth: auth.enabled,
+      interactions: {
+        like: auth.enabled,
+        follow: auth.enabled,
+        favorite: false,
+        history: false,
+      },
       messaging: false,
       payments: false,
       systemPush: false,
@@ -158,6 +255,16 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
         : null,
     },
   }
+}
+
+function appInteractionError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppViewerInteractionError) {
+    return appApiError(c, error.status, error.code, error.message)
+  }
+  throw error
 }
 
 function appPrincipal(c: {

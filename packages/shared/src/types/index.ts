@@ -357,4 +357,7 @@ export type {
   AppMeSummary,
   AppPersonProfile,
   AppPersonRegion,
+  AppViewerInteractionListItem,
+  AppViewerInteractionState,
+  AppViewerInteractionType,
 } from './app-api-v2'

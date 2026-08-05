@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-02
 
-状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给与 Auth-1 账号访问为保守开发基线
+状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给、Auth-1 账号访问与 Interaction-1 喜欢/关注为保守开发基线
 
 ## 1. 文档目的
 
@@ -16,13 +16,13 @@ App 版本：1.0
 
 2026-08-02 经项目负责人继续开发确认，允许先实现不依赖未决身份与合规参数的公共发现读链路：
 
-- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式更新到 `1.1.0`，API 主版本仍为 `2`。
+- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式更新到 `1.3.0`，API 主版本仍为 `2`。
 - 路由：bootstrap、发现 feed、地区目录和公开人物基础详情共四个 GET 路径。
 - D1：`0067_app_public_profile_projection.sql` 仅创建空的可重建公开投影及四个真实查询索引。
 - 安全边界：查询强制验证认证、发布、授权、有效期、可见性和来源图库发布状态；migration 没有 seed、回填或 legacy 自动映射。
 - 客户端：手写 transport model 必须接受未知字段，但未知 enum/capability 安全降级；不得把 transport DTO 直接作为 Domain model。
 
-正式应用 ID、互动、会员、消息、钱包、媒体访问及生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，但首发登录政策、年龄/地区和正式法律文档版本仍未冻结。本次实现的投影表是可删除重建的读模型，不替代 Person、Authorization、Verification 和审计权威表。
+正式应用 ID、收藏/历史/互动信号、会员、消息、钱包、媒体访问及生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，Interaction-1 只增加依赖 Auth 的喜欢/关注开发基线；首发登录政策、年龄/地区和正式法律文档版本仍未冻结。本次实现的投影表是可删除重建的读模型，不替代 Person、Authorization、Verification 和审计权威表。
 
 ### 1.2 M1 保守开发基线
 
@@ -51,6 +51,19 @@ M1 的通用状态机和数据骨架可进入开发验证，但认证展示文�
 - 开关：只有 `APP_AUTH_ENABLED=true`、所需文档版本与可阅读正文 URL 齐全且 production Turnstile 配置完整时 bootstrap 才返回 `auth=true`；production/dev 配置默认关闭。
 
 Auth-1 不关闭 G-01/G-03，不冻结法定年龄、首发地区、运营主体、最终登录适配器、保留期或正式法律文案；这些结论缺失时不得执行 production migration、启用注册或导入真实账号同意数据。
+
+### 1.4 Interaction-1 喜欢/关注保守开发基线
+
+2026-08-06 经路线图继续开发确认，允许在 Auth-1 保持默认关闭的前提下实现 P0 单向关系：
+
+- 范围：资料详情本人状态、喜欢/取消、关注/取消、本人喜欢列表和已关注列表。
+- 数据：`0070_app_viewer_interactions.sql` 只创建空关系表和本人列表索引，不 seed、不回填 legacy 数据、不写聚合计数。
+- 资格：PUT 只允许当前仍满足公开资格的 `PersonProfile`；DELETE 在资料失效后仍可幂等清理。
+- 隐私：列表只读取当前 Access Token 对应账号；不可用资料只返回最小占位，不提供目标侧明细接口。
+- 客户端：可做失败回滚的即时反馈，不提供离线写队列；跨设备以服务端结果为准。
+- 能力：bootstrap 分别声明 like/follow/favorite/history；只有 Auth 可用时 like/follow 才可用，favorite/history 继续为 false。
+
+本基线不关闭 OQ-014/OQ-020/OQ-023；收藏夹、历史保留、互动推荐信号、关注更新事件、拉黑 Workflow 和生产迁移仍须独立冻结。
 
 ## 2. 契约事实源
 
