@@ -187,5 +187,5 @@ CI 配置位于 `.github/workflows/`：
 
 ## 仓库信息
 
-- GitHub：`yyg20101/meigallery-cloudflare`
+- GitHub：`wj20101/meigallery-cloudflare`
 - 生产分支：`main`
