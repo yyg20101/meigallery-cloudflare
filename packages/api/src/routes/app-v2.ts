@@ -144,12 +144,16 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
       deviceManagementEnabled: auth.enabled,
       accessTokenTtlSeconds: auth.accessTokenTtlSeconds,
       challenge: auth.enabled ? auth.challenge : { type: 'none' },
-      documents: auth.enabled && auth.documentVersions
+      documents: auth.enabled && auth.documentVersions && auth.documentUrls
         ? {
             termsVersion: auth.documentVersions.terms,
             privacyVersion: auth.documentVersions.privacy,
             platformOperationVersion: auth.documentVersions.platformOperation,
             eligibilityVersion: auth.documentVersions.eligibility,
+            termsUrl: auth.documentUrls.terms,
+            privacyUrl: auth.documentUrls.privacy,
+            platformOperationUrl: auth.documentUrls.platformOperation,
+            eligibilityUrl: auth.documentUrls.eligibility,
           }
         : null,
     },

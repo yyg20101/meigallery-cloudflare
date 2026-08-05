@@ -137,9 +137,45 @@ describe('App Auth HTTP 路由', () => {
           privacyVersion: 'privacy-draft-1',
           platformOperationVersion: 'platform-draft-1',
           eligibilityVersion: 'eligibility-draft-1',
+          termsUrl: 'https://legal.test/terms',
+          privacyUrl: 'https://legal.test/privacy',
+          platformOperationUrl: 'https://legal.test/platform-operation',
+          eligibilityUrl: 'https://legal.test/eligibility',
         },
       },
     })
+  })
+
+  it('Turnstile 挑战页只接受白名单用途并应用受控页面安全策略', async () => {
+    const { app, env } = testApp({
+      TURNSTILE_SECRET_KEY: 'test-secret-must-not-appear',
+      APP_AUTH_TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
+    })
+    const response = await app.request(
+      '/api/v2/auth/turnstile?purpose=login',
+      {},
+      env,
+    )
+    const html = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/html')
+    expect(response.headers.get('cache-control')).toContain('no-store')
+    expect(response.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+    expect(response.headers.get('content-security-policy')).toContain('https://challenges.cloudflare.com')
+    expect(html).toContain('1x00000000000000000000AA')
+    expect(html).toContain('app_login')
+    expect(html).toContain('/api/v2/auth/turnstile/result')
+    expect(html).not.toContain('test-secret-must-not-appear')
+    expect(html).not.toContain('addJavascriptInterface')
+
+    const invalid = await app.request(
+      '/api/v2/auth/turnstile?purpose=arbitrary_action',
+      {},
+      env,
+    )
+    expect(invalid.status).toBe(400)
+    expect(await invalid.text()).not.toContain('arbitrary_action')
   })
 
   it('登录、本人信息和当前设备退出形成完整 Bearer 会话闭环', async () => {
@@ -213,6 +249,10 @@ function testApp(overrides: Partial<Bindings> = {}) {
     APP_AUTH_PRIVACY_VERSION: 'privacy-draft-1',
     APP_AUTH_PLATFORM_NOTICE_VERSION: 'platform-draft-1',
     APP_AUTH_ELIGIBILITY_VERSION: 'eligibility-draft-1',
+    APP_AUTH_TERMS_URL: 'https://legal.test/terms',
+    APP_AUTH_PRIVACY_URL: 'https://legal.test/privacy',
+    APP_AUTH_PLATFORM_NOTICE_URL: 'https://legal.test/platform-operation',
+    APP_AUTH_ELIGIBILITY_URL: 'https://legal.test/eligibility',
     TURNSTILE_SECRET_KEY: '',
     ...overrides,
   } as unknown as Bindings

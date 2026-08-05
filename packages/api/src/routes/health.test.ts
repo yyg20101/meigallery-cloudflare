@@ -33,6 +33,14 @@ describe('API 发布身份健康检查', () => {
     })
   })
 
+  it('将本地联调环境识别为合法环境', async () => {
+    const response = await healthRoutes.request('/', {}, createEnv({ APP_ENV: 'local' }))
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({ environment: 'local', errors: [] })
+  })
+
   it.each([
     ['缺少 RELEASE_COMMIT', { RELEASE_COMMIT: undefined }, 'RELEASE_COMMIT_INVALID'],
     ['RELEASE_COMMIT 非 40 位 SHA', { RELEASE_COMMIT: '7c9a180' }, 'RELEASE_COMMIT_INVALID'],

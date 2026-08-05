@@ -10,7 +10,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.1.0'
+  contractVersion: '1.2.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -60,12 +60,21 @@ export interface AppBootstrapConfig {
     registrationEnabled: boolean
     deviceManagementEnabled: boolean
     accessTokenTtlSeconds: number
-    challenge: { type: 'none' } | { type: 'turnstile'; siteKey: string }
+    challenge: { type: 'none' } | {
+      type: 'turnstile'
+      siteKey: string
+      pagePath: '/api/v2/auth/turnstile'
+      resultPath: '/api/v2/auth/turnstile/result'
+    }
     documents: null | {
       termsVersion: string
       privacyVersion: string
       platformOperationVersion: string
       eligibilityVersion: string
+      termsUrl: string
+      privacyUrl: string
+      platformOperationUrl: string
+      eligibilityUrl: string
     }
   }
 }

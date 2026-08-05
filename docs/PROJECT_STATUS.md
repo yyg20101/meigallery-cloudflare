@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-08-02。
+更新时间：2026-08-05。
 
 本文件只记录当前状态。历史变更以 Git、PR、tag 和 `docs/releases/` 为准。
 
@@ -26,7 +26,7 @@
 - 已在同级独立仓库 `meigallery-client` 创建 KMP + Compose Multiplatform 最小技术脚手架；客户端与本仓库继续通过版本化契约协作，不放入当前 pnpm monorepo。
 - 客户端当前锁定 Kotlin 2.4.10、Compose Multiplatform 1.11.1、AGP 9.0.1、Gradle 9.6.1、JDK 21，Android `minSdk = 26`、`compileSdk/targetSdk = 36`。
 - 四个共享模块的 Android Host Test、Android Debug APK 和 iOS Simulator Kotlin/Native 编译均已通过；iOS Framework 链接因本机未安装完整 Xcode/iOS SDK 暂未完成。
-- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，契约版本已以兼容新增方式提升到 `1.1.0`，加入默认关闭的 Auth-1 账号访问开发基线；完整 App 契约仍处于逐域冻结中。
+- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，契约版本已以兼容新增方式提升到 `1.2.0`，加入默认关闭的 Auth-1 账号访问、法律正文 URL 和原生 Turnstile WebView 契约；完整 App 契约仍处于逐域冻结中。
 - 已新增 `0067_app_public_profile_projection.sql` 空读投影和 App API v2 查询实现，强制 `verified + published + authorization active/unexpired + visible + source gallery published`；migration 不含 seed、回填或 legacy 自动映射，尚未执行生产 migration 或部署生产路由。
 - KMP 客户端 M0 公共发现纵向切片已完成：capability、地区目录、推荐/热门/最新、地区筛选、游标分页、公开人物卡和基础详情均已接通；点击卡片会按稳定公开 ID 重新请求详情并复核最新公开资格，不直接信任列表快照。Android 模拟器已回归筛选、排序、详情错误/重试/成功和长列表，未发现崩溃、文字溢出或底部导航遮挡。正式应用 ID、KMP 登录安全存储、互动、会员、消息、钱包和媒体访问继续受各自门禁约束。
 - 已完成 M1 人物供给最小开发闭环：`0068_app_person_supply_workflow.sql` 创建空的 Person、资料、用途授权、认证和发布复核权威表；内容版本与并发锁版本分离，审批绑定具体内容版本，发布动作单向生成公开投影，暂停或撤销会立即使投影不可见。
@@ -34,8 +34,9 @@
 - M1 D1 定向测试已覆盖未认证不公开、完整审批后公开、线上/草稿隔离、暂停立即下线、过期授权、并发冲突和审计完整性；0001–0068 已在全新临时本地 D1 连续升级通过。当前仍未执行 production migration、未导入真实人物或证据，也未把未关闭的认证声明、证据保留期和人员分离规则固化为生产政策。
 - 已完成 Auth-1 服务端账号访问开发基线：`0069_app_account_access.sql` 创建空的账号安全、邮箱身份映射、版本化同意、设备、App 会话、续期历史和安全事件表；现有 `users` 仍是唯一账号主体，注册不会创建 Person 或公开投影，旧 Web 账号只有在密码验证通过后才建立 App 身份映射。
 - App API v2 已实现邮箱验证码申请、注册、登录、访问/续期凭证轮换、当前设备退出、本人摘要、设备列表和远程退出。访问与续期 Token 只保存 SHA-256 摘要；刷新后旧访问 Token 立即失效，旧续期 Token 重放会撤销会话；账号、设备、session version 和当前文档同意在服务端持续校验。
-- Auth-1 由 `APP_AUTH_ENABLED`、`APP_AUTH_REGISTRATION_ENABLED`、四类文档版本和生产 Turnstile 配置共同控制，production/dev Wrangler 默认均为关闭。当前没有写死法定年龄、首发地区、手机号或第三方登录，不代表 G-01/G-03 已关闭，也未执行 production migration 或发布注册能力。
+- Auth-1 由 `APP_AUTH_ENABLED`、`APP_AUTH_REGISTRATION_ENABLED`、四类文档版本、四个安全正文 URL 和生产 Turnstile 配置共同控制，production/dev Wrangler 默认均为关闭。服务端已提供 CSP nonce 保护的受控挑战页，并对三类 action 执行 Siteverify 强校验；当前没有写死法定年龄、首发地区、手机号或第三方登录，不代表 G-01/G-03 已关闭，也未执行 production migration 或发布注册能力。
 - Auth-1 的 D1/HTTP 测试已覆盖默认关闭、注册边界、旧账号映射、Token 旋转与重放撤权、设备归属和远程退出；`0001–0069` 已在全新临时本地 D1 连续升级通过，新表确认无隐式回填。
+- Auth-1 跨仓本地联调已完成 Android 模拟器登录闭环：原生 WebView 获取一次性 Turnstile token，首次登录命中 `CONSENT_REQUIRED`，确认四份当前正文版本后重新挑战，随后登录、本人摘要和设备列表均返回 200。Cloudflare 官方测试密钥的 `test`/缺失 action 兼容只允许 `APP_ENV=local`，production/dev 仍严格校验 action，production 额外校验 hostname；未执行远端 migration、部署或开关变更。
 - 已完成移动端 49 页和管理后台 43 页的页面级产品设计。
 - Figma 最终文件已完成移动端 49 页/186 状态、管理后台 43 页/163 状态，共 92 个 Page ID/349 个状态；`30｜Prototype Flows` 覆盖 92 个流程预览。
 - Figma 页面内与流程动作合计 2,284 个，缺失目标为 0；移动端关键点击热区不足为 0；正式页未绑定文字样式、原始填充/描边、缺失字体和文字溢出均为 0。

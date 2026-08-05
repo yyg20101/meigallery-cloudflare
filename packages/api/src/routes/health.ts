@@ -15,7 +15,7 @@ healthRoutes.get('/', async (c) => {
 
   const environment = String(c.env.APP_ENV || '').trim()
   const releaseCommit = String(c.env.RELEASE_COMMIT || '').trim()
-  const environmentValid = /^(production|dev|test|development)$/.test(environment)
+  const environmentValid = /^(production|dev|test|development|local)$/.test(environment)
   const commitValid = /^[0-9a-f]{40}$/i.test(releaseCommit)
   const healthy = dbStatus === 'ok' && environmentValid && commitValid
 

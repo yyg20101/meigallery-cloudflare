@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import type { Bindings, Variables } from '../index'
 import {
   AppAccountAccessError,
+  APP_TURNSTILE_RESULT_PATH,
   getAppAuthRuntimeConfig,
   loginAppAccount,
   normalizeRegistrationEmail,
@@ -26,12 +27,63 @@ import { validateTurnstile } from '../utils/turnstile'
 export const appAuthRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
+const APP_CHALLENGE_ACTIONS = {
+  email_challenge: 'app_email_challenge',
+  register: 'app_register',
+  login: 'app_login',
+} as const
+
+type AppChallengePurpose = keyof typeof APP_CHALLENGE_ACTIONS
+
+appAuthRoutes.get('/turnstile', (c) => {
+  try {
+    const config = getAppAuthRuntimeConfig(c.env)
+    requireAppAuthEnabled(config)
+    if (config.challenge.type !== 'turnstile') {
+      throw new AppAccountAccessError(
+        503,
+        'CHALLENGE_UNAVAILABLE',
+        '人机验证尚未完成配置',
+        true,
+      )
+    }
+    const purpose = parseChallengePurpose(c.req.query('purpose'))
+    if (!purpose) return invalidChallengePage(c)
+    const nonce = createCspNonce()
+    applyChallengePageHeaders(c, nonce)
+    return c.html(turnstileChallengePage({
+      nonce,
+      siteKey: config.challenge.siteKey,
+      action: APP_CHALLENGE_ACTIONS[purpose],
+      resultPath: config.challenge.resultPath,
+    }))
+  }
+  catch (error) {
+    return appAccountError(c, error)
+  }
+})
+
+appAuthRoutes.get('/turnstile/result', (c) => {
+  const nonce = createCspNonce()
+  applyChallengePageHeaders(c, nonce, false)
+  return c.html(`<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>验证结果</title>
+  <style nonce="${nonce}">body{margin:0;background:#fff8f9;color:#2b1a20;font:16px system-ui,sans-serif;display:grid;min-height:100vh;place-items:center}.card{margin:24px;padding:24px;border:1px solid #f1dde4;border-radius:20px;background:#fff;text-align:center}.hint{margin-top:8px;color:#80656e;font-size:14px}</style>
+</head>
+<body><main class="card"><strong>验证结果已接收</strong><div class="hint">请返回 MeiGallery App 继续操作。</div></main></body>
+</html>`)
+})
+
 appAuthRoutes.post('/email-challenges', async (c) => {
   try {
     const config = getAppAuthRuntimeConfig(c.env)
     requireAppAuthEnabled(config, true)
     const body = await safeJson(c)
-    await validateAppChallenge(c.env, textValue(body.challengeToken))
+    await validateAppChallenge(c, textValue(body.challengeToken), 'app_email_challenge')
     const email = normalizeRegistrationEmail(body.email)
     const cooldown = VERIFICATION_CODE_COOLDOWN_MS / 1000
 
@@ -64,7 +116,7 @@ appAuthRoutes.post('/register', async (c) => {
     const config = getAppAuthRuntimeConfig(c.env)
     requireAppAuthEnabled(config, true)
     const body = await safeJson(c)
-    await validateAppChallenge(c.env, textValue(body.challengeToken))
+    await validateAppChallenge(c, textValue(body.challengeToken), 'app_register')
     const result = await registerAppAccount(
       c.env,
       registrationInput(body),
@@ -82,7 +134,7 @@ appAuthRoutes.post('/login', async (c) => {
     const config = getAppAuthRuntimeConfig(c.env)
     requireAppAuthEnabled(config)
     const body = await safeJson(c)
-    await validateAppChallenge(c.env, textValue(body.challengeToken))
+    await validateAppChallenge(c, textValue(body.challengeToken), 'app_login')
     const result = await loginAppAccount(c.env, loginInput(body), requestId(c))
     return appApiSuccess(c, result)
   }
@@ -136,8 +188,18 @@ export function appAccountError(c: AppContext, error: unknown) {
   throw error
 }
 
-async function validateAppChallenge(env: Bindings, token: string): Promise<void> {
-  const validation = await validateTurnstile(env, token || undefined)
+async function validateAppChallenge(
+  c: AppContext,
+  token: string,
+  expectedAction: (typeof APP_CHALLENGE_ACTIONS)[AppChallengePurpose],
+): Promise<void> {
+  const validation = await validateTurnstile(c.env, token || undefined, {
+    remoteIp: c.req.header('CF-Connecting-IP'),
+    expectedAction,
+    expectedHostname: c.env.APP_ENV === 'production'
+      ? new URL(c.req.url).hostname
+      : undefined,
+  })
   if (!validation) return
   if (validation.status === 503) {
     throw new AppAccountAccessError(503, 'CHALLENGE_UNAVAILABLE', '人机验证暂时不可用', true)
@@ -218,4 +280,101 @@ function nullableTextValue(value: unknown): string | null {
 
 function requestId(c: AppContext): string {
   return c.get('appRequestId') || crypto.randomUUID()
+}
+
+function parseChallengePurpose(value: string | undefined): AppChallengePurpose | null {
+  return value && Object.prototype.hasOwnProperty.call(APP_CHALLENGE_ACTIONS, value)
+    ? value as AppChallengePurpose
+    : null
+}
+
+function createCspNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(18))
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/gu, '-')
+    .replace(/\//gu, '_')
+    .replace(/=+$/gu, '')
+}
+
+function applyChallengePageHeaders(c: AppContext, nonce: string, allowTurnstile = true): void {
+  const turnstileOrigin = 'https://challenges.cloudflare.com'
+  const policy = allowTurnstile
+    ? [
+        "default-src 'none'",
+        `script-src 'nonce-${nonce}' ${turnstileOrigin}`,
+        `style-src 'nonce-${nonce}'`,
+        `frame-src ${turnstileOrigin}`,
+        `connect-src ${turnstileOrigin}`,
+        "img-src data:",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+      ]
+    : [
+        "default-src 'none'",
+        `style-src 'nonce-${nonce}'`,
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+      ]
+  c.header('Content-Security-Policy', policy.join('; '))
+  c.header('Cache-Control', 'no-store, max-age=0')
+  c.header('Pragma', 'no-cache')
+  c.header('Referrer-Policy', 'no-referrer')
+  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
+  c.header('X-Content-Type-Options', 'nosniff')
+  c.header('X-Frame-Options', 'DENY')
+}
+
+function invalidChallengePage(c: AppContext) {
+  const nonce = createCspNonce()
+  applyChallengePageHeaders(c, nonce, false)
+  return c.html(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>验证请求无效</title><style nonce="${nonce}">body{font:16px system-ui,sans-serif;padding:24px;color:#2b1a20;background:#fff8f9}</style></head><body>验证用途无效，请返回 App 重试。</body></html>`, 400)
+}
+
+function turnstileChallengePage(input: {
+  nonce: string
+  siteKey: string
+  action: string
+  resultPath: typeof APP_TURNSTILE_RESULT_PATH
+}): string {
+  const siteKey = JSON.stringify(input.siteKey)
+  const action = JSON.stringify(input.action)
+  const resultPath = JSON.stringify(input.resultPath)
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+  <title>安全验证</title>
+  <style nonce="${input.nonce}">:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#fff8f9;color:#2b1a20;font:16px system-ui,-apple-system,sans-serif;display:grid;place-items:center}.card{width:min(100% - 32px,420px);padding:24px;border:1px solid #f1dde4;border-radius:24px;background:#fff;box-shadow:0 12px 40px rgba(98,45,65,.08)}h1{margin:0;font-size:20px}.hint{margin:8px 0 20px;color:#80656e;font-size:14px;line-height:1.6}#turnstile-container{min-height:68px;display:grid;place-items:center}.privacy{margin:18px 0 0;color:#a5838e;font-size:12px;line-height:1.5;text-align:center}</style>
+  <script nonce="${input.nonce}">
+    window.__meigalleryTurnstileReady = function () {
+      turnstile.render('#turnstile-container', {
+        sitekey: ${siteKey},
+        action: ${action},
+        callback: function (token) {
+          if (typeof token !== 'string' || token.length === 0 || token.length > 2048) {
+            location.replace(${resultPath} + '?status=error');
+            return;
+          }
+          location.replace(${resultPath} + '?status=success#' + encodeURIComponent(token));
+        },
+        'error-callback': function () { location.replace(${resultPath} + '?status=error'); },
+        'timeout-callback': function () { location.replace(${resultPath} + '?status=timeout'); },
+        'expired-callback': function () { location.replace(${resultPath} + '?status=expired'); }
+      });
+    };
+  </script>
+  <script nonce="${input.nonce}" src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__meigalleryTurnstileReady&amp;render=explicit" async defer></script>
+</head>
+<body>
+  <main class="card">
+    <h1>完成安全验证</h1>
+    <p class="hint">验证完成后会自动返回 App。请勿关闭当前页面。</p>
+    <div id="turnstile-container" aria-live="polite"></div>
+    <p class="privacy">验证凭证只用于当前一次账号操作，不会保存在设备中。</p>
+  </main>
+</body>
+</html>`
 }

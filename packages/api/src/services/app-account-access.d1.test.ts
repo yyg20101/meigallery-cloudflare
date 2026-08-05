@@ -316,6 +316,10 @@ function env(): Bindings {
     APP_AUTH_PRIVACY_VERSION: 'privacy-draft-1',
     APP_AUTH_PLATFORM_NOTICE_VERSION: 'platform-draft-1',
     APP_AUTH_ELIGIBILITY_VERSION: 'eligibility-draft-1',
+    APP_AUTH_TERMS_URL: 'https://legal.test/terms',
+    APP_AUTH_PRIVACY_URL: 'https://legal.test/privacy',
+    APP_AUTH_PLATFORM_NOTICE_URL: 'https://legal.test/platform-operation',
+    APP_AUTH_ELIGIBILITY_URL: 'https://legal.test/eligibility',
     TURNSTILE_SECRET_KEY: '',
   } as unknown as Bindings
 }

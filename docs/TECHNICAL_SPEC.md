@@ -80,7 +80,7 @@
 
 ### 独立 App 账号与设备会话 `[开发验证，默认关闭]`
 
-`0069_app_account_access.sql` 和 App API v2 `1.1.0` 已建立 Auth-1 保守账号基线：
+`0069_app_account_access.sql` 和 App API v2 `1.2.0` 已建立 Auth-1 保守账号基线：
 
 - 现有 `users` 继续作为唯一账号主体；`app_account_security.account_public_id` 提供不可枚举的 `acc_*` API ID，不向客户端暴露 D1 自增 ID。
 - App 只启用邮箱开发适配器。旧 Web 账号只有在密码验证成功后才创建 `app_account_identities` 映射；相同邮箱、昵称或头像不能触发静默合并。
@@ -91,7 +91,7 @@
 - 每次 Bearer 鉴权都读取账号、设备、会话状态和两级 session version，并校验当前文档同意；账号禁用、设备远程退出、版本提升或文档更新在下一次 API 调用生效。
 - 远程退出先验证设备属于当前账号，再区分当前设备；重复退出已撤销设备返回相同终态，不泄露其他账号设备是否存在。
 
-运行时开关：`APP_AUTH_ENABLED`、`APP_AUTH_REGISTRATION_ENABLED`、`APP_AUTH_TERMS_VERSION`、`APP_AUTH_PRIVACY_VERSION`、`APP_AUTH_PLATFORM_NOTICE_VERSION`、`APP_AUTH_ELIGIBILITY_VERSION` 和 `APP_AUTH_TURNSTILE_SITE_KEY`。production 还必须配置 `TURNSTILE_SECRET_KEY`；任一必要条件缺失时 bootstrap 返回 `auth=false`。production/dev Wrangler 当前均显式保持关闭，不允许据此推断 G-01/G-03 已关闭。
+运行时开关：`APP_AUTH_ENABLED`、`APP_AUTH_REGISTRATION_ENABLED`、四类文档版本、对应的 `APP_AUTH_TERMS_URL`、`APP_AUTH_PRIVACY_URL`、`APP_AUTH_PLATFORM_NOTICE_URL`、`APP_AUTH_ELIGIBILITY_URL` 和 `APP_AUTH_TURNSTILE_SITE_KEY`。production 还必须配置 `TURNSTILE_SECRET_KEY`；任一必要条件缺失、文档 URL 非 HTTPS 或 Turnstile Site Key/Secret 只配置一侧时，bootstrap 返回 `auth=false`。production/dev Wrangler 当前均显式保持关闭，不允许据此推断 G-01/G-03 已关闭。
 
 ### Turnstile 集成 `[当前实现]`
 
@@ -103,7 +103,7 @@
 - 后台登录复用普通登录入口，因此通过登录接口完成验证。
 - 后台导入任务创建和处理。
 
-服务端使用 `TURNSTILE_SECRET_KEY` 调用 Cloudflare siteverify API 校验 token。
+App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载原生 WebView，不使用 JavaScript bridge。登录、请求注册验证码和注册提交分别使用 `app_login`、`app_email_challenge`、`app_register` action，token 不得复用。服务端使用 `TURNSTILE_SECRET_KEY` 调用 Cloudflare Siteverify，发送幂等 ID 和可信客户端 IP，校验 action；production 额外校验 hostname。Cloudflare 官方 always-pass 测试密钥的 `test`/缺失 action 只允许在 `APP_ENV=local` 兼容，不适用于 dev、production 或真实密钥。网络异常、非 2xx 和响应异常均 fail closed 为可重试 503。完整安全约束见 `docs/app/AUTH_1_CROSS_REPO_INTEGRATION.md`。
 
 ### 速率限制 `[当前实现 / 外部配置]`
 

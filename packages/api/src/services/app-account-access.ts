@@ -9,6 +9,11 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u
 const INSTALLATION_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/u
 const POLICY_VERSION_PATTERN = /^[A-Za-z0-9._:-]{1,80}$/u
 const APP_VERSION_PATTERN = /^[A-Za-z0-9._+-]{1,40}$/u
+const TURNSTILE_SITE_KEY_PATTERN = /^[A-Za-z0-9_-]{10,128}$/u
+const LOCAL_DOCUMENT_HOSTS = new Set(['localhost', '127.0.0.1', '10.0.2.2'])
+
+export const APP_TURNSTILE_PAGE_PATH = '/api/v2/auth/turnstile' as const
+export const APP_TURNSTILE_RESULT_PATH = '/api/v2/auth/turnstile/result' as const
 
 type AppAuthErrorStatus = 400 | 401 | 403 | 404 | 409 | 503
 
@@ -30,13 +35,26 @@ export type AppAuthDocumentVersions = {
   eligibility: string
 }
 
+export type AppAuthDocumentUrls = {
+  terms: string
+  privacy: string
+  platformOperation: string
+  eligibility: string
+}
+
 export type AppAuthRuntimeConfig = {
   requested: boolean
   enabled: boolean
   registrationEnabled: boolean
   methods: Array<'email'>
-  challenge: { type: 'none' } | { type: 'turnstile'; siteKey: string }
+  challenge: { type: 'none' } | {
+    type: 'turnstile'
+    siteKey: string
+    pagePath: typeof APP_TURNSTILE_PAGE_PATH
+    resultPath: typeof APP_TURNSTILE_RESULT_PATH
+  }
   documentVersions: AppAuthDocumentVersions | null
+  documentUrls: AppAuthDocumentUrls | null
   accessTokenTtlSeconds: number
 }
 
@@ -184,17 +202,34 @@ export function getAppAuthRuntimeConfig(env: Pick<
   | 'APP_AUTH_PRIVACY_VERSION'
   | 'APP_AUTH_PLATFORM_NOTICE_VERSION'
   | 'APP_AUTH_ELIGIBILITY_VERSION'
+  | 'APP_AUTH_TERMS_URL'
+  | 'APP_AUTH_PRIVACY_URL'
+  | 'APP_AUTH_PLATFORM_NOTICE_URL'
+  | 'APP_AUTH_ELIGIBILITY_URL'
   | 'APP_AUTH_TURNSTILE_SITE_KEY'
   | 'TURNSTILE_SECRET_KEY'
 >): AppAuthRuntimeConfig {
   const requested = env.APP_AUTH_ENABLED === 'true'
   const documentVersions = parseDocumentVersions(env)
+  const documentUrls = parseDocumentUrls(env)
+  const siteKey = parseTurnstileSiteKey(env.APP_AUTH_TURNSTILE_SITE_KEY)
+  const secretConfigured = Boolean(env.TURNSTILE_SECRET_KEY?.trim())
+  const challengePairReady = secretConfigured === Boolean(siteKey)
   const productionChallengeReady = env.APP_ENV !== 'production'
-    || Boolean(env.TURNSTILE_SECRET_KEY && env.APP_AUTH_TURNSTILE_SITE_KEY)
-  const enabled = requested && Boolean(documentVersions) && productionChallengeReady
+    || Boolean(secretConfigured && siteKey)
+  const enabled = requested
+    && Boolean(documentVersions)
+    && Boolean(documentUrls)
+    && challengePairReady
+    && productionChallengeReady
   const registrationEnabled = enabled && env.APP_AUTH_REGISTRATION_ENABLED === 'true'
-  const challenge = env.TURNSTILE_SECRET_KEY && env.APP_AUTH_TURNSTILE_SITE_KEY
-    ? { type: 'turnstile' as const, siteKey: env.APP_AUTH_TURNSTILE_SITE_KEY }
+  const challenge = secretConfigured && siteKey
+    ? {
+        type: 'turnstile' as const,
+        siteKey,
+        pagePath: APP_TURNSTILE_PAGE_PATH,
+        resultPath: APP_TURNSTILE_RESULT_PATH,
+      }
     : { type: 'none' as const }
 
   return {
@@ -204,6 +239,7 @@ export function getAppAuthRuntimeConfig(env: Pick<
     methods: enabled ? ['email'] : [],
     challenge,
     documentVersions,
+    documentUrls,
     accessTokenTtlSeconds: ACCESS_TOKEN_TTL_MS / 1000,
   }
 }
@@ -651,6 +687,46 @@ function parseDocumentVersions(env: Pick<
     eligibility: env.APP_AUTH_ELIGIBILITY_VERSION?.trim() ?? '',
   }
   return Object.values(versions).every(value => POLICY_VERSION_PATTERN.test(value)) ? versions : null
+}
+
+function parseDocumentUrls(env: Pick<
+  Bindings,
+  | 'APP_ENV'
+  | 'APP_AUTH_TERMS_URL'
+  | 'APP_AUTH_PRIVACY_URL'
+  | 'APP_AUTH_PLATFORM_NOTICE_URL'
+  | 'APP_AUTH_ELIGIBILITY_URL'
+>): AppAuthDocumentUrls | null {
+  const urls = {
+    terms: normalizeDocumentUrl(env.APP_AUTH_TERMS_URL, env.APP_ENV),
+    privacy: normalizeDocumentUrl(env.APP_AUTH_PRIVACY_URL, env.APP_ENV),
+    platformOperation: normalizeDocumentUrl(env.APP_AUTH_PLATFORM_NOTICE_URL, env.APP_ENV),
+    eligibility: normalizeDocumentUrl(env.APP_AUTH_ELIGIBILITY_URL, env.APP_ENV),
+  }
+  return Object.values(urls).every((value): value is string => value !== null)
+    ? urls as AppAuthDocumentUrls
+    : null
+}
+
+function normalizeDocumentUrl(value: string | undefined, environment: string): string | null {
+  const raw = value?.trim() ?? ''
+  if (!raw || raw.length > 2048) return null
+  try {
+    const url = new URL(raw)
+    const isProduction = environment === 'production'
+    const safeProtocol = url.protocol === 'https:'
+      || (!isProduction && url.protocol === 'http:' && LOCAL_DOCUMENT_HOSTS.has(url.hostname))
+    if (!safeProtocol || url.username || url.password || url.hash) return null
+    return url.href
+  }
+  catch {
+    return null
+  }
+}
+
+function parseTurnstileSiteKey(value: string | undefined): string | null {
+  const siteKey = value?.trim() ?? ''
+  return TURNSTILE_SITE_KEY_PATTERN.test(siteKey) ? siteKey : null
 }
 
 function normalizeEmail(value: string): string {

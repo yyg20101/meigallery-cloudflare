@@ -153,11 +153,17 @@ APP_AUTH_TERMS_VERSION=<正式条款版本>
 APP_AUTH_PRIVACY_VERSION=<正式隐私版本>
 APP_AUTH_PLATFORM_NOTICE_VERSION=<正式平台运营说明版本>
 APP_AUTH_ELIGIBILITY_VERSION=<正式必要资格说明版本>
+APP_AUTH_TERMS_URL=<正式条款 HTTPS URL>
+APP_AUTH_PRIVACY_URL=<正式隐私政策 HTTPS URL>
+APP_AUTH_PLATFORM_NOTICE_URL=<正式平台运营说明 HTTPS URL>
+APP_AUTH_ELIGIBILITY_URL=<正式必要资格说明 HTTPS URL>
 APP_AUTH_TURNSTILE_SITE_KEY=<App 人机验证公开 Site Key>
 TURNSTILE_SECRET_KEY=<对应 Secret>
 ```
 
-任一必要值缺失时 bootstrap 必须保持 `auth=false`。当前 `wrangler.toml` 的 production/dev 都显式设置 `APP_AUTH_ENABLED=false` 和 `APP_AUTH_REGISTRATION_ENABLED=false`；不得仅为联调修改 production 值。`0069_app_account_access.sql` 在正式身份数据接入前仍需生产备份、隐私/保留期评审和独立 migration 授权。
+任一必要值缺失或非法时 bootstrap 必须保持 `auth=false`。production 文档入口只接受无账号密码、无 fragment 的 HTTPS URL；本地调试才允许 localhost、127.0.0.1 和 Android 模拟器 `10.0.2.2` 的 HTTP URL。当前 `wrangler.toml` 的 production/dev 都显式设置 `APP_AUTH_ENABLED=false` 和 `APP_AUTH_REGISTRATION_ENABLED=false`；不得仅为联调修改 production 值。`0069_app_account_access.sql` 在正式身份数据接入前仍需生产备份、隐私/保留期评审和独立 migration 授权。
+
+本地自动化或模拟器联调可临时使用 Cloudflare 官方 always-pass 测试 Site Key/Secret。其 Siteverify 响应的 `action` 可能为 `test` 或缺失，因此服务端只在 `APP_ENV=local` 且 Secret 精确匹配官方公开测试 Secret 时兼容；`dev`、`production` 和真实密钥继续严格校验业务 action，production 额外校验 hostname。官方测试密钥不得写入仓库配置或部署到远端环境。
 
 仅主密钥轮换窗口配置：
 

@@ -29,7 +29,7 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.1.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.2.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
@@ -40,7 +40,7 @@ describe('App API v2 路由契约', () => {
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.1.0',
+      contractVersion: '1.2.0',
     })
   })
 
@@ -89,6 +89,8 @@ describe('App API v2 路由契约', () => {
     expect(contract).toContain('/api/v2/discovery/regions:')
     expect(contract).toContain('/api/v2/person-profiles/{profileId}:')
     expect(contract).toContain('/api/v2/auth/email-challenges:')
+    expect(contract).toContain('/api/v2/auth/turnstile:')
+    expect(contract).toContain('/api/v2/auth/turnstile/result:')
     expect(contract).toContain('/api/v2/auth/register:')
     expect(contract).toContain('/api/v2/auth/login:')
     expect(contract).toContain('/api/v2/auth/refresh:')

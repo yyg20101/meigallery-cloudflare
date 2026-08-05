@@ -48,7 +48,7 @@ M1 的通用状态机和数据骨架可进入开发验证，但认证展示文�
 - 会话：短期访问 Token 与旋转 Refresh Token 只以 SHA-256 摘要存储；刷新使旧访问 Token 立即失效，旧 Refresh Token 重放撤销整个会话。
 - 撤权：每次 App 鉴权校验账号、设备、会话状态及版本；远程退出按账号归属校验并幂等撤销目标设备会话。
 - 同意：注册和 App 会话要求匹配服务端当前条款、隐私、平台运营说明和必要资格说明版本；schema 只记录版本化决定，不写死年龄数值。
-- 开关：只有 `APP_AUTH_ENABLED=true`、所需文档版本齐全且 production Turnstile 配置完整时 bootstrap 才返回 `auth=true`；production/dev 配置默认关闭。
+- 开关：只有 `APP_AUTH_ENABLED=true`、所需文档版本与可阅读正文 URL 齐全且 production Turnstile 配置完整时 bootstrap 才返回 `auth=true`；production/dev 配置默认关闭。
 
 Auth-1 不关闭 G-01/G-03，不冻结法定年龄、首发地区、运营主体、最终登录适配器、保留期或正式法律文案；这些结论缺失时不得执行 production migration、启用注册或导入真实账号同意数据。
 

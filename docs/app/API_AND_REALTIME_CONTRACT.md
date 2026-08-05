@@ -147,7 +147,7 @@ Accept-Language: zh-CN
 
 注册响应不得返回 `personId` 或 `profileId`，除非该账号以后通过独立认领流程绑定真人。
 
-Auth-1 当前是默认关闭的开发基线：`APP_AUTH_ENABLED`、注册开关、四类文档版本和 production Turnstile 必须同时满足，bootstrap 才返回 `auth=true`。本阶段只启用邮箱身份，不写死年龄或地区，不开放手机号/第三方登录。现有 `users` 是唯一账号主体；旧 Web 账号只有在密码校验成功后才生成 App 身份映射，不按邮箱静默合并。
+Auth-1 当前是默认关闭的开发基线：`APP_AUTH_ENABLED`、注册开关、四类文档版本、四个可阅读正文 URL 和 production Turnstile 必须同时满足，bootstrap 才返回 `auth=true`。`challenge.type=turnstile` 时同时返回固定 `pagePath`/`resultPath`，三类业务动作使用不同 action 且 token 单次使用。本阶段只启用邮箱身份，不写死年龄或地区，不开放手机号/第三方登录。现有 `users` 是唯一账号主体；旧 Web 账号只有在密码校验成功后才生成 App 身份映射，不按邮箱静默合并。
 
 Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D1 只保存 SHA-256 摘要。每次授权校验账号、设备、App session version、状态、有效期和当前文档同意。成功刷新会替换当前 Access/Refresh Token，使旧 Access Token 立即失效；旧 Refresh Token 重放将撤销该会话并写安全事件。客户端必须串行刷新并把两种 Token 仅存入 Keystore/Keychain。
 

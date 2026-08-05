@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.1.0
+  version: 1.2.0
   description: >-
     App 1.0 的公共发现契约和 Auth-1 保守账号访问开发基线。账号能力必须同时具备
-    APP_AUTH_ENABLED、版本化文档和生产人机验证配置才会由 bootstrap 启用；默认关闭，
+    APP_AUTH_ENABLED、版本化文档、可阅读正文 URL 和生产人机验证配置才会由 bootstrap 启用；默认关闭，
     不代表首发地区、法定年龄、最终登录渠道或生产身份政策已经冻结。认领、消息、
     会员申请、金币和媒体访问仍未纳入本次契约。
 servers:
@@ -64,6 +64,51 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/auth/turnstile:
+    get:
+      tags: [Auth]
+      operationId: getAppTurnstileChallenge
+      summary: 获取 App 原生 WebView 使用的受控 Turnstile 挑战页
+      description: >-
+        只接受白名单 purpose；页面不包含 Secret Key，不使用原生 JavaScript bridge。
+        成功 token 由同源结果 URL 的 fragment 交给原生端拦截，服务端仍必须执行 Siteverify。
+      parameters:
+        - name: purpose
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [email_challenge, register, login]
+      responses:
+        '200':
+          description: 禁止缓存的 HTML 挑战页
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: purpose 非法
+          content:
+            text/html:
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/auth/turnstile/result:
+    get:
+      tags: [Auth]
+      operationId: getAppTurnstileResultFallback
+      summary: Turnstile 原生回调兜底页
+      description: 原生端应在导航发生前拦截该路径；服务器不会接收或回显 URL fragment 中的 token。
+      responses:
+        '200':
+          description: 禁止缓存的无敏感信息 HTML 兜底页
+          content:
+            text/html:
+              schema:
+                type: string
   /api/v2/auth/register:
     post:
       tags: [Auth]
@@ -339,7 +384,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.1.0
+        const: 1.2.0
   responses:
     BadRequest:
       description: 查询参数或游标无效
@@ -402,7 +447,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.1.0
+          const: 1.2.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -489,6 +534,7 @@ components:
           maxLength: 254
         challengeToken:
           type: string
+          maxLength: 2048
     EmailChallengeResult:
       type: object
       additionalProperties: false
@@ -534,6 +580,7 @@ components:
           $ref: '#/components/schemas/DeviceDescriptor'
         challengeToken:
           type: string
+          maxLength: 2048
     LoginRequest:
       type: object
       additionalProperties: false
@@ -553,6 +600,7 @@ components:
           $ref: '#/components/schemas/DeviceDescriptor'
         challengeToken:
           type: string
+          maxLength: 2048
     RefreshRequest:
       type: object
       additionalProperties: false
@@ -815,13 +863,19 @@ components:
                       const: none
                 - type: object
                   additionalProperties: false
-                  required: [type, siteKey]
+                  required: [type, siteKey, pagePath, resultPath]
                   properties:
                     type:
                       type: string
                       const: turnstile
                     siteKey:
                       type: string
+                    pagePath:
+                      type: string
+                      const: /api/v2/auth/turnstile
+                    resultPath:
+                      type: string
+                      const: /api/v2/auth/turnstile/result
             documents:
               oneOf:
                 - type: 'null'
@@ -832,6 +886,10 @@ components:
                     - privacyVersion
                     - platformOperationVersion
                     - eligibilityVersion
+                    - termsUrl
+                    - privacyUrl
+                    - platformOperationUrl
+                    - eligibilityUrl
                   properties:
                     termsVersion:
                       type: string
@@ -841,6 +899,18 @@ components:
                       type: string
                     eligibilityVersion:
                       type: string
+                    termsUrl:
+                      type: string
+                      format: uri
+                    privacyUrl:
+                      type: string
+                      format: uri
+                    platformOperationUrl:
+                      type: string
+                      format: uri
+                    eligibilityUrl:
+                      type: string
+                      format: uri
     BootstrapResponse:
       type: object
       additionalProperties: false
