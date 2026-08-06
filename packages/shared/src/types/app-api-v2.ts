@@ -1,5 +1,5 @@
 /**
- * App API v2 公共发现、保守账号访问与 Interaction-1 契约。
+ * App API v2 公共发现、保守账号访问、Interaction-1 与 Membership-1 契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -10,7 +10,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.3.0'
+  contractVersion: '1.4.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -50,6 +50,11 @@ export interface AppBootstrapConfig {
       follow: boolean
       favorite: false
       history: false
+    }
+    membership: {
+      catalog: boolean
+      entitlements: boolean
+      applications: false
     }
     messaging: false
     payments: false
@@ -136,6 +141,96 @@ export interface AppMeSummary {
     expiresAt: string | null
   }
   currentDeviceId: string
+}
+
+export type AppMembershipCatalogState = 'development' | 'published'
+export type AppMembershipEntitlementValueType = 'boolean' | 'integer' | 'enum'
+export type AppMembershipEntitlementValue = boolean | number | string
+export type AppMembershipEntitlementAvailability = 'available' | 'planned'
+
+export interface AppMembershipEntitlementDefinition {
+  key: string
+  schemaVersion: number
+  valueType: AppMembershipEntitlementValueType
+  defaultValue: AppMembershipEntitlementValue
+  mergeStrategy: 'highest_rank'
+  periodRule: string | null
+  clientCapability: string
+  displayName: string
+  description: string
+  unitLabel: string | null
+}
+
+export interface AppMembershipTierEntitlement {
+  key: string
+  value: AppMembershipEntitlementValue
+  availability: AppMembershipEntitlementAvailability
+}
+
+export interface AppMembershipTier {
+  tierId: string
+  code: string
+  displayName: string
+  tagline: string
+  rank: number
+  accentToken: string
+  acquisitionLabel: string
+  serviceDisclosure: string
+  entitlements: AppMembershipTierEntitlement[]
+}
+
+export interface AppMembershipCatalog {
+  catalogVersionId: string
+  versionCode: string
+  state: AppMembershipCatalogState
+  productionReady: boolean
+  effectiveAt: string
+  timezone: string
+  minimumClientVersion: string
+  acquisition: {
+    mode: 'contact_platform'
+    applicationEnabled: false
+    paymentEnabled: false
+    label: string
+  }
+  definitions: AppMembershipEntitlementDefinition[]
+  tiers: AppMembershipTier[]
+}
+
+export interface AppMembershipTierSummary {
+  tierId: string
+  code: string
+  displayName: string
+  rank: number
+  accentToken: string
+}
+
+export interface AppMembershipResolvedEntitlement extends AppMembershipEntitlementDefinition {
+  value: AppMembershipEntitlementValue
+  availability: AppMembershipEntitlementAvailability
+  executable: boolean
+  sourceTierId: string | null
+  usage: null | {
+    used: number
+    remaining: number
+    resetAt: string | null
+  }
+}
+
+export interface AppMembershipSnapshot {
+  catalogVersionId: string
+  versionCode: string
+  generatedAt: string
+  status: 'free' | 'active'
+  tier: AppMembershipTierSummary | null
+  grant: null | {
+    grantId: string
+    sourceType: 'manual_admin'
+    startsAt: string
+    expiresAt: string
+    userVisibleNote: string
+  }
+  entitlements: AppMembershipResolvedEntitlement[]
 }
 
 export interface AppPersonRegion {

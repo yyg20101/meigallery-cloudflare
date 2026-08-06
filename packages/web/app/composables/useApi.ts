@@ -64,6 +64,7 @@ export function useApi() {
     method?: string
     body?: unknown
     keepalive?: boolean
+    headers?: Record<string, string>
   }): Promise<T> {
     const event = useRequestEvent()
     const apiBinding = (event?.context as Record<string, any>)?.cloudflare?.env?.API_SERVICE
@@ -75,11 +76,12 @@ export function useApi() {
       const init: RequestInit = {
         method: options?.method || 'GET',
         keepalive: options?.keepalive,
+        headers: options?.headers,
       }
       if (isFormDataBody(options?.body)) {
         init.body = options.body
       } else if (options?.body) {
-        (init as any).headers = { 'Content-Type': 'application/json' }
+        (init as any).headers = { ...(init.headers as Record<string, string> || {}), 'Content-Type': 'application/json' }
         init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
       }
       // 转发原始请求的 cookie（用于认证场景）
@@ -95,11 +97,12 @@ export function useApi() {
     const fetchOpts: RequestInit = {
       method: options?.method || 'GET',
       keepalive: options?.keepalive,
+      headers: options?.headers,
     }
     if (isFormDataBody(options?.body)) {
       fetchOpts.body = options.body
     } else if (options?.body) {
-      fetchOpts.headers = { 'Content-Type': 'application/json' }
+      fetchOpts.headers = { ...(options?.headers || {}), 'Content-Type': 'application/json' }
       fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
     if (requestHeaders.cookie) {
@@ -125,6 +128,7 @@ export function useApi() {
       body?: unknown
       query?: Record<string, string | number | undefined>
       keepalive?: boolean
+      headers?: Record<string, string>
     },
   ): Promise<T> {
     const method = options?.method || 'GET'
@@ -142,11 +146,12 @@ export function useApi() {
       method,
       credentials: 'include',
       keepalive: options?.keepalive,
+      headers: options?.headers,
     }
     if (isFormDataBody(options?.body)) {
       fetchOptions.body = options.body
     } else if (options?.body) {
-      fetchOptions.headers = { 'Content-Type': 'application/json' }
+      fetchOptions.headers = { ...(options?.headers || {}), 'Content-Type': 'application/json' }
       fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
     }
     return $fetch<T>(fullPath, fetchOptions as any)

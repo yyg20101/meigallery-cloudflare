@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.3.0
+  version: 1.4.0
   description: >-
-    App 1.0 的公共发现契约、Auth-1 保守账号访问与 Interaction-1 喜欢/关注开发基线。账号能力必须同时具备
+    App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注与 Membership-1
+    五级会员开发基线。账号能力必须同时具备
     APP_AUTH_ENABLED、版本化文档、可阅读正文 URL 和生产人机验证配置才会由 bootstrap 启用；默认关闭，
-    不代表首发地区、法定年龄、最终登录渠道或生产身份政策已经冻结。认领、消息、
-    会员申请、金币和媒体访问仍未纳入本次契约。
+    会员目录与管理能力使用独立开关且生产环境还要求发布门禁。草案权益只可展示为 planned，不能据此执行。
+    认领、消息、会员申请、支付、金币和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -20,6 +21,7 @@ tags:
   - name: Discovery
   - name: PersonProfile
   - name: Interaction
+  - name: Membership
 paths:
   /api/v2/app/bootstrap:
     get:
@@ -236,6 +238,48 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/v2/membership/catalog:
+    get:
+      tags: [Membership]
+      operationId: getAppMembershipCatalog
+      summary: 获取版本化五级会员目录
+      description: >-
+        可在未登录状态读取；acquisition 只说明联系平台的人工路径，不提供购买或申请接口。
+        availability=planned 的权益只能展示“规划中”，客户端不得执行。
+      responses:
+        '200':
+          description: 当前环境启用的会员目录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipCatalogResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/entitlements:
+    get:
+      tags: [Membership]
+      operationId: getAppMembershipEntitlements
+      summary: 获取本人当前会员与 typed entitlement 快照
+      description: >-
+        只解析 App 会员 grant；不会自动映射旧 Web vip/svip。权限执行必须同时检查 executable=true，
+        不能根据显示名称或客户端缓存自行放行。
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 当前账号的服务端权威权益快照
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipSnapshotResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/me/devices:
     get:
       tags: [Account]
@@ -539,7 +583,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.3.0
+        const: 1.4.0
   parameters:
     ProfileId:
       name: profileId
@@ -596,7 +640,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     ServiceUnavailable:
-      description: 账号、人机验证或邮件服务尚未完成安全配置
+      description: 账号、人机验证、邮件服务或会员目录尚未完成安全配置
       content:
         application/json:
           schema:
@@ -626,7 +670,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.3.0
+          const: 1.4.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -939,6 +983,303 @@ components:
           $ref: '#/components/schemas/MeSummary'
         meta:
           $ref: '#/components/schemas/Meta'
+    MembershipEntitlementValue:
+      oneOf:
+        - type: boolean
+        - type: integer
+          minimum: 0
+        - type: string
+          minLength: 1
+          maxLength: 64
+    MembershipEntitlementDefinition:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - schemaVersion
+        - valueType
+        - defaultValue
+        - mergeStrategy
+        - periodRule
+        - clientCapability
+        - displayName
+        - description
+        - unitLabel
+      properties:
+        key:
+          type: string
+          pattern: '^[a-z][a-z0-9._]+$'
+        schemaVersion:
+          type: integer
+          minimum: 1
+        valueType:
+          type: string
+          enum: [boolean, integer, enum]
+        defaultValue:
+          $ref: '#/components/schemas/MembershipEntitlementValue'
+        mergeStrategy:
+          type: string
+          const: highest_rank
+        periodRule:
+          type: [string, 'null']
+        clientCapability:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        unitLabel:
+          type: [string, 'null']
+    MembershipTierEntitlement:
+      type: object
+      additionalProperties: false
+      required: [key, value, availability]
+      properties:
+        key:
+          type: string
+        value:
+          $ref: '#/components/schemas/MembershipEntitlementValue'
+        availability:
+          type: string
+          enum: [available, planned]
+    MembershipTier:
+      type: object
+      additionalProperties: false
+      required:
+        - tierId
+        - code
+        - displayName
+        - tagline
+        - rank
+        - accentToken
+        - acquisitionLabel
+        - serviceDisclosure
+        - entitlements
+      properties:
+        tierId:
+          type: string
+          pattern: '^amt_[A-Za-z0-9_-]+$'
+        code:
+          type: string
+        displayName:
+          type: string
+        tagline:
+          type: string
+        rank:
+          type: integer
+          minimum: 1
+        accentToken:
+          type: string
+        acquisitionLabel:
+          type: string
+        serviceDisclosure:
+          type: string
+        entitlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/MembershipTierEntitlement'
+    MembershipCatalog:
+      type: object
+      additionalProperties: false
+      required:
+        - catalogVersionId
+        - versionCode
+        - state
+        - productionReady
+        - effectiveAt
+        - timezone
+        - minimumClientVersion
+        - acquisition
+        - definitions
+        - tiers
+      properties:
+        catalogVersionId:
+          type: string
+          pattern: '^amc_[A-Za-z0-9_-]+$'
+        versionCode:
+          type: string
+        state:
+          type: string
+          enum: [development, published]
+        productionReady:
+          type: boolean
+        effectiveAt:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+        minimumClientVersion:
+          type: string
+        acquisition:
+          type: object
+          additionalProperties: false
+          required: [mode, applicationEnabled, paymentEnabled, label]
+          properties:
+            mode:
+              type: string
+              const: contact_platform
+            applicationEnabled:
+              type: boolean
+              const: false
+            paymentEnabled:
+              type: boolean
+              const: false
+            label:
+              type: string
+        definitions:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/MembershipEntitlementDefinition'
+        tiers:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/MembershipTier'
+    MembershipCatalogResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MembershipCatalog'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    MembershipTierSummary:
+      type: object
+      additionalProperties: false
+      required: [tierId, code, displayName, rank, accentToken]
+      properties:
+        tierId:
+          type: string
+        code:
+          type: string
+        displayName:
+          type: string
+        rank:
+          type: integer
+        accentToken:
+          type: string
+    MembershipResolvedEntitlement:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - schemaVersion
+        - valueType
+        - defaultValue
+        - mergeStrategy
+        - periodRule
+        - clientCapability
+        - displayName
+        - description
+        - unitLabel
+        - value
+        - availability
+        - executable
+        - sourceTierId
+        - usage
+      properties:
+        key:
+          type: string
+        schemaVersion:
+          type: integer
+        valueType:
+          type: string
+          enum: [boolean, integer, enum]
+        defaultValue:
+          $ref: '#/components/schemas/MembershipEntitlementValue'
+        mergeStrategy:
+          type: string
+          const: highest_rank
+        periodRule:
+          type: [string, 'null']
+        clientCapability:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        unitLabel:
+          type: [string, 'null']
+        value:
+          $ref: '#/components/schemas/MembershipEntitlementValue'
+        availability:
+          type: string
+          enum: [available, planned]
+        executable:
+          type: boolean
+        sourceTierId:
+          type: [string, 'null']
+        usage:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [used, remaining, resetAt]
+              properties:
+                used:
+                  type: integer
+                  minimum: 0
+                remaining:
+                  type: integer
+                  minimum: 0
+                resetAt:
+                  type: [string, 'null']
+                  format: date-time
+    MembershipSnapshot:
+      type: object
+      additionalProperties: false
+      required: [catalogVersionId, versionCode, generatedAt, status, tier, grant, entitlements]
+      properties:
+        catalogVersionId:
+          type: string
+        versionCode:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [free, active]
+        tier:
+          oneOf:
+            - $ref: '#/components/schemas/MembershipTierSummary'
+            - type: 'null'
+        grant:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [grantId, sourceType, startsAt, expiresAt, userVisibleNote]
+              properties:
+                grantId:
+                  type: string
+                sourceType:
+                  type: string
+                  const: manual_admin
+                startsAt:
+                  type: string
+                  format: date-time
+                expiresAt:
+                  type: string
+                  format: date-time
+                userVisibleNote:
+                  type: string
+        entitlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/MembershipResolvedEntitlement'
+    MembershipSnapshotResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MembershipSnapshot'
+        meta:
+          $ref: '#/components/schemas/Meta'
     DeviceResponse:
       type: object
       additionalProperties: false
@@ -974,7 +1315,7 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, auth, interactions, messaging, payments, systemPush]
+          required: [discovery, auth, interactions, membership, messaging, payments, systemPush]
           properties:
             discovery:
               type: boolean
@@ -994,6 +1335,18 @@ components:
                   type: boolean
                   const: false
                 history:
+                  type: boolean
+                  const: false
+            membership:
+              type: object
+              additionalProperties: false
+              required: [catalog, entitlements, applications]
+              properties:
+                catalog:
+                  type: boolean
+                entitlements:
+                  type: boolean
+                applications:
                   type: boolean
                   const: false
             messaging:

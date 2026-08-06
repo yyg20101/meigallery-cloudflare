@@ -91,6 +91,10 @@ IMAGE_RESIZING_ENABLED = "true"
 IMPORT_TOKEN_DAILY_LIMIT = "100"
 APP_AUTH_ENABLED = "false"
 APP_AUTH_REGISTRATION_ENABLED = "false"
+APP_MEMBERSHIP_ENABLED = "false"
+APP_MEMBERSHIP_ADMIN_ENABLED = "false"
+APP_MEMBERSHIP_CATALOG_VERSION = "amc_app_1_0_draft_1"
+APP_MEMBERSHIP_PRODUCTION_READY = "false"
 
 [observability]
 enabled = true
@@ -134,6 +138,10 @@ IMAGE_RESIZING_ENABLED = "false"
 IMPORT_TOKEN_DAILY_LIMIT = "100"
 APP_AUTH_ENABLED = "false"
 APP_AUTH_REGISTRATION_ENABLED = "false"
+APP_MEMBERSHIP_ENABLED = "false"
+APP_MEMBERSHIP_ADMIN_ENABLED = "false"
+APP_MEMBERSHIP_CATALOG_VERSION = "amc_app_1_0_draft_1"
+APP_MEMBERSHIP_PRODUCTION_READY = "false"
 
 # 敏感变量需通过 wrangler secret put 设置：
 # corepack pnpm --filter @meigallery/api exec wrangler secret put SESSION_SECRET

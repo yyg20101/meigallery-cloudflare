@@ -9,10 +9,10 @@ interface UserDetail {
   id: number; email: string; username: string | null; nickname: string | null
   avatarKey: string | null; role: string; status: string
   emailVerified: boolean; notificationEnabled: boolean
-  created_at: string; updated_at: string
+  createdAt: string; updatedAt: string
   memberships: Array<{
-    id: string; level_name: string; rank: number
-    starts_at: string; expires_at: string; note: string | null
+    id: string; levelName: string; rank: number
+    startsAt: string; expiresAt: string; note: string | null
   }>
 }
 
@@ -191,6 +191,8 @@ async function grantMembership() {
 function actionLabel(action: string): string {
   const map: Record<string, string> = {
     grant_membership: '发放会员',
+    app_membership_grant: '发放 App 会员',
+    app_membership_revoke: '撤销 App 会员',
     change_role: '修改角色',
     change_status: '修改状态',
     edit_user: '编辑信息',
@@ -245,7 +247,7 @@ function formatDate(dateStr: string | undefined): string {
           <div><dt class="text-gray-500">邮箱验证</dt>
             <dd>{{ userData.emailVerified ? '已验证' : '未验证' }}</dd>
           </div>
-          <div><dt class="text-gray-500">注册时间</dt><dd>{{ formatDate(userData.created_at) }}</dd></div>
+          <div><dt class="text-gray-500">注册时间</dt><dd>{{ formatDate(userData.createdAt) }}</dd></div>
         </dl>
 
         <!-- 可编辑字段 -->
@@ -319,9 +321,13 @@ function formatDate(dateStr: string | undefined): string {
       <p v-if="resetSuccess" class="mt-2 text-sm text-green-600">密码已重置，用户所有会话已清除</p>
     </div>
 
-    <!-- ========== 发放会员 ========== -->
+    <!-- ========== 独立 App 会员 ========== -->
+    <AdminAppMembershipPanel :user-id="userData.id" />
+
+    <!-- ========== 旧 Web 会员兼容 ========== -->
     <div class="rounded-lg bg-white p-5 border border-gray-200">
-      <h2 class="text-base font-semibold text-gray-900 mb-4">发放会员</h2>
+      <h2 class="text-base font-semibold text-gray-900">旧 Web 会员发放（兼容）</h2>
+      <p class="mb-4 mt-1 text-xs leading-5 text-amber-700">仅维护当前网站的 vip/svip 数据，不会自动映射为独立 App 五级会员。</p>
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <select v-model="grantForm.levelId" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
           <option value="ml_vip">VIP</option>
@@ -334,10 +340,11 @@ function formatDate(dateStr: string | undefined): string {
       <p v-if="grantError" class="mt-2 text-sm text-red-600">{{ grantError }}</p>
     </div>
 
-    <!-- ========== 会员历史 ========== -->
+    <!-- ========== 旧 Web 会员历史 ========== -->
     <div class="rounded-lg bg-white p-5 border border-gray-200">
-      <h2 class="text-base font-semibold text-gray-900 mb-4">会员历史</h2>
-      <table v-if="userData.memberships.length > 0" class="w-full text-sm">
+      <h2 class="text-base font-semibold text-gray-900 mb-4">旧 Web 会员历史</h2>
+      <div v-if="userData.memberships.length > 0" class="overflow-x-auto">
+      <table class="min-w-[640px] w-full text-sm">
         <thead class="border-b">
           <tr>
             <th class="py-2 text-left text-gray-600">等级</th>
@@ -348,13 +355,14 @@ function formatDate(dateStr: string | undefined): string {
         </thead>
         <tbody class="divide-y">
           <tr v-for="m in userData.memberships" :key="m.id">
-            <td class="py-2">{{ m.level_name }} ({{ m.rank }})</td>
-            <td class="py-2 text-gray-500">{{ m.starts_at?.split('T')[0] }}</td>
-            <td class="py-2 text-gray-500">{{ m.expires_at?.split('T')[0] }}</td>
+            <td class="py-2">{{ m.levelName }} ({{ m.rank }})</td>
+            <td class="py-2 text-gray-500">{{ m.startsAt?.split('T')[0] }}</td>
+            <td class="py-2 text-gray-500">{{ m.expiresAt?.split('T')[0] }}</td>
             <td class="py-2 text-gray-500">{{ m.note || '-' }}</td>
           </tr>
         </tbody>
       </table>
+      </div>
       <p v-else class="text-sm text-gray-400">暂无会员记录</p>
     </div>
 

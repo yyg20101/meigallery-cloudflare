@@ -2,6 +2,7 @@ import type { Bindings } from '../index'
 import { verifyCode } from './email-verification'
 import { generateId } from '../utils/db'
 import { hashPassword, verifyPassword } from '../utils/password'
+import { getAppMembershipSummary } from './app-membership'
 
 const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -544,25 +545,23 @@ export async function revokeCurrentAppSession(
 export async function getAppAccount(
   db: D1Database,
   principal: AppSessionPrincipal,
+  appMembership: {
+    catalogVersionId: string
+    requireProductionReady: boolean
+  } | null = null,
+  now = new Date(),
 ): Promise<{
   account: AppAccountSummary
   membership: { code: string; name: string; rank: number; expiresAt: string | null }
   currentDeviceId: string
 }> {
-  const membership = await db.prepare(`
-    SELECT ml.code, ml.name, ml.rank, um.expires_at
-    FROM user_memberships um
-    JOIN membership_levels ml ON ml.id = um.level_id
-    WHERE um.user_id = ?
-      AND datetime('now') BETWEEN datetime(um.starts_at) AND datetime(um.expires_at)
-    ORDER BY ml.rank DESC, datetime(um.expires_at) DESC
-    LIMIT 1
-  `).bind(principal.accountInternalId).first<{
-    code: string
-    name: string
-    rank: number
-    expires_at: string
-  }>()
+  const membership = await getAppMembershipSummary(
+    db,
+    principal.accountInternalId,
+    appMembership?.catalogVersionId ?? null,
+    now,
+    { requireProductionReady: appMembership?.requireProductionReady },
+  )
 
   return {
     account: {
@@ -572,14 +571,7 @@ export async function getAppAccount(
       role: principal.role,
       status: 'active',
     },
-    membership: membership
-      ? {
-          code: membership.code,
-          name: membership.name,
-          rank: membership.rank,
-          expiresAt: membership.expires_at,
-        }
-      : { code: 'free', name: '普通用户', rank: 0, expiresAt: null },
+    membership,
     currentDeviceId: principal.deviceId,
   }
 }

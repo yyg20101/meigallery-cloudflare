@@ -2,9 +2,9 @@
 
 App 版本：1.0
 
-日期：2026-08-02
+日期：2026-08-06
 
-状态：整体需求讨论中；M0 公共发现只读契约已冻结，M1 人物供给与 Auth-1 账号访问进入保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1 与 Membership-1 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -39,6 +39,17 @@ M1 在现有 Web 管理员会话域内使用 `/api/admin/app/persons`，先验�
 
 M1 管理命令全部要求 `expectedVersion`，认证和授权绑定具体 `contentVersion`。发布决定再次校验全门禁后才写入公开投影；授权/认证撤销与人工暂停立即下线。当前不导入真实人物或证据，不执行 production migration，认证正式声明和职责分离仍是生产门禁。
 
+### 1.4 Membership-1 局部冻结记录
+
+Membership-1 以兼容新增方式把契约提升为 `1.4.0`，只冻结并实现以下最小边界：
+
+- `GET /api/v2/membership/catalog`：公开读取当前明确配置的五级目录和 typed entitlement。
+- `GET /api/v2/me/entitlements`：使用 App Bearer 会话读取本人最高有效 App grant 与权威快照。
+- bootstrap 增加 `membership.catalog`、`membership.entitlements` 和 `membership.applications`；本阶段申请能力固定为 `false`。
+- Nuxt 后台暂时复用受保护的 `/api/admin/app/memberships`，覆盖目录、账号状态、低风险预览/发放/续期和追加式撤销。
+
+当前五级数值全部是 `development + planned`，不构成正式额度承诺或可执行业务权限。`user_memberships` 的旧 `vip/svip` 不进入 App 权益解析。用户申请、高风险双人复核、批量操作、额度消耗和迁移仍未冻结为实现契约。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -67,7 +78,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.3.0"
+    "contractVersion": "1.4.0"
   }
 }
 ```
@@ -217,16 +228,16 @@ Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v2/catalog/memberships` | 五级会员目录、获取方式和已启用 entitlement |
-| GET | `/api/v2/me/membership` | 当前等级、有效区间、发放来源摘要和用户可见时间线 |
-| GET | `/api/v2/me/entitlements` | 已解析权限快照 |
+| GET | `/api/v2/membership/catalog` | Membership-1 已实现：五级开发目录、获取方式与 typed entitlement |
+| GET | `/api/v2/me/entitlements` | Membership-1 已实现：当前 App grant、等级、有效区间和已解析权益 |
+| GET | `/api/v2/me/membership` | 后续：独立会员时间线；当前 `/me/entitlements` 已返回当前 grant 摘要 |
 | POST | `/api/v2/orders` | 未来：创建购买意图 |
 | POST | `/api/v2/orders/verify` | 未来：提交商店交易供服务端验证 |
 | POST | `/api/v2/orders/restore` | 未来：恢复购买 |
 | GET | `/api/v2/me/orders` | 未来：订单列表 |
 | GET | `/api/v2/me/orders/:orderId` | 未来：订单详情 |
 
-entitlement 响应包含目录版本、来源、值、有效期、已用/剩余额度、重置时间和最低客户端版本。客户端可缓存展示，但受限 API 每次服务端重验。目录使用 `rank` 和稳定 key；等级中文名只用于展示。App 1.0 不部署订单写路由或向客户端返回购买 capability。
+Membership-1 响应包含目录版本、值、当前 grant、有效期、可执行标记和最低客户端版本；开发目录中的七项权益全部为 `planned` 且 `executable=false`。客户端可缓存展示，但未来受限 API 必须每次由服务端重验。目录使用 `rank` 和稳定 key；等级中文名只用于展示。额度已用/剩余与重置时间将在对应业务能力实现时提供，不得由客户端根据目录值自行计算。App 1.0 当前不部署订单写路由或向客户端返回购买 capability。
 
 ## 9. 会话与消息 API
 
@@ -347,7 +358,7 @@ App 1.0 钱包路由只读，余额来自追加式分录/受控快照，客户�
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
-M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。它只供 admin+ Web 会话使用；所有写命令写审计并以条件批次防止旧 `expectedVersion` 留下状态、投影或假审计。下表 `/api/v2/admin` 仍表示长期统一目标。
+M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、预览、低风险发放/续期与追加式撤销。两者只供 admin+ Web 会话使用，所有写命令均写审计；下表 `/api/v2/admin` 仍表示长期统一目标。
 
 | 资源 | 主要能力 |
 |------|----------|

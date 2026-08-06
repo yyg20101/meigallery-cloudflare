@@ -37,7 +37,7 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.3.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.4.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
@@ -47,6 +47,11 @@ describe('App API v2 路由契约', () => {
         favorite: false,
         history: false,
       },
+      membership: {
+        catalog: false,
+        entitlements: false,
+        applications: false,
+      },
       messaging: false,
       payments: false,
       systemPush: false,
@@ -54,7 +59,56 @@ describe('App API v2 路由契约', () => {
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.3.0',
+      contractVersion: '1.4.0',
+    })
+  })
+
+  it('会员目录和本人权益使用独立开关，生产环境还要求显式通过发布门禁', async () => {
+    const development = createApp({}, {
+      APP_MEMBERSHIP_ENABLED: 'true',
+      APP_MEMBERSHIP_CATALOG_VERSION: 'amc_app_1_0_draft_1',
+    })
+    const developmentResponse = await development.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      development.env,
+      {} as ExecutionContext,
+    )
+    expect(await developmentResponse.json()).toMatchObject({
+      data: {
+        capabilities: {
+          membership: {
+            catalog: true,
+            entitlements: false,
+            applications: false,
+          },
+        },
+      },
+    })
+
+    const disabledCatalog = createApp()
+    const disabledResponse = await disabledCatalog.app.fetch(
+      new Request('https://api.test/api/v2/membership/catalog'),
+      disabledCatalog.env,
+      {} as ExecutionContext,
+    )
+    expect(disabledResponse.status).toBe(403)
+    expect(await disabledResponse.json()).toMatchObject({
+      error: { code: 'FEATURE_DISABLED', retryable: false },
+    })
+
+    const production = createApp({}, {
+      APP_ENV: 'production',
+      APP_MEMBERSHIP_ENABLED: 'true',
+      APP_MEMBERSHIP_CATALOG_VERSION: 'amc_app_1_0_draft_1',
+      APP_MEMBERSHIP_PRODUCTION_READY: 'false',
+    })
+    const productionResponse = await production.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      production.env,
+      {} as ExecutionContext,
+    )
+    expect(await productionResponse.json()).toMatchObject({
+      data: { capabilities: { membership: { catalog: false, entitlements: false } } },
     })
   })
 
@@ -156,5 +210,7 @@ describe('App API v2 路由契约', () => {
     expect(contract).toContain('/api/v2/person-profiles/{profileId}/follow:')
     expect(contract).toContain('/api/v2/me/likes:')
     expect(contract).toContain('/api/v2/me/follows:')
+    expect(contract).toContain('/api/v2/membership/catalog:')
+    expect(contract).toContain('/api/v2/me/entitlements:')
   })
 })

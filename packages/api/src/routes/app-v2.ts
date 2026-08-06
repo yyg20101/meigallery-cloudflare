@@ -30,6 +30,13 @@ import {
   parseAppViewerInteractionQuery,
   setViewerInteraction,
 } from '../services/app-viewer-interactions'
+import {
+  AppMembershipError,
+  getAppMembershipCatalog,
+  getAppMembershipRuntimeConfig,
+  requireAppMembershipEnabled,
+  resolveAppMembershipSnapshot,
+} from '../services/app-membership'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -78,7 +85,54 @@ for (const path of [
 }
 
 appV2Routes.get('/me', async (c) => {
-  return appApiSuccess(c, await getAppAccount(c.env.DB, appPrincipal(c)))
+  try {
+    const membership = getAppMembershipRuntimeConfig(c.env)
+    return appApiSuccess(c, await getAppAccount(
+      c.env.DB,
+      appPrincipal(c),
+      membership.enabled && membership.catalogVersionId
+        ? {
+            catalogVersionId: membership.catalogVersionId,
+            requireProductionReady: membership.requireProductionReady,
+          }
+        : null,
+    ))
+  }
+  catch (error) {
+    return appMembershipError(c, error)
+  }
+})
+
+appV2Routes.get('/membership/catalog', async (c) => {
+  try {
+    const config = getAppMembershipRuntimeConfig(c.env)
+    requireAppMembershipEnabled(config)
+    return appApiSuccess(c, await getAppMembershipCatalog(
+      c.env.DB,
+      config.catalogVersionId,
+      { requireProductionReady: config.requireProductionReady },
+    ))
+  }
+  catch (error) {
+    return appMembershipError(c, error)
+  }
+})
+
+appV2Routes.get('/me/entitlements', async (c) => {
+  try {
+    const config = getAppMembershipRuntimeConfig(c.env)
+    requireAppMembershipEnabled(config)
+    return appApiSuccess(c, await resolveAppMembershipSnapshot(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      config.catalogVersionId,
+      new Date(),
+      { requireProductionReady: config.requireProductionReady },
+    ))
+  }
+  catch (error) {
+    return appMembershipError(c, error)
+  }
 })
 
 appV2Routes.get('/me/devices', async (c) => {
@@ -213,6 +267,7 @@ for (const [path, interactionType] of [
 
 function bootstrapConfig(env: Bindings): AppBootstrapConfig {
   const auth = getAppAuthRuntimeConfig(env)
+  const membership = getAppMembershipRuntimeConfig(env)
   return {
     product: 'meigallery',
     appVersion: '1.0',
@@ -224,6 +279,11 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
         follow: auth.enabled,
         favorite: false,
         history: false,
+      },
+      membership: {
+        catalog: membership.enabled,
+        entitlements: membership.enabled && auth.enabled,
+        applications: false,
       },
       messaging: false,
       payments: false,
@@ -255,6 +315,16 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
         : null,
     },
   }
+}
+
+function appMembershipError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppMembershipError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  throw error
 }
 
 function appInteractionError(

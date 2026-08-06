@@ -2,13 +2,15 @@
 
 App 版本：1.0
 
-日期：2026-07-20
+日期：2026-08-06
 
 状态：需求讨论中
 
 范围说明：App 1.0 只交付五级会员展示与管理员手动发放、entitlement、金币余额/明细和管理员加扣币/冲正。在线支付、金币充值、礼物和装扮属于后续商业化阶段；本文保留其长期设计，但不构成 App 1.0 发布门禁。
 
 App 1.0 产品验收分别以 [心享会员、Entitlement 与管理员手动发放 PRD](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md) 和 [金币钱包、追加式账本与管理员调币 PRD](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md) 为准。
+
+实现说明：Membership-1 当前只完成五级开发目录、typed entitlement、本人快照和管理员低风险手动 grant；七项值均标记为 `planned`。用户申请、额度执行、金币和商业化能力仍不得据此视为已交付，具体见 [Membership-1 跨仓交付与联调基线](./MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md)。
 
 ## 1. 商业化原则
 
@@ -25,20 +27,20 @@ App 1.0 产品验收分别以 [心享会员、Entitlement 与管理员手动发�
 
 | rank | 等级 | 核心文案 | 产品定位 |
 |-----:|------|----------|----------|
-| 10 | 心遇 | 从遇见开始，解锁真人私信 | 入门互动 |
+| 10 | 心遇 | 从遇见开始，解锁平台话题 | 入门互动 |
 | 20 | 心悦 | 看见更多喜欢，发现更加从容 | 进阶发现 |
 | 30 | 心知 | 更懂你的偏好，互动更进一步 | 深度体验 |
 | 40 | 心契 | 享受高阶服务与专属装扮 | 高阶服务 |
 | 50 | 心耀 | 心享至高等级，汇集完整权益 | 旗舰权益 |
 
-App 1.0 五级全部展示并可由管理员手动发放，不提供在线销售。名称与文案是品牌层，授权只看 rank 和 entitlement。五级有效会员均拥有基础私信 entitlement，高等级默认继承低等级权益。
+App 1.0 五级全部展示并可由管理员手动发放，不提供在线销售。名称与文案是品牌层，授权只看 rank 和 entitlement。五级有效会员的目标需求均包含基础平台话题 entitlement；在 Message-1 未实现前仍为规划能力。
 
 ### 2.2 Entitlement 分类
 
 | 权限键示例 | 类型 | 说明 |
 |------------|------|------|
-| `direct_message.create` | bool | 是否可创建真人私信 |
-| `direct_message.send` | bool | 是否可在有效会话中发送私信；会员到期后既有会话只读 |
+| `direct_message.create` | bool | 是否可创建由平台运营接收的话题 |
+| `direct_message.send` | bool | 是否可在有效平台话题中发送文本；会员到期后的历史策略待消息域冻结 |
 | `direct_message.new_threads_per_day` | quota | 每日新会话额度 |
 | `discovery.filter_tier` | enum | 基础/进阶/高级筛选档位 |
 | `discovery.saved_filters` | quota | 保存筛选数量 |

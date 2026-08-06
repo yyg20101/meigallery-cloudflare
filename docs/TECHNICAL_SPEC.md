@@ -118,6 +118,20 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整跨仓边界与验收要求见 `docs/app/INTERACTION_1_CROSS_REPO_INTEGRATION.md`。
 
+### 独立 App 五级会员 `[开发验证，默认关闭]`
+
+`0071_app_membership_catalog_and_grants.sql` 和 App API v2 `1.4.0` 建立 Membership-1 最小闭环：
+
+- `app_membership_catalog_versions` 保存不可原地覆盖的目录版本及独立 `production_ready` 标记；开发 seed 只有 `amc_app_1_0_draft_1`，状态为 `development`。
+- 心遇、心悦、心知、心契、心耀使用稳定 code/tier ID 和 `rank=10/20/30/40/50`。展示名称、颜色和文案不参与权限判断。
+- entitlement 以稳定 key、schema 版本和值类型定义；当前支持 `boolean|integer|enum`。七项开发配置全部为 `planned`，只能展示，不能据此开放消息、筛选、历史或收藏夹业务。
+- `GET /api/v2/membership/catalog` 提供公共五级目录；`GET /api/v2/me/entitlements` 使用 App Bearer 会话返回本人最高有效 App grant 和快照。`GET /api/v2/me` 复用同一摘要，不读取旧 Web `user_memberships`。
+- 管理后台在现有用户详情页提供独立 App 会员面板，支持预览、立即发放、续期和撤销。grant 不可变，撤销写入独立追加表；发放与撤销均要求幂等键、业务单号、标准原因和用户可见说明，并写审计。
+- `APP_MEMBERSHIP_ENABLED` 与 `APP_MEMBERSHIP_ADMIN_ENABLED` 分离；production 还要求 `APP_MEMBERSHIP_PRODUCTION_READY=true` 且目录行同时为 `published + production_ready=1`。production/dev 当前都显式关闭。
+- migration 不 seed 账号 grant、不回填 legacy 数据、不把 `vip/svip` 自动映射为五级会员。用户申请、批量/高风险双人复核、额度消耗、通知和旧会员迁移仍未实现。
+
+完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md`。
+
 ### 速率限制 `[当前实现 / 外部配置]`
 
 当前实现分两层：
@@ -273,6 +287,8 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/v2/me` | 默认关闭：当前账号和会员摘要 |
 | GET | `/api/v2/me/devices` | 默认关闭：本人设备列表 |
 | DELETE | `/api/v2/me/devices/:deviceId` | 默认关闭：幂等远程退出其他设备 |
+| GET | `/api/v2/membership/catalog` | 默认关闭：Membership-1 五级开发目录与 typed entitlement |
+| GET | `/api/v2/me/entitlements` | 默认关闭：当前 App 账号的权威会员权益快照 |
 
 App 公开人物查询统一要求：认证有效、发布有效、用途授权已开始且未到期、认证未到期、投影可见、来源图库仍为 `published`。任一条件失败时不得回退读取人物草稿或图库表。
 
@@ -318,6 +334,11 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | PATCH | `/api/admin/tags/:id` | 编辑标签 | admin+ |
 | GET | `/api/admin/users` | 用户列表和搜索 | admin+ |
 | POST | `/api/admin/users/:id/memberships` | 发放会员等级 | admin+ |
+| GET | `/api/admin/app/memberships/catalog` | 读取 Membership-1 当前配置目录 | admin+ |
+| GET | `/api/admin/app/memberships/users/:userId` | 读取指定账号 App 会员状态与 grant 时间线 | admin+ |
+| POST | `/api/admin/app/memberships/grants/preview` | 预览立即发放或续期，不产生写入 | admin+ |
+| POST | `/api/admin/app/memberships/grants` | 幂等创建单账号 App grant | admin+ |
+| POST | `/api/admin/app/memberships/grants/:grantId/revoke` | 追加式撤销 App grant | admin+ |
 | POST | `/api/admin/import-jobs` | 创建导入任务（需 Turnstile） | admin+ |
 | GET | `/api/admin/import-jobs/:id` | 导入任务详情和进度 | admin+ |
 | POST | `/api/admin/import-jobs/:id/process` | 处理导入任务（需 Turnstile） | admin+ |
@@ -503,6 +524,22 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 | `app_account_security_events` | 登录、刷新、退出、重放和设备撤销安全事件 | 不保存邮箱、Token、验证码或设备安装原值 |
 
 该表族是可回滚开发基线，不替代未来经 G-01/G-03 冻结后的完整身份、隐私和数据权利模型；没有 production migration、seed 或真实同意数据。
+
+### App 五级会员表族 `[开发验证，默认关闭]`
+
+`0071_app_membership_catalog_and_grants.sql` 只 seed 开发目录，不迁移 legacy 会员或账号数据：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_membership_catalog_versions` | 版本化目录及生产门禁 | 版本 code 唯一；`state` 与 `production_ready` 双状态 |
+| `app_membership_tiers` | 五级品牌、rank 和服务说明 | 目录内 tier ID、code、rank、顺序均唯一 |
+| `app_entitlement_definitions` | 按目录版本快照的 typed entitlement schema | 目录内稳定 key、值类型、安全默认值、合并策略和客户端 capability；新版本不覆盖旧定义 |
+| `app_membership_tier_entitlements` | 每级目录值 | 目录/等级/权益唯一；`planned|available` 明确分离 |
+| `app_membership_grants` | 不可变账号发放事实 | 快照化等级、有效区间、原因、用户说明、发放人；账号内业务单号唯一 |
+| `app_membership_grant_revocations` | 追加式撤销 | 每个 grant 最多一条；不更新或删除原 grant |
+| `app_membership_admin_requests` | 后台写操作幂等结果 | 幂等键唯一；绑定规范化请求哈希、目标账号和结果 grant |
+
+当前解析只选择未撤销且满足 `starts_at <= now < expires_at` 的最高 `rank` grant。客户端快照不构成授权；未来接入受限业务 API 时仍须在服务端按请求重新解析并完成额度原子消耗。
 
 ### media_assets
 

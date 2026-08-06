@@ -48,6 +48,21 @@ describe('useApi 浏览器请求目标', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/conversions/events')
     expect(fetchMock.mock.calls[0]?.[0]).not.toContain(configuredApi)
   })
+
+  it('JSON 请求保留调用方提供的幂等头', async () => {
+    await useApi().api('/api/conversions/events', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'membership:test:0001' },
+      body: { event: 'test' },
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/conversions/events', expect.objectContaining({
+      headers: {
+        'Idempotency-Key': 'membership:test:0001',
+        'Content-Type': 'application/json',
+      },
+    }))
+  })
 })
 
 describe('useApi SSR Service Binding', () => {
