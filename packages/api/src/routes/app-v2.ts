@@ -37,6 +37,24 @@ import {
   requireAppMembershipEnabled,
   resolveAppMembershipSnapshot,
 } from '../services/app-membership'
+import {
+  AppMessagingError,
+  APP_MESSAGING_DISCLOSURE_TEXT,
+  APP_MESSAGING_MAX_TEXT_LENGTH,
+  APP_MESSAGING_RECEIVER_LABEL,
+  createAppConversation,
+  getAppConversation,
+  getAppMessagingRuntimeConfig,
+  listAppConversationMessages,
+  listAppConversations,
+  markAppConversationRead,
+  parseAppConversationListQuery,
+  parseAppMessageListQuery,
+  requireAppMessagingEnabled,
+  sendAppViewerMessage,
+  type CreateAppConversationInput,
+  type SendAppMessageInput,
+} from '../services/app-messaging'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -57,6 +75,8 @@ for (const path of [
   '/person-profiles/:profileId/interactions',
   '/person-profiles/:profileId/like',
   '/person-profiles/:profileId/follow',
+  '/conversations',
+  '/conversations/*',
 ]) {
   appV2Routes.use(path, async (c, next) => {
     try {
@@ -137,6 +157,133 @@ appV2Routes.get('/me/entitlements', async (c) => {
 
 appV2Routes.get('/me/devices', async (c) => {
   return appApiSuccess(c, await listAppDevices(c.env.DB, appPrincipal(c)))
+})
+
+appV2Routes.post('/conversations', async (c) => {
+  try {
+    const config = messagingConfig(c.env)
+    const principal = appPrincipal(c)
+    const data = await createAppConversation(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      config.catalogVersionId,
+      config.disclosureVersion,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<CreateAppConversationInput>(),
+      c.req.url,
+      new Date(),
+      config.requireProductionReady,
+    )
+    return appApiSuccess(c, data, data.created ? 201 : 200)
+  }
+  catch (error) {
+    return appMessagingError(c, error)
+  }
+})
+
+appV2Routes.get('/conversations', async (c) => {
+  try {
+    const config = messagingConfig(c.env)
+    const principal = appPrincipal(c)
+    const query = parseAppConversationListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppConversations(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      config.catalogVersionId,
+      c.req.url,
+      query,
+      new Date(),
+      config.requireProductionReady,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appMessagingError(c, error)
+  }
+})
+
+appV2Routes.get('/conversations/:conversationId', async (c) => {
+  try {
+    const config = messagingConfig(c.env)
+    const principal = appPrincipal(c)
+    return appApiSuccess(c, await getAppConversation(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      c.req.param('conversationId'),
+      config.catalogVersionId,
+      c.req.url,
+      new Date(),
+      config.requireProductionReady,
+    ))
+  }
+  catch (error) {
+    return appMessagingError(c, error)
+  }
+})
+
+appV2Routes.get('/conversations/:conversationId/messages', async (c) => {
+  try {
+    messagingConfig(c.env)
+    const query = parseAppMessageListQuery({
+      afterSequence: c.req.query('afterSequence'),
+      limit: c.req.query('limit'),
+    })
+    return appApiSuccess(c, await listAppConversationMessages(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('conversationId'),
+      query,
+    ))
+  }
+  catch (error) {
+    return appMessagingError(c, error)
+  }
+})
+
+appV2Routes.post('/conversations/:conversationId/messages', async (c) => {
+  try {
+    const config = messagingConfig(c.env)
+    const data = await sendAppViewerMessage(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('conversationId'),
+      config.catalogVersionId,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<SendAppMessageInput>(),
+      new Date(),
+      config.requireProductionReady,
+    )
+    return appApiSuccess(c, data, data.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return appMessagingError(c, error)
+  }
+})
+
+appV2Routes.post('/conversations/:conversationId/read', async (c) => {
+  try {
+    messagingConfig(c.env)
+    const body = await c.req.json<{ sequence?: unknown }>()
+    return appApiSuccess(c, await markAppConversationRead(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('conversationId'),
+      body.sequence,
+    ))
+  }
+  catch (error) {
+    return appMessagingError(c, error)
+  }
 })
 
 appV2Routes.delete('/me/devices/:deviceId', async (c) => {
@@ -268,6 +415,7 @@ for (const [path, interactionType] of [
 function bootstrapConfig(env: Bindings): AppBootstrapConfig {
   const auth = getAppAuthRuntimeConfig(env)
   const membership = getAppMembershipRuntimeConfig(env)
+  const messaging = getAppMessagingRuntimeConfig(env)
   return {
     product: 'meigallery',
     appVersion: '1.0',
@@ -285,7 +433,7 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
         entitlements: membership.enabled && auth.enabled,
         applications: false,
       },
-      messaging: false,
+      messaging: auth.enabled && messaging.enabled,
       payments: false,
       systemPush: false,
     },
@@ -314,7 +462,30 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
           }
         : null,
     },
+    messaging: {
+      receiverLabel: APP_MESSAGING_RECEIVER_LABEL,
+      disclosureVersion: messaging.disclosureVersion,
+      disclosureText: APP_MESSAGING_DISCLOSURE_TEXT,
+      transport: 'http_pull',
+      maxTextLength: APP_MESSAGING_MAX_TEXT_LENGTH,
+    },
   }
+}
+
+function messagingConfig(env: Bindings) {
+  const config = getAppMessagingRuntimeConfig(env)
+  requireAppMessagingEnabled(config)
+  return config
+}
+
+function appMessagingError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppMessagingError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  return appMembershipError(c, error)
 }
 
 function appMembershipError(

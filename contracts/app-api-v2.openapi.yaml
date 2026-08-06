@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.4.0
+  version: 1.5.0
   description: >-
-    App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注与 Membership-1
-    五级会员开发基线。账号能力必须同时具备
+    App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
+    五级会员开发基线与 Message-1 平台话题 HTTP 权威闭环。账号能力必须同时具备
     APP_AUTH_ENABLED、版本化文档、可阅读正文 URL 和生产人机验证配置才会由 bootstrap 启用；默认关闭，
-    会员目录与管理能力使用独立开关且生产环境还要求发布门禁。草案权益只可展示为 planned，不能据此执行。
-    认领、消息、会员申请、支付、金币和媒体访问仍未纳入本次契约。
+    会员与消息能力使用独立开关且生产环境还要求发布门禁。只有 available 且 executable 的消息权益可执行。
+    话题始终由平台运营接收，不代表真人本人入驻或回复；实时通道、媒体消息、认领、会员申请、支付、金币和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -22,6 +22,7 @@ tags:
   - name: PersonProfile
   - name: Interaction
   - name: Membership
+  - name: Messaging
 paths:
   /api/v2/app/bootstrap:
     get:
@@ -280,6 +281,210 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/conversations:
+    get:
+      tags: [Messaging]
+      operationId: listAppConversations
+      summary: 获取本人的平台话题列表
+      description: 只返回当前账号自己的会话；人物资料失效时返回最小占位并转为只读。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 平台话题列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [Messaging]
+      operationId: createAppConversation
+      summary: 发起由平台运营接收的新话题
+      description: >-
+        只允许有效会员针对当前可见的 platform_managed 人物发起；按服务端上海自然日额度原子扣减。
+        disclosureVersion 必须与 bootstrap 对应的当前服务说明一致，同一账号与人物只保留一个话题。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationCreateRequest'
+      responses:
+        '200':
+          description: 已存在的话题或幂等重放
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationCreateResponse'
+        '201':
+          description: 新话题已创建并写入平台接收说明
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/conversations/{conversationId}:
+    get:
+      tags: [Messaging]
+      operationId: getAppConversation
+      summary: 获取本人单个平台话题摘要
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: 平台话题摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v2/conversations/{conversationId}/messages:
+    get:
+      tags: [Messaging]
+      operationId: listAppConversationMessages
+      summary: 按序号增量拉取本人话题消息
+      description: Message-1 使用 HTTP 拉取，不承诺实时到达；消息按 sequence 严格升序。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - name: afterSequence
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: 增量消息页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationMessagesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Messaging]
+      operationId: sendAppConversationMessage
+      summary: 在本人有效话题中发送文本消息
+      description: 只接受 text；表情作为普通 Unicode 文本，不支持图片、语音、视频、礼物或付款。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationMessageSendRequest'
+      responses:
+        '200':
+          description: 幂等重放的原消息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationMessageSendResponse'
+        '201':
+          description: 文本消息已接收
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationMessageSendResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/conversations/{conversationId}/read:
+    post:
+      tags: [Messaging]
+      operationId: markAppConversationRead
+      summary: 更新本人话题已读序号
+      description: 只允许单调前进，不能超过服务端当前 lastSequence。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationReadRequest'
+      responses:
+        '200':
+          description: 服务端确认的已读序号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationReadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v2/me/devices:
     get:
       tags: [Account]
@@ -583,7 +788,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.4.0
+        const: 1.5.0
   parameters:
     ProfileId:
       name: profileId
@@ -608,6 +813,23 @@ components:
         minLength: 1
         maxLength: 1024
       description: 与当前账号和关系类型隔离的不透明游标。
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^cv_[A-Za-z0-9_-]{1,77}$'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+        pattern: '^[!-~]+$'
+      description: 每次逻辑写操作的稳定随机键；重试必须复用原值，不能跨不同正文复用。
   responses:
     BadRequest:
       description: 查询参数或游标无效
@@ -635,6 +857,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
       description: 同意版本、当前状态或对象操作发生冲突
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: 新话题日额度已用完或发送频率过高
       content:
         application/json:
           schema:
@@ -670,7 +898,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.4.0
+          const: 1.5.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -1280,6 +1508,287 @@ components:
           $ref: '#/components/schemas/MembershipSnapshot'
         meta:
           $ref: '#/components/schemas/Meta'
+    ConversationCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [profileId, disclosureVersion]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        disclosureVersion:
+          type: string
+          minLength: 1
+          maxLength: 80
+          pattern: '^[A-Za-z0-9._-]+$'
+    ConversationMessageSendRequest:
+      type: object
+      additionalProperties: false
+      required: [clientMessageId, contentType, text]
+      properties:
+        clientMessageId:
+          type: string
+          minLength: 8
+          maxLength: 96
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]+$'
+        contentType:
+          type: string
+          const: text
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+    ConversationReadRequest:
+      type: object
+      additionalProperties: false
+      required: [sequence]
+      properties:
+        sequence:
+          type: integer
+          minimum: 0
+    ConversationProfileSummary:
+      type: object
+      additionalProperties: false
+      required: [profileId, available, displayName, coverUrl]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        available:
+          type: boolean
+        displayName:
+          type: [string, 'null']
+        coverUrl:
+          type: [string, 'null']
+          format: uri
+    ConversationQuota:
+      type: object
+      additionalProperties: false
+      required: [limit, used, remaining, resetsAt, periodKey]
+      properties:
+        limit:
+          type: integer
+          minimum: 0
+        used:
+          type: integer
+          minimum: 0
+        remaining:
+          type: integer
+          minimum: 0
+        resetsAt:
+          type: string
+          format: date-time
+        periodKey:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+    ConversationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - conversationId
+        - profile
+        - operationMode
+        - receiverLabel
+        - disclosureVersion
+        - disclosureText
+        - status
+        - queueStatus
+        - lastSequence
+        - unreadCount
+        - canSend
+        - sendUnavailableReason
+        - lastMessageAt
+        - createdAt
+        - updatedAt
+      properties:
+        conversationId:
+          type: string
+          pattern: '^cv_[A-Za-z0-9_-]{1,77}$'
+        profile:
+          $ref: '#/components/schemas/ConversationProfileSummary'
+        operationMode:
+          type: string
+          const: platform_managed
+        receiverLabel:
+          type: string
+          const: 平台运营接收
+        disclosureVersion:
+          type: string
+        disclosureText:
+          type: string
+        status:
+          type: string
+          enum: [active, restricted, closed]
+        queueStatus:
+          type: string
+          enum: [awaiting_viewer, awaiting_operator, closed]
+        lastSequence:
+          type: integer
+          minimum: 1
+        unreadCount:
+          type: integer
+          minimum: 0
+        canSend:
+          type: boolean
+        sendUnavailableReason:
+          type: [string, 'null']
+        lastMessageAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ConversationMessage:
+      type: object
+      additionalProperties: false
+      required:
+        - messageId
+        - conversationId
+        - sequence
+        - senderType
+        - senderLabel
+        - clientMessageId
+        - contentType
+        - text
+        - status
+        - readByReceiver
+        - createdAt
+      properties:
+        messageId:
+          type: string
+          pattern: '^msg_[A-Za-z0-9_-]{1,76}$'
+        conversationId:
+          type: string
+          pattern: '^cv_[A-Za-z0-9_-]{1,77}$'
+        sequence:
+          type: integer
+          minimum: 1
+        senderType:
+          type: string
+          enum: [viewer, platform_operator, system]
+        senderLabel:
+          type: string
+        clientMessageId:
+          type: string
+        contentType:
+          type: string
+          enum: [text, system]
+        text:
+          type: string
+        status:
+          type: string
+          enum: [accepted, review_pending, rejected, recalled]
+        readByReceiver:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    ConversationCreateResult:
+      type: object
+      additionalProperties: false
+      required: [conversation, quota, created, replayed]
+      properties:
+        conversation:
+          $ref: '#/components/schemas/ConversationSummary'
+        quota:
+          oneOf:
+            - $ref: '#/components/schemas/ConversationQuota'
+            - type: 'null'
+        created:
+          type: boolean
+        replayed:
+          type: boolean
+    ConversationMessagesPage:
+      type: object
+      additionalProperties: false
+      required: [items, nextAfterSequence, hasMore]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ConversationMessage'
+        nextAfterSequence:
+          type: [integer, 'null']
+          minimum: 1
+        hasMore:
+          type: boolean
+    ConversationCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ConversationCreateResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ConversationResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ConversationSummary'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ConversationListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/ConversationSummary'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    ConversationMessagesResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ConversationMessagesPage'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ConversationMessageSendResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [message, replayed]
+          properties:
+            message:
+              $ref: '#/components/schemas/ConversationMessage'
+            replayed:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ConversationReadResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [conversationId, readSequence]
+          properties:
+            conversationId:
+              type: string
+              pattern: '^cv_[A-Za-z0-9_-]{1,77}$'
+            readSequence:
+              type: integer
+              minimum: 0
+        meta:
+          $ref: '#/components/schemas/Meta'
     DeviceResponse:
       type: object
       additionalProperties: false
@@ -1304,7 +1813,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, auth]
+      required: [product, appVersion, capabilities, discovery, auth, messaging]
       properties:
         product:
           type: string
@@ -1351,7 +1860,6 @@ components:
                   const: false
             messaging:
               type: boolean
-              const: false
             payments:
               type: boolean
               const: false
@@ -1458,6 +1966,28 @@ components:
                     eligibilityUrl:
                       type: string
                       format: uri
+        messaging:
+          type: object
+          additionalProperties: false
+          required: [receiverLabel, disclosureVersion, disclosureText, transport, maxTextLength]
+          properties:
+            receiverLabel:
+              type: string
+              const: 平台运营接收
+            disclosureVersion:
+              type: string
+              minLength: 1
+              maxLength: 80
+            disclosureText:
+              type: string
+              minLength: 1
+              maxLength: 240
+            transport:
+              type: string
+              const: http_pull
+            maxTextLength:
+              type: integer
+              const: 1000
     BootstrapResponse:
       type: object
       additionalProperties: false

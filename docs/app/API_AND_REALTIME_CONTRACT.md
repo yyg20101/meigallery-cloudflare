@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-06
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1 与 Membership-1 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1、Membership-1 与 Message-1 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -31,7 +31,7 @@ App 版本：1.0
 - `GET /api/v2/person-profiles/:profileId`：返回同一公开资格边界下的基础详情投影。
 - 四个 M0 响应统一返回 `Cache-Control: no-store`，避免资格撤回、授权到期或源图库下线后被中间缓存继续展示；后续只有在完成可撤销缓存设计后才能调整。
 
-账号体系不属于 M0 冻结范围；Auth-1 只以默认关闭的开发基线独立推进。真人认领、互动、会员、消息、钱包和媒体访问仍按开放问题与专业门禁逐项冻结。M0 migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
+账号体系不属于 M0 冻结范围；Auth-1 只以默认关闭的开发基线独立推进。真人认领、通知、钱包和媒体访问仍按开放问题与专业门禁逐项冻结。M0 migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
 
 ### 1.3 M1 人物供给开发边界
 
@@ -49,6 +49,19 @@ Membership-1 以兼容新增方式把契约提升为 `1.4.0`，只冻结并实�
 - Nuxt 后台暂时复用受保护的 `/api/admin/app/memberships`，覆盖目录、账号状态、低风险预览/发放/续期和追加式撤销。
 
 当前五级数值全部是 `development + planned`，不构成正式额度承诺或可执行业务权限。`user_memberships` 的旧 `vip/svip` 不进入 App 权益解析。用户申请、高风险双人复核、批量操作、额度消耗和迁移仍未冻结为实现契约。
+
+### 1.5 Message-1 局部冻结记录
+
+Message-1 以兼容新增方式把累计契约提升为 `1.5.0`，只冻结并实现默认关闭的最小平台话题边界：
+
+- 用户侧实现创建/复用、会话列表、详情、sequence 补拉、文本发送和已读；传输固定为 `http_pull`，不包含实时通道或系统推送。
+- bootstrap 增加 `capabilities.messaging` 以及受校验的 `receiverLabel`、`disclosureVersion`、`disclosureText`、`transport` 和 `maxTextLength`。字段缺失、矛盾或未知时客户端必须关闭入口。
+- 只有精确配置到 Message-1 开发目录且三项消息 entitlement 为 `available` 时才能通过服务端校验；等级名称不参与授权，日额度按上海自然日原子消耗。
+- 未认领真人仅允许 `platform_managed`。平台接收披露必须出现在人物详情确认、会话列表、会话顶部和系统消息中；运营回复只能标记为 `platform_operator`。
+- Nuxt 暂时使用 `/api/admin/app/conversations` 队列处理消息；正文访问声明 `service_operation` 并审计，审计和通用日志不得复制正文。
+- 实时消息、媒体、撤回、静音、关闭、举报/拉黑、多操作员分配、本人运营及历史交接均保留在完整产品需求中，不属于 Message-1 已实现契约。
+
+Message-1 的 production/dev 用户与后台开关、production-ready 门禁均保持关闭，现有环境目录也未切换到新开发目录。migration 和代码存在不表示可以部署或开放生产能力。
 
 ## 2. 通用请求
 
@@ -78,7 +91,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.4.0"
+    "contractVersion": "1.5.0"
   }
 }
 ```
@@ -237,33 +250,33 @@ Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写
 | GET | `/api/v2/me/orders` | 未来：订单列表 |
 | GET | `/api/v2/me/orders/:orderId` | 未来：订单详情 |
 
-Membership-1 响应包含目录版本、值、当前 grant、有效期、可执行标记和最低客户端版本；开发目录中的七项权益全部为 `planned` 且 `executable=false`。客户端可缓存展示，但未来受限 API 必须每次由服务端重验。目录使用 `rank` 和稳定 key；等级中文名只用于展示。额度已用/剩余与重置时间将在对应业务能力实现时提供，不得由客户端根据目录值自行计算。App 1.0 当前不部署订单写路由或向客户端返回购买 capability。
+Membership-1 原始目录 `amc_app_1_0_draft_1` 的七项权益全部为 `planned` 且 `executable=false`。Message-1 新建独立 `development` 目录，只把创建、发送和每日新话题额度三项改为 `available`，其余权益继续为 `planned`；环境不切换目录时不会获得消息权限。客户端目录快照只用于展示，受限 API 每次仍由服务端重验当前 grant、稳定 entitlement key、有效期和额度。等级中文名不参与授权，App 1.0 当前不部署订单写路由或购买 capability。
 
 ## 9. 会话与消息 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v2/conversations` | 按真人资料创建/复用私信；强制幂等 |
-| GET | `/api/v2/conversations` | 当前账号会话列表 |
-| GET | `/api/v2/conversations/:id` | 会话、接收主体和状态 |
-| GET | `/api/v2/conversations/:id/messages` | 按 sequence 补拉消息 |
-| POST | `/api/v2/conversations/:id/messages` | HTTP 发送兜底；校验有效 `direct_message.send` |
-| POST | `/api/v2/conversations/:id/messages/:sequence/recall` | 在服务端返回窗口内撤回本人消息；幂等 |
-| POST | `/api/v2/conversations/:id/read` | 实际接收方已读到 sequence |
-| POST | `/api/v2/conversations/:id/mute` | 静音/取消静音 |
-| POST | `/api/v2/conversations/:id/close` | 用户关闭会话 |
-| POST | `/api/v2/conversations/:id/handover-consent` | 历史交接选择（M3） |
+| POST | `/api/v2/conversations` | Message-1 已实现：按真人资料幂等创建/复用平台话题并原子消耗额度 |
+| GET | `/api/v2/conversations` | Message-1 已实现：当前账号会话列表 |
+| GET | `/api/v2/conversations/:id` | Message-1 已实现：会话、接收主体和当前可发送状态 |
+| GET | `/api/v2/conversations/:id/messages` | Message-1 已实现：按 sequence 正序补拉消息 |
+| POST | `/api/v2/conversations/:id/messages` | Message-1 已实现：幂等发送观看者文本并校验 `direct_message.send` |
+| POST | `/api/v2/conversations/:id/read` | Message-1 已实现：单调推进观看者已读 sequence |
+| POST | `/api/v2/conversations/:id/messages/:sequence/recall` | 后续：在服务端返回窗口内撤回本人消息；幂等 |
+| POST | `/api/v2/conversations/:id/mute` | 后续：静音/取消静音 |
+| POST | `/api/v2/conversations/:id/close` | 后续：用户关闭会话 |
+| POST | `/api/v2/conversations/:id/handover-consent` | 未来：历史交接选择 |
 
 创建请求：
 
 ```json
 {
   "profileId": "pp_xxx",
-  "clientCapabilityVersion": "2.0"
+  "disclosureVersion": "managed_message_1"
 }
 ```
 
-App 1.0 的用户消息 payload 只允许 `text` 和 `emoji`；`system` 只能由服务端生成。图片、语音、视频、文件和位置消息必须同时满足服务端 capability 与最低客户端版本后才能接收。
+Message-1 的用户消息只接受 `contentType=text`，普通 Unicode 表情可作为文本内容；`system` 只能由服务端生成。图片、语音、视频、文件和位置消息没有可执行入口，未来必须同时满足独立产品评审、服务端 capability 与最低客户端版本后才能接收。
 
 创建响应必须包含：
 

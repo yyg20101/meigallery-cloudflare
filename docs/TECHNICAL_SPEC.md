@@ -132,6 +132,21 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md`。
 
+### 独立 App 平台话题 `[开发验证，默认关闭]`
+
+`0072_app_managed_conversations.sql` 和 App API v2 `1.5.0` 建立 Message-1 仅文本 HTTP 权威闭环：
+
+- 新目录 `amc_app_1_0_message_1_dev_1` 复制 Membership-1 五级结构，只把 `direct_message.create`、`direct_message.send` 与 `direct_message.new_threads_per_day` 标记为 `available`；目录仍是 `development` 且 `production_ready=0`，现有环境配置仍指向旧目录。
+- 一个观看者账号对一个合格人物资料最多一个 `platform_managed` 会话。创建/发送强制幂等；创建在同一个 D1 `batch()` 中写会话、不可省略的接收主体系统消息、额度消耗和幂等结果。
+- 每次创建与发送都在服务端重新解析当前有效 App grant 和 entitlement；人物必须继续满足认证、发布、用途授权、可见性和来源图库发布门禁。会员到期或资料失效后保留历史只读，不信任客户端缓存。
+- 新话题额度按 `Asia/Shanghai` 自然日计算，消耗事实追加写入；同一个人物复用已有会话不重复消耗额度。观看者发送限 20 条/分钟/会话，运营发送限 60 条/分钟/会话，生产仍需配置 Cloudflare 边缘限流。
+- 接收主体固定为“平台运营接收”，消息发送方只允许 `viewer|platform_operator|system`。管理员不能提交 `person` 身份；后台回复另有文案门禁，禁止冒充真人或承诺回复、见面与关系结果。
+- 消息正文只存在业务消息表和受控正文响应中，不进入通用日志、分析事件或审计 JSON。管理员正文读取要求 `service_operation` 原因并写访问审计；回复审计只保存消息 ID、正文 SHA-256 与长度。
+- KMP 使用 bootstrap 的 `messaging` capability、接收主体、披露版本、HTTP 拉取方式和文本上限决定入口；当前只有手动刷新，没有 WebSocket、Durable Object、系统推送、媒体消息或假在线/输入状态。
+- `APP_MESSAGING_ENABLED` 与 `APP_MESSAGING_ADMIN_ENABLED` 独立，production 还要求 `APP_MESSAGING_PRODUCTION_READY=true`；三项当前均不放行，不得随 migration 自动开启。
+
+完整跨仓边界与验收要求见 `docs/app/MESSAGE_1_CROSS_REPO_INTEGRATION.md`。
+
 ### 速率限制 `[当前实现 / 外部配置]`
 
 当前实现分两层：
@@ -289,6 +304,12 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | DELETE | `/api/v2/me/devices/:deviceId` | 默认关闭：幂等远程退出其他设备 |
 | GET | `/api/v2/membership/catalog` | 默认关闭：Membership-1 五级开发目录与 typed entitlement |
 | GET | `/api/v2/me/entitlements` | 默认关闭：当前 App 账号的权威会员权益快照 |
+| POST | `/api/v2/conversations` | 默认关闭：幂等创建或复用 Message-1 平台话题并原子消耗日额度 |
+| GET | `/api/v2/conversations` | 默认关闭：当前 App 账号的话题列表 |
+| GET | `/api/v2/conversations/:conversationId` | 默认关闭：对象归属内的话题详情和当前可发送状态 |
+| GET | `/api/v2/conversations/:conversationId/messages` | 默认关闭：按 sequence 正序补拉文本与系统消息 |
+| POST | `/api/v2/conversations/:conversationId/messages` | 默认关闭：幂等发送观看者文本消息 |
+| POST | `/api/v2/conversations/:conversationId/read` | 默认关闭：单调推进观看者已读 sequence |
 
 App 公开人物查询统一要求：认证有效、发布有效、用途授权已开始且未到期、认证未到期、投影可见、来源图库仍为 `published`。任一条件失败时不得回退读取人物草稿或图库表。
 
@@ -339,6 +360,11 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/memberships/grants/preview` | 预览立即发放或续期，不产生写入 | admin+ |
 | POST | `/api/admin/app/memberships/grants` | 幂等创建单账号 App grant | admin+ |
 | POST | `/api/admin/app/memberships/grants/:grantId/revoke` | 追加式撤销 App grant | admin+ |
+| GET | `/api/admin/app/conversations` | Message-1 平台话题队列，不返回正文 | admin+ |
+| GET | `/api/admin/app/conversations/:conversationId` | 读取话题元数据；正文访问目的固定为 `service_operation` 并审计 | admin+ |
+| GET | `/api/admin/app/conversations/:conversationId/messages` | 受控读取话题正文并写访问审计 | admin+ |
+| POST | `/api/admin/app/conversations/:conversationId/read` | 单调推进运营已读 sequence 并审计 | admin+ |
+| POST | `/api/admin/app/conversations/:conversationId/messages` | 以固定 `platform_operator` 身份幂等回复并记录无正文审计摘要 | admin+ |
 | POST | `/api/admin/import-jobs` | 创建导入任务（需 Turnstile） | admin+ |
 | GET | `/api/admin/import-jobs/:id` | 导入任务详情和进度 | admin+ |
 | POST | `/api/admin/import-jobs/:id/process` | 处理导入任务（需 Turnstile） | admin+ |
@@ -540,6 +566,19 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 | `app_membership_admin_requests` | 后台写操作幂等结果 | 幂等键唯一；绑定规范化请求哈希、目标账号和结果 grant |
 
 当前解析只选择未撤销且满足 `starts_at <= now < expires_at` 的最高 `rank` grant。客户端快照不构成授权；未来接入受限业务 API 时仍须在服务端按请求重新解析并完成额度原子消耗。
+
+### App 平台话题表族 `[开发验证，默认关闭]`
+
+`0072_app_managed_conversations.sql` 不创建真实会话、账号或 grant seed：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_conversations` | 账号与合格人物之间的平台话题事实 | `account_id + profile_id` 唯一；仅 `platform_managed`；保存单调 sequence/read 高水位 |
+| `app_conversation_quota_consumptions` | 新话题日额度追加消耗 | 每个新会话恰好一条；绑定 grant、目录、等级、entitlement 与上海日键 |
+| `app_conversation_messages` | 文本和系统消息权威顺序 | 会话内 sequence/client message ID 唯一；发送身份与 actor 外键组合受 CHECK 限制 |
+| `app_messaging_idempotency` | 创建与双端发送的幂等结果 | `actor_scope + operation + idempotency_key` 唯一；绑定规范化请求哈希 |
+
+会话正文不是分析或审计载荷。当前 D1 是 Message-1 的唯一消息事实源；只有未来完成独立实时/可靠性设计后，才能引入 Durable Objects 或 Queue，且不得形成第二条业务事实链路。
 
 ### media_assets
 

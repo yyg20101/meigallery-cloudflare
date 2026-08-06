@@ -8,14 +8,28 @@ async function readMigration(name: string) {
 }
 
 describe('数据库迁移契约', () => {
-  it('migration 索引从 0001 到 0071 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0072 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 71 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 72 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
+  })
+
+  it('0072 只建立默认关闭的平台话题结构，不写入账号、grant 或会话数据', async () => {
+    const sql = await readMigration('0072_app_managed_conversations.sql')
+
+    expect(sql).toContain('CREATE TABLE app_conversations')
+    expect(sql).toContain('CREATE TABLE app_conversation_messages')
+    expect(sql).toContain('CREATE TABLE app_conversation_quota_consumptions')
+    expect(sql).toContain('CREATE TABLE app_messaging_idempotency')
+    expect(sql).toContain("operation_mode IN ('platform_managed')")
+    expect(sql).toContain("sender_type IN ('viewer', 'platform_operator', 'system')")
+    expect(sql).not.toMatch(/INSERT INTO\s+app_conversations/iu)
+    expect(sql).not.toMatch(/INSERT INTO\s+app_membership_grants/iu)
+    expect(sql).not.toMatch(/UPDATE\s+app_membership_catalog_versions[\s\S]+production_ready\s*=\s*1/iu)
   })
 
   it('0071 只写开发会员目录，不迁移旧会员或预发放账号权益', async () => {

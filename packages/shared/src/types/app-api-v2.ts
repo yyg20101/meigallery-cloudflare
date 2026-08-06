@@ -1,5 +1,5 @@
 /**
- * App API v2 公共发现、保守账号访问、Interaction-1 与 Membership-1 契约。
+ * App API v2 公共发现、账号访问、Interaction-1、Membership-1 与 Message-1 契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -10,7 +10,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.4.0'
+  contractVersion: '1.5.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -56,7 +56,7 @@ export interface AppBootstrapConfig {
       entitlements: boolean
       applications: false
     }
-    messaging: false
+    messaging: boolean
     payments: false
     systemPush: false
   }
@@ -87,6 +87,13 @@ export interface AppBootstrapConfig {
       platformOperationUrl: string
       eligibilityUrl: string
     }
+  }
+  messaging: {
+    receiverLabel: string
+    disclosureVersion: string
+    disclosureText: string
+    transport: 'http_pull'
+    maxTextLength: number
   }
 }
 
@@ -231,6 +238,71 @@ export interface AppMembershipSnapshot {
     userVisibleNote: string
   }
   entitlements: AppMembershipResolvedEntitlement[]
+}
+
+export type AppConversationStatus = 'active' | 'restricted' | 'closed'
+export type AppConversationQueueStatus = 'awaiting_viewer' | 'awaiting_operator' | 'closed'
+export type AppConversationSenderType = 'viewer' | 'platform_operator' | 'system'
+export type AppConversationMessageStatus = 'accepted' | 'review_pending' | 'rejected' | 'recalled'
+
+export interface AppConversationProfileSummary {
+  profileId: string
+  available: boolean
+  displayName: string | null
+  coverUrl: string | null
+}
+
+export interface AppConversationQuota {
+  limit: number
+  used: number
+  remaining: number
+  resetsAt: string
+  periodKey: string
+}
+
+export interface AppConversationSummary {
+  conversationId: string
+  profile: AppConversationProfileSummary
+  operationMode: 'platform_managed'
+  receiverLabel: string
+  disclosureVersion: string
+  disclosureText: string
+  status: AppConversationStatus
+  queueStatus: AppConversationQueueStatus
+  lastSequence: number
+  unreadCount: number
+  canSend: boolean
+  sendUnavailableReason: string | null
+  lastMessageAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AppConversationMessage {
+  messageId: string
+  conversationId: string
+  sequence: number
+  senderType: AppConversationSenderType
+  senderLabel: string
+  clientMessageId: string
+  contentType: 'text' | 'system'
+  text: string
+  status: AppConversationMessageStatus
+  readByReceiver: boolean
+  createdAt: string
+}
+
+export interface AppConversationCreateResult {
+  conversation: AppConversationSummary
+  quota: AppConversationQuota | null
+  created: boolean
+  replayed: boolean
+}
+
+export interface AppConversationMessagesPage {
+  items: AppConversationMessage[]
+  nextAfterSequence: number | null
+  hasMore: boolean
 }
 
 export interface AppPersonRegion {

@@ -37,7 +37,7 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.4.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.5.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
@@ -59,7 +59,60 @@ describe('App API v2 路由契约', () => {
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.4.0',
+      contractVersion: '1.5.0',
+    })
+  })
+
+  it('消息能力只有在账号、会员、用户消息和生产门禁同时满足时才开放', async () => {
+    const development = createApp({}, {
+      APP_AUTH_ENABLED: 'true',
+      APP_AUTH_TERMS_VERSION: 'terms-1',
+      APP_AUTH_PRIVACY_VERSION: 'privacy-1',
+      APP_AUTH_PLATFORM_NOTICE_VERSION: 'platform-1',
+      APP_AUTH_ELIGIBILITY_VERSION: 'eligibility-1',
+      APP_AUTH_TERMS_URL: 'https://legal.test/terms',
+      APP_AUTH_PRIVACY_URL: 'https://legal.test/privacy',
+      APP_AUTH_PLATFORM_NOTICE_URL: 'https://legal.test/platform',
+      APP_AUTH_ELIGIBILITY_URL: 'https://legal.test/eligibility',
+      APP_MEMBERSHIP_ENABLED: 'true',
+      APP_MEMBERSHIP_CATALOG_VERSION: 'amc_app_1_0_message_1_dev_1',
+      APP_MESSAGING_ENABLED: 'true',
+      APP_MESSAGING_DISCLOSURE_VERSION: 'managed_message_1',
+    })
+    const developmentResponse = await development.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      development.env,
+      {} as ExecutionContext,
+    )
+    expect(await developmentResponse.json()).toMatchObject({
+      data: { capabilities: { messaging: true } },
+    })
+
+    const production = createApp({}, {
+      APP_ENV: 'production',
+      APP_AUTH_ENABLED: 'true',
+      APP_AUTH_TERMS_VERSION: 'terms-1',
+      APP_AUTH_PRIVACY_VERSION: 'privacy-1',
+      APP_AUTH_PLATFORM_NOTICE_VERSION: 'platform-1',
+      APP_AUTH_ELIGIBILITY_VERSION: 'eligibility-1',
+      APP_AUTH_TERMS_URL: 'https://legal.test/terms',
+      APP_AUTH_PRIVACY_URL: 'https://legal.test/privacy',
+      APP_AUTH_PLATFORM_NOTICE_URL: 'https://legal.test/platform',
+      APP_AUTH_ELIGIBILITY_URL: 'https://legal.test/eligibility',
+      APP_MEMBERSHIP_ENABLED: 'true',
+      APP_MEMBERSHIP_CATALOG_VERSION: 'amc_app_1_0_message_1_dev_1',
+      APP_MEMBERSHIP_PRODUCTION_READY: 'true',
+      APP_MESSAGING_ENABLED: 'true',
+      APP_MESSAGING_DISCLOSURE_VERSION: 'managed_message_1',
+      APP_MESSAGING_PRODUCTION_READY: 'false',
+    })
+    const productionResponse = await production.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      production.env,
+      {} as ExecutionContext,
+    )
+    expect(await productionResponse.json()).toMatchObject({
+      data: { capabilities: { messaging: false } },
     })
   })
 
@@ -212,5 +265,9 @@ describe('App API v2 路由契约', () => {
     expect(contract).toContain('/api/v2/me/follows:')
     expect(contract).toContain('/api/v2/membership/catalog:')
     expect(contract).toContain('/api/v2/me/entitlements:')
+    expect(contract).toContain('/api/v2/conversations:')
+    expect(contract).toContain('/api/v2/conversations/{conversationId}:')
+    expect(contract).toContain('/api/v2/conversations/{conversationId}/messages:')
+    expect(contract).toContain('/api/v2/conversations/{conversationId}/read:')
   })
 })
