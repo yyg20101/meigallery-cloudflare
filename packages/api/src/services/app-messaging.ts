@@ -13,6 +13,12 @@ import {
   getAppMembershipRuntimeConfig,
   resolveAppMembershipSnapshot,
 } from './app-membership'
+import {
+  AppSafetyError,
+  getAppMessagingRuntimeControl,
+  isAppProfileBlocked,
+  type AppMessagingRuntimeControl,
+} from './app-safety'
 
 export const APP_MESSAGE_1_CATALOG_ID = 'amc_app_1_0_message_1_dev_1'
 export const APP_MESSAGING_DISCLOSURE_VERSION = 'managed_message_1'
@@ -96,6 +102,7 @@ type ConversationRow = {
   created_at: string
   updated_at: string
   unread_count: number
+  blocked: number
 }
 
 export type AppConversationInternalRow = ConversationRow
@@ -142,6 +149,10 @@ export function getAppMessagingRuntimeConfig(env: Pick<Bindings,
   | 'APP_MESSAGING_ADMIN_ENABLED'
   | 'APP_MESSAGING_DISCLOSURE_VERSION'
   | 'APP_MESSAGING_PRODUCTION_READY'
+  | 'APP_SAFETY_ENABLED'
+  | 'APP_SAFETY_ADMIN_ENABLED'
+  | 'APP_SAFETY_REASON_CATALOG_VERSION'
+  | 'APP_SAFETY_PRODUCTION_READY'
 >): AppMessagingRuntimeConfig {
   const membership = getAppMembershipRuntimeConfig(env)
   const disclosureVersion = normalizeDisclosureVersion(env.APP_MESSAGING_DISCLOSURE_VERSION)
@@ -150,10 +161,12 @@ export function getAppMessagingRuntimeConfig(env: Pick<Bindings,
 
   return {
     enabled: env.APP_MESSAGING_ENABLED === 'true'
+      && env.APP_SAFETY_ENABLED === 'true'
       && membership.enabled
       && Boolean(disclosureVersion)
       && productionGateSatisfied,
     adminEnabled: env.APP_MESSAGING_ADMIN_ENABLED === 'true'
+      && env.APP_SAFETY_ADMIN_ENABLED === 'true'
       && membership.adminEnabled
       && Boolean(disclosureVersion)
       && productionGateSatisfied,
@@ -263,6 +276,10 @@ export async function createAppConversation(
     }
   }
 
+  if (await isAppProfileBlocked(db, accountId, profileId)) {
+    throw new AppMessagingError(403, 'CONVERSATION_FORBIDDEN', '你已拉黑该人物资料，无法发起平台话题')
+  }
+
   const existing = await findConversationByProfile(db, accountId, profileId)
   if (existing) {
     await bindExistingConversationIdempotency(
@@ -290,6 +307,9 @@ export async function createAppConversation(
     }
   }
 
+  const runtimeControl = await requireMessagingRuntimeControl(db, requireProductionReady)
+  await assertNewConversationCapacity(db, runtimeControl)
+
   const entitlement = await requireCreateEntitlement(
     db,
     accountId,
@@ -316,6 +336,8 @@ export async function createAppConversation(
                'awaiting_viewer', 1, 1, 0, ?, ?, ?, NULL
         FROM profile_public_projections p
         JOIN galleries gallery ON gallery.id = p.source_gallery_id
+        JOIN app_messaging_runtime_controls runtime_control
+          ON runtime_control.scope = 'global'
         JOIN app_membership_grants grant_row ON grant_row.id = ?
         JOIN app_membership_tier_entitlements create_entitlement
           ON create_entitlement.catalog_version_id = grant_row.catalog_version_id
@@ -336,6 +358,17 @@ export async function createAppConversation(
           AND (p.verification_valid_until IS NULL OR datetime(p.verification_valid_until) > datetime(?))
           AND datetime(p.published_at) IS NOT NULL
           AND gallery.status = 'published'
+          AND runtime_control.new_conversations_paused = 0
+          AND NOT EXISTS (
+            SELECT 1 FROM app_profile_blocks block
+            WHERE block.account_id = ?
+              AND block.profile_id = p.profile_id
+              AND block.state = 'blocked'
+          )
+          AND (
+            SELECT COUNT(*) FROM app_conversations open_conversation
+            WHERE open_conversation.status = 'active'
+          ) < runtime_control.max_open_conversations
           AND grant_row.user_id = ?
           AND grant_row.catalog_version_id = ?
           AND grant_row.starts_at <= ?
@@ -369,6 +402,7 @@ export async function createAppConversation(
         nowIso,
         nowIso,
         nowIso,
+        accountId,
         accountId,
         catalogVersionId,
         nowIso,
@@ -443,7 +477,7 @@ export async function createAppConversation(
       }
     }
     const concurrentConversation = await findConversationByProfile(db, accountId, profileId)
-    if (concurrentConversation) {
+    if (concurrentConversation && concurrentConversation.blocked !== 1) {
       return {
         conversation: await mapSingleConversation(
           db,
@@ -517,7 +551,13 @@ export async function listAppConversations(
         WHERE message.conversation_id = c.id
           AND message.sender_type = 'platform_operator'
           AND message.sequence > c.viewer_read_sequence
-      ) AS unread_count
+      ) AS unread_count,
+      EXISTS (
+        SELECT 1 FROM app_profile_blocks block
+        WHERE block.account_id = c.account_id
+          AND block.profile_id = c.profile_id
+          AND block.state = 'blocked'
+      ) AS blocked
     FROM app_conversations c
     WHERE ${conditions.join(' AND ')}
     ORDER BY updated_at DESC, id ASC
@@ -646,6 +686,10 @@ export async function sendAppViewerMessage(
   const conversation = await findConversationById(db, accountId, conversationId)
   if (!conversation) throw conversationNotFound()
   assertConversationWritable(conversation)
+  const runtimeControl = await requireMessagingRuntimeControl(db, requireProductionReady)
+  if (runtimeControl.viewerSendsPaused) {
+    throw new AppMessagingError(503, 'MESSAGING_PAUSED', runtimeControl.userVisibleMessage, true)
+  }
   const nowIso = now.toISOString()
   const recentBoundary = new Date(now.getTime() - 60_000).toISOString()
   const messageId = prefixedId('msg')
@@ -663,6 +707,8 @@ export async function sendAppViewerMessage(
         FROM app_conversations conversation
         JOIN profile_public_projections profile ON profile.profile_id = conversation.profile_id
         JOIN galleries gallery ON gallery.id = profile.source_gallery_id
+        JOIN app_messaging_runtime_controls runtime_control
+          ON runtime_control.scope = 'global'
         JOIN app_membership_grants grant_row ON grant_row.id = ?
         JOIN app_membership_tier_entitlements send_entitlement
           ON send_entitlement.catalog_version_id = grant_row.catalog_version_id
@@ -671,6 +717,13 @@ export async function sendAppViewerMessage(
         WHERE conversation.id = ?
           AND conversation.account_id = ?
           AND conversation.status = 'active'
+          AND runtime_control.viewer_sends_paused = 0
+          AND NOT EXISTS (
+            SELECT 1 FROM app_profile_blocks block
+            WHERE block.account_id = conversation.account_id
+              AND block.profile_id = conversation.profile_id
+              AND block.state = 'blocked'
+          )
           AND profile.operation_mode = 'platform_managed'
           AND profile.verification_status = 'verified'
           AND profile.publication_status = 'published'
@@ -916,7 +969,13 @@ export async function findConversationForAdmin(
         WHERE message.conversation_id = c.id
           AND message.sender_type = 'viewer'
           AND message.sequence > c.operator_read_sequence
-      ) AS unread_count
+      ) AS unread_count,
+      EXISTS (
+        SELECT 1 FROM app_profile_blocks block
+        WHERE block.account_id = c.account_id
+          AND block.profile_id = c.profile_id
+          AND block.state = 'blocked'
+      ) AS blocked
     FROM app_conversations c
     WHERE c.id = ?
     LIMIT 1
@@ -1050,6 +1109,10 @@ async function resolveSendState(
   requireProductionReady: boolean,
 ): Promise<{ allowed: boolean; reason: string | null }> {
   try {
+    const runtimeControl = await requireMessagingRuntimeControl(db, requireProductionReady)
+    if (runtimeControl.viewerSendsPaused) {
+      return { allowed: false, reason: runtimeControl.userVisibleMessage }
+    }
     const entitlement = await requireSendEntitlement(
       db,
       accountId,
@@ -1110,6 +1173,53 @@ async function quotaForEntitlement(
   }
 }
 
+async function requireMessagingRuntimeControl(
+  db: D1Database,
+  requireProductionReady: boolean,
+): Promise<AppMessagingRuntimeControl> {
+  try {
+    const control = await getAppMessagingRuntimeControl(db)
+    if (
+      requireProductionReady
+      && (
+        control.retentionDecisionStatus !== 'approved'
+        || !control.retentionProductionReady
+      )
+    ) {
+      throw new AppMessagingError(
+        503,
+        'SAFETY_POLICY_NOT_READY',
+        '平台话题安全与保留策略尚未完成生产发布',
+      )
+    }
+    return control
+  }
+  catch (error) {
+    if (error instanceof AppMessagingError) throw error
+    if (error instanceof AppSafetyError) {
+      throw new AppMessagingError(error.status, error.code, error.message, error.retryable)
+    }
+    throw error
+  }
+}
+
+async function assertNewConversationCapacity(
+  db: D1Database,
+  control: AppMessagingRuntimeControl,
+): Promise<void> {
+  if (control.newConversationsPaused) {
+    throw new AppMessagingError(503, 'MESSAGING_PAUSED', control.userVisibleMessage, true)
+  }
+  const row = await db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM app_conversations
+    WHERE status = 'active'
+  `).first<{ count: number }>()
+  if (Number(row?.count ?? 0) >= control.maxOpenConversations) {
+    throw new AppMessagingError(503, 'MESSAGING_CAPACITY_REACHED', '当前话题服务繁忙，请稍后再试', true)
+  }
+}
+
 async function diagnoseCreateFailure(
   db: D1Database,
   accountId: number,
@@ -1118,6 +1228,13 @@ async function diagnoseCreateFailure(
   now: Date,
   requireProductionReady: boolean,
 ): Promise<never> {
+  if (await isAppProfileBlocked(db, accountId, profileId)) {
+    throw new AppMessagingError(403, 'CONVERSATION_FORBIDDEN', '你已拉黑该人物资料，无法发起平台话题')
+  }
+  await assertNewConversationCapacity(
+    db,
+    await requireMessagingRuntimeControl(db, requireProductionReady),
+  )
   const profile = await getPublicPersonProfile(db, profileId, 'https://local.invalid', now)
   if (!profile || profile.operation.mode !== 'platform_managed') {
     throw new AppMessagingError(404, 'PROFILE_NOT_AVAILABLE', '人物资料不存在或当前无法发起话题')
@@ -1151,6 +1268,10 @@ async function diagnoseViewerSendFailure(
   if (!profile || profile.operation.mode !== 'platform_managed') {
     throw new AppMessagingError(403, 'CONVERSATION_FORBIDDEN', '人物资料当前不可用，会话已转为只读')
   }
+  const runtimeControl = await requireMessagingRuntimeControl(db, requireProductionReady)
+  if (runtimeControl.viewerSendsPaused) {
+    throw new AppMessagingError(503, 'MESSAGING_PAUSED', runtimeControl.userVisibleMessage, true)
+  }
   await requireSendEntitlement(db, accountId, catalogVersionId, now, requireProductionReady)
   const recentBoundary = new Date(now.getTime() - 60_000).toISOString()
   const recent = await db.prepare(`
@@ -1167,6 +1288,9 @@ async function diagnoseViewerSendFailure(
 function assertConversationWritable(conversation: ConversationRow) {
   if (conversation.status !== 'active') {
     throw new AppMessagingError(403, 'CONVERSATION_FORBIDDEN', '当前话题已受限或关闭，只能查看历史')
+  }
+  if (conversation.blocked === 1) {
+    throw new AppMessagingError(403, 'CONVERSATION_FORBIDDEN', '你已拉黑该人物资料，本话题只能查看历史')
   }
 }
 
@@ -1201,6 +1325,8 @@ function mapConversation(
     ? '话题已关闭，只能查看历史'
     : status === 'restricted'
       ? '话题当前受限，只能查看历史'
+      : row.blocked === 1
+        ? '你已拉黑该人物资料，本话题只能查看历史'
       : !profileAvailable
         ? '人物资料当前不可用，会话已转为只读'
         : sendState.reason
@@ -1220,8 +1346,10 @@ function mapConversation(
     queueStatus,
     lastSequence: Number(row.last_sequence),
     unreadCount: Math.max(0, Number(row.unread_count)),
-    canSend: status === 'active' && profileAvailable && sendState.allowed,
+    canSend: status === 'active' && row.blocked !== 1 && profileAvailable && sendState.allowed,
     sendUnavailableReason: statusReason,
+    canClose: status !== 'closed',
+    closeUnavailableReason: status === 'closed' ? '话题已关闭' : null,
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1273,7 +1401,13 @@ async function findConversationByProfile(
         WHERE message.conversation_id = c.id
           AND message.sender_type = 'platform_operator'
           AND message.sequence > c.viewer_read_sequence
-      ) AS unread_count
+      ) AS unread_count,
+      EXISTS (
+        SELECT 1 FROM app_profile_blocks block
+        WHERE block.account_id = c.account_id
+          AND block.profile_id = c.profile_id
+          AND block.state = 'blocked'
+      ) AS blocked
     FROM app_conversations c
     WHERE c.account_id = ? AND c.profile_id = ?
     LIMIT 1
@@ -1292,7 +1426,13 @@ async function findConversationById(
         WHERE message.conversation_id = c.id
           AND message.sender_type = 'platform_operator'
           AND message.sequence > c.viewer_read_sequence
-      ) AS unread_count
+      ) AS unread_count,
+      EXISTS (
+        SELECT 1 FROM app_profile_blocks block
+        WHERE block.account_id = c.account_id
+          AND block.profile_id = c.profile_id
+          AND block.state = 'blocked'
+      ) AS blocked
     FROM app_conversations c
     WHERE c.account_id = ? AND c.id = ?
     LIMIT 1

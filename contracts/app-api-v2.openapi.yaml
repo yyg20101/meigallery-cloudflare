@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.5.0
+  version: 1.6.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
-    五级会员开发基线与 Message-1 平台话题 HTTP 权威闭环。账号能力必须同时具备
+    五级会员开发基线、Message-1 平台话题 HTTP 权威闭环与 Message-2 举报、屏蔽、话题关闭安全闭环。账号能力必须同时具备
     APP_AUTH_ENABLED、版本化文档、可阅读正文 URL 和生产人机验证配置才会由 bootstrap 启用；默认关闭，
-    会员与消息能力使用独立开关且生产环境还要求发布门禁。只有 available 且 executable 的消息权益可执行。
-    话题始终由平台运营接收，不代表真人本人入驻或回复；实时通道、媒体消息、认领、会员申请、支付、金币和媒体访问仍未纳入本次契约。
+    会员、消息和安全能力使用独立开关且生产环境还要求发布门禁。只有 available 且 executable 的消息权益可执行。
+    话题始终由平台运营接收，不代表真人本人入驻或回复；实时通道、媒体消息、申诉、会员申请、支付、金币和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -23,6 +23,7 @@ tags:
   - name: Interaction
   - name: Membership
   - name: Messaging
+  - name: Safety
 paths:
   /api/v2/app/bootstrap:
     get:
@@ -485,6 +486,36 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v2/conversations/{conversationId}/close:
+    post:
+      tags: [Safety, Messaging]
+      operationId: closeAppConversation
+      summary: 由观看者永久关闭本人的平台话题
+      description: >-
+        关闭后双方只能查看历史且不能重新打开；服务端追加系统消息并释放运营分配。
+        重试必须复用同一个 Idempotency-Key。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 已关闭话题或幂等重放结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationCloseResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/me/devices:
     get:
       tags: [Account]
@@ -579,6 +610,125 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v2/me/blocks:
+    get:
+      tags: [Safety]
+      operationId: listAppProfileBlocks
+      summary: 获取本人的当前屏蔽人物列表
+      description: 只返回当前仍为 active 的屏蔽关系；人物不可公开时返回最小不可用占位。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 当前屏蔽人物列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileBlockListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v2/reports:
+    post:
+      tags: [Safety]
+      operationId: createAppSafetyReport
+      summary: 提交人物、媒体、话题或消息举报
+      description: >-
+        服务端校验目标归属和当前证据，消息举报只固化目标消息摘要以及前后各一条引用。
+        不接受用户上传媒体证据；每个账号按服务端自然日最多提交 20 次。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SafetyReportCreateRequest'
+      responses:
+        '200':
+          description: 幂等重放原举报
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyReportCreateResponse'
+        '201':
+          description: 举报已接收
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyReportCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/reports:
+    get:
+      tags: [Safety]
+      operationId: listMyAppSafetyReports
+      summary: 获取本人的举报记录
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 本人的举报摘要列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyReportListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v2/me/reports/{reportId}:
+    get:
+      tags: [Safety]
+      operationId: getMyAppSafetyReport
+      summary: 获取本人的举报详情和用户可见时间线
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^rpt_[A-Za-z0-9_-]{1,76}$'
+      responses:
+        '200':
+          description: 本人举报详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyReportDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v2/discovery/feed:
     get:
       tags: [Discovery]
@@ -587,7 +737,11 @@ paths:
       description: >-
         只返回认证状态为 verified、发布状态为 published、授权状态为 active、可见状态为
         visible、授权已开始且未过期、认证未过期且来源图库仍为 published 的公开投影。
-        现有图库不会自动进入此列表。
+        现有图库不会自动进入此列表。匿名请求返回公共列表；携带有效 Bearer token 时，
+        服务端会排除当前观看者已屏蔽的人物。携带无效 token 会返回 401，不降级为匿名结果。
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - name: sort
           in: query
@@ -628,6 +782,8 @@ paths:
                 $ref: '#/components/schemas/ProfileListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalError'
   /api/v2/discovery/regions:
@@ -667,6 +823,81 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v2/person-profiles/{profileId}/safety:
+    get:
+      tags: [Safety]
+      operationId: getAppProfileSafetyState
+      summary: 获取本人对人物资料的屏蔽状态
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 服务端权威屏蔽状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileBlockStateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v2/person-profiles/{profileId}/block:
+    put:
+      tags: [Safety]
+      operationId: blockAppPersonProfile
+      summary: 屏蔽人物资料并清理本人既有关系
+      description: >-
+        原子删除当前账号对人物的喜欢和关注，关闭关联话题并使登录态发现列表排除该人物。
+        解除屏蔽不会恢复旧关系或旧话题。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 屏蔽后的权威状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileBlockMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Safety]
+      operationId: unblockAppPersonProfile
+      summary: 解除人物资料屏蔽
+      description: 只恢复后续访问资格，不恢复此前清理的喜欢、关注或已关闭话题。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 解除屏蔽后的权威状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileBlockMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/v2/person-profiles/{profileId}/interactions:
     get:
       tags: [Interaction]
@@ -788,7 +1019,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.5.0
+        const: 1.6.0
   parameters:
     ProfileId:
       name: profileId
@@ -898,7 +1129,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.5.0
+          const: 1.6.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -1597,6 +1828,8 @@ components:
         - unreadCount
         - canSend
         - sendUnavailableReason
+        - canClose
+        - closeUnavailableReason
         - lastMessageAt
         - createdAt
         - updatedAt
@@ -1631,6 +1864,10 @@ components:
         canSend:
           type: boolean
         sendUnavailableReason:
+          type: [string, 'null']
+        canClose:
+          type: boolean
+        closeUnavailableReason:
           type: [string, 'null']
         lastMessageAt:
           type: string
@@ -1789,6 +2026,22 @@ components:
               minimum: 0
         meta:
           $ref: '#/components/schemas/Meta'
+    ConversationCloseResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [conversation, replayed]
+          properties:
+            conversation:
+              $ref: '#/components/schemas/ConversationSummary'
+            replayed:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/Meta'
     DeviceResponse:
       type: object
       additionalProperties: false
@@ -1813,7 +2066,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, auth, messaging]
+      required: [product, appVersion, capabilities, discovery, auth, messaging, safety]
       properties:
         product:
           type: string
@@ -1824,7 +2077,7 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, auth, interactions, membership, messaging, payments, systemPush]
+          required: [discovery, auth, interactions, membership, messaging, safety, payments, systemPush]
           properties:
             discovery:
               type: boolean
@@ -1860,6 +2113,17 @@ components:
                   const: false
             messaging:
               type: boolean
+            safety:
+              type: object
+              additionalProperties: false
+              required: [reports, blocks, conversationClose]
+              properties:
+                reports:
+                  type: boolean
+                blocks:
+                  type: boolean
+                conversationClose:
+                  type: boolean
             payments:
               type: boolean
               const: false
@@ -1988,6 +2252,30 @@ components:
             maxTextLength:
               type: integer
               const: 1000
+        safety:
+          type: object
+          additionalProperties: false
+          required: [reasonCatalogVersion, maxDescriptionLength, reportTargets, reasons]
+          properties:
+            reasonCatalogVersion:
+              type: string
+              minLength: 1
+              maxLength: 80
+            maxDescriptionLength:
+              type: integer
+              const: 500
+            reportTargets:
+              type: array
+              minItems: 4
+              maxItems: 4
+              uniqueItems: true
+              items:
+                $ref: '#/components/schemas/SafetyReportTargetType'
+            reasons:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/SafetyReason'
     BootstrapResponse:
       type: object
       additionalProperties: false
@@ -1995,6 +2283,247 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/Bootstrap'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SafetyReason:
+      type: object
+      additionalProperties: false
+      required: [code, label]
+      properties:
+        code:
+          type: string
+          pattern: '^[a-z0-9_]{3,64}$'
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+    SafetyReportTargetType:
+      type: string
+      enum: [person_profile, media, conversation, message]
+    SafetyReportStatus:
+      type: string
+      enum: [submitted, processing, actioned, no_violation, closed]
+    ProfileBlockState:
+      type: object
+      additionalProperties: false
+      required: [profileId, blocked, version, blockedAt, updatedAt]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        blocked:
+          type: boolean
+        version:
+          type: integer
+          minimum: 0
+        blockedAt:
+          type: [string, 'null']
+          format: date-time
+        updatedAt:
+          type: [string, 'null']
+          format: date-time
+    ProfileBlockStateResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ProfileBlockState'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ProfileBlockMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [state, replayed]
+          properties:
+            state:
+              $ref: '#/components/schemas/ProfileBlockState'
+            replayed:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ProfileBlockListItem:
+      type: object
+      additionalProperties: false
+      required: [profileId, blocked, version, blockedAt, updatedAt, profile, unavailableReason]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        blocked:
+          type: boolean
+          const: true
+        version:
+          type: integer
+          minimum: 1
+        blockedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        profile:
+          oneOf:
+            - $ref: '#/components/schemas/PersonProfile'
+            - type: 'null'
+        unavailableReason:
+          enum: [null, PROFILE_NOT_AVAILABLE]
+    ProfileBlockListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/ProfileBlockListItem'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    SafetyReportTarget:
+      type: object
+      additionalProperties: false
+      required: [type, profileId, mediaId, conversationId, messageId]
+      properties:
+        type:
+          $ref: '#/components/schemas/SafetyReportTargetType'
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        mediaId:
+          type: [string, 'null']
+        conversationId:
+          type: [string, 'null']
+        messageId:
+          type: [string, 'null']
+    SafetyReportCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [targetType, profileId, reasonCode]
+      properties:
+        targetType:
+          $ref: '#/components/schemas/SafetyReportTargetType'
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        mediaId:
+          type: [string, 'null']
+        conversationId:
+          type: [string, 'null']
+          pattern: '^cv_[A-Za-z0-9_-]{1,77}$'
+        messageId:
+          type: [string, 'null']
+          pattern: '^msg_[A-Za-z0-9_-]{1,76}$'
+        reasonCode:
+          type: string
+          pattern: '^[a-z0-9_]{3,64}$'
+        description:
+          type: string
+          maxLength: 500
+      description: >-
+        person_profile 只传 profileId；media 还必须传 mediaId；conversation 还必须传 conversationId；
+        message 还必须传 conversationId 与 messageId。额外或矛盾的目标字段会被拒绝。
+    SafetyReportSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - reportId
+        - target
+        - reasonCode
+        - reasonLabel
+        - status
+        - userVisibleMessage
+        - submittedAt
+        - updatedAt
+      properties:
+        reportId:
+          type: string
+          pattern: '^rpt_[A-Za-z0-9_-]{1,76}$'
+        target:
+          $ref: '#/components/schemas/SafetyReportTarget'
+        reasonCode:
+          type: string
+        reasonLabel:
+          type: string
+        status:
+          $ref: '#/components/schemas/SafetyReportStatus'
+        userVisibleMessage:
+          type: string
+        submittedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SafetyReportTimelineItem:
+      type: object
+      additionalProperties: false
+      required: [sequence, status, message, createdAt]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/SafetyReportStatus'
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    SafetyReportDetail:
+      allOf:
+        - $ref: '#/components/schemas/SafetyReportSummary'
+        - type: object
+          required: [description, timeline]
+          properties:
+            description:
+              type: string
+              maxLength: 500
+            timeline:
+              type: array
+              items:
+                $ref: '#/components/schemas/SafetyReportTimelineItem'
+      unevaluatedProperties: false
+    SafetyReportCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [report, replayed]
+          properties:
+            report:
+              $ref: '#/components/schemas/SafetyReportDetail'
+            replayed:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SafetyReportListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/SafetyReportSummary'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    SafetyReportDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SafetyReportDetail'
         meta:
           $ref: '#/components/schemas/Meta'
     ViewerInteractionType:

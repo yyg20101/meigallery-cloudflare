@@ -15,6 +15,11 @@ export interface AdminConversationSummary {
   }
   operationMode: 'platform_managed'
   receiverLabel: string
+  assignment: {
+    status: 'unassigned' | 'mine' | 'other'
+    leaseExpiresAt: string | null
+    canClaim: boolean
+  }
   unreadViewerCount: number
   lastSequence: number
   lastMessageAt: string
@@ -47,4 +52,13 @@ export interface AdminConversationMessagePage {
   items: AdminConversationMessage[]
   nextAfterSequence: number | null
   hasMore: boolean
+}
+
+export interface AdminConversationAssignmentResult {
+  assignment: {
+    status: 'mine' | 'unassigned'
+    version: number
+    leaseExpiresAt: string | null
+  }
+  replayed: boolean
 }

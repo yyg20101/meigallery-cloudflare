@@ -35,13 +35,19 @@ beforeAll(async () => {
       cover_key TEXT,
       status TEXT NOT NULL
     );
+    CREATE TABLE app_profile_blocks (
+      account_id INTEGER NOT NULL,
+      profile_id TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('blocked', 'unblocked')),
+      PRIMARY KEY (account_id, profile_id)
+    );
   `))
   await db.exec(executableSql(MIGRATION))
   await db.exec(executableSql(SUPPLY_MIGRATION))
 })
 
 beforeEach(async () => {
-  await db.exec('DELETE FROM profile_public_projections; DELETE FROM galleries;')
+  await db.exec('DELETE FROM app_profile_blocks; DELETE FROM profile_public_projections; DELETE FROM galleries;')
 })
 
 afterAll(async () => {
@@ -114,6 +120,33 @@ describe('App 公开人物投影 D1 查询', () => {
     expect(second.data.map(item => item.profileId)).toEqual(['pp_beijing_new'])
     expect(second.hasMore).toBe(false)
     expect(second.nextCursor).toBeNull()
+  })
+
+  it('登录观看者的发现列表由服务端排除已屏蔽人物，匿名列表不受影响', async () => {
+    await seedEligibilityCases()
+    await db.prepare(`
+      INSERT INTO app_profile_blocks (account_id, profile_id, state)
+      VALUES (7, 'pp_beijing_new', 'blocked'), (7, 'pp_shanghai', 'unblocked')
+    `).run()
+
+    const query = parseAppDiscoveryQuery({ sort: 'recommended' })
+    const anonymous = await listPublicPersonProfiles(
+      db,
+      query,
+      'https://api.test/api/v2/discovery/feed',
+      NOW,
+    )
+    const authenticated = await listPublicPersonProfiles(
+      db,
+      query,
+      'https://api.test/api/v2/discovery/feed',
+      NOW,
+      7,
+    )
+
+    expect(anonymous.data.map(item => item.profileId)).toContain('pp_beijing_new')
+    expect(authenticated.data.map(item => item.profileId)).not.toContain('pp_beijing_new')
+    expect(authenticated.data.map(item => item.profileId)).toContain('pp_shanghai')
   })
 
   it('地区目录与人物详情复用同一公开资格边界', async () => {

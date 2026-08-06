@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('数据库迁移契约', () => {
-  it('migration 索引从 0001 到 0072 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0073 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 72 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 73 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -30,6 +30,20 @@ describe('数据库迁移契约', () => {
     expect(sql).not.toMatch(/INSERT INTO\s+app_conversations/iu)
     expect(sql).not.toMatch(/INSERT INTO\s+app_membership_grants/iu)
     expect(sql).not.toMatch(/UPDATE\s+app_membership_catalog_versions[\s\S]+production_ready\s*=\s*1/iu)
+  })
+
+  it('0073 只建立默认关闭的安全运营结构，不预置举报、拉黑或会话分配', async () => {
+    const sql = await readMigration('0073_app_messaging_safety_operations.sql')
+
+    expect(sql).toContain('CREATE TABLE app_profile_blocks')
+    expect(sql).toContain('CREATE TABLE app_safety_reports')
+    expect(sql).toContain('CREATE TABLE app_conversation_assignment_state')
+    expect(sql).toContain('CREATE TABLE app_messaging_runtime_controls')
+    expect(sql).toContain("'unresolved'")
+    expect(sql).toContain('purge_enabled')
+    expect(sql).not.toMatch(/INSERT INTO\s+app_safety_reports/iu)
+    expect(sql).not.toMatch(/INSERT INTO\s+app_profile_blocks/iu)
+    expect(sql).not.toMatch(/INSERT INTO\s+app_conversation_assignment_state/iu)
   })
 
   it('0071 只写开发会员目录，不迁移旧会员或预发放账号权益', async () => {

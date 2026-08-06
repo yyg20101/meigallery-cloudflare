@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { Miniflare } from 'miniflare'
 import {
   auditAdminAppConversationAccess,
+  claimAdminAppConversation,
   listAdminAppConversationMessages,
   listAdminAppConversations,
   markAdminAppConversationRead,
@@ -27,6 +28,10 @@ const MEMBERSHIP_MIGRATION = readFileSync(
 )
 const MESSAGE_MIGRATION = readFileSync(
   new URL('../../migrations/0072_app_managed_conversations.sql', import.meta.url),
+  'utf8',
+)
+const SAFETY_MIGRATION = readFileSync(
+  new URL('../../migrations/0073_app_messaging_safety_operations.sql', import.meta.url),
   'utf8',
 )
 const NOW = new Date('2026-08-06T08:00:00.000Z')
@@ -102,10 +107,16 @@ beforeAll(async () => {
   `))
   await db.exec(executableSql(MEMBERSHIP_MIGRATION))
   await db.exec(executableSql(MESSAGE_MIGRATION))
+  await db.exec(executableSql(SAFETY_MIGRATION))
 })
 
 beforeEach(async () => {
   await db.exec(executableSql(`
+    DELETE FROM app_safety_idempotency;
+    DELETE FROM app_conversation_assignment_events;
+    DELETE FROM app_conversation_assignment_state;
+    DELETE FROM app_profile_block_events;
+    DELETE FROM app_profile_blocks;
     DELETE FROM app_messaging_idempotency;
     DELETE FROM app_conversation_messages;
     DELETE FROM app_conversation_quota_consumptions;
@@ -270,7 +281,9 @@ describe('Message-1 平台话题 D1 闭环', () => {
 
     const queue = await listAdminAppConversations(
       db,
+      1,
       parseAdminAppConversationListQuery({ queueStatus: 'awaiting_operator' }),
+      NOW,
     )
     expect(queue).toEqual([
       expect.objectContaining({
@@ -280,6 +293,14 @@ describe('Message-1 平台话题 D1 闭环', () => {
         unreadViewerCount: 1,
       }),
     ])
+
+    await claimAdminAppConversation(
+      db,
+      1,
+      conversationId,
+      'message.assignment.claim.0001',
+      NOW,
+    )
 
     const operator = await sendAdminAppConversationMessage(
       db,
@@ -317,8 +338,10 @@ describe('Message-1 平台话题 D1 闭环', () => {
     })
     const messages = await listAdminAppConversationMessages(
       db,
+      1,
       conversationId,
       parseAdminAppConversationMessageQuery({}),
+      NOW,
     )
     expect(messages.items).toHaveLength(3)
     expect(messages.items.at(-1)).toMatchObject({
@@ -330,6 +353,13 @@ describe('Message-1 平台话题 D1 闭环', () => {
   it('运营正文访问会审计目的但不记录正文，回复拒绝冒充真人的表达', async () => {
     const created = await createConversation('pp_one', 'message.create.test.0005')
     const conversationId = created.conversation.conversationId
+    await claimAdminAppConversation(
+      db,
+      1,
+      conversationId,
+      'message.assignment.claim.0002',
+      NOW,
+    )
     await auditAdminAppConversationAccess(db, 1, conversationId, 'req_message_access', NOW)
 
     await expect(sendAdminAppConversationMessage(
@@ -348,12 +378,12 @@ describe('Message-1 平台话题 D1 闭环', () => {
     const audits = await db.prepare(`
       SELECT action, after_value FROM admin_audit_logs ORDER BY created_at, id
     `).all<{ action: string; after_value: string }>()
-    expect(audits.results).toEqual([
+    expect(audits.results).toEqual(expect.arrayContaining([
       expect.objectContaining({
         action: 'app_conversation.body_access',
         after_value: expect.stringContaining('service_operation'),
       }),
-    ])
+    ]))
     expect(JSON.stringify(audits.results)).not.toContain(APP_MESSAGING_DISCLOSURE_TEXT)
     expect(JSON.stringify(audits.results)).not.toContain('我是本人')
   })

@@ -1,5 +1,5 @@
 /**
- * App API v2 公共发现、账号访问、Interaction-1、Membership-1 与 Message-1 契约。
+ * App API v2 公共发现、账号访问、互动、会员、平台话题与 Message-2 安全契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -10,7 +10,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.5.0'
+  contractVersion: '1.6.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -57,6 +57,11 @@ export interface AppBootstrapConfig {
       applications: false
     }
     messaging: boolean
+    safety: {
+      reports: boolean
+      blocks: boolean
+      conversationClose: boolean
+    }
     payments: false
     systemPush: false
   }
@@ -94,6 +99,12 @@ export interface AppBootstrapConfig {
     disclosureText: string
     transport: 'http_pull'
     maxTextLength: number
+  }
+  safety: {
+    reasonCatalogVersion: string
+    maxDescriptionLength: number
+    reportTargets: AppSafetyReportTargetType[]
+    reasons: AppSafetyReason[]
   }
 }
 
@@ -273,6 +284,8 @@ export interface AppConversationSummary {
   unreadCount: number
   canSend: boolean
   sendUnavailableReason: string | null
+  canClose: boolean
+  closeUnavailableReason: string | null
   lastMessageAt: string
   createdAt: string
   updatedAt: string
@@ -303,6 +316,67 @@ export interface AppConversationMessagesPage {
   items: AppConversationMessage[]
   nextAfterSequence: number | null
   hasMore: boolean
+}
+
+export type AppSafetyReportTargetType = 'person_profile' | 'media' | 'conversation' | 'message'
+export type AppSafetyPriority = 'p0' | 'p1' | 'p2' | 'p3'
+export type AppSafetyReportStatus = 'submitted' | 'processing' | 'actioned' | 'no_violation' | 'closed'
+
+export interface AppSafetyReason {
+  code: string
+  label: string
+}
+
+export interface AppProfileBlockState {
+  profileId: string
+  blocked: boolean
+  version: number
+  blockedAt: string | null
+  updatedAt: string | null
+}
+
+export interface AppProfileBlockListItem extends AppProfileBlockState {
+  profile: AppPersonProfile | null
+  unavailableReason: 'PROFILE_NOT_AVAILABLE' | null
+}
+
+export interface AppSafetyReportTarget {
+  type: AppSafetyReportTargetType
+  profileId: string
+  mediaId: string | null
+  conversationId: string | null
+  messageId: string | null
+}
+
+export interface AppSafetyReportSummary {
+  reportId: string
+  target: AppSafetyReportTarget
+  reasonCode: string
+  reasonLabel: string
+  status: AppSafetyReportStatus
+  userVisibleMessage: string
+  submittedAt: string
+  updatedAt: string
+}
+
+export interface AppSafetyReportDetail extends AppSafetyReportSummary {
+  description: string
+  timeline: Array<{
+    sequence: number
+    status: AppSafetyReportStatus
+    message: string
+    createdAt: string
+  }>
+}
+
+export interface AppSafetyReportCreateResult {
+  report: AppSafetyReportDetail
+  replayed: boolean
+}
+
+export interface AppConversationCloseResult {
+  conversation: AppConversationSummary
+  replayed: boolean
 }
 
 export interface AppPersonRegion {

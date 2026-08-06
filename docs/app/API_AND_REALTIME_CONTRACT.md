@@ -2,9 +2,9 @@
 
 App 版本：1.0
 
-日期：2026-08-06
+日期：2026-08-07
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1、Membership-1 与 Message-1 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1、Membership-1、Message-1 与 Message-2 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -63,6 +63,19 @@ Message-1 以兼容新增方式把累计契约提升为 `1.5.0`，只冻结并�
 
 Message-1 的 production/dev 用户与后台开关、production-ready 门禁均保持关闭，现有环境目录也未切换到新开发目录。migration 和代码存在不表示可以部署或开放生产能力。
 
+### 1.6 Message-2 局部冻结记录
+
+Message-2 以兼容新增方式把累计契约提升为 `1.6.0`，冻结并实现以下默认关闭边界：
+
+- bootstrap 增加分项 `capabilities.safety.reports|blocks|conversationClose`、版本化原因目录、最大说明长度和四种预声明目标；非法或矛盾配置必须使客户端安全关闭对应入口。
+- 登录发现请求可以携带 Bearer token，由服务端排除当前账号已屏蔽人物；匿名发现保持可用，无效 token 返回 401，不能静默降级为匿名结果。
+- 用户可读取/变更人物屏蔽状态，分页读取当前屏蔽列表，举报人物、媒体、本人话题或本人消息，读取本人举报列表/必要时间线，并主动关闭本人话题。
+- 屏蔽、举报与关闭写操作均要求独立幂等键；屏蔽联动清理喜欢/关注并关闭旧话题，解除不恢复历史关系或话题。
+- 管理后台为过渡实现：会话正文要求限时 assignment；举报领取后才允许读取最小证据；运行控制可暂停新建、观看者发送或运营发送，并设置容量和租约。
+- `0073` 保留策略仍为 `unresolved`，自动清理关闭；production/dev safety 开关和 production-ready 均保持 false。申诉、改判、用户上传证据、系统通知和实时通道不属于本切片。
+
+完整实现与生产门禁见 [Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md)。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -91,7 +104,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.5.0"
+    "contractVersion": "1.6.0"
   }
 }
 ```
@@ -128,6 +141,11 @@ Accept-Language: zh-CN
 | `INVALID_REGION` | 400 | 地区 code 格式不合法 |
 | `INVALID_CURSOR` | 400 | 游标损坏或与当前排序、地区、规则版本不匹配 |
 | `CONVERSATION_FORBIDDEN` | 403 | 非参与方或已拉黑/关闭 |
+| `FEATURE_DISABLED` | 403 | 对应开发能力未由服务端开放 |
+| `REPORT_TARGET_NOT_FOUND` | 404 | 举报目标不存在或不属于当前账号范围 |
+| `REPORT_RATE_LIMITED` | 429 | 举报提交超过服务端频控 |
+| `BLOCK_STATE_CONFLICT` | 409 | 屏蔽状态发生并发变化 |
+| `CONVERSATION_CLOSE_CONFLICT` | 409 | 话题关闭发生并发变化 |
 | `CONTENT_REVIEW_PENDING` | 202/409 | 内容需审核 |
 | `INSUFFICIENT_COINS` | 409 | 金币不足 |
 | `PRODUCT_NOT_AVAILABLE` | 409 | 商品下架/地区/版本不可用 |
@@ -180,7 +198,7 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/v2/app/bootstrap` | M0 已实现：能力与发现配置 |
-| GET | `/api/v2/discovery/feed` | M0 已实现：规则推荐、热门、最新、地区筛选和游标分页 |
+| GET | `/api/v2/discovery/feed` | M0 已实现：规则推荐、热门、最新、地区筛选和游标分页；Message-2 登录请求排除本人已屏蔽人物 |
 | GET | `/api/v2/discovery/regions` | M0 已实现：当前可用地区目录 |
 | GET | `/api/v2/discovery/popular` | 后续兼容别名；M0 使用 `feed?sort=popular` |
 | GET | `/api/v2/discovery/latest` | 后续兼容别名；M0 使用 `feed?sort=latest` |
@@ -250,7 +268,7 @@ Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写
 | GET | `/api/v2/me/orders` | 未来：订单列表 |
 | GET | `/api/v2/me/orders/:orderId` | 未来：订单详情 |
 
-Membership-1 原始目录 `amc_app_1_0_draft_1` 的七项权益全部为 `planned` 且 `executable=false`。Message-1 新建独立 `development` 目录，只把创建、发送和每日新话题额度三项改为 `available`，其余权益继续为 `planned`；环境不切换目录时不会获得消息权限。客户端目录快照只用于展示，受限 API 每次仍由服务端重验当前 grant、稳定 entitlement key、有效期和额度。等级中文名不参与授权，App 1.0 当前不部署订单写路由或购买 capability。
+Membership-1 原始目录 `amc_app_1_0_draft_1` 的七项权益全部为 `planned` 且 `executable=false`。Message-1 新建独立 `development` 目录，只把创建、发送和每日新话题额度三项改为 `available`，其余权益继续为 `planned`；Message-2 再复制为独立开发目录以冻结安全运营切片，但当前环境仍不切换目录。客户端目录快照只用于展示，受限 API 每次仍由服务端重验当前 grant、稳定 entitlement key、有效期和额度。等级中文名不参与授权，App 1.0 当前不部署订单写路由或购买 capability。
 
 ## 9. 会话与消息 API
 
@@ -264,7 +282,7 @@ Membership-1 原始目录 `amc_app_1_0_draft_1` 的七项权益全部为 `planne
 | POST | `/api/v2/conversations/:id/read` | Message-1 已实现：单调推进观看者已读 sequence |
 | POST | `/api/v2/conversations/:id/messages/:sequence/recall` | 后续：在服务端返回窗口内撤回本人消息；幂等 |
 | POST | `/api/v2/conversations/:id/mute` | 后续：静音/取消静音 |
-| POST | `/api/v2/conversations/:id/close` | 后续：用户关闭会话 |
+| POST | `/api/v2/conversations/:id/close` | Message-2 已实现：幂等关闭本人话题，历史只读且不可重开 |
 | POST | `/api/v2/conversations/:id/handover-consent` | 未来：历史交接选择 |
 
 创建请求：
@@ -358,20 +376,22 @@ App 1.0 钱包路由只读，余额来自追加式分录/受控快照，客户�
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v2/reports` | 举报真人、媒体、会话或消息 |
-| GET | `/api/v2/me/reports` | 举报状态 |
-| GET | `/api/v2/me/reports/:reportId` | 举报必要详情与用户可见时间线 |
-| PUT/DELETE | `/api/v2/person-profiles/:profileId/block` | 拉黑/解除拉黑 |
-| GET | `/api/v2/help/topics` | 帮助与政策 |
-| POST | `/api/v2/appeals` | 申诉 |
+| GET | `/api/v2/person-profiles/:profileId/safety` | Message-2：本人对人物的权威屏蔽状态 |
+| PUT/DELETE | `/api/v2/person-profiles/:profileId/block` | Message-2：幂等屏蔽/解除屏蔽并执行服务端联动 |
+| GET | `/api/v2/me/blocks` | Message-2：本人当前屏蔽人物游标分页 |
+| POST | `/api/v2/reports` | Message-2：幂等举报真人、媒体、本人会话或本人消息 |
+| GET | `/api/v2/me/reports` | Message-2：本人举报状态游标分页 |
+| GET | `/api/v2/me/reports/:reportId` | Message-2：举报必要详情与用户可见时间线 |
+| GET | `/api/v2/help/topics` | 后续：帮助与政策 |
+| POST | `/api/v2/appeals` | 后续：申诉；Message-2 不部署 |
 
-拉黑后禁止新会话和消息，并停止目标推荐；解除拉黑不自动重开已关闭会话。
+拉黑后由服务端清理喜欢/关注、关闭关联话题、禁止后续互动/建话题/发送，并在登录发现页停止推荐目标；解除拉黑不恢复旧关系或旧话题。举报说明最多 500 字，原因来自版本化目录；客户端不能提交证据正文，服务端只固定目标版本、目标消息摘要及相邻引用。所有入口要求有效 Auth-1，但举报不要求会员。
 
 ## 14. 管理 API
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
-M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、预览、低风险发放/续期与追加式撤销。两者只供 admin+ Web 会话使用，所有写命令均写审计；下表 `/api/v2/admin` 仍表示长期统一目标。
+M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、预览、低风险发放/续期与追加式撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
 
 | 资源 | 主要能力 |
 |------|----------|

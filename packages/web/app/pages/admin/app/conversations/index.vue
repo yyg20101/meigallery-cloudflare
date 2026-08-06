@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
   AdminConversationDetail,
+  AdminConversationAssignmentResult,
   AdminConversationMessage,
   AdminConversationMessagePage,
   AdminConversationQueueStatus,
@@ -20,6 +21,10 @@ const detailError = ref('')
 const sendError = ref('')
 const detailLoading = ref(false)
 const sending = ref(false)
+const claiming = ref(false)
+const releasing = ref(false)
+const closing = ref(false)
+const operationError = ref('')
 
 const { data, status, refresh } = await useAsyncData('admin-app-conversations', async () => {
   listError.value = ''
@@ -50,9 +55,12 @@ watch(selectedId, async (conversationId) => {
   messages.value = []
   detailError.value = ''
   sendError.value = ''
+  operationError.value = ''
   replyText.value = ''
   if (!conversationId) return
-  await loadConversation(conversationId)
+  if (selectedSummary.value?.assignment.status === 'mine') {
+    await loadConversation(conversationId)
+  }
 })
 
 async function loadConversation(conversationId = selectedId.value) {
@@ -93,6 +101,82 @@ async function refreshWorkbench() {
   await loadConversation()
 }
 
+async function claimConversation() {
+  const conversationId = selectedId.value
+  if (!conversationId || claiming.value) return
+  claiming.value = true
+  operationError.value = ''
+  const operationId = crypto.randomUUID().replaceAll('-', '')
+  try {
+    await api<{ data: AdminConversationAssignmentResult }>(
+      `/api/admin/app/conversations/${conversationId}/claim`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': `operator.claim.${operationId}` },
+      },
+    )
+    await refresh()
+    await loadConversation(conversationId)
+  }
+  catch (error) {
+    operationError.value = apiErrorMessage(error, '话题领取失败，请刷新队列后重试。')
+  }
+  finally {
+    claiming.value = false
+  }
+}
+
+async function releaseConversation() {
+  const conversationId = selectedId.value
+  if (!conversationId || releasing.value) return
+  if (!window.confirm('确认释放该话题？释放后你将立即失去正文读取和回复权限。')) return
+  releasing.value = true
+  operationError.value = ''
+  const operationId = crypto.randomUUID().replaceAll('-', '')
+  try {
+    await api<{ data: AdminConversationAssignmentResult }>(
+      `/api/admin/app/conversations/${conversationId}/release`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': `operator.release.${operationId}` },
+      },
+    )
+    detail.value = null
+    messages.value = []
+    await refresh()
+  }
+  catch (error) {
+    operationError.value = apiErrorMessage(error, '话题释放失败，请刷新后重试。')
+  }
+  finally {
+    releasing.value = false
+  }
+}
+
+async function closeConversation() {
+  const conversationId = selectedId.value
+  if (!conversationId || closing.value || detail.value?.status !== 'active') return
+  if (!window.confirm('确认关闭该话题？关闭后观看者与运营都只能查看历史，且该话题不能重新打开。')) return
+  closing.value = true
+  operationError.value = ''
+  const operationId = crypto.randomUUID().replaceAll('-', '')
+  try {
+    await api(`/api/admin/app/conversations/${conversationId}/close`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': `operator.close.${operationId}` },
+    })
+    detail.value = null
+    messages.value = []
+    await refresh()
+  }
+  catch (error) {
+    operationError.value = apiErrorMessage(error, '话题关闭失败，请刷新后重试。')
+  }
+  finally {
+    closing.value = false
+  }
+}
+
 async function sendReply() {
   const conversationId = selectedId.value
   const text = replyText.value.trim()
@@ -129,7 +213,13 @@ async function sendReply() {
   }
 }
 
-const canReply = computed(() => detail.value?.status === 'active')
+const canReply = computed(() => detail.value?.status === 'active' && detail.value.assignment.status === 'mine')
+
+function assignmentLabel(value: AdminConversationSummary['assignment']['status']) {
+  if (value === 'mine') return '由我处理'
+  if (value === 'other') return '其他运营处理中'
+  return '待领取'
+}
 
 function queueLabel(value: AdminConversationQueueStatus) {
   if (value === 'awaiting_operator') return '待运营回复'
@@ -185,7 +275,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
       <span class="font-semibold">服务边界：</span>
-      当前真人资料并非本人入驻，消息由平台运营统一接收与处理。Message-1 仅支持手动刷新和文本/表情，不含实时消息、媒体、礼物、支付或自动回复。
+      当前真人资料并非本人入驻，消息由平台运营统一接收与处理。Message-2 要求先领取限时会话分配才能读取正文、已读、回复或关闭；不含实时消息、媒体、礼物、支付或自动回复。
     </div>
 
     <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(18rem,23rem)_minmax(0,1fr)]">
@@ -228,7 +318,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
               </span>
             </span>
             <span class="mt-3 flex min-w-0 items-center justify-between gap-2 text-xs">
-              <span class="truncate text-gray-600">{{ queueLabel(item.queueStatus) }}</span>
+              <span class="min-w-0 truncate text-gray-600">{{ queueLabel(item.queueStatus) }} · {{ assignmentLabel(item.assignment.status) }}</span>
               <span class="shrink-0 text-gray-400">{{ formatDate(item.lastMessageAt) }}</span>
             </span>
           </button>
@@ -252,15 +342,67 @@ function apiErrorMessage(error: unknown, fallback: string) {
               <div class="flex flex-wrap items-center justify-end gap-2 text-xs">
                 <span class="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700 ring-1 ring-inset ring-rose-200">平台运营接收</span>
                 <span v-if="detail" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700">{{ statusLabel(detail.status) }}</span>
+                <button
+                  v-if="selectedSummary?.assignment.status === 'mine'"
+                  type="button"
+                  class="min-h-8 rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  :disabled="claiming || releasing || closing"
+                  @click="claimConversation"
+                >
+                  {{ claiming ? '续租中…' : '续租' }}
+                </button>
+                <button
+                  v-if="selectedSummary?.assignment.status === 'mine'"
+                  type="button"
+                  class="min-h-8 rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  :disabled="claiming || releasing || closing"
+                  @click="releaseConversation"
+                >
+                  {{ releasing ? '释放中…' : '释放' }}
+                </button>
+                <button
+                  v-if="selectedSummary?.assignment.status === 'mine' && detail?.status === 'active'"
+                  type="button"
+                  class="min-h-8 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  :disabled="claiming || releasing || closing"
+                  @click="closeConversation"
+                >
+                  {{ closing ? '关闭中…' : '关闭话题' }}
+                </button>
               </div>
             </div>
+            <p v-if="selectedSummary?.assignment.status === 'mine' && selectedSummary.assignment.leaseExpiresAt" class="mt-2 text-xs text-gray-500">
+              当前分配有效至 {{ formatDate(selectedSummary.assignment.leaseExpiresAt) }}；到期后正文与写权限立即失效。
+            </p>
           </header>
 
+          <div v-if="operationError" class="m-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {{ operationError }}
+          </div>
           <div v-if="detailError" class="m-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {{ detailError }}
             <button class="ml-2 font-medium underline" @click="loadConversation()">重试</button>
           </div>
           <div v-else-if="detailLoading" class="grid flex-1 place-items-center p-8 text-sm text-gray-500">正在读取话题正文并记录访问审计…</div>
+          <div v-else-if="selectedSummary?.assignment.status !== 'mine'" class="grid flex-1 place-items-center p-8 text-center">
+            <div class="max-w-md">
+              <h3 class="text-base font-semibold text-gray-950">
+                {{ selectedSummary?.assignment.status === 'other' ? '该话题正在由其他运营处理' : '领取后才能查看正文' }}
+              </h3>
+              <p class="mt-2 text-sm leading-6 text-gray-600">
+                未领取时列表仅显示账号、人物、队列和时间信息，不返回任何消息正文。领取为限时权限，所有访问都会写入审计。
+              </p>
+              <button
+                v-if="selectedSummary?.assignment.canClaim"
+                type="button"
+                class="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg bg-rose-500 px-5 py-2 text-sm font-medium text-white hover:bg-rose-600 disabled:opacity-50"
+                :disabled="claiming"
+                @click="claimConversation"
+              >
+                {{ claiming ? '领取中…' : '领取并查看正文' }}
+              </button>
+            </div>
+          </div>
           <template v-else>
             <div class="border-b border-rose-100 bg-rose-50 px-4 py-3 text-xs leading-5 text-rose-900 sm:px-5">
               话题由平台运营接收与处理，不代表真人本人已入驻或回复；平台不保证固定回复时间、线下见面或关系结果。

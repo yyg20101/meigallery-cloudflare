@@ -92,6 +92,7 @@ export async function listPublicPersonProfiles(
   query: AppDiscoveryQuery,
   apiUrl: string,
   now = new Date(),
+  viewerAccountInternalId: number | null = null,
 ): Promise<{ data: AppPersonProfile[]; nextCursor: string | null; hasMore: boolean }> {
   const conditions = [
     "p.verification_status = 'verified'",
@@ -123,6 +124,17 @@ export async function listPublicPersonProfiles(
     "g.status = 'published'",
   ]
   const params: unknown[] = [now.toISOString(), now.toISOString(), now.toISOString()]
+
+  if (viewerAccountInternalId !== null) {
+    conditions.push(`NOT EXISTS (
+      SELECT 1
+      FROM app_profile_blocks block
+      WHERE block.account_id = ?
+        AND block.profile_id = p.profile_id
+        AND block.state = 'blocked'
+    )`)
+    params.push(viewerAccountInternalId)
+  }
 
   if (query.regionCode) {
     conditions.push('p.region_code = ?')

@@ -44,10 +44,19 @@ beforeAll(async () => {
   await db.exec(executableSql(PUBLIC_MIGRATION))
   await db.exec(executableSql(SUPPLY_MIGRATION))
   await db.exec(executableSql(INTERACTION_MIGRATION))
+  await db.exec(executableSql(`
+    CREATE TABLE app_profile_blocks (
+      account_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      profile_id TEXT NOT NULL,
+      state TEXT NOT NULL,
+      PRIMARY KEY (account_id, profile_id)
+    );
+  `))
 })
 
 beforeEach(async () => {
   await db.exec(`
+    DELETE FROM app_profile_blocks;
     DELETE FROM app_viewer_interactions;
     DELETE FROM profile_public_projections;
     DELETE FROM galleries;
@@ -92,6 +101,19 @@ describe('App 观看者喜欢与关注 D1 关系', () => {
       .resolves.toMatchObject({ liked: false, followed: false })
     await expect(setViewerInteraction(db, 1, 'pp_visible', 'like', false, NOW))
       .resolves.toMatchObject({ liked: false, followed: false })
+  })
+
+  it('拉黑状态由服务端阻止新增喜欢与关注', async () => {
+    await insertEligibleProfile('pp_blocked')
+    await db.prepare(`
+      INSERT INTO app_profile_blocks (account_id, profile_id, state)
+      VALUES (1, 'pp_blocked', 'blocked')
+    `).run()
+
+    await expect(setViewerInteraction(db, 1, 'pp_blocked', 'like', true, NOW))
+      .rejects.toMatchObject({ code: 'INTERACTION_FORBIDDEN', status: 403 })
+    await expect(setViewerInteraction(db, 1, 'pp_blocked', 'follow', true, NOW))
+      .rejects.toMatchObject({ code: 'INTERACTION_FORBIDDEN', status: 403 })
   })
 
   it('本人列表隔离账号、稳定分页并最小化不可用资料', async () => {

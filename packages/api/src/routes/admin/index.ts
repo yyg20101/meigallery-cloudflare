@@ -21,6 +21,7 @@ import { adminAttributionRoutes } from './attribution'
 import { adminAppPersonRoutes } from './app-persons'
 import { adminAppMembershipRoutes } from './app-memberships'
 import { adminAppConversationRoutes } from './app-conversations'
+import { adminAppSafetyRoutes } from './app-safety'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -69,4 +70,5 @@ adminRoutes.route('/attribution', adminAttributionRoutes)
 adminRoutes.route('/app/persons', adminAppPersonRoutes)
 adminRoutes.route('/app/memberships', adminAppMembershipRoutes)
 adminRoutes.route('/app/conversations', adminAppConversationRoutes)
+adminRoutes.route('/app/safety', adminAppSafetyRoutes)
 adminRoutes.route('/', adminMediaRoutes)

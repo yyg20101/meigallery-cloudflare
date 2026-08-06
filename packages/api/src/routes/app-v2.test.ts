@@ -37,7 +37,7 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.5.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.6.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
@@ -53,13 +53,18 @@ describe('App API v2 路由契约', () => {
         applications: false,
       },
       messaging: false,
+      safety: {
+        reports: false,
+        blocks: false,
+        conversationClose: false,
+      },
       payments: false,
       systemPush: false,
     })
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.5.0',
+      contractVersion: '1.6.0',
     })
   })
 
@@ -78,6 +83,8 @@ describe('App API v2 路由契约', () => {
       APP_MEMBERSHIP_CATALOG_VERSION: 'amc_app_1_0_message_1_dev_1',
       APP_MESSAGING_ENABLED: 'true',
       APP_MESSAGING_DISCLOSURE_VERSION: 'managed_message_1',
+      APP_SAFETY_ENABLED: 'true',
+      APP_SAFETY_REASON_CATALOG_VERSION: 'src_app_1_0_message_2_dev_1',
     })
     const developmentResponse = await development.app.fetch(
       new Request('https://api.test/api/v2/app/bootstrap'),
@@ -85,7 +92,12 @@ describe('App API v2 路由契约', () => {
       {} as ExecutionContext,
     )
     expect(await developmentResponse.json()).toMatchObject({
-      data: { capabilities: { messaging: true } },
+      data: {
+        capabilities: {
+          messaging: true,
+          safety: { reports: true, blocks: true, conversationClose: true },
+        },
+      },
     })
 
     const production = createApp({}, {
@@ -105,6 +117,9 @@ describe('App API v2 路由契约', () => {
       APP_MESSAGING_ENABLED: 'true',
       APP_MESSAGING_DISCLOSURE_VERSION: 'managed_message_1',
       APP_MESSAGING_PRODUCTION_READY: 'false',
+      APP_SAFETY_ENABLED: 'true',
+      APP_SAFETY_REASON_CATALOG_VERSION: 'src_app_1_0_message_2_dev_1',
+      APP_SAFETY_PRODUCTION_READY: 'false',
     })
     const productionResponse = await production.app.fetch(
       new Request('https://api.test/api/v2/app/bootstrap'),

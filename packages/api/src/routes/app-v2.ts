@@ -55,6 +55,24 @@ import {
   type CreateAppConversationInput,
   type SendAppMessageInput,
 } from '../services/app-messaging'
+import {
+  APP_SAFETY_MAX_DESCRIPTION_LENGTH,
+  APP_SAFETY_REASONS,
+  APP_SAFETY_REPORT_TARGETS,
+  AppSafetyError,
+  closeAppConversationForViewer,
+  createAppSafetyReport,
+  getAppProfileBlockState,
+  getAppSafetyReport,
+  getAppSafetyRuntimeConfig,
+  listAppProfileBlocks,
+  listAppSafetyReports,
+  parseAppBlockListQuery,
+  parseAppReportListQuery,
+  requireAppSafetyEnabled,
+  setAppProfileBlock,
+  type CreateAppSafetyReportInput,
+} from '../services/app-safety'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -69,12 +87,46 @@ appV2Routes.get('/app/bootstrap', (c) => {
 
 appV2Routes.route('/auth', appAuthRoutes)
 
+// 发现页保持匿名可用；登录客户端携带 Bearer token 时启用服务端个性化安全过滤。
+appV2Routes.use('/discovery/feed', async (c, next) => {
+  if (!c.req.header('Authorization')) {
+    await next()
+    return
+  }
+
+  try {
+    const config = getAppAuthRuntimeConfig(c.env)
+    requireAppAuthEnabled(config)
+    const principal = await authenticateAppAccessToken(
+      c.env.DB,
+      readBearerToken(c.req.header('Authorization')),
+      new Date(),
+      config.documentVersions,
+    )
+    c.set('appAccountId', principal.accountInternalId)
+    c.set('appAccountPublicId', principal.accountId)
+    c.set('appSessionId', principal.sessionId)
+    c.set('appDeviceId', principal.deviceId)
+    c.set('appAccountEmail', principal.email)
+    c.set('appAccountNickname', principal.nickname)
+    c.set('appAccountRole', principal.role)
+    await next()
+  }
+  catch (error) {
+    return appAccountError(c, error)
+  }
+})
+
 for (const path of [
   '/me',
   '/me/*',
   '/person-profiles/:profileId/interactions',
   '/person-profiles/:profileId/like',
   '/person-profiles/:profileId/follow',
+  '/person-profiles/:profileId/safety',
+  '/person-profiles/:profileId/block',
+  '/reports',
+  '/reports/*',
   '/conversations',
   '/conversations/*',
 ]) {
@@ -286,6 +338,37 @@ appV2Routes.post('/conversations/:conversationId/read', async (c) => {
   }
 })
 
+appV2Routes.post('/conversations/:conversationId/close', async (c) => {
+  try {
+    const messaging = messagingConfig(c.env)
+    safetyConfig(c.env)
+    const principal = appPrincipal(c)
+    const result = await closeAppConversationForViewer(
+      c.env.DB,
+      principal.accountInternalId,
+      c.req.param('conversationId'),
+      c.req.header('Idempotency-Key') ?? null,
+      new Date(),
+    )
+    return appApiSuccess(c, {
+      conversation: await getAppConversation(
+        c.env.DB,
+        principal.accountInternalId,
+        principal.accountId,
+        result.conversationId,
+        messaging.catalogVersionId,
+        c.req.url,
+        new Date(),
+        messaging.requireProductionReady,
+      ),
+      replayed: result.replayed,
+    })
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
 appV2Routes.delete('/me/devices/:deviceId', async (c) => {
   try {
     return appApiSuccess(c, await revokeAppDevice(
@@ -308,7 +391,13 @@ appV2Routes.get('/discovery/feed', async (c) => {
       limit: c.req.query('limit'),
       cursor: c.req.query('cursor'),
     })
-    const result = await listPublicPersonProfiles(c.env.DB, query, c.req.url)
+    const result = await listPublicPersonProfiles(
+      c.env.DB,
+      query,
+      c.req.url,
+      new Date(),
+      c.get('appAccountId') ?? null,
+    )
     return appApiListSuccess(c, result.data, {
       nextCursor: result.nextCursor,
       hasMore: result.hasMore,
@@ -345,6 +434,139 @@ appV2Routes.get('/person-profiles/:profileId/interactions', async (c) => {
   }
   catch (error) {
     return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.get('/person-profiles/:profileId/safety', async (c) => {
+  try {
+    safetyConfig(c.env)
+    return appApiSuccess(c, await getAppProfileBlockState(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('profileId'),
+    ))
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.put('/person-profiles/:profileId/block', async (c) => {
+  try {
+    safetyConfig(c.env)
+    return appApiSuccess(c, await setAppProfileBlock(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('profileId'),
+      true,
+      c.req.header('Idempotency-Key') ?? null,
+      new Date(),
+    ))
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.delete('/person-profiles/:profileId/block', async (c) => {
+  try {
+    safetyConfig(c.env)
+    return appApiSuccess(c, await setAppProfileBlock(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('profileId'),
+      false,
+      c.req.header('Idempotency-Key') ?? null,
+      new Date(),
+    ))
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.get('/me/blocks', async (c) => {
+  try {
+    safetyConfig(c.env)
+    const principal = appPrincipal(c)
+    const query = parseAppBlockListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppProfileBlocks(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      c.req.url,
+      query,
+      new Date(),
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.post('/reports', async (c) => {
+  try {
+    const config = safetyConfig(c.env)
+    const result = await createAppSafetyReport(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      config.reasonCatalogId,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<CreateAppSafetyReportInput>(),
+      new Date(),
+      config.requireProductionReady,
+    )
+    return appApiSuccess(c, result, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.get('/me/reports', async (c) => {
+  try {
+    safetyConfig(c.env)
+    const principal = appPrincipal(c)
+    const query = parseAppReportListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppSafetyReports(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      query,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.get('/me/reports/:reportId', async (c) => {
+  try {
+    safetyConfig(c.env)
+    return appApiSuccess(c, await getAppSafetyReport(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('reportId'),
+    ))
+  }
+  catch (error) {
+    return appSafetyError(c, error)
   }
 })
 
@@ -416,6 +638,7 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
   const auth = getAppAuthRuntimeConfig(env)
   const membership = getAppMembershipRuntimeConfig(env)
   const messaging = getAppMessagingRuntimeConfig(env)
+  const safety = getAppSafetyRuntimeConfig(env)
   return {
     product: 'meigallery',
     appVersion: '1.0',
@@ -434,6 +657,11 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
         applications: false,
       },
       messaging: auth.enabled && messaging.enabled,
+      safety: {
+        reports: auth.enabled && safety.enabled,
+        blocks: auth.enabled && safety.enabled,
+        conversationClose: auth.enabled && safety.enabled && messaging.enabled,
+      },
       payments: false,
       systemPush: false,
     },
@@ -469,6 +697,12 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
       transport: 'http_pull',
       maxTextLength: APP_MESSAGING_MAX_TEXT_LENGTH,
     },
+    safety: {
+      reasonCatalogVersion: safety.reasonCatalogId,
+      maxDescriptionLength: APP_SAFETY_MAX_DESCRIPTION_LENGTH,
+      reportTargets: APP_SAFETY_REPORT_TARGETS,
+      reasons: APP_SAFETY_REASONS,
+    },
   }
 }
 
@@ -476,6 +710,22 @@ function messagingConfig(env: Bindings) {
   const config = getAppMessagingRuntimeConfig(env)
   requireAppMessagingEnabled(config)
   return config
+}
+
+function safetyConfig(env: Bindings) {
+  const config = getAppSafetyRuntimeConfig(env)
+  requireAppSafetyEnabled(config)
+  return config
+}
+
+function appSafetyError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppSafetyError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  return appMessagingError(c, error)
 }
 
 function appMessagingError(

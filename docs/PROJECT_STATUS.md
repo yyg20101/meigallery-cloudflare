@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-08-06。
+更新时间：2026-08-07。
 
 本文件只记录当前状态。历史变更以 Git、PR、tag 和 `docs/releases/` 为准。
 
@@ -31,7 +31,7 @@
 - 已在同级独立仓库 `meigallery-client` 创建 KMP + Compose Multiplatform 最小技术脚手架；客户端与本仓库继续通过版本化契约协作，不放入当前 pnpm monorepo。
 - 客户端当前锁定 Kotlin 2.4.10、Compose Multiplatform 1.11.1、AGP 9.0.1、Gradle 9.6.1、JDK 21，Android `minSdk = 26`、`compileSdk/targetSdk = 36`。
 - 四个共享模块的 Android Host Test、Android Debug APK 和 iOS Simulator Kotlin/Native 编译均已通过；iOS Framework 链接因本机未安装完整 Xcode/iOS SDK 暂未完成。
-- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.5.0`，包含默认关闭的 Auth-1 账号访问、Interaction-1 喜欢/关注、Membership-1 五级会员和 Message-1 仅文本平台话题契约；收藏、历史、通知、钱包和媒体访问仍按域冻结。
+- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.6.0`，包含默认关闭的 Auth-1 账号访问、Interaction-1 喜欢/关注、Membership-1 五级会员、Message-1 仅文本平台话题和 Message-2 安全运营契约；收藏、历史、通知、钱包和媒体访问仍按域冻结。
 - 已新增 `0067_app_public_profile_projection.sql` 空读投影和 App API v2 查询实现，强制 `verified + published + authorization active/unexpired + visible + source gallery published`；migration 不含 seed、回填或 legacy 自动映射，尚未执行生产 migration 或部署生产路由。
 - KMP 客户端 M0 公共发现纵向切片已完成：capability、地区目录、推荐/热门/最新、地区筛选、游标分页、公开人物卡和基础详情均已接通；点击卡片会按稳定公开 ID 重新请求详情并复核最新公开资格，不直接信任列表快照。Android 模拟器已回归筛选、排序、详情错误/重试/成功和长列表，未发现崩溃、文字溢出或底部导航遮挡。正式应用 ID、会员、消息、钱包和媒体访问继续受各自门禁约束。
 - 已完成 M1 人物供给最小开发闭环：`0068_app_person_supply_workflow.sql` 创建空的 Person、资料、用途授权、认证和发布复核权威表；内容版本与并发锁版本分离，审批绑定具体内容版本，发布动作单向生成公开投影，暂停或撤销会立即使投影不可见。
@@ -55,6 +55,11 @@
 - Nuxt 后台已新增 `/admin/app/conversations` 平台话题队列与正文工作台。正文读取必须声明受控业务目的并写审计；运营回复固定落盘为 `platform_operator`，审计只记录消息引用、正文 SHA-256 和长度，不复制正文，并拒绝冒充真人或承诺结果的高风险表达。
 - KMP 客户端已加入人物详情二次披露/确认、消息一级页、话题详情、文本发送、手动刷新、已读和会员到期只读状态；接收主体、披露版本和最大文本长度由 bootstrap 安全配置驱动，未知或矛盾配置直接关闭能力。实时通道、系统推送、媒体消息、撤回、举报/拉黑、会话设置、本人运营和多操作员分配均未纳入 Message-1。
 - Message-1 production/dev 开关、管理后台开关和 production-ready 门禁均保持关闭；Wrangler 当前仍指向原 Membership-1 开发目录，因此没有环境会意外执行消息 entitlement。全新本地 D1 已连续应用 `0001–0072`，完整边界见 `docs/app/MESSAGE_1_CROSS_REPO_INTEGRATION.md`；未执行远端 migration、部署、真实数据导入或功能开关变更。
+- 已完成 Message-2 默认关闭的跨仓安全与运营纵向切片：`0073_app_messaging_safety_operations.sql` 新增版本化举报原因目录、未决保留策略、人物屏蔽状态/事件、举报/最小证据/时间线、会话限时分配、全局运行控制和独立安全幂等结果；并发写通过版本条件与 mutation token 收敛，冲突请求不能留下未绑定的清理、处置或审计副作用。
+- App API v2 `1.6.0` 已实现人物屏蔽/解除、本人屏蔽分页、人物/媒体/本人话题/本人消息举报、本人举报列表与详情、观看者关闭话题，以及登录发现页服务端排除已屏蔽人物。屏蔽会原子清理喜欢/关注并关闭关联话题；解除屏蔽不恢复旧关系或旧话题。
+- Nuxt 已把平台话题工作台升级为“先领取限时租约，再读取正文/已读/回复/关闭”，并新增 `/admin/app/safety` 待处理举报队列、领取后最小证据窗口、结论处置和 Owner 全局暂停/容量控制。列表不返回消息正文或举报说明，敏感读取与全部写操作均审计，通用审计只保存引用、摘要、长度和目的。
+- KMP 客户端已接入严格 safety capability、鉴权发现页、人物详情举报/屏蔽、话题/单条消息举报、观看者关闭话题，以及“我的 → 安全中心”的屏蔽和举报分页/详情；非法目标、原因目录、ID、时间、游标或自相矛盾响应均安全拒绝。
+- Message-2 的用户、后台、production-ready 开关在 production/dev 均保持 `false`；保留策略 OQ-020 仍为 `unresolved`，保留天数为空且 `purge_enabled=0`，因此不得执行远端 `0073` migration、切换会员目录、部署或开放能力。完整边界见 `docs/app/MESSAGE_2_CROSS_REPO_INTEGRATION.md`。
 - 已完成移动端 49 页和管理后台 43 页的页面级产品设计。
 - Figma 最终文件已完成移动端 49 页/186 状态、管理后台 43 页/163 状态，共 92 个 Page ID/349 个状态；`30｜Prototype Flows` 覆盖 92 个流程预览。
 - Figma 页面内与流程动作合计 2,284 个，缺失目标为 0；移动端关键点击热区不足为 0；正式页未绑定文字样式、原始填充/描边、缺失字体和文字溢出均为 0。
@@ -64,7 +69,7 @@
 - 已同步 `docs/app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`，作为研发、测试与验收的 App 1.0 唯一开发需求基线；文档覆盖当前范围、未来兼容方向、非功能要求、技术基线、92 页逐页规格、349 个 Figma 状态、169 个客户文档图片映射、需求追踪、DoR 与 DoD。
 - 已生成 `docs/app/APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md`，逐页覆盖角色、前置、入口、结构、交互、业务规则、数据权限、状态和验收。
 - 客户产品需求确认书和逐页交互设计确认册已按 Figma 最终口径重新生成；每个 Page ID 的功能说明、需求追踪和原型图保持同页映射。产品需求确认书内嵌 199 张图，逐页交互设计确认册内嵌 169 张图。
-- 已新增需求冻结准备清单与 15 页客户短版确认单，集中列出 8 项客户决策和 7 组专业门禁，并明确“功能交互冻结”与“像素级视觉冻结”必须分别记录；整体仍是冻结准备中，当前完成的 M0、M1、Auth-1、Interaction-1 与 Membership-1 均只是默认关闭的保守开发验证，不等于授权生产发布。
+- 已新增需求冻结准备清单与 15 页客户短版确认单，集中列出 8 项客户决策和 7 组专业门禁，并明确“功能交互冻结”与“像素级视觉冻结”必须分别记录；整体仍是冻结准备中，当前完成的 M0、M1、Auth-1、Interaction-1、Membership-1、Message-1 与 Message-2 均只是默认关闭的保守开发验证，不等于授权生产发布。
 - Figma Phase 0 审计、Phase 1 Design System、Phase 2 文件结构、最终页面/流程/QA 的完成记录分别见 `FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md`、`FIGMA_DESIGN_SYSTEM_PHASE1.md` 和 `FIGMA_FILE_STRUCTURE_PHASE2.md`。
 - 最终 MD、两份完整客户 DOCX 与冻结确认资料已通过 92 个 Page ID、349 个 Figma 最终状态、2,284 个有效交互动作、169 个客户文档原型映射、41 个 App 1.0 产品需求编号、92 个逐页追踪键和冻结基线 SHA-256 的一致性校验。
 - 三份客户 DOCX 已通过压缩包完整性、图片替代文本、表格表头、无障碍审计和中文字体环境下的全页渲染目检；LibreOffice 基准渲染分别为 197 页、165 页和 15 页，未发现异常空白页、图片缺失、内容错位、溢出或裁切。

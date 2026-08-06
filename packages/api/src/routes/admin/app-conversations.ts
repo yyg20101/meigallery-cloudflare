@@ -2,12 +2,15 @@ import { Hono } from 'hono'
 import type { Bindings, Variables } from '../../index'
 import {
   auditAdminAppConversationAccess,
+  claimAdminAppConversation,
+  closeAdminAppConversation,
   getAdminAppConversation,
   listAdminAppConversationMessages,
   listAdminAppConversations,
   markAdminAppConversationRead,
   parseAdminAppConversationListQuery,
   parseAdminAppConversationMessageQuery,
+  releaseAdminAppConversation,
   sendAdminAppConversationMessage,
   type AdminSendAppMessageInput,
 } from '../../services/admin-app-messaging'
@@ -16,6 +19,7 @@ import {
   getAppMessagingRuntimeConfig,
   requireAppMessagingAdminEnabled,
 } from '../../services/app-messaging'
+import { AppSafetyError } from '../../services/app-safety'
 import { errorJson } from '../../utils/api-error'
 
 export const adminAppConversationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -27,7 +31,7 @@ adminAppConversationRoutes.get('/', async (c) => {
       queueStatus: c.req.query('queueStatus'),
       limit: c.req.query('limit'),
     })
-    return c.json({ data: await listAdminAppConversations(c.env.DB, query) })
+    return c.json({ data: await listAdminAppConversations(c.env.DB, c.get('userId')!, query) })
   }
   catch (error) {
     return handleAppMessagingError(c, error)
@@ -39,7 +43,7 @@ adminAppConversationRoutes.get('/:conversationId', async (c) => {
     enabledConfig(c.env)
     requireAccessReason(c.req.query('accessReason'))
     const conversationId = c.req.param('conversationId')
-    const data = await getAdminAppConversation(c.env.DB, conversationId)
+    const data = await getAdminAppConversation(c.env.DB, c.get('userId')!, conversationId)
     await auditAdminAppConversationAccess(
       c.env.DB,
       c.get('userId')!,
@@ -62,7 +66,12 @@ adminAppConversationRoutes.get('/:conversationId/messages', async (c) => {
       afterSequence: c.req.query('afterSequence'),
       limit: c.req.query('limit'),
     })
-    const data = await listAdminAppConversationMessages(c.env.DB, conversationId, query)
+    const data = await listAdminAppConversationMessages(
+      c.env.DB,
+      c.get('userId')!,
+      conversationId,
+      query,
+    )
     await auditAdminAppConversationAccess(
       c.env.DB,
       c.get('userId')!,
@@ -112,6 +121,54 @@ adminAppConversationRoutes.post('/:conversationId/messages', async (c) => {
   }
 })
 
+adminAppConversationRoutes.post('/:conversationId/claim', async (c) => {
+  try {
+    enabledConfig(c.env)
+    const data = await claimAdminAppConversation(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('conversationId'),
+      c.req.header('Idempotency-Key') ?? null,
+    )
+    return c.json({ message: data.replayed ? '已返回原领取结果' : '话题已领取', data })
+  }
+  catch (error) {
+    return handleAppMessagingError(c, error)
+  }
+})
+
+adminAppConversationRoutes.post('/:conversationId/release', async (c) => {
+  try {
+    enabledConfig(c.env)
+    const data = await releaseAdminAppConversation(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('conversationId'),
+      c.req.header('Idempotency-Key') ?? null,
+    )
+    return c.json({ message: data.replayed ? '已返回原释放结果' : '话题已释放', data })
+  }
+  catch (error) {
+    return handleAppMessagingError(c, error)
+  }
+})
+
+adminAppConversationRoutes.post('/:conversationId/close', async (c) => {
+  try {
+    enabledConfig(c.env)
+    const data = await closeAdminAppConversation(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('conversationId'),
+      c.req.header('Idempotency-Key') ?? null,
+    )
+    return c.json({ message: data.replayed ? '已返回原关闭结果' : '话题已关闭', data })
+  }
+  catch (error) {
+    return handleAppMessagingError(c, error)
+  }
+})
+
 function enabledConfig(env: Bindings) {
   const config = getAppMessagingRuntimeConfig(env)
   requireAppMessagingAdminEnabled(config)
@@ -129,6 +186,9 @@ function requestId(c: { get(name: 'appRequestId'): string | undefined }) {
 }
 
 function handleAppMessagingError(c: Parameters<typeof errorJson>[0], error: unknown) {
+  if (error instanceof AppSafetyError) {
+    return errorJson(c, error.status, error.message, { code: error.code })
+  }
   if (error instanceof AppMessagingError) {
     return errorJson(c, error.status, error.message, { code: error.code })
   }

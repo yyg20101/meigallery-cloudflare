@@ -4,6 +4,7 @@ import type {
   AppViewerInteractionType,
 } from '@meigallery/shared'
 import { getPublicPersonProfile, getPublicPersonProfilesByIds } from './app-discovery'
+import { isAppProfileBlocked } from './app-safety'
 
 export const APP_INTERACTION_DEFAULT_PAGE_SIZE = 20
 export const APP_INTERACTION_MAX_PAGE_SIZE = 40
@@ -27,8 +28,8 @@ type InteractionCursor = {
 
 export class AppViewerInteractionError extends Error {
   constructor(
-    readonly status: 400 | 404,
-    readonly code: 'INVALID_CURSOR' | 'PROFILE_NOT_AVAILABLE',
+    readonly status: 400 | 403 | 404,
+    readonly code: 'INVALID_CURSOR' | 'PROFILE_NOT_AVAILABLE' | 'INTERACTION_FORBIDDEN',
     message: string,
   ) {
     super(message)
@@ -82,6 +83,9 @@ export async function setViewerInteraction(
   const createdAt = now.toISOString()
 
   if (active) {
+    if (await isAppProfileBlocked(db, accountId, profileId)) {
+      throw interactionForbidden()
+    }
     const result = await db.prepare(`
       INSERT INTO app_viewer_interactions (
         account_id, profile_id, interaction_type, created_at
@@ -117,6 +121,12 @@ export async function setViewerInteraction(
         )
         AND datetime(p.published_at) IS NOT NULL
         AND g.status = 'published'
+        AND NOT EXISTS (
+          SELECT 1 FROM app_profile_blocks block
+          WHERE block.account_id = ?
+            AND block.profile_id = p.profile_id
+            AND block.state = 'blocked'
+        )
       ON CONFLICT (account_id, profile_id, interaction_type) DO NOTHING
     `).bind(
       accountId,
@@ -126,6 +136,7 @@ export async function setViewerInteraction(
       createdAt,
       createdAt,
       createdAt,
+      accountId,
     ).run()
 
     if ((result.meta.changes ?? 0) === 0) {
@@ -134,6 +145,7 @@ export async function setViewerInteraction(
         FROM app_viewer_interactions
         WHERE account_id = ? AND profile_id = ? AND interaction_type = ?
       `).bind(accountId, profileId, interactionType).first<{ profile_id: string }>()
+      if (await isAppProfileBlocked(db, accountId, profileId)) throw interactionForbidden()
       if (!existing) throw profileNotAvailable()
     }
   }
@@ -241,6 +253,14 @@ function requireProfileId(profileId: string) {
 
 function profileNotAvailable() {
   return new AppViewerInteractionError(404, 'PROFILE_NOT_AVAILABLE', '人物资料不存在或当前不可见')
+}
+
+function interactionForbidden() {
+  return new AppViewerInteractionError(
+    403,
+    'INTERACTION_FORBIDDEN',
+    '你已拉黑该人物资料，无法添加喜欢或关注',
+  )
 }
 
 function encodeInteractionCursor(cursor: InteractionCursor) {

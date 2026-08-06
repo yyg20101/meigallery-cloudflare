@@ -16,6 +16,7 @@ import {
   sha256Hex,
   type AppConversationInternalRow,
 } from './app-messaging'
+import { getAppMessagingRuntimeControl } from './app-safety'
 
 const MAX_ADMIN_LIST_SIZE = 100
 const DEFAULT_ADMIN_LIST_SIZE = 40
@@ -60,6 +61,11 @@ export interface AdminAppConversationSummary {
   }
   operationMode: 'platform_managed'
   receiverLabel: string
+  assignment: {
+    status: 'unassigned' | 'mine' | 'other'
+    leaseExpiresAt: string | null
+    canClaim: boolean
+  }
   unreadViewerCount: number
   lastSequence: number
   lastMessageAt: string
@@ -78,6 +84,18 @@ export interface AdminSendAppMessageInput {
   clientMessageId?: unknown
   contentType?: unknown
   text?: unknown
+}
+
+export interface AdminConversationAssignment {
+  status: 'mine' | 'unassigned'
+  version: number
+  leaseExpiresAt: string | null
+}
+
+type SafetyIdempotencyRow = {
+  request_hash: string
+  result_id: string
+  result_version: number
 }
 
 type AdminConversationRow = {
@@ -99,6 +117,18 @@ type AdminConversationRow = {
   created_at: string
   updated_at: string
   unread_count: number
+  assigned_admin_id: number | null
+  assignment_status: string | null
+  assignment_version: number | null
+  lease_expires_at: string | null
+}
+
+type ConversationAssignmentRow = {
+  assigned_admin_id: number | null
+  status: string
+  version: number
+  lease_expires_at: string | null
+  assigned_at: string | null
 }
 
 export function parseAdminAppConversationListQuery(input: {
@@ -135,7 +165,9 @@ export function parseAdminAppConversationMessageQuery(input: {
 
 export async function listAdminAppConversations(
   db: D1Database,
+  adminId: number,
   query: AdminAppConversationListQuery,
+  now = new Date(),
 ): Promise<AdminAppConversationSummary[]> {
   const condition = query.queueStatus ? 'AND conversation.queue_status = ?' : ''
   const params: unknown[] = query.queueStatus ? [query.queueStatus] : []
@@ -148,6 +180,10 @@ export async function listAdminAppConversations(
            conversation.viewer_read_sequence, conversation.operator_read_sequence,
            conversation.last_message_at, conversation.created_at,
            conversation.updated_at,
+           assignment.assigned_admin_id,
+           assignment.status AS assignment_status,
+           assignment.version AS assignment_version,
+           assignment.lease_expires_at,
            (
              SELECT COUNT(*) FROM app_conversation_messages message
              WHERE message.conversation_id = conversation.id
@@ -158,6 +194,8 @@ export async function listAdminAppConversations(
     JOIN users account ON account.id = conversation.account_id
     JOIN app_account_security security ON security.account_id = conversation.account_id
     JOIN person_profiles profile ON profile.id = conversation.profile_id
+    LEFT JOIN app_conversation_assignment_state assignment
+      ON assignment.conversation_id = conversation.id
     WHERE 1 = 1 ${condition}
     ORDER BY
       CASE conversation.queue_status WHEN 'awaiting_operator' THEN 0 WHEN 'awaiting_viewer' THEN 1 ELSE 2 END,
@@ -165,16 +203,19 @@ export async function listAdminAppConversations(
       conversation.id ASC
     LIMIT ?
   `).bind(...params, query.limit).all<AdminConversationRow>()
-  return result.results.map(mapAdminConversationSummary)
+  return result.results.map(row => mapAdminConversationSummary(row, adminId, now))
 }
 
 export async function getAdminAppConversation(
   db: D1Database,
+  adminId: number,
   conversationIdValue: string,
+  now = new Date(),
 ): Promise<AdminAppConversationDetail> {
+  await requireAdminConversationAssignment(db, adminId, conversationIdValue, now)
   const row = await getAdminConversationRow(db, conversationIdValue)
   return {
-    ...mapAdminConversationSummary(row),
+    ...mapAdminConversationSummary(row, adminId, now),
     disclosureVersion: row.disclosure_version,
     accessReason: ACCESS_REASON,
     operatorReadSequence: Number(row.operator_read_sequence),
@@ -184,9 +225,12 @@ export async function getAdminAppConversation(
 
 export async function listAdminAppConversationMessages(
   db: D1Database,
+  adminId: number,
   conversationIdValue: string,
   query: AdminAppConversationMessageQuery,
+  now = new Date(),
 ): Promise<{ items: AppConversationMessage[]; nextAfterSequence: number | null; hasMore: boolean }> {
+  await requireAdminConversationAssignment(db, adminId, conversationIdValue, now)
   const conversationId = normalizeConversationId(conversationIdValue)
   const conversation = await findConversationForAdmin(db, conversationId)
   if (!conversation) throw conversationNotFound()
@@ -215,6 +259,7 @@ export async function auditAdminAppConversationAccess(
   requestId: string,
   now = new Date(),
 ): Promise<void> {
+  await requireAdminConversationAssignment(db, adminId, conversationIdValue, now)
   const conversationId = normalizeConversationId(conversationIdValue)
   const conversation = await findConversationForAdmin(db, conversationId)
   if (!conversation) throw conversationNotFound()
@@ -242,6 +287,7 @@ export async function markAdminAppConversationRead(
   sequenceValue: unknown,
   now = new Date(),
 ): Promise<{ conversationId: string; readSequence: number }> {
+  await requireAdminConversationAssignment(db, adminId, conversationIdValue, now)
   const conversationId = normalizeConversationId(conversationIdValue)
   const sequence = Number(sequenceValue)
   if (!Number.isInteger(sequence) || sequence < 0) {
@@ -320,6 +366,12 @@ export async function sendAdminAppConversationMessage(
     return { message: mapAppConversationMessage(duplicate, conversation), replayed: true }
   }
 
+  await requireAdminConversationAssignment(db, adminId, conversationId, now)
+  const runtimeControl = await getAppMessagingRuntimeControl(db)
+  if (runtimeControl.operatorSendsPaused) {
+    throw new AppMessagingError(503, 'MESSAGING_PAUSED', runtimeControl.userVisibleMessage, true)
+  }
+
   const conversation = await findConversationForAdmin(db, conversationId)
   if (!conversation) throw conversationNotFound()
   assertAdminConversationWritable(conversation)
@@ -342,8 +394,16 @@ export async function sendAdminAppConversationMessage(
         JOIN app_account_security security ON security.account_id = conversation.account_id
         JOIN profile_public_projections projection ON projection.profile_id = conversation.profile_id
         JOIN galleries gallery ON gallery.id = projection.source_gallery_id
+        JOIN app_conversation_assignment_state assignment
+          ON assignment.conversation_id = conversation.id
+        JOIN app_messaging_runtime_controls runtime_control
+          ON runtime_control.scope = 'global'
         WHERE conversation.id = ?
           AND conversation.status = 'active'
+          AND assignment.status = 'active'
+          AND assignment.assigned_admin_id = ?
+          AND datetime(assignment.lease_expires_at) > datetime(?)
+          AND runtime_control.operator_sends_paused = 0
           AND security.status = 'active'
           AND projection.operation_mode = 'platform_managed'
           AND projection.verification_status = 'verified'
@@ -369,6 +429,8 @@ export async function sendAdminAppConversationMessage(
         adminId,
         nowIso,
         conversationId,
+        adminId,
+        nowIso,
         nowIso,
         nowIso,
         nowIso,
@@ -434,9 +496,593 @@ export async function sendAdminAppConversationMessage(
   const message = await findMessageById(db, conversationId, messageId)
   const latest = await findConversationForAdmin(db, conversationId)
   if (!message || !latest) {
-    await diagnoseOperatorSendFailure(db, conversationId, now)
+    await diagnoseOperatorSendFailure(db, adminId, conversationId, now)
   }
   return { message: mapAppConversationMessage(message!, latest!), replayed: false }
+}
+
+export async function claimAdminAppConversation(
+  db: D1Database,
+  adminId: number,
+  conversationIdValue: string,
+  idempotencyKeyValue: string | null,
+  now = new Date(),
+): Promise<{ assignment: AdminConversationAssignment; replayed: boolean }> {
+  const conversationId = normalizeConversationId(conversationIdValue)
+  const idempotencyKey = normalizeIdempotencyKey(idempotencyKeyValue)
+  const actorScope = operatorScope(adminId)
+  const requestHash = await hashCanonical({ conversationId })
+  const replay = await findSafetyIdempotency(db, actorScope, 'assignment_claim', idempotencyKey)
+  if (replay) {
+    assertSafetyIdempotencyHash(replay, requestHash)
+    return {
+      assignment: await readOwnAssignment(db, adminId, conversationId, now, false),
+      replayed: true,
+    }
+  }
+
+  const conversation = await findConversationForAdmin(db, conversationId)
+  if (!conversation) throw conversationNotFound()
+  if (conversation.status === 'closed') {
+    throw new AppMessagingError(403, 'CONVERSATION_FORBIDDEN', '已关闭话题不能领取')
+  }
+  const control = await getAppMessagingRuntimeControl(db)
+  const existing = await findConversationAssignment(db, conversationId)
+  const active = isAssignmentActive(existing, now)
+  if (active && existing!.assigned_admin_id !== adminId) {
+    throw new AppMessagingError(409, 'ASSIGNMENT_TAKEN', '该话题已被其他运营人员领取')
+  }
+  await requireAssignmentCapacity(db, adminId, conversationId, control.maxActiveAssignmentsPerOperator, now)
+
+  const nextVersion = (existing?.version ?? 0) + 1
+  const mutationToken = crypto.randomUUID()
+  const nowIso = now.toISOString()
+  const leaseExpiresAt = new Date(now.getTime() + control.assignmentLeaseMinutes * 60_000).toISOString()
+  const eventType = active && existing?.assigned_admin_id === adminId ? 'renewed' : 'claimed'
+  const reasonCode = eventType === 'renewed'
+    ? 'operator_renewed'
+    : existing?.status === 'active' ? 'expired_reclaimed' : 'operator_claimed'
+  const stateStatement = existing
+    ? db.prepare(`
+        UPDATE app_conversation_assignment_state
+        SET assigned_admin_id = ?, status = 'active', version = ?,
+            lease_expires_at = ?, mutation_token = ?, assigned_at = ?,
+            released_at = NULL, updated_at = ?
+        WHERE conversation_id = ? AND version = ?
+          AND (
+            status <> 'active'
+            OR datetime(lease_expires_at) <= datetime(?)
+            OR assigned_admin_id = ?
+          )
+          AND EXISTS (
+            SELECT 1 FROM app_conversations conversation
+            WHERE conversation.id = ? AND conversation.status <> 'closed'
+          )
+          AND (
+            SELECT COUNT(*) FROM app_conversation_assignment_state active_assignment
+            WHERE active_assignment.status = 'active'
+              AND active_assignment.assigned_admin_id = ?
+              AND active_assignment.conversation_id <> ?
+              AND datetime(active_assignment.lease_expires_at) > datetime(?)
+          ) < (
+            SELECT max_active_assignments_per_operator
+            FROM app_messaging_runtime_controls WHERE scope = 'global'
+          )
+      `).bind(
+        adminId,
+        nextVersion,
+        leaseExpiresAt,
+        mutationToken,
+        eventType === 'renewed' ? existing.assigned_at : nowIso,
+        nowIso,
+        conversationId,
+        existing.version,
+        nowIso,
+        adminId,
+        conversationId,
+        adminId,
+        conversationId,
+        nowIso,
+      )
+    : db.prepare(`
+        INSERT INTO app_conversation_assignment_state (
+          conversation_id, assigned_admin_id, status, version,
+          lease_expires_at, mutation_token, assigned_at, released_at, updated_at
+        )
+        SELECT conversation.id, ?, 'active', 1, ?, ?, ?, NULL, ?
+        FROM app_conversations conversation
+        JOIN app_messaging_runtime_controls runtime_control
+          ON runtime_control.scope = 'global'
+        WHERE conversation.id = ? AND conversation.status <> 'closed'
+          AND (
+            SELECT COUNT(*) FROM app_conversation_assignment_state active_assignment
+            WHERE active_assignment.status = 'active'
+              AND active_assignment.assigned_admin_id = ?
+              AND datetime(active_assignment.lease_expires_at) > datetime(?)
+          ) < runtime_control.max_active_assignments_per_operator
+      `).bind(adminId, leaseExpiresAt, mutationToken, nowIso, nowIso, conversationId, adminId, nowIso)
+
+  try {
+    await db.batch([
+      stateStatement,
+      db.prepare(`
+        INSERT INTO app_conversation_assignment_events (
+          id, conversation_id, version, event_type, subject_admin_id,
+          actor_type, actor_admin_id, reason_code, lease_expires_at, created_at
+        )
+        SELECT ?, conversation_id, version, ?, ?, 'admin', ?, ?, lease_expires_at, ?
+        FROM app_conversation_assignment_state
+        WHERE conversation_id = ? AND version = ? AND mutation_token = ?
+          AND status = 'active' AND assigned_admin_id = ?
+      `).bind(
+        `cae_${crypto.randomUUID().replace(/-/gu, '')}`,
+        eventType,
+        adminId,
+        adminId,
+        reasonCode,
+        nowIso,
+        conversationId,
+        nextVersion,
+        mutationToken,
+        adminId,
+      ),
+      db.prepare(`
+        INSERT INTO app_safety_idempotency (
+          actor_scope, operation, idempotency_key, request_hash,
+          result_type, result_id, result_version, created_at
+        )
+        SELECT ?, 'assignment_claim', ?, ?, 'assignment', conversation_id, version, ?
+        FROM app_conversation_assignment_state
+        WHERE conversation_id = ? AND version = ? AND mutation_token = ?
+          AND status = 'active' AND assigned_admin_id = ?
+      `).bind(
+        actorScope,
+        idempotencyKey,
+        requestHash,
+        nowIso,
+        conversationId,
+        nextVersion,
+        mutationToken,
+        adminId,
+      ),
+      db.prepare(`
+        INSERT INTO admin_audit_logs (
+          id, admin_id, action, target_type, target_id, before_value, after_value, created_at
+        )
+        SELECT ?, ?, ?, 'app_conversation', conversation_id, ?, ?, ?
+        FROM app_conversation_assignment_state
+        WHERE conversation_id = ? AND version = ? AND mutation_token = ?
+          AND status = 'active' AND assigned_admin_id = ?
+      `).bind(
+        `audit_${crypto.randomUUID().replace(/-/gu, '')}`,
+        adminId,
+        eventType === 'renewed' ? 'app_conversation.assignment_renew' : 'app_conversation.assignment_claim',
+        JSON.stringify(existing ? assignmentAuditValue(existing) : null),
+        JSON.stringify({ version: nextVersion, leaseExpiresAt }),
+        nowIso,
+        conversationId,
+        nextVersion,
+        mutationToken,
+        adminId,
+      ),
+    ])
+  }
+  catch {
+    const concurrent = await findSafetyIdempotency(db, actorScope, 'assignment_claim', idempotencyKey)
+    if (concurrent) {
+      assertSafetyIdempotencyHash(concurrent, requestHash)
+      return {
+        assignment: await readOwnAssignment(db, adminId, conversationId, now, false),
+        replayed: true,
+      }
+    }
+    await diagnoseAssignmentClaimFailure(db, adminId, conversationId, now)
+  }
+
+  const stored = await findSafetyIdempotency(db, actorScope, 'assignment_claim', idempotencyKey)
+  if (!stored) await diagnoseAssignmentClaimFailure(db, adminId, conversationId, now)
+  return {
+    assignment: await readOwnAssignment(db, adminId, conversationId, now),
+    replayed: false,
+  }
+}
+
+export async function releaseAdminAppConversation(
+  db: D1Database,
+  adminId: number,
+  conversationIdValue: string,
+  idempotencyKeyValue: string | null,
+  now = new Date(),
+): Promise<{ assignment: AdminConversationAssignment; replayed: boolean }> {
+  const conversationId = normalizeConversationId(conversationIdValue)
+  const idempotencyKey = normalizeIdempotencyKey(idempotencyKeyValue)
+  const actorScope = operatorScope(adminId)
+  const requestHash = await hashCanonical({ conversationId })
+  const replay = await findSafetyIdempotency(db, actorScope, 'assignment_release', idempotencyKey)
+  if (replay) {
+    assertSafetyIdempotencyHash(replay, requestHash)
+    return {
+      assignment: await readOwnAssignment(db, adminId, conversationId, now, false),
+      replayed: true,
+    }
+  }
+  const existing = await requireAdminConversationAssignment(db, adminId, conversationId, now)
+  const nextVersion = existing.version + 1
+  const mutationToken = crypto.randomUUID()
+  const nowIso = now.toISOString()
+  try {
+    await db.batch([
+      db.prepare(`
+        UPDATE app_conversation_assignment_state
+        SET assigned_admin_id = NULL, status = 'released', version = ?,
+            lease_expires_at = NULL, mutation_token = ?, released_at = ?, updated_at = ?
+        WHERE conversation_id = ? AND version = ? AND status = 'active'
+          AND assigned_admin_id = ? AND datetime(lease_expires_at) > datetime(?)
+      `).bind(nextVersion, mutationToken, nowIso, nowIso, conversationId, existing.version, adminId, nowIso),
+      db.prepare(`
+        INSERT INTO app_conversation_assignment_events (
+          id, conversation_id, version, event_type, subject_admin_id,
+          actor_type, actor_admin_id, reason_code, lease_expires_at, created_at
+        )
+        SELECT ?, conversation_id, version, 'released', ?, 'admin', ?,
+               'operator_released', NULL, ?
+        FROM app_conversation_assignment_state
+        WHERE conversation_id = ? AND version = ? AND mutation_token = ? AND status = 'released'
+      `).bind(
+        `cae_${crypto.randomUUID().replace(/-/gu, '')}`,
+        adminId,
+        adminId,
+        nowIso,
+        conversationId,
+        nextVersion,
+        mutationToken,
+      ),
+      db.prepare(`
+        INSERT INTO app_safety_idempotency (
+          actor_scope, operation, idempotency_key, request_hash,
+          result_type, result_id, result_version, created_at
+        )
+        SELECT ?, 'assignment_release', ?, ?, 'assignment', conversation_id, version, ?
+        FROM app_conversation_assignment_state
+        WHERE conversation_id = ? AND version = ? AND mutation_token = ? AND status = 'released'
+      `).bind(actorScope, idempotencyKey, requestHash, nowIso, conversationId, nextVersion, mutationToken),
+      db.prepare(`
+        INSERT INTO admin_audit_logs (
+          id, admin_id, action, target_type, target_id, before_value, after_value, created_at
+        )
+        SELECT ?, ?, 'app_conversation.assignment_release', 'app_conversation',
+               conversation_id, ?, ?, ?
+        FROM app_conversation_assignment_state
+        WHERE conversation_id = ? AND version = ? AND mutation_token = ? AND status = 'released'
+      `).bind(
+        `audit_${crypto.randomUUID().replace(/-/gu, '')}`,
+        adminId,
+        JSON.stringify(assignmentAuditValue(existing)),
+        JSON.stringify({ version: nextVersion, status: 'released' }),
+        nowIso,
+        conversationId,
+        nextVersion,
+        mutationToken,
+      ),
+    ])
+  }
+  catch {
+    const concurrent = await findSafetyIdempotency(db, actorScope, 'assignment_release', idempotencyKey)
+    if (concurrent) {
+      assertSafetyIdempotencyHash(concurrent, requestHash)
+      return {
+        assignment: await readOwnAssignment(db, adminId, conversationId, now, false),
+        replayed: true,
+      }
+    }
+    throw new AppMessagingError(409, 'ASSIGNMENT_CONFLICT', '话题分配状态已变化，请刷新后重试', true)
+  }
+  const stored = await findSafetyIdempotency(db, actorScope, 'assignment_release', idempotencyKey)
+  if (!stored) {
+    throw new AppMessagingError(409, 'ASSIGNMENT_CONFLICT', '话题分配状态已变化，请刷新后重试', true)
+  }
+  return {
+    assignment: { status: 'unassigned', version: nextVersion, leaseExpiresAt: null },
+    replayed: false,
+  }
+}
+
+export async function closeAdminAppConversation(
+  db: D1Database,
+  adminId: number,
+  conversationIdValue: string,
+  idempotencyKeyValue: string | null,
+  now = new Date(),
+): Promise<{ conversationId: string; replayed: boolean }> {
+  const conversationId = normalizeConversationId(conversationIdValue)
+  const idempotencyKey = normalizeIdempotencyKey(idempotencyKeyValue)
+  const actorScope = operatorScope(adminId)
+  const requestHash = await hashCanonical({ conversationId, reasonCode: 'operator_closed' })
+  const replay = await findSafetyIdempotency(db, actorScope, 'conversation_admin_close', idempotencyKey)
+  if (replay) {
+    assertSafetyIdempotencyHash(replay, requestHash)
+    return { conversationId: replay.result_id, replayed: true }
+  }
+  const assignment = await requireAdminConversationAssignment(db, adminId, conversationId, now)
+  const conversation = await findConversationForAdmin(db, conversationId)
+  if (!conversation) throw conversationNotFound()
+  assertAdminConversationWritable(conversation)
+  const nowIso = now.toISOString()
+  const nextSequence = Number(conversation.last_sequence) + 1
+  const messageId = prefixedId('msg')
+  const messageText = '平台运营已关闭本话题。历史消息仍可查看。'
+  const messageHash = await sha256Hex(messageText)
+  const assignmentVersion = assignment.version + 1
+  const mutationToken = crypto.randomUUID()
+  try {
+    await db.batch([
+      db.prepare(`
+        INSERT INTO app_conversation_messages (
+          id, conversation_id, sequence, sender_type, client_message_id,
+          content_type, body_text, body_sha256, status,
+          actor_account_id, actor_admin_id, created_at, recalled_at
+        )
+        SELECT ?, id, ?, 'system', ?, 'system', ?, ?, 'accepted', NULL, NULL, ?, NULL
+        FROM app_conversations
+        WHERE id = ? AND status = 'active' AND last_sequence = ?
+          AND EXISTS (
+            SELECT 1 FROM app_conversation_assignment_state assignment
+            WHERE assignment.conversation_id = app_conversations.id
+              AND assignment.status = 'active'
+              AND assignment.assigned_admin_id = ?
+              AND assignment.version = ?
+              AND datetime(assignment.lease_expires_at) > datetime(?)
+          )
+      `).bind(
+        messageId,
+        nextSequence,
+        `system.operator_close.${nextSequence}`,
+        messageText,
+        messageHash,
+        nowIso,
+        conversationId,
+        conversation.last_sequence,
+        adminId,
+        assignment.version,
+        nowIso,
+      ),
+      db.prepare(`
+        UPDATE app_conversations
+        SET status = 'closed', queue_status = 'closed', last_sequence = ?,
+            last_message_at = ?, updated_at = ?, closed_at = ?,
+            closed_reason_code = 'operator_closed', closed_by_type = 'admin'
+        WHERE id = ? AND EXISTS (SELECT 1 FROM app_conversation_messages WHERE id = ?)
+      `).bind(nextSequence, nowIso, nowIso, nowIso, conversationId, messageId),
+      db.prepare(`
+        UPDATE app_conversation_assignment_state
+        SET assigned_admin_id = NULL, status = 'released', version = ?,
+            lease_expires_at = NULL, mutation_token = ?, released_at = ?, updated_at = ?
+        WHERE conversation_id = ? AND version = ? AND assigned_admin_id = ?
+          AND EXISTS (SELECT 1 FROM app_conversations WHERE id = ? AND status = 'closed')
+          AND EXISTS (
+            SELECT 1 FROM app_conversation_messages
+            WHERE id = ? AND conversation_id = ?
+          )
+      `).bind(
+        assignmentVersion,
+        mutationToken,
+        nowIso,
+        nowIso,
+        conversationId,
+        assignment.version,
+        adminId,
+        conversationId,
+        messageId,
+        conversationId,
+      ),
+      db.prepare(`
+        INSERT INTO app_conversation_assignment_events (
+          id, conversation_id, version, event_type, subject_admin_id,
+          actor_type, actor_admin_id, reason_code, lease_expires_at, created_at
+        )
+        SELECT ?, conversation_id, version, 'released', ?, 'admin', ?,
+               'operator_closed', NULL, ?
+        FROM app_conversation_assignment_state
+        WHERE conversation_id = ? AND version = ? AND mutation_token = ? AND status = 'released'
+      `).bind(
+        `cae_${crypto.randomUUID().replace(/-/gu, '')}`,
+        adminId,
+        adminId,
+        nowIso,
+        conversationId,
+        assignmentVersion,
+        mutationToken,
+      ),
+      db.prepare(`
+        INSERT INTO app_safety_idempotency (
+          actor_scope, operation, idempotency_key, request_hash,
+          result_type, result_id, result_version, created_at
+        )
+        SELECT ?, 'conversation_admin_close', ?, ?, 'conversation',
+               conversation_id, sequence, ?
+        FROM app_conversation_messages WHERE id = ?
+      `).bind(actorScope, idempotencyKey, requestHash, nowIso, messageId),
+      db.prepare(`
+        INSERT INTO admin_audit_logs (
+          id, admin_id, action, target_type, target_id, before_value, after_value, created_at
+        )
+        SELECT ?, ?, 'app_conversation.close', 'app_conversation', ?, ?, ?, ?
+        FROM app_conversation_messages WHERE id = ?
+      `).bind(
+        `audit_${crypto.randomUUID().replace(/-/gu, '')}`,
+        adminId,
+        conversationId,
+        JSON.stringify({ status: conversation.status, lastSequence: conversation.last_sequence }),
+        JSON.stringify({ status: 'closed', lastSequence: nextSequence, reasonCode: 'operator_closed' }),
+        nowIso,
+        messageId,
+      ),
+    ])
+  }
+  catch {
+    const concurrent = await findSafetyIdempotency(db, actorScope, 'conversation_admin_close', idempotencyKey)
+    if (concurrent) {
+      assertSafetyIdempotencyHash(concurrent, requestHash)
+      return { conversationId: concurrent.result_id, replayed: true }
+    }
+    throw new AppMessagingError(409, 'CONVERSATION_CLOSE_CONFLICT', '话题状态已变化，请刷新后重试', true)
+  }
+  const stored = await findSafetyIdempotency(db, actorScope, 'conversation_admin_close', idempotencyKey)
+  if (!stored) {
+    throw new AppMessagingError(409, 'CONVERSATION_CLOSE_CONFLICT', '话题状态已变化，请刷新后重试', true)
+  }
+  return { conversationId, replayed: false }
+}
+
+export async function requireAdminConversationAssignment(
+  db: D1Database,
+  adminId: number,
+  conversationIdValue: string,
+  now = new Date(),
+): Promise<ConversationAssignmentRow> {
+  const conversationId = normalizeConversationId(conversationIdValue)
+  const assignment = await findConversationAssignment(db, conversationId)
+  if (
+    !assignment
+    || assignment.status !== 'active'
+    || assignment.assigned_admin_id !== adminId
+    || !assignment.lease_expires_at
+    || new Date(assignment.lease_expires_at).getTime() <= now.getTime()
+  ) {
+    await db.prepare(`
+      INSERT INTO admin_audit_logs (
+        id, admin_id, action, target_type, target_id, before_value, after_value, created_at
+      ) VALUES (?, ?, 'app_conversation.assignment_denied', 'app_conversation', ?, NULL, ?, ?)
+    `).bind(
+      `audit_${crypto.randomUUID().replace(/-/gu, '')}`,
+      adminId,
+      conversationId,
+      JSON.stringify({ reasonCode: 'ASSIGNMENT_REQUIRED' }),
+      now.toISOString(),
+    ).run()
+    throw new AppMessagingError(403, 'ASSIGNMENT_REQUIRED', '请先领取该话题，再查看正文或执行运营操作')
+  }
+  return assignment
+}
+
+async function findConversationAssignment(
+  db: D1Database,
+  conversationId: string,
+): Promise<ConversationAssignmentRow | null> {
+  return db.prepare(`
+    SELECT assigned_admin_id, status, version, lease_expires_at, assigned_at
+    FROM app_conversation_assignment_state
+    WHERE conversation_id = ?
+    LIMIT 1
+  `).bind(conversationId).first<ConversationAssignmentRow>()
+}
+
+async function readOwnAssignment(
+  db: D1Database,
+  adminId: number,
+  conversationId: string,
+  now: Date,
+  required = true,
+): Promise<AdminConversationAssignment> {
+  const assignment = await findConversationAssignment(db, conversationId)
+  if (isAssignmentActive(assignment, now) && assignment!.assigned_admin_id === adminId) {
+    return {
+      status: 'mine',
+      version: Number(assignment!.version),
+      leaseExpiresAt: assignment!.lease_expires_at,
+    }
+  }
+  if (required) {
+    throw new AppMessagingError(409, 'ASSIGNMENT_CONFLICT', '话题分配状态已变化，请刷新后重试', true)
+  }
+  return {
+    status: 'unassigned',
+    version: Number(assignment?.version ?? 0),
+    leaseExpiresAt: null,
+  }
+}
+
+function isAssignmentActive(assignment: ConversationAssignmentRow | null, now: Date): boolean {
+  return Boolean(
+    assignment
+    && assignment.status === 'active'
+    && assignment.assigned_admin_id
+    && assignment.lease_expires_at
+    && new Date(assignment.lease_expires_at).getTime() > now.getTime(),
+  )
+}
+
+async function requireAssignmentCapacity(
+  db: D1Database,
+  adminId: number,
+  conversationId: string,
+  limit: number,
+  now: Date,
+) {
+  const row = await db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM app_conversation_assignment_state
+    WHERE status = 'active' AND assigned_admin_id = ? AND conversation_id <> ?
+      AND datetime(lease_expires_at) > datetime(?)
+  `).bind(adminId, conversationId, now.toISOString()).first<{ count: number }>()
+  if (Number(row?.count ?? 0) >= limit) {
+    throw new AppMessagingError(429, 'ASSIGNMENT_CAPACITY_REACHED', `当前最多同时处理 ${limit} 个话题，请先释放或关闭已有话题`)
+  }
+}
+
+async function diagnoseAssignmentClaimFailure(
+  db: D1Database,
+  adminId: number,
+  conversationId: string,
+  now: Date,
+): Promise<never> {
+  const conversation = await findConversationForAdmin(db, conversationId)
+  if (!conversation) throw conversationNotFound()
+  if (conversation.status === 'closed') {
+    throw new AppMessagingError(403, 'CONVERSATION_FORBIDDEN', '已关闭话题不能领取')
+  }
+  const assignment = await findConversationAssignment(db, conversationId)
+  if (isAssignmentActive(assignment, now) && assignment!.assigned_admin_id !== adminId) {
+    throw new AppMessagingError(409, 'ASSIGNMENT_TAKEN', '该话题已被其他运营人员领取')
+  }
+  const control = await getAppMessagingRuntimeControl(db)
+  await requireAssignmentCapacity(
+    db,
+    adminId,
+    conversationId,
+    control.maxActiveAssignmentsPerOperator,
+    now,
+  )
+  throw new AppMessagingError(409, 'ASSIGNMENT_CONFLICT', '话题分配状态已变化，请刷新后重试', true)
+}
+
+async function findSafetyIdempotency(
+  db: D1Database,
+  actorScope: string,
+  operation: 'assignment_claim' | 'assignment_release' | 'conversation_admin_close',
+  idempotencyKey: string,
+): Promise<SafetyIdempotencyRow | null> {
+  return db.prepare(`
+    SELECT request_hash, result_id, result_version
+    FROM app_safety_idempotency
+    WHERE actor_scope = ? AND operation = ? AND idempotency_key = ?
+    LIMIT 1
+  `).bind(actorScope, operation, idempotencyKey).first<SafetyIdempotencyRow>()
+}
+
+function assertSafetyIdempotencyHash(row: SafetyIdempotencyRow, requestHash: string) {
+  if (row.request_hash !== requestHash) {
+    throw new AppMessagingError(409, 'IDEMPOTENCY_KEY_CONFLICT', 'Idempotency-Key 已用于另一项操作')
+  }
+}
+
+function assignmentAuditValue(row: ConversationAssignmentRow) {
+  return {
+    status: row.status,
+    version: Number(row.version),
+    assigned: row.assigned_admin_id != null,
+    leaseExpiresAt: row.lease_expires_at,
+  }
 }
 
 function normalizeQueueStatus(value: string | undefined): AppConversationQueueStatus | null {
@@ -459,6 +1105,10 @@ async function getAdminConversationRow(
            conversation.viewer_read_sequence, conversation.operator_read_sequence,
            conversation.last_message_at, conversation.created_at,
            conversation.updated_at,
+           assignment.assigned_admin_id,
+           assignment.status AS assignment_status,
+           assignment.version AS assignment_version,
+           assignment.lease_expires_at,
            (
              SELECT COUNT(*) FROM app_conversation_messages message
              WHERE message.conversation_id = conversation.id
@@ -469,6 +1119,8 @@ async function getAdminConversationRow(
     JOIN users account ON account.id = conversation.account_id
     JOIN app_account_security security ON security.account_id = conversation.account_id
     JOIN person_profiles profile ON profile.id = conversation.profile_id
+    LEFT JOIN app_conversation_assignment_state assignment
+      ON assignment.conversation_id = conversation.id
     WHERE conversation.id = ?
     LIMIT 1
   `).bind(conversationId).first<AdminConversationRow>()
@@ -476,7 +1128,17 @@ async function getAdminConversationRow(
   return row
 }
 
-function mapAdminConversationSummary(row: AdminConversationRow): AdminAppConversationSummary {
+function mapAdminConversationSummary(
+  row: AdminConversationRow,
+  adminId: number,
+  now: Date,
+): AdminAppConversationSummary {
+  const assignmentActive = row.assignment_status === 'active'
+    && Boolean(row.lease_expires_at)
+    && new Date(row.lease_expires_at!).getTime() > now.getTime()
+  const assignmentStatus = assignmentActive
+    ? row.assigned_admin_id === adminId ? 'mine' : 'other'
+    : 'unassigned'
   return {
     conversationId: row.id,
     status: normalizeConversationStatus(row.status),
@@ -491,6 +1153,11 @@ function mapAdminConversationSummary(row: AdminConversationRow): AdminAppConvers
     },
     operationMode: 'platform_managed',
     receiverLabel: row.receiver_label,
+    assignment: {
+      status: assignmentStatus,
+      leaseExpiresAt: assignmentActive ? row.lease_expires_at : null,
+      canClaim: row.status !== 'closed' && assignmentStatus !== 'other',
+    },
     unreadViewerCount: Math.max(0, Number(row.unread_count)),
     lastSequence: Number(row.last_sequence),
     lastMessageAt: row.last_message_at,
@@ -545,9 +1212,15 @@ async function resolveExistingOperatorMessage(
 
 async function diagnoseOperatorSendFailure(
   db: D1Database,
+  adminId: number,
   conversationId: string,
   now: Date,
 ): Promise<never> {
+  await requireAdminConversationAssignment(db, adminId, conversationId, now)
+  const control = await getAppMessagingRuntimeControl(db)
+  if (control.operatorSendsPaused) {
+    throw new AppMessagingError(503, 'MESSAGING_PAUSED', control.userVisibleMessage, true)
+  }
   const conversation = await findConversationForAdmin(db, conversationId)
   if (!conversation) throw conversationNotFound()
   assertAdminConversationWritable(conversation)

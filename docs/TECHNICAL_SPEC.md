@@ -147,6 +147,19 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整跨仓边界与验收要求见 `docs/app/MESSAGE_1_CROSS_REPO_INTEGRATION.md`。
 
+### Message-2 安全与运营闭环 `[开发验证，默认关闭]`
+
+`0073_app_messaging_safety_operations.sql` 和 App API v2 `1.6.0` 在 Message-1 上增加安全与运营最小闭环：
+
+- 观看者可举报人物资料、媒体、本人话题或本人可见消息，查看本人举报列表/时间线，并屏蔽或解除屏蔽人物；举报不要求会员，但要求有效 App 会话。
+- 屏蔽在同一 D1 条件批次中写状态/事件、清理喜欢与关注、关闭关联话题并记录幂等结果；登录发现页在服务端排除当前仍为 `blocked` 的人物。解除屏蔽不恢复旧关系或旧话题。
+- 观看者可以幂等关闭本人话题；关闭、受限或安全暂停后历史仍可读，但每次写请求重新检查当前状态、屏蔽、会员、人物资格和全局运行控制。
+- 会话正文要求操作员先取得限时 assignment；领取、续租、释放、正文访问、回复和关闭均由服务端重验租约并写审计。容量上限和新建/双方发送暂停由 D1 全局控制。
+- 举报队列默认只读取未结案案件；审核员领取后才可按 `safety_review` 读取举报说明及“目标消息前一条 + 目标 + 后一条”的最小证据窗口。结论和关联安全动作使用 `expectedVersion + mutation_token`，旧请求不能留下部分处置。
+- 保留策略初始为 `unresolved`，消息/举报/证据天数为 `NULL` 且 `purge_enabled=0`。OQ-020、运营值班、合规和真机回归未完成前，不得把 safety 目录或运行开关设为 production-ready。
+
+完整跨仓边界与验收要求见 `docs/app/MESSAGE_2_CROSS_REPO_INTEGRATION.md`。
+
 ### 速率限制 `[当前实现 / 外部配置]`
 
 当前实现分两层：
@@ -310,6 +323,13 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/v2/conversations/:conversationId/messages` | 默认关闭：按 sequence 正序补拉文本与系统消息 |
 | POST | `/api/v2/conversations/:conversationId/messages` | 默认关闭：幂等发送观看者文本消息 |
 | POST | `/api/v2/conversations/:conversationId/read` | 默认关闭：单调推进观看者已读 sequence |
+| POST | `/api/v2/conversations/:conversationId/close` | 默认关闭：观看者幂等关闭本人话题并保留历史只读 |
+| GET | `/api/v2/person-profiles/:profileId/safety` | 默认关闭：读取本人对人物的权威屏蔽状态 |
+| PUT/DELETE | `/api/v2/person-profiles/:profileId/block` | 默认关闭：屏蔽/解除屏蔽并执行服务端联动 |
+| GET | `/api/v2/me/blocks` | 默认关闭：本人当前屏蔽人物游标分页 |
+| POST | `/api/v2/reports` | 默认关闭：幂等举报人物、媒体、本人话题或本人消息 |
+| GET | `/api/v2/me/reports` | 默认关闭：本人举报游标分页与用户可见状态 |
+| GET | `/api/v2/me/reports/:reportId` | 默认关闭：本人举报必要详情和用户可见时间线 |
 
 App 公开人物查询统一要求：认证有效、发布有效、用途授权已开始且未到期、认证未到期、投影可见、来源图库仍为 `published`。任一条件失败时不得回退读取人物草稿或图库表。
 
@@ -365,6 +385,15 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | GET | `/api/admin/app/conversations/:conversationId/messages` | 受控读取话题正文并写访问审计 | admin+ |
 | POST | `/api/admin/app/conversations/:conversationId/read` | 单调推进运营已读 sequence 并审计 | admin+ |
 | POST | `/api/admin/app/conversations/:conversationId/messages` | 以固定 `platform_operator` 身份幂等回复并记录无正文审计摘要 | admin+ |
+| POST | `/api/admin/app/conversations/:conversationId/claim` | 领取或续租限时话题 assignment | admin+ |
+| POST | `/api/admin/app/conversations/:conversationId/release` | 释放本人持有的话题 assignment | admin+ |
+| POST | `/api/admin/app/conversations/:conversationId/close` | 在有效 assignment 内关闭话题并审计 | admin+ |
+| GET | `/api/admin/app/safety/reports` | 不含说明/正文的待处理举报队列及筛选 | admin+ |
+| POST | `/api/admin/app/safety/reports/:reportId/claim` | 幂等领取举报案件 | admin+ |
+| GET | `/api/admin/app/safety/reports/:reportId` | 领取后按 `safety_review` 读取最小证据并审计 | admin+ |
+| POST | `/api/admin/app/safety/reports/:reportId/decision` | 使用 expectedVersion 记录结论及受控安全动作 | admin+ |
+| GET | `/api/admin/app/safety/runtime-control` | 读取全局话题暂停、容量、租约和保留门禁 | admin+ |
+| PATCH | `/api/admin/app/safety/runtime-control` | 幂等更新全局运行控制，要求版本/原因/审计 | owner |
 | POST | `/api/admin/import-jobs` | 创建导入任务（需 Turnstile） | admin+ |
 | GET | `/api/admin/import-jobs/:id` | 导入任务详情和进度 | admin+ |
 | POST | `/api/admin/import-jobs/:id/process` | 处理导入任务（需 Turnstile） | admin+ |
@@ -579,6 +608,24 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 | `app_messaging_idempotency` | 创建与双端发送的幂等结果 | `actor_scope + operation + idempotency_key` 唯一；绑定规范化请求哈希 |
 
 会话正文不是分析或审计载荷。当前 D1 是 Message-1 的唯一消息事实源；只有未来完成独立实时/可靠性设计后，才能引入 Durable Objects 或 Queue，且不得形成第二条业务事实链路。
+
+### App Message-2 安全表族 `[开发验证，默认关闭]`
+
+`0073_app_messaging_safety_operations.sql` 不创建账号、grant、会话、举报或屏蔽业务 seed，也不执行自动清理：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_safety_retention_policies` | 消息、举报、证据保留决策版本 | 未决策略不允许 production-ready；当前天数为空、purge 关闭 |
+| `app_safety_reason_catalogs` / `app_safety_reason_definitions` | 版本化用户举报原因 | 原因稳定 code、优先级与用户可见性受目录约束 |
+| `app_profile_blocks` / `app_profile_block_events` | 当前屏蔽状态与追加事件 | 账号+人物唯一、单调 version、mutation token 条件写 |
+| `app_safety_reports` | 举报案件权威状态 | 目标字段互斥、原因外键、用户状态与内部状态分离、版本条件写 |
+| `app_safety_report_evidence` | 提交时最小证据引用与摘要 | 不接受客户端正文快照；消息只固定目标及相邻引用和 SHA-256 |
+| `app_safety_report_events` | 用户可见/内部案件时间线 | 案件内 sequence 唯一，actor 类型与账号字段组合受 CHECK 限制 |
+| `app_safety_idempotency` | 安全、assignment 与运行控制幂等结果 | actor scope + operation + key 唯一，绑定规范化请求哈希 |
+| `app_conversation_assignment_state` / `app_conversation_assignment_events` | 当前限时运营分配与追加历史 | 单会话最多一个状态；租约到期即失权；mutation token 防并发残留 |
+| `app_messaging_runtime_controls` | 全局暂停、容量、租约和保留引用 | 单例 scope、版本条件写；只有 owner 可修改且必须审计 |
+
+所有安全联动在 D1 条件批次中通过同一 mutation token 或前置消息事实串联。SQL 执行成功但条件未命中时，调用方必须检查幂等结果并返回冲突，不能把“零行变更”当作成功。
 
 ### media_assets
 
