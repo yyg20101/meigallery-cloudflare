@@ -1,6 +1,6 @@
 # 独立 App 与共享业务平台文档总览
 
-更新时间：2026-08-07
+更新时间：2026-08-08
 
 App 版本：1.0
 
@@ -12,6 +12,7 @@ App 版本：1.0
 
 - [App 1.0 开发需求规格（Markdown）](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)：研发、测试、接口设计和任务拆分的单一入口，完整包含产品/发布需求、技术边界、92 个 Page ID、349 个 Figma 最终状态、169 个客户文档图片映射、权限、需求追踪和完成定义。
 - [Safety-2 独立复核跨仓集成边界](./SAFETY_2_APPEAL_INTEGRATION.md)：冻结举报未发现违规结论的一次性申请、独立管理员复核、KMP 交互、D1 状态机、API、默认关闭开关与生产门禁。
+- [Message-3 站内通知与可靠到达跨仓交付基线](./MESSAGE_3_NOTIFICATION_INTEGRATION.md)：冻结五类通知、D1 Outbox、固定安全模板、HTTP 拉取、未读/已读、偏好、受控目标、后台运行台与生产门禁。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终状态和 169 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
 - [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、92 页/349 状态覆盖、2,284 个有效交互动作、排版与 Icon 修正、QA 结果和交付门禁。
@@ -107,6 +108,7 @@ App 版本：1.0
 | [数据模型与迁移方案](./DATA_AND_MIGRATION.md) | 真人主体建模、MeiGallery 映射、影子迁移和回滚 |
 | [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md) | API 资源、鉴权、幂等、消息事件和错误模型 |
 | [Safety-2 独立复核跨仓集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) | 举报结论复核的产品边界、服务端状态机、管理员职责分离、KMP 交互和上线门禁 |
+| [Message-3 站内通知与可靠到达跨仓交付基线](./MESSAGE_3_NOTIFICATION_INTEGRATION.md) | 站内通知事件、Outbox、模板、未读/已读、偏好、受控目标、KMP 页面、后台运行台和启用门禁 |
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
 | [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) | 固化 Figma 最终文件、排版与 Icon 一致性、92 页/349 状态覆盖、原型连线、QA 和交付门禁 |
 | [Figma Design System Phase 1](./FIGMA_DESIGN_SYSTEM_PHASE1.md) | Figma 变量、跨端代码映射、Noto Sans SC 排版、基础效果与校验证据 |

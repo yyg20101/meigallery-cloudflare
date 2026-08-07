@@ -37,7 +37,7 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.8.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.9.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
@@ -53,6 +53,7 @@ describe('App API v2 路由契约', () => {
         applications: false,
       },
       messaging: false,
+      notifications: false,
       safety: {
         reports: false,
         blocks: false,
@@ -65,7 +66,60 @@ describe('App API v2 路由契约', () => {
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.8.0',
+      contractVersion: '1.9.0',
+    })
+  })
+
+  it('站内通知使用独立开关、HTTP pull 与生产门禁', async () => {
+    const auth = {
+      APP_AUTH_ENABLED: 'true',
+      APP_AUTH_TERMS_VERSION: 'terms-1',
+      APP_AUTH_PRIVACY_VERSION: 'privacy-1',
+      APP_AUTH_PLATFORM_NOTICE_VERSION: 'platform-1',
+      APP_AUTH_ELIGIBILITY_VERSION: 'eligibility-1',
+      APP_AUTH_TERMS_URL: 'https://legal.test/terms',
+      APP_AUTH_PRIVACY_URL: 'https://legal.test/privacy',
+      APP_AUTH_PLATFORM_NOTICE_URL: 'https://legal.test/platform',
+      APP_AUTH_ELIGIBILITY_URL: 'https://legal.test/eligibility',
+      APP_NOTIFICATIONS_ENABLED: 'true',
+      APP_NOTIFICATIONS_POLICY_VERSION: 'ntp_app_1_0_message_3_dev_1',
+    } satisfies Partial<Bindings>
+    const development = createApp({}, auth)
+    const response = await development.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      development.env,
+      {} as ExecutionContext,
+    )
+    expect(await response.json()).toMatchObject({
+      data: {
+        capabilities: { notifications: true, systemPush: false },
+        notifications: {
+          policyVersion: 'ntp_app_1_0_message_3_dev_1',
+          transport: 'http_pull',
+          maxPageSize: 40,
+          categories: [
+            { code: 'message', preference: 'optional' },
+            { code: 'interaction', preference: 'optional' },
+            { code: 'membership_coin', preference: 'required' },
+            { code: 'system_security', preference: 'required' },
+            { code: 'marketing', preference: 'optional' },
+          ],
+        },
+      },
+    })
+
+    const production = createApp({}, {
+      ...auth,
+      APP_ENV: 'production',
+      APP_NOTIFICATIONS_PRODUCTION_READY: 'false',
+    })
+    const productionResponse = await production.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      production.env,
+      {} as ExecutionContext,
+    )
+    expect(await productionResponse.json()).toMatchObject({
+      data: { capabilities: { notifications: false } },
     })
   })
 
@@ -387,5 +441,11 @@ describe('App API v2 路由契约', () => {
     expect(contract).toContain('/api/v2/conversations/{conversationId}:')
     expect(contract).toContain('/api/v2/conversations/{conversationId}/messages:')
     expect(contract).toContain('/api/v2/conversations/{conversationId}/read:')
+    expect(contract).toContain('/api/v2/notifications:')
+    expect(contract).toContain('/api/v2/notifications/unread-counts:')
+    expect(contract).toContain('/api/v2/notifications/read-all:')
+    expect(contract).toContain('/api/v2/notifications/{notificationId}:')
+    expect(contract).toContain('/api/v2/notifications/{notificationId}/read:')
+    expect(contract).toContain('/api/v2/me/notification-preferences:')
   })
 })

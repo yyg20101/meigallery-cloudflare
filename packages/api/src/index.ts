@@ -37,6 +37,7 @@ import {
 import { recoverAttributionOutbox } from './services/ad-platform/recovery'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
 import { reconcileGoogleDeliveryDiagnostics } from './services/ad-platform/google-diagnostics-service'
+import { recoverAppNotifications } from './services/app-notifications'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -89,6 +90,10 @@ export type Bindings = {
   APP_SAFETY_APPEALS_ADMIN_ENABLED?: string
   APP_SAFETY_APPEAL_POLICY_VERSION?: string
   APP_SAFETY_APPEALS_PRODUCTION_READY?: string
+  APP_NOTIFICATIONS_ENABLED?: string
+  APP_NOTIFICATIONS_ADMIN_ENABLED?: string
+  APP_NOTIFICATIONS_POLICY_VERSION?: string
+  APP_NOTIFICATIONS_PRODUCTION_READY?: string
 }
 
 /** 应用级变量 */
@@ -375,6 +380,15 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
         console.error('[cron.registration-recovery] 注册事实修复任务失败', {
           code: 'REGISTRATION_CONVERSION_RECOVERY_JOB_FAILED',
         })
+      }
+    }
+    if (shouldRecoverAttributionOutbox(event)) {
+      try {
+        const recovery = await recoverAppNotifications(env, new Date(event.scheduledTime), 100)
+        if (!recovery.skipped) console.log('[cron] App 站内通知恢复完成:', recovery)
+      }
+      catch {
+        console.error('[cron] App 站内通知恢复失败:', { errorCode: 'app_notification_recovery_failed' })
       }
     }
     if (!shouldRunDailyMaintenance(event)) return

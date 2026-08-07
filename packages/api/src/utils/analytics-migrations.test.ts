@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('数据库迁移契约', () => {
-  it('migration 索引从 0001 到 0075 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0076 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 75 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 76 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -72,6 +72,23 @@ describe('数据库迁移契约', () => {
     expect(sql).not.toMatch(/INSERT INTO\s+app_membership_applications/iu)
     expect(sql).not.toMatch(/INSERT INTO\s+app_membership_grants/iu)
     expect(sql).not.toMatch(/UPDATE\s+app_membership_catalog_versions/iu)
+  })
+
+  it('0076 只建立默认关闭的站内通知与 Outbox，不回填通知或自动清理', async () => {
+    const sql = await readMigration('0076_app_in_app_notifications.sql')
+
+    expect(sql).toContain('CREATE TABLE app_notification_policies')
+    expect(sql).toContain('CREATE TABLE app_notification_event_definitions')
+    expect(sql).toContain('CREATE TABLE app_notification_outbox')
+    expect(sql).toContain('CREATE TABLE app_notifications')
+    expect(sql).toContain('CREATE TABLE app_notification_preferences')
+    expect(sql).toContain("'unresolved'")
+    expect(sql).toContain("'development',\n  0,\n  0,")
+    expect(sql).toContain('retention_days')
+    expect(sql).toContain('purge_enabled')
+    expect(sql).not.toMatch(/INSERT INTO\s+app_notifications/iu)
+    expect(sql).not.toMatch(/UPDATE\s+app_notification_policies[\s\S]+generation_enabled\s*=\s*1/iu)
+    expect(sql).not.toMatch(/DELETE FROM\s+app_notifications/iu)
   })
 
   it('0071 只写开发会员目录，不迁移旧会员或预发放账号权益', async () => {

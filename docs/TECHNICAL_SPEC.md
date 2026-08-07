@@ -187,6 +187,21 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整跨仓边界与验收要求见 `docs/app/SAFETY_2_APPEAL_INTEGRATION.md`。
 
+### Message-3 站内通知与可靠到达 `[开发验证，默认关闭]`
+
+`0076_app_in_app_notifications.sql` 和 App API v2 `1.9.0` 建立统一站内通知中心：
+
+- 五类稳定 category 为消息、互动、会员与金币、系统与安全、活动；消息/互动/活动是可选偏好，会员与金币、系统与安全是不可关闭的必要通知。
+- 业务表 D1 trigger 只在策略 `generation_enabled=1` 时原子写 Outbox；migration 初始策略关闭、无 seed、无历史回填。会员到期恢复还受策略 `effective_at` 下界约束。
+- Outbox 使用账号、事件类型和事件引用防重，支持处理租约、最多 5 次指数退避、dead letter 和 SHA-256 稳定通知 ID；App 拉取前定向消费，Worker cron 每 15 分钟做全局有界恢复。
+- 用户 API 提供分类游标列表、安全详情、服务端未读数、单条/分类已读和版本化偏好；游标绑定账号与分类，已读更新和设备审计在同一 D1 batch 中收敛。
+- 通知只保存固定模板快照，不复制平台话题正文、申请说明、内部备注、安全证据、IP、精确位置或 Token。受控目标动作在响应时重新验证账号归属、对象状态和 capability。
+- Nuxt `/admin/app/notifications` 只读运行台展示双门禁、事件、模板和投递状态；投递列表不返回用户消息正文或敏感业务说明。
+- `APP_NOTIFICATIONS_ENABLED`、`APP_NOTIFICATIONS_ADMIN_ENABLED`、`APP_NOTIFICATIONS_POLICY_VERSION` 与 production-ready 门禁相互独立，production/dev 当前均不开放。OQ-020 未关闭前保留天数为空且不执行清理。
+- KMP 使用严格 bootstrap 配置和 HTTP pull，不接入 APNs、FCM、WebSocket 或系统通知权限；未知或矛盾 capability 安全关闭。
+
+完整跨仓边界与启用清单见 `docs/app/MESSAGE_3_NOTIFICATION_INTEGRATION.md`。
+
 ### 速率限制 `[当前实现 / 外部配置]`
 
 当前实现分两层：

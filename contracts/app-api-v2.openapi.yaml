@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.8.0
+  version: 1.9.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -9,7 +9,8 @@ info:
     会员、消息和安全能力使用独立开关且生产环境还要求发布门禁。只有 available 且 executable 的消息权益可执行。
     话题始终由平台运营接收，不代表真人本人入驻或回复；Safety-2 仅支持本人举报“未发现违规”结论的一次文字复核申请。
     会员申请本身不产生 grant 或 entitlement，只有管理员正式发放成功后才显示已发放。
-    实时通道、媒体消息、账号/金币等其他申诉、支付、金币和媒体访问仍未纳入本次契约。
+    Message-3 新增 HTTP pull 站内通知、服务端未读数、已读审计和可选分类偏好；通知只保存审核过的固定文案，
+    受控动作打开时必须重新校验权威业务状态。系统推送、实时通道、媒体消息、账号/金币等其他申诉、支付、金币和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -25,6 +26,7 @@ tags:
   - name: Interaction
   - name: Membership
   - name: Messaging
+  - name: Notification
   - name: Safety
 paths:
   /api/v2/app/bootstrap:
@@ -1247,6 +1249,176 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v2/notifications:
+    get:
+      tags: [Notification]
+      operationId: listAppNotifications
+      summary: 分页获取当前账号的站内通知
+      description: 返回安全通知投影；不包含会话正文、内部备注、安全证据或访问凭证。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            $ref: '#/components/schemas/NotificationCategory'
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 通知列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/notifications/unread-counts:
+    get:
+      tags: [Notification]
+      operationId: getAppNotificationUnreadCounts
+      summary: 获取服务端权威未读数
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 总未读数和五个固定分类的未读数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationUnreadCountsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/notifications/read-all:
+    post:
+      tags: [Notification]
+      operationId: markAppNotificationCategoryRead
+      summary: 将指定通知分类全部标记已读
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [category]
+              properties:
+                category:
+                  $ref: '#/components/schemas/NotificationCategory'
+      responses:
+        '200':
+          description: 批量已读结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationReadAllResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v2/notifications/{notificationId}:
+    get:
+      tags: [Notification]
+      operationId: getAppNotification
+      summary: 获取本人单条通知详情
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: 通知详情和重新验证后的受控动作状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v2/notifications/{notificationId}/read:
+    post:
+      tags: [Notification]
+      operationId: markAppNotificationRead
+      summary: 幂等标记单条通知已读
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: 已读结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationReadResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v2/me/notification-preferences:
+    get:
+      tags: [Notification]
+      operationId: getAppNotificationPreferences
+      summary: 获取通知偏好
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 可选分类偏好和不可关闭的必要类别说明
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferencesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [Notification]
+      operationId: updateAppNotificationPreferences
+      summary: 使用版本号更新可选通知偏好
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferencesRequest'
+      responses:
+        '200':
+          description: 更新后的偏好
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferencesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
 components:
   securitySchemes:
     BearerAuth:
@@ -1262,7 +1434,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.8.0
+        const: 1.9.0
   parameters:
     ProfileId:
       name: profileId
@@ -1294,6 +1466,13 @@ components:
       schema:
         type: string
         pattern: '^cv_[A-Za-z0-9_-]{1,77}$'
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^ntf_[A-Za-z0-9_-]{1,92}$'
     MembershipApplicationId:
       name: applicationId
       in: path
@@ -1389,7 +1568,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.8.0
+          const: 1.9.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -2500,6 +2679,284 @@ components:
               type: boolean
         meta:
           $ref: '#/components/schemas/Meta'
+    NotificationCategory:
+      type: string
+      enum: [message, interaction, membership_coin, system_security, marketing]
+    NotificationState:
+      type: string
+      enum: [available, read, expired, withdrawn]
+    NotificationTargetType:
+      type: string
+      enum:
+        - conversation
+        - person_profile
+        - membership
+        - membership_application
+        - wallet_entry
+        - safety_report
+        - safety_appeal
+        - account_security
+        - data_task
+        - none
+    NotificationAction:
+      type: string
+      enum:
+        - open_conversation
+        - open_person_profile
+        - open_membership
+        - open_membership_application
+        - open_wallet_entry
+        - open_safety_report
+        - open_safety_appeal
+        - open_account_security
+        - open_data_task
+        - none
+    NotificationTarget:
+      type: object
+      additionalProperties: false
+      required: [type, id, action, available, unavailableReason]
+      properties:
+        type:
+          $ref: '#/components/schemas/NotificationTargetType'
+        id:
+          type: [string, 'null']
+        action:
+          $ref: '#/components/schemas/NotificationAction'
+        available:
+          type: boolean
+        unavailableReason:
+          oneOf:
+            - type: 'null'
+            - type: string
+              enum: [FEATURE_DISABLED, TARGET_NOT_AVAILABLE]
+    NotificationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - notificationId
+        - category
+        - eventType
+        - title
+        - summary
+        - state
+        - target
+        - createdAt
+        - expiresAt
+        - readAt
+      properties:
+        notificationId:
+          type: string
+          pattern: '^ntf_[A-Za-z0-9_-]{1,92}$'
+        category:
+          $ref: '#/components/schemas/NotificationCategory'
+        eventType:
+          type: string
+          pattern: '^[a-z][a-z0-9_]*\.[a-z0-9._]+$'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        summary:
+          type: string
+          minLength: 1
+          maxLength: 160
+        state:
+          $ref: '#/components/schemas/NotificationState'
+        target:
+          $ref: '#/components/schemas/NotificationTarget'
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+        readAt:
+          type: [string, 'null']
+          format: date-time
+    NotificationDetail:
+      allOf:
+        - $ref: '#/components/schemas/NotificationSummary'
+        - type: object
+          required: [body, templateVersion, minimumClientVersion]
+          properties:
+            body:
+              type: string
+              minLength: 1
+              maxLength: 500
+            templateVersion:
+              type: string
+              minLength: 1
+              maxLength: 80
+            minimumClientVersion:
+              type: string
+              minLength: 1
+              maxLength: 32
+      unevaluatedProperties: false
+    NotificationListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/NotificationSummary'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    NotificationDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    NotificationUnreadCounts:
+      type: object
+      additionalProperties: false
+      required: [total, categories, generatedAt]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        categories:
+          type: object
+          additionalProperties: false
+          required: [message, interaction, membership_coin, system_security, marketing]
+          properties:
+            message:
+              type: integer
+              minimum: 0
+            interaction:
+              type: integer
+              minimum: 0
+            membership_coin:
+              type: integer
+              minimum: 0
+            system_security:
+              type: integer
+              minimum: 0
+            marketing:
+              type: integer
+              minimum: 0
+        generatedAt:
+          type: string
+          format: date-time
+    NotificationUnreadCountsResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationUnreadCounts'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    NotificationReadResult:
+      type: object
+      additionalProperties: false
+      required: [notificationId, state, readAt, replayed]
+      properties:
+        notificationId:
+          type: string
+        state:
+          $ref: '#/components/schemas/NotificationState'
+        readAt:
+          type: string
+          format: date-time
+        replayed:
+          type: boolean
+    NotificationReadResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationReadResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    NotificationReadAllResult:
+      type: object
+      additionalProperties: false
+      required: [category, markedCount, readAt]
+      properties:
+        category:
+          $ref: '#/components/schemas/NotificationCategory'
+        markedCount:
+          type: integer
+          minimum: 0
+        readAt:
+          type: string
+          format: date-time
+    NotificationReadAllResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationReadAllResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    NotificationPreferences:
+      type: object
+      additionalProperties: false
+      required: [policyId, version, optional, required, updatedAt]
+      properties:
+        policyId:
+          type: string
+          pattern: '^ntp_[A-Za-z0-9_-]{1,76}$'
+        version:
+          type: integer
+          minimum: 1
+        optional:
+          type: object
+          additionalProperties: false
+          required: [message, interaction, marketing]
+          properties:
+            message:
+              type: boolean
+            interaction:
+              type: boolean
+            marketing:
+              type: boolean
+        required:
+          type: object
+          additionalProperties: false
+          required: [membershipCoin, systemSecurity]
+          properties:
+            membershipCoin:
+              type: boolean
+              const: true
+            systemSecurity:
+              type: boolean
+              const: true
+        updatedAt:
+          type: string
+          format: date-time
+    NotificationPreferencesRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, message, interaction, marketing]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        message:
+          type: boolean
+        interaction:
+          type: boolean
+        marketing:
+          type: boolean
+    NotificationPreferencesResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/NotificationPreferences'
+        meta:
+          $ref: '#/components/schemas/Meta'
     DeviceResponse:
       type: object
       additionalProperties: false
@@ -2524,7 +2981,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, auth, membershipApplications, messaging, safety]
+      required: [product, appVersion, capabilities, discovery, auth, membershipApplications, messaging, notifications, safety]
       properties:
         product:
           type: string
@@ -2535,7 +2992,7 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, auth, interactions, membership, messaging, safety, payments, systemPush]
+          required: [discovery, auth, interactions, membership, messaging, notifications, safety, payments, systemPush]
           properties:
             discovery:
               type: boolean
@@ -2569,6 +3026,8 @@ components:
                 applications:
                   type: boolean
             messaging:
+              type: boolean
+            notifications:
               type: boolean
             safety:
               type: object
@@ -2746,6 +3205,38 @@ components:
             maxTextLength:
               type: integer
               const: 1000
+        notifications:
+          type: object
+          additionalProperties: false
+          required: [policyVersion, transport, maxPageSize, categories]
+          properties:
+            policyVersion:
+              type: string
+              pattern: '^ntp_[A-Za-z0-9_-]{1,76}$'
+            transport:
+              type: string
+              const: http_pull
+            maxPageSize:
+              type: integer
+              const: 40
+            categories:
+              type: array
+              minItems: 5
+              maxItems: 5
+              items:
+                type: object
+                additionalProperties: false
+                required: [code, label, preference]
+                properties:
+                  code:
+                    $ref: '#/components/schemas/NotificationCategory'
+                  label:
+                    type: string
+                    minLength: 1
+                    maxLength: 24
+                  preference:
+                    type: string
+                    enum: [optional, required]
         safety:
           type: object
           additionalProperties: false

@@ -31,7 +31,7 @@
 - 已在同级独立仓库 `meigallery-client` 创建 KMP + Compose Multiplatform 最小技术脚手架；客户端与本仓库继续通过版本化契约协作，不放入当前 pnpm monorepo。
 - 客户端当前锁定 Kotlin 2.4.10、Compose Multiplatform 1.11.1、AGP 9.0.1、Gradle 9.6.1、JDK 21，Android `minSdk = 26`、`compileSdk/targetSdk = 36`。
 - 四个共享模块的 Android Host Test、Android Debug APK 和 iOS Simulator Kotlin/Native 编译均已通过；iOS Framework 本地链接仍被尚未接受的 Xcode 许可拦截，正式链接继续由 macOS CI 门禁验证。
-- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.8.0`，包含 production 默认关闭的 Auth-1、Interaction-1、Membership-1、Membership-2、Message-1、Message-2 与 Safety-2 独立复核契约；dev 可按独立阶段受控联调，收藏、历史、通知、钱包和媒体访问仍按域冻结。
+- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.9.0`，包含 production 默认关闭的 Auth-1、Interaction-1、Membership-1、Membership-2、Message-1、Message-2、Safety-2 独立复核与 Message-3 站内通知契约；dev 可按独立阶段受控联调，收藏、历史、钱包和媒体访问仍按域冻结。
 - 已新增 `0067_app_public_profile_projection.sql` 空读投影和 App API v2 查询实现，强制 `verified + published + authorization active/unexpired + visible + source gallery published`；migration 不含 seed、回填或 legacy 自动映射，尚未执行生产 migration 或部署生产路由。
 - KMP 客户端 M0 公共发现纵向切片已完成：capability、地区目录、推荐/热门/最新、地区筛选、游标分页、公开人物卡和基础详情均已接通；点击卡片会按稳定公开 ID 重新请求详情并复核最新公开资格，不直接信任列表快照。Android 模拟器已回归筛选、排序、详情错误/重试/成功和长列表，未发现崩溃、文字溢出或底部导航遮挡。正式应用 ID、会员、消息、钱包和媒体访问继续受各自门禁约束。
 - 已完成 M1 人物供给最小开发闭环：`0068_app_person_supply_workflow.sql` 创建空的 Person、资料、用途授权、认证和发布复核权威表；内容版本与并发锁版本分离，审批绑定具体内容版本，发布动作单向生成公开投影，暂停或撤销会立即使投影不可见。
@@ -69,6 +69,11 @@
 - Safety-2 已于 2026-08-07 在独立 dev 资源完成受控联调：提交 `5cf79df` 部署为 API `810987bc-6942-4eb3-b555-412a84c4ca8a` 与 Web `462b215d-3c5e-4cc4-ac4a-f0252ba3d02c`，dev D1 连续应用 `0063–0074` 后无待执行 migration。自动 smoke 验证举报、原审核人隔离、独立复核改判、举报重开和 7 类审计动作，结束后测试用户、图库、人物、举报与申诉残留计数均为 0。
 - migration 前 dev D1 SQL 备份文件为 `meigallery-db-dev-before-safety2-20260807-5cf79df.sql`，大小 464,296 bytes，SHA-256 为 `34a939814eb8e6a0f88509969b819cae5f623cefc7877c7db2053a4e437f3e5c`；迁移前 Time Travel bookmark 为 `00000041-00000000-000050c0-d2ceb922bd36080310b032df43b1d10f`。部署前 API/Web 回滚版本分别为 `2159eea3-cea7-4ed5-bbd7-208ff6f471c5` 与 `035612a1-7b95-44c3-912e-02b4c58d664f`。
 - production 的 Auth、举报、申诉及全部 production-ready 开关继续关闭，且 production `/api/v2/app/bootstrap` 仍返回 404，确认本阶段未发布 App API v2。开发策略的 30 天窗口不是生产承诺，仍依赖未关闭的 OQ-020；完整边界见 `docs/app/SAFETY_2_APPEAL_INTEGRATION.md`。
+- 已完成 Message-3 站内通知与可靠到达代码闭环：`0076_app_in_app_notifications.sql` 建立默认关闭的策略、事件定义、固定安全模板、账号偏好、可恢复 Outbox、通知投影和已读审计；不包含 seed、历史回填、系统推送或自动清理。
+- App API v2 `1.9.0` 新增五类通知列表、安全详情、服务端未读数、单条/分类已读和版本化偏好。业务 trigger 只在 D1 策略开启时原子写 Outbox，消费者支持稳定通知 ID、偏好抑制、处理租约、指数退避和 dead letter；受控目标在每次响应时重验账号归属、对象状态与 capability。
+- Nuxt 新增 `/admin/app/notifications` 只读运行台，展示运行时/D1 双门禁、事件、模板和投递状态，不返回平台话题正文、申请说明、安全证据、内部备注或 Token。KMP “消息”页新增平台话题/站内通知切换、五类列表、详情、未读、分类全部已读和通知偏好；当前只使用 HTTP 手动拉取，不申请系统通知权限或声称实时到达。
+- Message-3 D1 定向测试覆盖默认关闭、Outbox 投影、固定安全文案、可选抑制/必要通知、未读与原子已读审计、目标失效和游标隔离；API/Web 全量测试、TypeScript/Nuxt 类型检查、Android Host Test/Debug APK 与 iOS Simulator Kotlin/Native 编译通过。本机 iOS Framework 链接仍被未接受的 Xcode 许可拦截，继续由 macOS CI 执行正式门禁。
+- production/dev 的四个通知开关保持关闭，`0076` 尚未执行远端 migration，也没有真实通知数据。OQ-020 未关闭，开发策略 `generation_enabled=0`、`retention_days=NULL`、`purge_enabled=0`；完整边界见 `docs/app/MESSAGE_3_NOTIFICATION_INTEGRATION.md`。
 - 已完成移动端 49 页和管理后台 43 页的页面级产品设计。
 - Figma 最终文件已完成移动端 49 页/186 状态、管理后台 43 页/163 状态，共 92 个 Page ID/349 个状态；`30｜Prototype Flows` 覆盖 92 个流程预览。
 - Figma 页面内与流程动作合计 2,284 个，缺失目标为 0；移动端关键点击热区不足为 0；正式页未绑定文字样式、原始填充/描边、缺失字体和文字溢出均为 0。

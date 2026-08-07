@@ -364,7 +364,7 @@ Message-1 的用户消息只接受 `contentType=text`，普通 Unicode 表情可
 | POST | `/api/v2/notifications/read-all` | 按分类标记全部已读，幂等 |
 | GET/PUT | `/api/v2/me/notification-preferences` | 站内通知偏好；账号/安全/会员/金币/数据权利必要通知不可关闭 |
 
-App 1.0 通过 HTTP 拉取和已连接实时通道刷新站内通知，不依赖 APNs、FCM 或其他系统推送。通知 action 使用受控 `targetType + targetId + action`，打开时重新校验目标和客户端 capability；实时事件不携带完整私信正文。
+Message-3 当前实现只通过 HTTP 拉取站内通知，不依赖 APNs、FCM、WebSocket 或其他系统推送；未来若单独启用已连接实时通道，也只能发送刷新提示，不能替代 HTTP 权威列表。通知 action 使用受控 `targetType + targetId + action`，打开时重新校验目标和客户端 capability；任何刷新提示都不得携带完整平台话题正文。
 
 ## 12. 钱包、礼物与装扮 API
 

@@ -1,5 +1,6 @@
 /**
- * App API v2 公共发现、账号访问、互动、会员申请、平台话题、Message-2 安全与 Safety-2 申诉契约。
+ * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
+ * Message-2 安全、Safety-2 申诉与 Message-3 站内通知契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -10,7 +11,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.8.0'
+  contractVersion: '1.9.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -57,6 +58,7 @@ export interface AppBootstrapConfig {
       applications: boolean
     }
     messaging: boolean
+    notifications: boolean
     safety: {
       reports: boolean
       blocks: boolean
@@ -110,6 +112,16 @@ export interface AppBootstrapConfig {
     disclosureText: string
     transport: 'http_pull'
     maxTextLength: number
+  }
+  notifications: {
+    policyVersion: string
+    transport: 'http_pull'
+    maxPageSize: number
+    categories: Array<{
+      code: AppNotificationCategory
+      label: string
+      preference: 'optional' | 'required'
+    }>
   }
   safety: {
     reasonCatalogVersion: string
@@ -486,6 +498,100 @@ export interface AppSafetyAppealCreateResult {
 export interface AppConversationCloseResult {
   conversation: AppConversationSummary
   replayed: boolean
+}
+
+export type AppNotificationCategory =
+  | 'message'
+  | 'interaction'
+  | 'membership_coin'
+  | 'system_security'
+  | 'marketing'
+
+export type AppNotificationState = 'available' | 'read' | 'expired' | 'withdrawn'
+
+export type AppNotificationTargetType =
+  | 'conversation'
+  | 'person_profile'
+  | 'membership'
+  | 'membership_application'
+  | 'wallet_entry'
+  | 'safety_report'
+  | 'safety_appeal'
+  | 'account_security'
+  | 'data_task'
+  | 'none'
+
+export type AppNotificationAction =
+  | 'open_conversation'
+  | 'open_person_profile'
+  | 'open_membership'
+  | 'open_membership_application'
+  | 'open_wallet_entry'
+  | 'open_safety_report'
+  | 'open_safety_appeal'
+  | 'open_account_security'
+  | 'open_data_task'
+  | 'none'
+
+export interface AppNotificationTarget {
+  type: AppNotificationTargetType
+  id: string | null
+  action: AppNotificationAction
+  available: boolean
+  unavailableReason: 'FEATURE_DISABLED' | 'TARGET_NOT_AVAILABLE' | null
+}
+
+export interface AppNotificationSummary {
+  notificationId: string
+  category: AppNotificationCategory
+  eventType: string
+  title: string
+  summary: string
+  state: AppNotificationState
+  target: AppNotificationTarget
+  createdAt: string
+  expiresAt: string | null
+  readAt: string | null
+}
+
+export interface AppNotificationDetail extends AppNotificationSummary {
+  body: string
+  templateVersion: string
+  minimumClientVersion: string
+}
+
+export interface AppNotificationUnreadCounts {
+  total: number
+  categories: Record<AppNotificationCategory, number>
+  generatedAt: string
+}
+
+export interface AppNotificationReadResult {
+  notificationId: string
+  state: AppNotificationState
+  readAt: string
+  replayed: boolean
+}
+
+export interface AppNotificationReadAllResult {
+  category: AppNotificationCategory
+  markedCount: number
+  readAt: string
+}
+
+export interface AppNotificationPreferences {
+  policyId: string
+  version: number
+  optional: {
+    message: boolean
+    interaction: boolean
+    marketing: boolean
+  }
+  required: {
+    membershipCoin: true
+    systemSecurity: true
+  }
+  updatedAt: string
 }
 
 export interface AppPersonRegion {

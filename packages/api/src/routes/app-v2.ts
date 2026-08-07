@@ -96,6 +96,22 @@ import {
   parseAppAppealListQuery,
   type CreateAppSafetyAppealInput,
 } from '../services/app-safety-appeals'
+import {
+  APP_NOTIFICATION_CATEGORIES,
+  APP_NOTIFICATION_MAX_PAGE_SIZE,
+  AppNotificationError,
+  getAppNotification,
+  getAppNotificationPreferences,
+  getAppNotificationRuntimeConfig,
+  getAppNotificationUnreadCounts,
+  listAppNotifications,
+  markAppNotificationRead,
+  markAppNotificationsReadAll,
+  parseAppNotificationListQuery,
+  requireAppNotificationsEnabled,
+  updateAppNotificationPreferences,
+  type UpdateAppNotificationPreferencesInput,
+} from '../services/app-notifications'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -156,6 +172,8 @@ for (const path of [
   '/conversations/*',
   '/membership-applications',
   '/membership-applications/*',
+  '/notifications',
+  '/notifications/*',
 ]) {
   appV2Routes.use(path, async (c, next) => {
     try {
@@ -182,6 +200,128 @@ for (const path of [
     }
   })
 }
+
+appV2Routes.get('/notifications', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const config = notificationConfig(c.env)
+    const query = parseAppNotificationListQuery({
+      category: c.req.query('category'),
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppNotifications(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      config,
+      notificationTargetCapabilities(c.env),
+      query,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appNotificationError(c, error)
+  }
+})
+
+appV2Routes.get('/notifications/unread-counts', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    return appApiSuccess(c, await getAppNotificationUnreadCounts(
+      c.env.DB,
+      principal.accountInternalId,
+      notificationConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appNotificationError(c, error)
+  }
+})
+
+appV2Routes.post('/notifications/read-all', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const body = await c.req.json<{ category?: unknown }>()
+    return appApiSuccess(c, await markAppNotificationsReadAll(
+      c.env.DB,
+      principal.accountInternalId,
+      body.category,
+      notificationConfig(c.env),
+      { deviceId: principal.deviceId, requestId: c.get('appRequestId')! },
+    ))
+  }
+  catch (error) {
+    return appNotificationError(c, error)
+  }
+})
+
+appV2Routes.get('/notifications/:notificationId', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    return appApiSuccess(c, await getAppNotification(
+      c.env.DB,
+      principal.accountInternalId,
+      c.req.param('notificationId'),
+      notificationConfig(c.env),
+      notificationTargetCapabilities(c.env),
+    ))
+  }
+  catch (error) {
+    return appNotificationError(c, error)
+  }
+})
+
+appV2Routes.post('/notifications/:notificationId/read', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    return appApiSuccess(c, await markAppNotificationRead(
+      c.env.DB,
+      principal.accountInternalId,
+      c.req.param('notificationId'),
+      notificationConfig(c.env),
+      { deviceId: principal.deviceId, requestId: c.get('appRequestId')! },
+    ))
+  }
+  catch (error) {
+    return appNotificationError(c, error)
+  }
+})
+
+appV2Routes.get('/me/notification-preferences', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    return appApiSuccess(c, await getAppNotificationPreferences(
+      c.env.DB,
+      principal.accountInternalId,
+      notificationConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appNotificationError(c, error)
+  }
+})
+
+appV2Routes.put('/me/notification-preferences', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const body = await c.req.json<UpdateAppNotificationPreferencesInput>()
+    return appApiSuccess(c, await updateAppNotificationPreferences(
+      c.env.DB,
+      principal.accountInternalId,
+      body,
+      notificationConfig(c.env),
+      { deviceId: principal.deviceId, requestId: c.get('appRequestId')! },
+    ))
+  }
+  catch (error) {
+    return appNotificationError(c, error)
+  }
+})
 
 appV2Routes.get('/me', async (c) => {
   try {
@@ -814,6 +954,7 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
   const membership = getAppMembershipRuntimeConfig(env)
   const messaging = getAppMessagingRuntimeConfig(env)
   const safety = getAppSafetyRuntimeConfig(env)
+  const notifications = getAppNotificationRuntimeConfig(env)
   return {
     product: 'meigallery',
     appVersion: '1.0',
@@ -832,6 +973,7 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
         applications: membership.applicationsEnabled && auth.enabled,
       },
       messaging: auth.enabled && messaging.enabled,
+      notifications: auth.enabled && notifications.enabled,
       safety: {
         reports: auth.enabled && safety.enabled,
         blocks: auth.enabled && safety.enabled,
@@ -880,6 +1022,12 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
       transport: 'http_pull',
       maxTextLength: APP_MESSAGING_MAX_TEXT_LENGTH,
     },
+    notifications: {
+      policyVersion: notifications.policyId,
+      transport: 'http_pull',
+      maxPageSize: APP_NOTIFICATION_MAX_PAGE_SIZE,
+      categories: [...APP_NOTIFICATION_CATEGORIES],
+    },
     safety: {
       reasonCatalogVersion: safety.reasonCatalogId,
       appealPolicyVersion: safety.appealPolicyId,
@@ -888,6 +1036,28 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
       reportTargets: APP_SAFETY_REPORT_TARGETS,
       reasons: APP_SAFETY_REASONS,
     },
+  }
+}
+
+function notificationConfig(env: Bindings) {
+  const config = getAppNotificationRuntimeConfig(env)
+  requireAppNotificationsEnabled(config)
+  return config
+}
+
+function notificationTargetCapabilities(env: Bindings) {
+  const auth = getAppAuthRuntimeConfig(env)
+  const membership = getAppMembershipRuntimeConfig(env)
+  const messaging = getAppMessagingRuntimeConfig(env)
+  const safety = getAppSafetyRuntimeConfig(env)
+  return {
+    messaging: auth.enabled && messaging.enabled,
+    profiles: true,
+    membership: auth.enabled && membership.enabled,
+    membershipApplications: auth.enabled && membership.applicationsEnabled,
+    safetyReports: auth.enabled && safety.enabled,
+    safetyAppeals: auth.enabled && safety.appealsEnabled,
+    accountSecurity: auth.enabled,
   }
 }
 
@@ -935,6 +1105,16 @@ function appMessagingError(
     return appApiError(c, error.status, error.code, error.message, error.retryable)
   }
   return appMembershipError(c, error)
+}
+
+function appNotificationError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppNotificationError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  throw error
 }
 
 function appMembershipError(
