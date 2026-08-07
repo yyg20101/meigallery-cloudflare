@@ -339,9 +339,12 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/v2/person-profiles/:profileId/safety` | 默认关闭：读取本人对人物的权威屏蔽状态 |
 | PUT/DELETE | `/api/v2/person-profiles/:profileId/block` | 默认关闭：屏蔽/解除屏蔽并执行服务端联动 |
 | GET | `/api/v2/me/blocks` | 默认关闭：本人当前屏蔽人物游标分页 |
-| POST | `/api/v2/reports` | 默认关闭：幂等举报人物、媒体、本人话题或本人消息 |
-| GET | `/api/v2/me/reports` | 默认关闭：本人举报游标分页与用户可见状态 |
-| GET | `/api/v2/me/reports/:reportId` | 默认关闭：本人举报必要详情和用户可见时间线 |
+| POST | `/api/v2/reports` | production 默认关闭、dev 联调：幂等举报人物、媒体、本人话题或本人消息 |
+| GET | `/api/v2/me/reports` | production 默认关闭、dev 联调：本人举报游标分页与用户可见状态 |
+| GET | `/api/v2/me/reports/:reportId` | production 默认关闭、dev 联调：本人举报必要详情、当前结论版本申诉资格和用户可见时间线 |
+| POST | `/api/v2/appeals` | production 默认关闭、dev 联调：对本人未发现违规结论幂等申请一次独立复核 |
+| GET | `/api/v2/me/appeals` | production 默认关闭、dev 联调：本人申诉游标分页与用户可见状态 |
+| GET | `/api/v2/me/appeals/:appealId` | production 默认关闭、dev 联调：本人申诉说明、结论与用户可见时间线 |
 
 App 公开人物查询统一要求：认证有效、发布有效、用途授权已开始且未到期、认证未到期、投影可见、来源图库仍为 `published`。任一条件失败时不得回退读取人物草稿或图库表。
 
@@ -404,6 +407,10 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/safety/reports/:reportId/claim` | 幂等领取举报案件 | admin+ |
 | GET | `/api/admin/app/safety/reports/:reportId` | 领取后按 `safety_review` 读取最小证据并审计 | admin+ |
 | POST | `/api/admin/app/safety/reports/:reportId/decision` | 使用 expectedVersion 记录结论及受控安全动作 | admin+ |
+| GET | `/api/admin/app/safety/appeals` | 不含申诉正文的独立复核队列及筛选 | admin+ |
+| POST | `/api/admin/app/safety/appeals/:appealId/claim` | 幂等领取申诉并强制原审核人与复核人隔离 | admin+ |
+| GET | `/api/admin/app/safety/appeals/:appealId` | 领取后按 `appeal_review` 读取申诉说明和最小举报证据并审计 | admin+ |
+| POST | `/api/admin/app/safety/appeals/:appealId/decision` | 使用 expectedVersion 维持原结论或原子重开举报 | admin+ |
 | GET | `/api/admin/app/safety/runtime-control` | 读取全局话题暂停、容量、租约和保留门禁 | admin+ |
 | PATCH | `/api/admin/app/safety/runtime-control` | 幂等更新全局运行控制，要求版本/原因/审计 | owner |
 | POST | `/api/admin/import-jobs` | 创建导入任务（需 Turnstile） | admin+ |

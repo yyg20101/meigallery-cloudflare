@@ -197,7 +197,16 @@ async function verifySafety2Flow() {
     headers: viewerHeaders,
   })
   assert.equal(finalReport.data?.status, 'processing')
-  assert.equal(finalReport.data?.appeal?.status, 'changed')
+  // 改判会把举报推进到新的 investigating 版本；已完成申诉仍从本人申诉详情追踪，
+  // 举报详情只表达“当前版本不可再次申诉”，不得把上一结论的申诉误绑到新版本。
+  assert.deepEqual(finalReport.data?.appeal, {
+    canAppeal: false,
+    unavailableReason: 'REPORT_NOT_ELIGIBLE',
+    appealId: null,
+    status: null,
+  })
+  assert.equal(finalReport.data?.timeline?.at(-1)?.status, 'processing')
+  assert.equal(finalReport.data?.timeline?.at(-1)?.message, '独立复核已完成，原举报已重新进入调查。')
 }
 
 function seedFixture() {

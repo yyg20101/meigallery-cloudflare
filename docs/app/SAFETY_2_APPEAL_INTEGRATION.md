@@ -147,7 +147,7 @@ dev 为内部端到端联调只把用户端与管理员端开关设为 `true`，
 - 用户补充媒体证据、管理员请求补充材料、内部备注、转派、撤回和升级队列。
 - 自动改判为具体安全动作、自动解除限制或自动恢复内容。
 - 系统推送、实时通道、对外 SLA 承诺、自动清理和生产数据回填。
-- 生产 migration、部署、远端开关修改或真实业务 seed。
+- production migration、production 部署、production 开关修改或任何真实业务 seed。
 
 ## 8. 验收重点
 
@@ -157,3 +157,15 @@ dev 为内部端到端联调只把用户端与管理员端开关设为 `true`，
 - `changed` 在同一 D1 batch 中完成申诉结论、举报重开、两条事件和审计；任一失败不产生部分状态。
 - 用户接口始终不泄露管理员、内部原因、证据摘要和其他账号信息。
 - 所有开关关闭时，Bootstrap 不暴露入口，读写接口拒绝执行，既有 Message-2 能力不回退。
+
+## 9. dev 联调记录
+
+2026-08-07 已在独立 Cloudflare dev 资源完成首次远端闭环：
+
+- 发布提交：`5cf79df`；API Version `810987bc-6942-4eb3-b555-412a84c4ca8a`，Web Version `462b215d-3c5e-4cc4-ac4a-f0252ba3d02c`。
+- dev D1 因此前落后，按依赖顺序一次连续应用 `0063–0074`，完成后 `wrangler d1 migrations list` 返回无待执行项。
+- migration 前 SQL 备份为 `meigallery-db-dev-before-safety2-20260807-5cf79df.sql`，大小 464,296 bytes，SHA-256 为 `34a939814eb8e6a0f88509969b819cae5f623cefc7877c7db2053a4e437f3e5c`；迁移前 Time Travel bookmark 为 `00000041-00000000-000050c0-d2ceb922bd36080310b032df43b1d10f`。
+- 部署前 API/Web Worker Version 分别为 `2159eea3-cea7-4ed5-bbd7-208ff6f471c5` 与 `035612a1-7b95-44c3-912e-02b4c58d664f`，保留为应用层回滚点；D1 回退必须使用上述备份或 bookmark，不能只回滚 Worker。
+- `corepack pnpm verify:safety2:dev` 已真实通过“观看者举报 → 原审核员结论 → 原审核员申诉领取被拒 → 独立审核员领取/读取 → 改判 → 举报重开”及 7 类审计验证；结束后隔离用户、图库、人物、举报、申诉残留均为 0。
+- `changed` 会把举报推进到新的 `investigating` 版本。已完成申诉继续通过 `/api/v2/me/appeals/{appealId}` 展示 `changed`；新举报版本的 `appeal` 返回 `REPORT_NOT_ELIGIBLE`，不能把上一结论的申诉误绑定到新版本。
+- production `/api/v2/app/bootstrap` 仍返回 404，production 配置中的 Auth、举报、申诉及 production-ready 开关均保持关闭。

@@ -97,7 +97,7 @@ bootstrap 在 App API `1.4.0` 增加 `membership` capability：
 - 旧 Web `vip/svip` 迁移、dry-run 和迁移对账。
 - 消息、收藏夹、历史等 entitlement 的业务执行。
 - 站内通知、支付、自动续费、退款、礼物、头像框和皮肤。
-- 生产目录发布工具、远端 migration、开关变更和生产部署。
+- 生产目录发布工具、production migration、production 开关变更和生产部署；dev 已随 Safety-2 连续升级应用空 schema，但目录与后台能力仍关闭。
 
 上述能力仍保留在产品目标 PRD 中，必须以新的纵向切片分别实现和验收，不能通过远程配置提前开放。
 

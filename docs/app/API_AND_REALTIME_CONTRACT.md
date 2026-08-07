@@ -72,7 +72,7 @@ Message-2 以兼容新增方式把累计契约提升为 `1.6.0`，冻结并实�
 - 用户可读取/变更人物屏蔽状态，分页读取当前屏蔽列表，举报人物、媒体、本人话题或本人消息，读取本人举报列表/必要时间线，并主动关闭本人话题。
 - 屏蔽、举报与关闭写操作均要求独立幂等键；屏蔽联动清理喜欢/关注并关闭旧话题，解除不恢复历史关系或话题。
 - 管理后台为过渡实现：会话正文要求限时 assignment；举报领取后才允许读取最小证据；运行控制可暂停新建、观看者发送或运营发送，并设置容量和租约。
-- `0073` 保留策略仍为 `unresolved`，自动清理关闭；production/dev safety 开关和 production-ready 均保持 false。申诉、改判、用户上传证据、系统通知和实时通道不属于本切片。
+- `0073` 保留策略仍为 `unresolved`，自动清理关闭；production safety 与 production-ready 开关保持 false。dev 只为 Safety-2 内部端到端联调开启用户端和后台安全开关，production-ready 仍为 false；用户上传证据、系统通知和实时通道不属于本切片。
 
 完整实现与生产门禁见 [Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md)。
 

@@ -2,7 +2,7 @@
 
 ## 1. 阶段目标
 
-本阶段把 Cloudflare API 与 KMP App 的 Auth-1 开发基线连接成可验证闭环，但不开放生产注册、不执行远端 D1 migration、不部署生产环境。App 产品版本继续保持 `1.0`，App API v2 契约版本提升为 `1.2.0`。
+本阶段把 Cloudflare API 与 KMP App 的 Auth-1 开发基线连接成可验证闭环，但不开放生产注册、不执行 production D1 migration、不部署生产环境。App 产品版本继续保持 `1.0`，App API v2 契约版本提升为 `1.2.0`。
 
 本阶段仅新增：
 
@@ -84,17 +84,17 @@ Cloudflare 官方 always-pass 测试密钥的 Siteverify 成功响应可能返�
 2026-08-05 已完成一次本地闭环验证：
 
 1. 仅在本地 D1 应用 `0065`–`0069` migration，并创建固定本地测试账号；
-2. 以命令行临时变量启用本地 Auth capability，仓库内 production/dev 开关保持 `false`；
+2. 该次 Android 本地联调以命令行临时变量启用 Auth capability；production 开关保持 `false`，后续 dev 仅为 Safety-2 隔离数据联调开启 Auth 且注册继续关闭；
 3. Android 模拟器通过 `10.0.2.2` 加载 `127.0.0.1` Worker 的挑战页；
 4. 首次登录完成 Turnstile 后，服务端正确返回 `CONSENT_REQUIRED`；
 5. App 展示四份正文入口和当前版本，用户确认后重新获取独立 Turnstile token；
 6. `POST /api/v2/auth/login`、`GET /api/v2/me`、`GET /api/v2/me/devices` 均返回 200，账号与当前设备正确展示。
 
-本次记录只证明 Android 模拟器的登录与协议更新闭环，不证明正式正文可用，也不替代注册双挑战、超时/取消/离线、iOS 真机或生产 Widget 验收。未执行远端 migration、未部署 Worker、未修改远端数据。
+该次本地记录只证明 Android 模拟器的登录与协议更新闭环，不证明正式正文可用，也不替代注册双挑战、超时/取消/离线、iOS 真机或生产 Widget 验收。该次记录本身未执行远端 migration、未部署 Worker、未修改远端数据；后续 dev Safety-2 联调状态以 `docs/PROJECT_STATUS.md` 为准。
 
 ## 6. 上线门禁
 
-只有下列条件全部满足，才允许另行申请启用开发或生产环境：
+只有下列条件全部满足，才允许另行申请启用 production，或在 dev 开放注册/接入真实账号数据：
 
 1. 四份正文完成审批并部署到稳定 HTTPS URL；
 2. 首发地区、必要资格规则、账号删除与数据保留期完成书面确认；
@@ -103,4 +103,4 @@ Cloudflare 官方 always-pass 测试密钥的 Siteverify 成功响应可能返�
 5. Android/iOS 真机完成登录、双挑战注册、取消、超时、离线和 token 单次使用回归；
 6. production smoke、回滚点和审计记录准备完成。
 
-在上述门禁关闭前，production/dev 的 `APP_AUTH_ENABLED` 与 `APP_AUTH_REGISTRATION_ENABLED` 必须继续保持 `false`。
+在上述门禁关闭前，production 的 `APP_AUTH_ENABLED` 与 `APP_AUTH_REGISTRATION_ENABLED` 必须继续保持 `false`。dev 可以在隔离数据、可回滚、可审计的内部阶段开启 `APP_AUTH_ENABLED`，但 `APP_AUTH_REGISTRATION_ENABLED` 必须保持 `false`，不得使用临时正文收集真实用户同意。

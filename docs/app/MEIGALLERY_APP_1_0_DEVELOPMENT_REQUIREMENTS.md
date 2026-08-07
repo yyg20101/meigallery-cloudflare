@@ -67,7 +67,7 @@ App 版本：1.0
 - M0、M1、Auth-1、Interaction-1、Membership-1、Message-1、Message-2 与 Safety-2 已形成生产默认关闭的开发基线；dev 可按独立阶段受控开启联调所需能力。
 - Message-1 已实现 `APP-MSG-01` 列表、`APP-MSG-02` 人物详情内二次披露确认、`APP-MSG-03` 仅文本会话核心状态；Message-2 进一步实现人物详情安全区、话题/消息举报、观看者关闭话题、`APP-SET-06/07` 合并式安全中心，以及 `ADM-MSG-01/02` 限时领取工作台和 `ADM-SAF-01/02` 最小安全审核工作台。
 - Message-2 冻结屏蔽/解除、四类举报目标契约、本人举报时间线、话题关闭、会话 assignment、最小证据、结论处置和全局暂停/容量控制；Safety-2 进一步实现 `APP-SET-08`“举报未发现违规结论的一次独立复核”以及 `ADM-SAF-03/04` 申诉队列和详情。账号限制/金币等其他来源申诉、用户补充媒体证据、内部备注/转派、通知、撤回、实时通道和质量看板仍未实现。
-- 服务端、Nuxt 与 KMP 均已具备代码和测试。production 的 Auth、会员、消息、安全、后台和 production-ready 开关及新目录选择保持关闭；dev 已为 Safety-2 内部联调预置 Auth、举报和申诉用户端/管理员端开关，注册、会员、消息及全部 production-ready 门禁仍关闭。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
+- 服务端、Nuxt 与 KMP 均已具备代码和测试。production 的 Auth、会员、消息、安全、后台和 production-ready 开关及新目录选择保持关闭；dev 已应用 `0063–0074` 并部署 Safety-2 内部联调所需的 Auth、举报和申诉用户端/管理员端开关，注册、会员、消息及全部 production-ready 门禁仍关闭。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
 - Message-1、Message-2 与 Safety-2 的实现边界分别以 [Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md) 和 [Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) 为准，不能仅凭页面存在判断功能可上线。
 
 ## 3. 不可违反的业务与安全边界

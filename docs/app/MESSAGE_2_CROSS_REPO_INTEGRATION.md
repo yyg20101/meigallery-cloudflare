@@ -62,7 +62,7 @@ Message-2 在 Message-1 的仅文本平台话题上补齐可执行的安全与�
 - 后台安全能力要求 `APP_SAFETY_ADMIN_ENABLED=true`；消息工作台还要求原消息后台开关。
 - production 额外要求 `APP_SAFETY_PRODUCTION_READY=true`，并必须在发布前验证原因目录和保留策略都为 `published + production_ready`。
 - `APP_MESSAGING_ENABLED`/后台开关仍独立存在，但 Message-2 发布清单要求 safety 同时可用；不能只打开消息而跳过安全能力。
-- 当前 production/dev 所有新增开关保持 `false`，会员目录仍不切换到 Message-2 开发目录。
+- production 所有新增开关保持 `false`。dev 只为 Safety-2 内部端到端联调开启用户端和后台安全开关，`APP_SAFETY_PRODUCTION_READY` 仍为 `false`；会员目录不切换到 Message-2 开发目录，消息 capability 继续关闭。
 
 ## 5. D1 权威模型
 
@@ -105,16 +105,16 @@ Message-2 在 Message-1 的仅文本平台话题上补齐可执行的安全与�
 
 Message-2 完成后仍不直接承诺实时化。优先顺序建议为：
 
-1. Safety-2：申诉、独立复核、正式 RBAC/强认证、P0/P1 值班与 Runbook；
+1. Safety-2：最小申诉与独立复核已完成 dev 联调；后续补正式 RBAC/强认证、P0/P1 值班与 Runbook；
 2. Privacy-1：正式保留期、导出/注销、法律隔离与自动清理；
 3. Message-3：站内通知与可靠到达，再单独评估实时通道；
 4. Membership-2：站内会员申请，继续保持无在线支付。
 
-## 9. 本地验证记录
+## 9. 验证记录
 
 - API TypeScript 类型检查通过。
 - API 全量测试通过：123 个测试文件、959 项测试。
 - Nuxt Cloudflare Worker 生产构建通过。
 - KMP Android Host Test、Android Debug APK 与 iOS Simulator Kotlin/Native 编译通过。
 - OpenAPI YAML 可解析，全部 `$ref` 可定位；仓库 `git diff --check` 无格式错误。
-- 未执行远端 migration、环境开关修改、开发/生产部署或真实数据导入。
+- dev 已随 Safety-2 联调连续应用 `0073` schema 并部署受控安全开关；未执行 production migration、production 开关修改、production 部署或任何真实数据导入。
