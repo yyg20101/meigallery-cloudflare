@@ -56,6 +56,36 @@ describe('统一 Queue 与 Cron 入口', () => {
   })
 })
 
+describe('Safety-2 环境开关隔离', () => {
+  it('只在 dev 开启内部联调能力，production 与全部 production-ready 门禁保持关闭', () => {
+    const config = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8')
+    const [productionConfig, devConfig] = config.split('[env.dev]')
+
+    expect(productionConfig).toBeTruthy()
+    expect(devConfig).toBeTruthy()
+    for (const key of [
+      'APP_AUTH_ENABLED',
+      'APP_SAFETY_ENABLED',
+      'APP_SAFETY_ADMIN_ENABLED',
+      'APP_SAFETY_APPEALS_ENABLED',
+      'APP_SAFETY_APPEALS_ADMIN_ENABLED',
+    ]) {
+      expect(productionConfig).toContain(`${key} = "false"`)
+      expect(devConfig).toContain(`${key} = "true"`)
+    }
+    for (const key of [
+      'APP_AUTH_REGISTRATION_ENABLED',
+      'APP_MEMBERSHIP_ENABLED',
+      'APP_MESSAGING_ENABLED',
+      'APP_SAFETY_PRODUCTION_READY',
+      'APP_SAFETY_APPEALS_PRODUCTION_READY',
+    ]) {
+      expect(productionConfig).toContain(`${key} = "false"`)
+      expect(devConfig).toContain(`${key} = "false"`)
+    }
+  })
+})
+
 describe('公开设置广告配置隔离', () => {
   it('不查询旧广告连接表或暴露全平台浏览器目标', () => {
     const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8')

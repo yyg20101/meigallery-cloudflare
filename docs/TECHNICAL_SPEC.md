@@ -91,7 +91,7 @@
 - 每次 Bearer 鉴权都读取账号、设备、会话状态和两级 session version，并校验当前文档同意；账号禁用、设备远程退出、版本提升或文档更新在下一次 API 调用生效。
 - 远程退出先验证设备属于当前账号，再区分当前设备；重复退出已撤销设备返回相同终态，不泄露其他账号设备是否存在。
 
-运行时开关：`APP_AUTH_ENABLED`、`APP_AUTH_REGISTRATION_ENABLED`、四类文档版本、对应的 `APP_AUTH_TERMS_URL`、`APP_AUTH_PRIVACY_URL`、`APP_AUTH_PLATFORM_NOTICE_URL`、`APP_AUTH_ELIGIBILITY_URL` 和 `APP_AUTH_TURNSTILE_SITE_KEY`。production 还必须配置 `TURNSTILE_SECRET_KEY`；任一必要条件缺失、文档 URL 非 HTTPS 或 Turnstile Site Key/Secret 只配置一侧时，bootstrap 返回 `auth=false`。production/dev Wrangler 当前均显式保持关闭，不允许据此推断 G-01/G-03 已关闭。
+运行时开关：`APP_AUTH_ENABLED`、`APP_AUTH_REGISTRATION_ENABLED`、四类文档版本、对应的 `APP_AUTH_TERMS_URL`、`APP_AUTH_PRIVACY_URL`、`APP_AUTH_PLATFORM_NOTICE_URL`、`APP_AUTH_ELIGIBILITY_URL` 和 `APP_AUTH_TURNSTILE_SITE_KEY`。production 还必须配置 `TURNSTILE_SECRET_KEY`；任一必要条件缺失、文档 URL 非 HTTPS 或 Turnstile Site Key/Secret 只配置一侧时，bootstrap 返回 `auth=false`。production Wrangler 继续显式关闭 Auth；dev 仅为内部 Safety-2 端到端联调开启 Auth，注册仍关闭，四类临时正文统一指向 dev Web `/rules`。该联调状态不允许推断 G-01/G-03 已关闭，也不得复制到 production。
 
 ### Turnstile 集成 `[当前实现]`
 
@@ -113,7 +113,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `GET /api/v2/person-profiles/:profileId/interactions`、`PUT|DELETE .../like|follow` 和 `GET /api/v2/me/likes|follows` 全部复用 App Bearer 会话中间件，请求体不接收账号 ID。
 - PUT 通过参数化条件写入在 D1 内重新校验当前资料的认证、发布、授权时间、可见性和来源图库状态；DELETE 不依赖资料仍公开，便于用户清理已失效关系。
 - 本人列表以 `created_at DESC, profile_id ASC` 稳定分页，不透明游标绑定账号公开作用域和关系类型。资料已失效时只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不泄露历史封面、地区、标签或简介。
-- bootstrap 只在 Auth 安全配置整体可用时返回 `interactions.like=true` 和 `interactions.follow=true`；`favorite` 与 `history` 继续为 false。production/dev 现有 Auth 开关默认关闭，本实现不改变上线状态。
+- bootstrap 只在 Auth 安全配置整体可用时返回 `interactions.like=true` 和 `interactions.follow=true`；`favorite` 与 `history` 继续为 false。production 现有 Auth 开关保持关闭；dev 因内部 Safety-2 联调开启 Auth，会同时暴露既有喜欢/关注契约，但不开放注册且不改变生产上线状态。
 - 不提供按目标资料查看互动者的产品 API，不创建匹配、会话、目标侧通知、关注更新事件或推荐信号。收藏/收藏夹与历史必须在后续独立冻结，不得由当前关系表替代。
 
 完整跨仓边界与验收要求见 `docs/app/INTERACTION_1_CROSS_REPO_INTEGRATION.md`。
@@ -160,7 +160,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整跨仓边界与验收要求见 `docs/app/MESSAGE_2_CROSS_REPO_INTEGRATION.md`。
 
-### Safety-2 独立申诉复核 `[开发验证，默认关闭]`
+### Safety-2 独立申诉复核 `[dev 受控联调，production 默认关闭]`
 
 `0074_app_safety_appeals.sql` 和 App API v2 `1.7.0` 在 Message-2 上增加举报结论独立复核闭环：
 
@@ -168,7 +168,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 观看者只提交 1–500 字说明，不上传媒体或证据。申请窗口、策略状态和 production-ready 由服务端版本化策略决定，客户端不得本地推导。
 - 原举报结论管理员不能领取对应申诉；管理员领取后才可按 `appeal_review` 目的读取申诉详情，领取、敏感读取和结论都写审计。
 - `upheld` 维持原举报结论；`changed` 在同一 D1 条件批次中把原举报重开为 `investigating`、分配给复核管理员并更新申诉，不自动认定违规或执行安全动作。
-- `APP_SAFETY_APPEALS_ENABLED`、`APP_SAFETY_APPEALS_ADMIN_ENABLED` 与 `APP_SAFETY_APPEALS_PRODUCTION_READY` 相互独立；production/dev 当前全部关闭。开发策略的 30 天窗口不是生产承诺，且策略引用未关闭的保留决策。
+- `APP_SAFETY_APPEALS_ENABLED`、`APP_SAFETY_APPEALS_ADMIN_ENABLED` 与 `APP_SAFETY_APPEALS_PRODUCTION_READY` 相互独立；production 三项继续关闭。dev 只开启用户端与管理员端开关以执行隔离测试数据的完整 HTTP 联调，`production-ready` 仍为 `false`。开发策略的 30 天窗口不是生产承诺，且策略引用未关闭的保留决策。
 
 完整跨仓边界与验收要求见 `docs/app/SAFETY_2_APPEAL_INTEGRATION.md`。
 
@@ -639,7 +639,7 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 
 所有安全联动在 D1 条件批次中通过同一 mutation token 或前置消息事实串联。SQL 执行成功但条件未命中时，调用方必须检查幂等结果并返回冲突，不能把“零行变更”当作成功。
 
-### App Safety-2 申诉表族 `[开发验证，默认关闭]`
+### App Safety-2 申诉表族 `[dev 受控联调，production 默认关闭]`
 
 `0074_app_safety_appeals.sql` 不创建举报、申诉或管理员业务 seed：
 

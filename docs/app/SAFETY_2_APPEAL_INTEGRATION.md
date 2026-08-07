@@ -97,14 +97,16 @@ Safety-2 在 Message-2 举报闭环之上增加 `APP-SET-08`、`ADM-SAF-03` 与 
 - 后台领取、详情读取和结论必须写入 `admin_audit_logs`；审计只保存 ID、状态、版本、说明长度和摘要，不复制申诉正文或举报证据。
 - 当前申诉策略关联 `srp_message_2_unresolved_dev_1`。保留期限仍未决，因此开发策略必须保持 `development + production_ready=0`。
 
-## 5. 默认关闭与生产门禁
+## 5. 开发联调与生产门禁
 
-新增四个显式变量，根环境和 dev 环境都保持关闭：
+新增四个显式变量。production 根环境全部保持关闭：
 
 - `APP_SAFETY_APPEALS_ENABLED=false`
 - `APP_SAFETY_APPEALS_ADMIN_ENABLED=false`
 - `APP_SAFETY_APPEAL_POLICY_VERSION=sap_app_1_0_safety_2_dev_1`
 - `APP_SAFETY_APPEALS_PRODUCTION_READY=false`
+
+dev 为内部端到端联调只把用户端与管理员端开关设为 `true`，策略版本仍为 `sap_app_1_0_safety_2_dev_1`，`APP_SAFETY_APPEALS_PRODUCTION_READY` 保持 `false`。联调使用随机隔离数据并在结束后清理，不导入真实用户、举报或申诉数据；该配置不得复制到 production。
 
 生产开放前必须全部满足：
 

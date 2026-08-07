@@ -161,7 +161,15 @@ APP_AUTH_TURNSTILE_SITE_KEY=<App 人机验证公开 Site Key>
 TURNSTILE_SECRET_KEY=<对应 Secret>
 ```
 
-任一必要值缺失或非法时 bootstrap 必须保持 `auth=false`。production 文档入口只接受无账号密码、无 fragment 的 HTTPS URL；本地调试才允许 localhost、127.0.0.1 和 Android 模拟器 `10.0.2.2` 的 HTTP URL。当前 `wrangler.toml` 的 production/dev 都显式设置 `APP_AUTH_ENABLED=false` 和 `APP_AUTH_REGISTRATION_ENABLED=false`；不得仅为联调修改 production 值。`0069_app_account_access.sql` 在正式身份数据接入前仍需生产备份、隐私/保留期评审和独立 migration 授权。
+任一必要值缺失或非法时 bootstrap 必须保持 `auth=false`。production 文档入口只接受无账号密码、无 fragment 的 HTTPS URL；本地调试才允许 localhost、127.0.0.1 和 Android 模拟器 `10.0.2.2` 的 HTTP URL。production 继续显式设置 `APP_AUTH_ENABLED=false` 和 `APP_AUTH_REGISTRATION_ENABLED=false`；不得仅为联调修改 production 值。`0069_app_account_access.sql` 在正式身份数据接入前仍需生产备份、隐私/保留期评审和独立 migration 授权。
+
+dev 当前只为 Safety-2 联调开放已有测试会话所需的 Auth、举报与申诉能力；注册、会员、消息以及全部 production-ready 门禁继续关闭。四类开发文档暂统一指向 dev Web `/rules`，版本为 `dev-rules-2026-08-07`，不得复制到 production。部署后执行：
+
+```bash
+corepack pnpm verify:safety2:dev
+```
+
+脚本会创建随机且隔离的观看者与两名审核员测试数据，验证“举报 → 原审核员无违规结论 → 原审核员领取申诉被拒 → 独立审核员改判 → 举报重新调查”，并检查敏感读取和结论审计；无论成功或失败都尝试删除测试数据。执行前必须显式确认目标为 `meigallery-db-dev`。
 
 本地自动化或模拟器联调可临时使用 Cloudflare 官方 always-pass 测试 Site Key/Secret。其 Siteverify 响应的 `action` 可能为 `test` 或缺失，因此服务端只在 `APP_ENV=local` 且 Secret 精确匹配官方公开测试 Secret 时兼容；`dev`、`production` 和真实密钥继续严格校验业务 action，production 额外校验 hostname。官方测试密钥不得写入仓库配置或部署到远端环境。
 
