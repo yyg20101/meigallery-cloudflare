@@ -12,9 +12,23 @@ import {
   getAppMembershipSummary,
   resolveAppMembershipSnapshot,
 } from './app-membership'
+import {
+  cancelAppMembershipApplication,
+  resubmitAppMembershipApplication,
+  submitAppMembershipApplication,
+} from './app-membership-applications'
+import {
+  approveAdminAppMembershipApplication,
+  claimAdminAppMembershipApplication,
+  transitionAdminAppMembershipApplication,
+} from './admin-app-membership-applications'
 
 const MIGRATION = readFileSync(
   new URL('../../migrations/0071_app_membership_catalog_and_grants.sql', import.meta.url),
+  'utf8',
+)
+const APPLICATION_MIGRATION = readFileSync(
+  new URL('../../migrations/0075_app_membership_applications.sql', import.meta.url),
   'utf8',
 )
 const NOW = new Date('2026-08-06T08:00:00.000Z')
@@ -35,7 +49,8 @@ beforeAll(async () => {
     CREATE TABLE users (
       id INTEGER PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL DEFAULT 'active'
+      status TEXT NOT NULL DEFAULT 'active',
+      email_verified INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE app_account_security (
       user_id INTEGER PRIMARY KEY REFERENCES users(id),
@@ -66,10 +81,14 @@ beforeAll(async () => {
     );
   `))
   await db.exec(executableSql(MIGRATION))
+  await db.exec(executableSql(APPLICATION_MIGRATION))
 })
 
 beforeEach(async () => {
   await db.exec(executableSql(`
+    DELETE FROM app_membership_application_requests;
+    DELETE FROM app_membership_application_events;
+    DELETE FROM app_membership_applications;
     DELETE FROM app_membership_admin_requests;
     DELETE FROM app_membership_grant_revocations;
     DELETE FROM app_membership_grants;
@@ -78,9 +97,9 @@ beforeEach(async () => {
     DELETE FROM membership_levels;
     DELETE FROM app_account_security;
     DELETE FROM users;
-    INSERT INTO users (id, email, status) VALUES
-      (1, 'admin@example.com', 'active'),
-      (2, 'viewer@example.com', 'active');
+    INSERT INTO users (id, email, status, email_verified) VALUES
+      (1, 'admin@example.com', 'active', 1),
+      (2, 'viewer@example.com', 'active', 1);
     INSERT INTO app_account_security (user_id, account_public_id)
       VALUES (2, 'acc_membership_viewer');
   `))
@@ -279,6 +298,240 @@ describe('App 五级会员目录与手动发放', () => {
     )).resolves.toMatchObject({ status: 'free', tier: null, grant: null })
   })
 
+  it('会员申请重复提交返回同一工单，且申请期间不产生任何 grant 或 entitlement', async () => {
+    const first = await submitAppMembershipApplication(
+      db,
+      2,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      'membership.application.submit.0001',
+      applicationInput(),
+      NOW,
+    )
+    const replayed = await submitAppMembershipApplication(
+      db,
+      2,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      'membership.application.submit.0001',
+      applicationInput(),
+      NOW,
+    )
+    const duplicateActive = await submitAppMembershipApplication(
+      db,
+      2,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      'membership.application.submit.0002',
+      { ...applicationInput(), tierId: 'amt_heart_radiance' },
+      NOW,
+    )
+
+    expect(first).toMatchObject({ created: true, replayed: false })
+    expect(first.application).toMatchObject({
+      status: 'submitted',
+      intendedTier: { displayName: '心知', rank: 30 },
+      contact: { method: 'verified_email', maskedValue: 'vi****@example.com' },
+      canCancel: true,
+      canResubmit: false,
+      grantId: null,
+    })
+    expect(replayed).toMatchObject({
+      created: false,
+      replayed: true,
+      application: { applicationId: first.application.applicationId },
+    })
+    expect(duplicateActive.application.applicationId).toBe(first.application.applicationId)
+    await expect(count('app_membership_applications')).resolves.toBe(1)
+    await expect(count('app_membership_grants')).resolves.toBe(0)
+    await expect(resolveAppMembershipSnapshot(
+      db,
+      2,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      NOW,
+    )).resolves.toMatchObject({ status: 'free', tier: null, grant: null })
+  })
+
+  it('支持待补充后重新入队，只有正式 grant 成功才标记已发放', async () => {
+    const submitted = await submitAppMembershipApplication(
+      db,
+      2,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      'membership.application.submit.0003',
+      applicationInput(),
+      NOW,
+    )
+    const applicationId = submitted.application.applicationId
+    const claimed = await claimAdminAppMembershipApplication(
+      db,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      applicationId,
+      1,
+      1,
+      NOW,
+    )
+    expect(claimed.application).toMatchObject({ status: 'processing', version: 2, grantId: null })
+
+    const requested = await transitionAdminAppMembershipApplication(
+      db,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      applicationId,
+      1,
+      'request_information',
+      {
+        expectedVersion: 2,
+        reasonCode: 'application_statement',
+        message: '请补充希望使用的主要会员服务。',
+      },
+      NOW,
+    )
+    expect(requested.application).toMatchObject({
+      status: 'needs_information',
+      version: 3,
+      canResubmit: true,
+    })
+
+    const resubmitted = await resubmitAppMembershipApplication(
+      db,
+      2,
+      applicationId,
+      'membership.application.resubmit.01',
+      {
+        ...applicationInput(),
+        statement: '主要希望使用平台话题能力。',
+        expectedVersion: 3,
+      },
+      NOW,
+    )
+    expect(resubmitted.application).toMatchObject({ status: 'submitted', version: 4 })
+    const reclaimed = await claimAdminAppMembershipApplication(
+      db,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      applicationId,
+      1,
+      4,
+      NOW,
+    )
+    expect(reclaimed.application).toMatchObject({ status: 'processing', version: 5 })
+    await expect(approveAdminAppMembershipApplication(
+      db,
+      'amc_runtime_replaced',
+      applicationId,
+      1,
+      'membership.application.approve.old-catalog',
+      { expectedVersion: 5, durationDays: 30 },
+      NOW,
+    )).rejects.toMatchObject({ code: 'MEMBERSHIP_APPLICATION_CATALOG_CHANGED', status: 409 })
+    await expect(count('app_membership_grants')).resolves.toBe(0)
+
+    const approved = await approveAdminAppMembershipApplication(
+      db,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      applicationId,
+      1,
+      'membership.application.approve.01',
+      {
+        expectedVersion: 5,
+        durationDays: 30,
+        internalNote: '申请正文不得进入审计日志',
+      },
+      NOW,
+    )
+    expect(approved.application.application).toMatchObject({
+      status: 'approved',
+      version: 6,
+      canCancel: false,
+      grantId: approved.grant.grantId,
+    })
+    expect(approved.application.application.timeline.map(item => item.status)).toEqual([
+      'submitted',
+      'processing',
+      'needs_information',
+      'submitted',
+      'processing',
+      'approved',
+    ])
+    const approvedReplay = await approveAdminAppMembershipApplication(
+      db,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      applicationId,
+      1,
+      'membership.application.approve.01',
+      {
+        expectedVersion: 5,
+        durationDays: 30,
+        internalNote: '申请正文不得进入审计日志',
+      },
+      NOW,
+    )
+    expect(approvedReplay).toMatchObject({
+      grant: { replayed: true, grantId: approved.grant.grantId },
+      application: { application: { status: 'approved', version: 6 } },
+    })
+    await expect(count('app_membership_grants')).resolves.toBe(1)
+    await expect(resolveAppMembershipSnapshot(
+      db,
+      2,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      NOW,
+    )).resolves.toMatchObject({ status: 'active', tier: { displayName: '心知' } })
+    const auditRows = await db.prepare(`
+      SELECT before_value, after_value FROM admin_audit_logs
+      WHERE target_type = 'app_membership_application'
+    `).all<{ before_value: string; after_value: string }>()
+    const auditJson = JSON.stringify(auditRows.results)
+    expect(auditJson).not.toContain('主要希望使用平台话题能力')
+    expect(auditJson).not.toContain('viewer@example.com')
+  })
+
+  it('用户可取消未领取申请，旧版本写入会被拒绝', async () => {
+    const submitted = await submitAppMembershipApplication(
+      db,
+      2,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      'membership.application.submit.0004',
+      applicationInput(),
+      NOW,
+    )
+    await expect(cancelAppMembershipApplication(
+      db,
+      2,
+      submitted.application.applicationId,
+      'membership.application.cancel.001',
+      99,
+      NOW,
+    )).rejects.toMatchObject({ code: 'MEMBERSHIP_APPLICATION_VERSION_CONFLICT', status: 409 })
+
+    const cancelled = await cancelAppMembershipApplication(
+      db,
+      2,
+      submitted.application.applicationId,
+      'membership.application.cancel.002',
+      1,
+      NOW,
+    )
+    expect(cancelled.application).toMatchObject({
+      status: 'cancelled',
+      version: 2,
+      canCancel: false,
+      grantId: null,
+    })
+    await expect(cancelAppMembershipApplication(
+      db,
+      2,
+      submitted.application.applicationId,
+      'membership.application.cancel.002',
+      1,
+      NOW,
+    )).resolves.toMatchObject({ replayed: true, application: { status: 'cancelled', version: 2 } })
+    await expect(cancelAppMembershipApplication(
+      db,
+      2,
+      submitted.application.applicationId,
+      'membership.application.cancel.003',
+      2,
+      NOW,
+    )).rejects.toMatchObject({ code: 'MEMBERSHIP_APPLICATION_CANNOT_CANCEL', status: 409 })
+    await expect(count('app_membership_grants')).resolves.toBe(0)
+  })
+
   it('生产目录门禁拒绝 development 草案', async () => {
     await expect(getAppMembershipCatalog(db, APP_MEMBERSHIP_DRAFT_CATALOG_ID, {
       requireProductionReady: true,
@@ -303,6 +556,16 @@ function grantInput() {
     userVisibleNote: '平台已完成审核并发放会员。',
     internalNote: '仅管理员可见的敏感备注',
     businessReference: 'CASE-GRANT-0001',
+  }
+}
+
+function applicationInput() {
+  return {
+    tierId: 'amt_heart_insight',
+    preferredContactWindow: 'evening',
+    statement: '希望了解并申请平台会员服务。',
+    disclosureVersion: 'membership-application-development-1',
+    disclosureConfirmed: true,
   }
 }
 

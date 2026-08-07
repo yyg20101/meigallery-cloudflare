@@ -38,6 +38,20 @@ import {
   resolveAppMembershipSnapshot,
 } from '../services/app-membership'
 import {
+  APP_MEMBERSHIP_APPLICATION_CONTACT_WINDOWS,
+  APP_MEMBERSHIP_APPLICATION_DISCLOSURE_TEXT,
+  APP_MEMBERSHIP_APPLICATION_DISCLOSURE_VERSION,
+  APP_MEMBERSHIP_APPLICATION_MAX_STATEMENT_LENGTH,
+  cancelAppMembershipApplication,
+  getAppMembershipApplication,
+  listAppMembershipApplications,
+  requireAppMembershipApplicationsEnabled,
+  resubmitAppMembershipApplication,
+  submitAppMembershipApplication,
+  type ResubmitAppMembershipApplicationInput,
+  type SubmitAppMembershipApplicationInput,
+} from '../services/app-membership-applications'
+import {
   AppMessagingError,
   APP_MESSAGING_DISCLOSURE_TEXT,
   APP_MESSAGING_MAX_TEXT_LENGTH,
@@ -140,6 +154,8 @@ for (const path of [
   '/appeals/*',
   '/conversations',
   '/conversations/*',
+  '/membership-applications',
+  '/membership-applications/*',
 ]) {
   appV2Routes.use(path, async (c, next) => {
     try {
@@ -193,7 +209,95 @@ appV2Routes.get('/membership/catalog', async (c) => {
     return appApiSuccess(c, await getAppMembershipCatalog(
       c.env.DB,
       config.catalogVersionId,
-      { requireProductionReady: config.requireProductionReady },
+      {
+        requireProductionReady: config.requireProductionReady,
+        applicationEnabled: config.applicationsEnabled && getAppAuthRuntimeConfig(c.env).enabled,
+      },
+    ))
+  }
+  catch (error) {
+    return appMembershipError(c, error)
+  }
+})
+
+appV2Routes.get('/me/membership-applications', async (c) => {
+  try {
+    const config = getAppMembershipRuntimeConfig(c.env)
+    requireAppMembershipApplicationsEnabled(config)
+    return appApiListSuccess(
+      c,
+      await listAppMembershipApplications(c.env.DB, appPrincipal(c).accountInternalId),
+      { nextCursor: null, hasMore: false },
+    )
+  }
+  catch (error) {
+    return appMembershipError(c, error)
+  }
+})
+
+appV2Routes.get('/membership-applications/:applicationId', async (c) => {
+  try {
+    const config = getAppMembershipRuntimeConfig(c.env)
+    requireAppMembershipApplicationsEnabled(config)
+    return appApiSuccess(c, await getAppMembershipApplication(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('applicationId'),
+    ))
+  }
+  catch (error) {
+    return appMembershipError(c, error)
+  }
+})
+
+appV2Routes.post('/membership-applications', async (c) => {
+  try {
+    const config = getAppMembershipRuntimeConfig(c.env)
+    requireAppMembershipApplicationsEnabled(config)
+    const result = await submitAppMembershipApplication(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      config.catalogVersionId,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<SubmitAppMembershipApplicationInput>(),
+      new Date(),
+      config.requireProductionReady,
+    )
+    return appApiSuccess(c, result, result.created ? 201 : 200)
+  }
+  catch (error) {
+    return appMembershipError(c, error)
+  }
+})
+
+appV2Routes.post('/membership-applications/:applicationId/resubmit', async (c) => {
+  try {
+    const config = getAppMembershipRuntimeConfig(c.env)
+    requireAppMembershipApplicationsEnabled(config)
+    return appApiSuccess(c, await resubmitAppMembershipApplication(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('applicationId'),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<ResubmitAppMembershipApplicationInput>(),
+    ))
+  }
+  catch (error) {
+    return appMembershipError(c, error)
+  }
+})
+
+appV2Routes.post('/membership-applications/:applicationId/cancel', async (c) => {
+  try {
+    const config = getAppMembershipRuntimeConfig(c.env)
+    requireAppMembershipApplicationsEnabled(config)
+    const body = await c.req.json<{ expectedVersion?: unknown }>()
+    return appApiSuccess(c, await cancelAppMembershipApplication(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('applicationId'),
+      c.req.header('Idempotency-Key') ?? null,
+      body.expectedVersion,
     ))
   }
   catch (error) {
@@ -725,7 +829,7 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
       membership: {
         catalog: membership.enabled,
         entitlements: membership.enabled && auth.enabled,
-        applications: false,
+        applications: membership.applicationsEnabled && auth.enabled,
       },
       messaging: auth.enabled && messaging.enabled,
       safety: {
@@ -761,6 +865,13 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
             eligibilityUrl: auth.documentUrls.eligibility,
           }
         : null,
+    },
+    membershipApplications: {
+      disclosureVersion: APP_MEMBERSHIP_APPLICATION_DISCLOSURE_VERSION,
+      disclosureText: APP_MEMBERSHIP_APPLICATION_DISCLOSURE_TEXT,
+      contactMethod: 'verified_email',
+      maxStatementLength: APP_MEMBERSHIP_APPLICATION_MAX_STATEMENT_LENGTH,
+      contactWindows: [...APP_MEMBERSHIP_APPLICATION_CONTACT_WINDOWS],
     },
     messaging: {
       receiverLabel: APP_MESSAGING_RECEIVER_LABEL,

@@ -1,14 +1,15 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.7.0
+  version: 1.8.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
-    五级会员开发基线、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
+    五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
     APP_AUTH_ENABLED、版本化文档、可阅读正文 URL 和生产人机验证配置才会由 bootstrap 启用；默认关闭，
     会员、消息和安全能力使用独立开关且生产环境还要求发布门禁。只有 available 且 executable 的消息权益可执行。
     话题始终由平台运营接收，不代表真人本人入驻或回复；Safety-2 仅支持本人举报“未发现违规”结论的一次文字复核申请。
-    实时通道、媒体消息、账号/金币等其他申诉、会员申请、支付、金币和媒体访问仍未纳入本次契约。
+    会员申请本身不产生 grant 或 entitlement，只有管理员正式发放成功后才显示已发放。
+    实时通道、媒体消息、账号/金币等其他申诉、支付、金币和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -247,7 +248,7 @@ paths:
       operationId: getAppMembershipCatalog
       summary: 获取版本化五级会员目录
       description: >-
-        可在未登录状态读取；acquisition 只说明联系平台的人工路径，不提供购买或申请接口。
+        可在未登录状态读取；acquisition 说明联系平台的人工路径，并按 bootstrap 一致性标记站内申请是否开放，不提供购买接口。
         availability=planned 的权益只能展示“规划中”，客户端不得执行。
       responses:
         '200':
@@ -283,6 +284,154 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/membership-applications:
+    get:
+      tags: [Membership]
+      operationId: listMyAppMembershipApplications
+      summary: 获取本人最近会员申请与用户可见时间线
+      description: 最多返回最近 20 条；不会返回管理员内部备注、审批锁或其他账号数据。
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 本人会员申请列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipApplicationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v2/membership-applications:
+    post:
+      tags: [Membership]
+      operationId: submitAppMembershipApplication
+      summary: 提交站内会员申请
+      description: >-
+        联系方式固定复用已验证登录邮箱；同一账号只能有一条进行中申请。
+        重复请求返回原申请，且申请本身绝不创建 grant、修改 rank 或下发 entitlement。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MembershipApplicationIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MembershipApplicationSubmitRequest'
+      responses:
+        '200':
+          description: 返回已有进行中申请或幂等重放结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipApplicationMutationResponse'
+        '201':
+          description: 新申请已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipApplicationMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v2/membership-applications/{applicationId}:
+    get:
+      tags: [Membership]
+      operationId: getMyAppMembershipApplication
+      summary: 获取本人的单条会员申请
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MembershipApplicationId'
+      responses:
+        '200':
+          description: 本人会员申请详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipApplicationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v2/membership-applications/{applicationId}/resubmit:
+    post:
+      tags: [Membership]
+      operationId: resubmitAppMembershipApplication
+      summary: 补充信息并重新提交会员申请
+      description: 只允许 needs_information 状态；意向等级保持不变并重新确认当前服务说明版本。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MembershipApplicationId'
+        - $ref: '#/components/parameters/MembershipApplicationIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MembershipApplicationResubmitRequest'
+      responses:
+        '200':
+          description: 补充结果或幂等重放结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipApplicationMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v2/membership-applications/{applicationId}/cancel:
+    post:
+      tags: [Membership]
+      operationId: cancelAppMembershipApplication
+      summary: 取消尚未进入正式发放的会员申请
+      description: 只允许 submitted 或 needs_information；处理中和发放锁定后不能由用户取消。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MembershipApplicationId'
+        - $ref: '#/components/parameters/MembershipApplicationIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MembershipApplicationCancelRequest'
+      responses:
+        '200':
+          description: 取消结果或幂等重放结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipApplicationMutationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/v2/conversations:
     get:
       tags: [Messaging]
@@ -1113,7 +1262,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.7.0
+        const: 1.8.0
   parameters:
     ProfileId:
       name: profileId
@@ -1145,6 +1294,23 @@ components:
       schema:
         type: string
         pattern: '^cv_[A-Za-z0-9_-]{1,77}$'
+    MembershipApplicationId:
+      name: applicationId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^ama_[A-Za-z0-9_-]{1,76}$'
+    MembershipApplicationIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._:-]+$'
+      description: 会员申请单次逻辑写操作的稳定随机键；相同正文重试必须复用原值，不得跨操作复用。
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1223,7 +1389,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.7.0
+          const: 1.8.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -1673,7 +1839,6 @@ components:
               const: contact_platform
             applicationEnabled:
               type: boolean
-              const: false
             paymentEnabled:
               type: boolean
               const: false
@@ -1831,6 +1996,205 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/MembershipSnapshot'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    MembershipApplicationStatus:
+      type: string
+      enum: [submitted, processing, needs_information, approved, rejected, cancelled, expired]
+    MembershipContactWindow:
+      type: string
+      enum: [anytime, morning, afternoon, evening]
+    MembershipApplicationSubmitRequest:
+      type: object
+      additionalProperties: false
+      required: [tierId, preferredContactWindow, disclosureVersion, disclosureConfirmed]
+      properties:
+        tierId:
+          type: string
+          pattern: '^amt_[A-Za-z0-9_-]{1,76}$'
+        preferredContactWindow:
+          $ref: '#/components/schemas/MembershipContactWindow'
+        statement:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 300
+          description: 可选申请说明；不得提交密码、证件、支付凭证等不必要敏感信息。
+        disclosureVersion:
+          type: string
+          minLength: 3
+          maxLength: 80
+        disclosureConfirmed:
+          type: boolean
+          const: true
+    MembershipApplicationResubmitRequest:
+      type: object
+      additionalProperties: false
+      required: [preferredContactWindow, disclosureVersion, disclosureConfirmed, expectedVersion]
+      properties:
+        preferredContactWindow:
+          $ref: '#/components/schemas/MembershipContactWindow'
+        statement:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 300
+        disclosureVersion:
+          type: string
+          minLength: 3
+          maxLength: 80
+        disclosureConfirmed:
+          type: boolean
+          const: true
+        expectedVersion:
+          type: integer
+          minimum: 1
+    MembershipApplicationCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+    MembershipApplicationTimelineItem:
+      type: object
+      additionalProperties: false
+      required: [sequence, eventType, status, message, createdAt]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        eventType:
+          type: string
+          enum: [submitted, claimed, information_requested, resubmitted, approved, rejected, cancelled, expired]
+        status:
+          $ref: '#/components/schemas/MembershipApplicationStatus'
+        message:
+          type: string
+          minLength: 1
+          maxLength: 240
+        createdAt:
+          type: string
+          format: date-time
+    MembershipApplication:
+      type: object
+      additionalProperties: false
+      required:
+        - applicationId
+        - catalogVersionId
+        - intendedTier
+        - contact
+        - preferredContactWindow
+        - statement
+        - disclosureVersion
+        - status
+        - statusMessage
+        - version
+        - canCancel
+        - canResubmit
+        - grantId
+        - submittedAt
+        - updatedAt
+        - resolvedAt
+        - timeline
+      properties:
+        applicationId:
+          type: string
+          pattern: '^ama_[A-Za-z0-9_-]{1,76}$'
+        catalogVersionId:
+          type: string
+          pattern: '^amc_[A-Za-z0-9_-]{1,76}$'
+        intendedTier:
+          $ref: '#/components/schemas/MembershipTierSummary'
+        contact:
+          type: object
+          additionalProperties: false
+          required: [method, maskedValue]
+          properties:
+            method:
+              type: string
+              const: verified_email
+            maskedValue:
+              type: string
+              minLength: 3
+              maxLength: 160
+        preferredContactWindow:
+          $ref: '#/components/schemas/MembershipContactWindow'
+        statement:
+          type: [string, 'null']
+          maxLength: 300
+        disclosureVersion:
+          type: string
+          minLength: 3
+          maxLength: 80
+        status:
+          $ref: '#/components/schemas/MembershipApplicationStatus'
+        statusMessage:
+          type: string
+          minLength: 1
+          maxLength: 240
+        version:
+          type: integer
+          minimum: 1
+        canCancel:
+          type: boolean
+        canResubmit:
+          type: boolean
+        grantId:
+          type: [string, 'null']
+          pattern: '^amg_[A-Za-z0-9_-]{1,76}$'
+        submittedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: [string, 'null']
+          format: date-time
+        timeline:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/MembershipApplicationTimelineItem'
+    MembershipApplicationResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MembershipApplication'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    MembershipApplicationListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/MembershipApplication'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    MembershipApplicationMutationResult:
+      type: object
+      additionalProperties: false
+      required: [application, created, replayed]
+      properties:
+        application:
+          $ref: '#/components/schemas/MembershipApplication'
+        created:
+          type: boolean
+        replayed:
+          type: boolean
+    MembershipApplicationMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/MembershipApplicationMutationResult'
         meta:
           $ref: '#/components/schemas/Meta'
     ConversationCreateRequest:
@@ -2160,7 +2524,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, auth, messaging, safety]
+      required: [product, appVersion, capabilities, discovery, auth, membershipApplications, messaging, safety]
       properties:
         product:
           type: string
@@ -2204,7 +2568,6 @@ components:
                   type: boolean
                 applications:
                   type: boolean
-                  const: false
             messaging:
               type: boolean
             safety:
@@ -2326,6 +2689,41 @@ components:
                     eligibilityUrl:
                       type: string
                       format: uri
+        membershipApplications:
+          type: object
+          additionalProperties: false
+          required: [disclosureVersion, disclosureText, contactMethod, maxStatementLength, contactWindows]
+          properties:
+            disclosureVersion:
+              type: string
+              minLength: 3
+              maxLength: 80
+            disclosureText:
+              type: string
+              minLength: 1
+              maxLength: 500
+              description: 明确申请不代表获得会员、不承诺固定时效或必然通过。
+            contactMethod:
+              type: string
+              const: verified_email
+            maxStatementLength:
+              type: integer
+              const: 300
+            contactWindows:
+              type: array
+              minItems: 4
+              maxItems: 4
+              items:
+                type: object
+                additionalProperties: false
+                required: [code, label]
+                properties:
+                  code:
+                    $ref: '#/components/schemas/MembershipContactWindow'
+                  label:
+                    type: string
+                    minLength: 1
+                    maxLength: 24
         messaging:
           type: object
           additionalProperties: false

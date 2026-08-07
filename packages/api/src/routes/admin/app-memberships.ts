@@ -15,6 +15,15 @@ import {
   requireAppMembershipAdminEnabled,
 } from '../../services/app-membership'
 import { errorJson } from '../../utils/api-error'
+import {
+  approveAdminAppMembershipApplication,
+  claimAdminAppMembershipApplication,
+  getAdminAppMembershipApplication,
+  listAdminAppMembershipApplications,
+  transitionAdminAppMembershipApplication,
+  type AdminAppMembershipApplicationApproveInput,
+  type AdminAppMembershipApplicationMutationInput,
+} from '../../services/admin-app-membership-applications'
 
 export const adminAppMembershipRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -25,6 +34,109 @@ adminAppMembershipRoutes.get('/catalog', async (c) => {
       c.env.DB,
       config.catalogVersionId,
       { requireProductionReady: config.requireProductionReady },
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/applications', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await listAdminAppMembershipApplications(
+      c.env.DB,
+      config.catalogVersionId,
+      {
+        status: c.req.query('status'),
+        tierId: c.req.query('tierId'),
+        assignedTo: c.req.query('assignedTo'),
+        submittedFrom: c.req.query('submittedFrom'),
+        submittedTo: c.req.query('submittedTo'),
+        limit: c.req.query('limit'),
+      },
+      new Date(),
+      config.requireProductionReady,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/applications/:applicationId', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await getAdminAppMembershipApplication(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('applicationId'),
+      new Date(),
+      config.requireProductionReady,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/applications/:applicationId/claim', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const body = await c.req.json<{ expectedVersion?: unknown }>()
+    return c.json({ data: await claimAdminAppMembershipApplication(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('applicationId'),
+      c.get('userId')!,
+      body.expectedVersion,
+      new Date(),
+      config.requireProductionReady,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+for (const [path, transition] of [
+  ['request-information', 'request_information'],
+  ['reject', 'reject'],
+  ['expire', 'expire'],
+  ['cancel', 'cancel'],
+] as const) {
+  adminAppMembershipRoutes.post(`/applications/:applicationId/${path}`, async (c) => {
+    try {
+      const config = enabledConfig(c.env)
+      return c.json({ data: await transitionAdminAppMembershipApplication(
+        c.env.DB,
+        config.catalogVersionId,
+        c.req.param('applicationId'),
+        c.get('userId')!,
+        transition,
+        await c.req.json<AdminAppMembershipApplicationMutationInput>(),
+        new Date(),
+        config.requireProductionReady,
+      ) })
+    }
+    catch (error) {
+      return handleAppMembershipError(c, error)
+    }
+  })
+}
+
+adminAppMembershipRoutes.post('/applications/:applicationId/approve', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await approveAdminAppMembershipApplication(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('applicationId'),
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminAppMembershipApplicationApproveInput>(),
+      new Date(),
+      config.requireProductionReady,
     ) })
   }
   catch (error) {

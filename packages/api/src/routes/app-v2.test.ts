@@ -37,7 +37,7 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.7.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.8.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
@@ -65,7 +65,7 @@ describe('App API v2 路由契约', () => {
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.7.0',
+      contractVersion: '1.8.0',
     })
   })
 
@@ -226,6 +226,60 @@ describe('App API v2 路由契约', () => {
     )
     expect(await productionResponse.json()).toMatchObject({
       data: { capabilities: { membership: { catalog: false, entitlements: false } } },
+    })
+  })
+
+  it('站内会员申请还要求登录与独立开关，并下发不承诺时效的服务说明', async () => {
+    const configured = createApp({}, {
+      APP_AUTH_ENABLED: 'true',
+      APP_AUTH_TERMS_VERSION: 'terms-1',
+      APP_AUTH_PRIVACY_VERSION: 'privacy-1',
+      APP_AUTH_PLATFORM_NOTICE_VERSION: 'platform-1',
+      APP_AUTH_ELIGIBILITY_VERSION: 'eligibility-1',
+      APP_AUTH_TERMS_URL: 'https://legal.test/terms',
+      APP_AUTH_PRIVACY_URL: 'https://legal.test/privacy',
+      APP_AUTH_PLATFORM_NOTICE_URL: 'https://legal.test/platform',
+      APP_AUTH_ELIGIBILITY_URL: 'https://legal.test/eligibility',
+      APP_MEMBERSHIP_ENABLED: 'true',
+      APP_MEMBERSHIP_APPLICATIONS_ENABLED: 'true',
+      APP_MEMBERSHIP_CATALOG_VERSION: 'amc_app_1_0_draft_1',
+    })
+    const response = await configured.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      configured.env,
+      {} as ExecutionContext,
+    )
+    expect(await response.json()).toMatchObject({
+      data: {
+        capabilities: {
+          membership: { catalog: true, entitlements: true, applications: true },
+        },
+        membershipApplications: {
+          disclosureVersion: 'membership-application-development-1',
+          contactMethod: 'verified_email',
+          maxStatementLength: 300,
+          contactWindows: [
+            { code: 'anytime', label: '时间不限' },
+            { code: 'morning', label: '上午' },
+            { code: 'afternoon', label: '下午' },
+            { code: 'evening', label: '晚间' },
+          ],
+        },
+      },
+    })
+
+    const withoutAuth = createApp({}, {
+      APP_MEMBERSHIP_ENABLED: 'true',
+      APP_MEMBERSHIP_APPLICATIONS_ENABLED: 'true',
+      APP_MEMBERSHIP_CATALOG_VERSION: 'amc_app_1_0_draft_1',
+    })
+    const disabledResponse = await withoutAuth.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      withoutAuth.env,
+      {} as ExecutionContext,
+    )
+    expect(await disabledResponse.json()).toMatchObject({
+      data: { capabilities: { membership: { applications: false } } },
     })
   })
 

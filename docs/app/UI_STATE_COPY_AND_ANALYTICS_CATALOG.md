@@ -226,13 +226,13 @@ HTTP 超时、DNS 和无连接映射网络状态；未知 4xx/5xx 使用安全�
 |---------|----------|----------|
 | `copy.membership.acquisition` | 当前会员由平台审核后发放 | 五级目录 |
 | `copy.membership.apply.action` | 提交会员申请 | 五级目录、会员服务 |
-| `copy.membership.application.submitted` | 会员申请已提交，平台将在服务时段内处理 | 申请结果 |
-| `copy.membership.application.processing` | 会员申请处理中，请留意站内通知 | 申请状态 |
+| `copy.membership.application.submitted` | 会员申请已提交，正式发放前不会获得任何权益 | 申请结果 |
+| `copy.membership.application.processing` | 平台正在人工处理，尚未产生任何会员权限 | 申请状态 |
 | `copy.membership.application.need_more` | 申请需要补充信息，请按页面提示提交 | 申请状态 |
 | `copy.membership.application.approved` | 申请已通过，会员权益将在发放完成后生效 | 申请状态 |
 | `copy.membership.application.rejected` | 本次申请未通过，可查看原因说明或联系平台 | 申请状态 |
 | `copy.membership.application.cancelled` | 申请已取消，未产生会员权益 | 申请状态 |
-| `copy.membership.service_time` | 服务时段每日 10:00–22:00；通常在 1 个服务日内处理 | 申请页、会员帮助 |
+| `copy.membership.service_time` | 当前由平台人工处理，不承诺固定处理时效或必然通过 | 申请页、会员帮助 |
 | `copy.membership.active_until` | 当前等级：{tierName}，有效至 {date} | 当前权益 |
 | `copy.membership.scheduled` | {tierName} 将于 {date} 生效 | 待生效 |
 | `copy.membership.expiring` | 会员将于 {date} 到期 | 即将到期 |

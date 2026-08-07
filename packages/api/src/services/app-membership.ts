@@ -15,6 +15,7 @@ export const APP_MEMBERSHIP_DRAFT_CATALOG_ID = 'amc_app_1_0_draft_1'
 export interface AppMembershipRuntimeConfig {
   enabled: boolean
   adminEnabled: boolean
+  applicationsEnabled: boolean
   catalogVersionId: string | null
   requireProductionReady: boolean
 }
@@ -89,6 +90,7 @@ export function getAppMembershipRuntimeConfig(env: Pick<Bindings,
   | 'APP_ENV'
   | 'APP_MEMBERSHIP_ENABLED'
   | 'APP_MEMBERSHIP_ADMIN_ENABLED'
+  | 'APP_MEMBERSHIP_APPLICATIONS_ENABLED'
   | 'APP_MEMBERSHIP_CATALOG_VERSION'
   | 'APP_MEMBERSHIP_PRODUCTION_READY'
 >): AppMembershipRuntimeConfig {
@@ -99,6 +101,10 @@ export function getAppMembershipRuntimeConfig(env: Pick<Bindings,
   return {
     enabled: env.APP_MEMBERSHIP_ENABLED === 'true' && Boolean(catalogVersionId) && productionGateSatisfied,
     adminEnabled: env.APP_MEMBERSHIP_ADMIN_ENABLED === 'true' && Boolean(catalogVersionId) && productionGateSatisfied,
+    applicationsEnabled: env.APP_MEMBERSHIP_APPLICATIONS_ENABLED === 'true'
+      && env.APP_MEMBERSHIP_ENABLED === 'true'
+      && Boolean(catalogVersionId)
+      && productionGateSatisfied,
     catalogVersionId,
     requireProductionReady,
   }
@@ -119,7 +125,7 @@ export function requireAppMembershipAdminEnabled(config: AppMembershipRuntimeCon
 export async function getAppMembershipCatalog(
   db: D1Database,
   catalogVersionId: string,
-  options: { requireProductionReady?: boolean } = {},
+  options: { requireProductionReady?: boolean; applicationEnabled?: boolean } = {},
 ): Promise<AppMembershipCatalog> {
   const catalog = await db.prepare(`
     SELECT id, version_code, state, production_ready, effective_at, timezone, minimum_client_version
@@ -210,7 +216,7 @@ export async function getAppMembershipCatalog(
     minimumClientVersion: catalog.minimum_client_version,
     acquisition: {
       mode: 'contact_platform',
-      applicationEnabled: false,
+      applicationEnabled: options.applicationEnabled === true,
       paymentEnabled: false,
       label: tiers[0]!.acquisitionLabel,
     },

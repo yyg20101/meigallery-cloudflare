@@ -1,5 +1,5 @@
 /**
- * App API v2 公共发现、账号访问、互动、会员、平台话题、Message-2 安全与 Safety-2 申诉契约。
+ * App API v2 公共发现、账号访问、互动、会员申请、平台话题、Message-2 安全与 Safety-2 申诉契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -10,7 +10,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.7.0'
+  contractVersion: '1.8.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -54,7 +54,7 @@ export interface AppBootstrapConfig {
     membership: {
       catalog: boolean
       entitlements: boolean
-      applications: false
+      applications: boolean
     }
     messaging: boolean
     safety: {
@@ -93,6 +93,16 @@ export interface AppBootstrapConfig {
       platformOperationUrl: string
       eligibilityUrl: string
     }
+  }
+  membershipApplications: {
+    disclosureVersion: string
+    disclosureText: string
+    contactMethod: 'verified_email'
+    maxStatementLength: number
+    contactWindows: Array<{
+      code: AppMembershipContactWindow
+      label: string
+    }>
   }
   messaging: {
     receiverLabel: string
@@ -168,6 +178,15 @@ export type AppMembershipCatalogState = 'development' | 'published'
 export type AppMembershipEntitlementValueType = 'boolean' | 'integer' | 'enum'
 export type AppMembershipEntitlementValue = boolean | number | string
 export type AppMembershipEntitlementAvailability = 'available' | 'planned'
+export type AppMembershipContactWindow = 'anytime' | 'morning' | 'afternoon' | 'evening'
+export type AppMembershipApplicationStatus =
+  | 'submitted'
+  | 'processing'
+  | 'needs_information'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'expired'
 
 export interface AppMembershipEntitlementDefinition {
   key: string
@@ -210,7 +229,7 @@ export interface AppMembershipCatalog {
   minimumClientVersion: string
   acquisition: {
     mode: 'contact_platform'
-    applicationEnabled: false
+    applicationEnabled: boolean
     paymentEnabled: false
     label: string
   }
@@ -252,6 +271,51 @@ export interface AppMembershipSnapshot {
     userVisibleNote: string
   }
   entitlements: AppMembershipResolvedEntitlement[]
+}
+
+export interface AppMembershipApplicationTimelineItem {
+  sequence: number
+  eventType:
+    | 'submitted'
+    | 'claimed'
+    | 'information_requested'
+    | 'resubmitted'
+    | 'approved'
+    | 'rejected'
+    | 'cancelled'
+    | 'expired'
+  status: AppMembershipApplicationStatus
+  message: string
+  createdAt: string
+}
+
+export interface AppMembershipApplication {
+  applicationId: string
+  catalogVersionId: string
+  intendedTier: AppMembershipTierSummary
+  contact: {
+    method: 'verified_email'
+    maskedValue: string
+  }
+  preferredContactWindow: AppMembershipContactWindow
+  statement: string | null
+  disclosureVersion: string
+  status: AppMembershipApplicationStatus
+  statusMessage: string
+  version: number
+  canCancel: boolean
+  canResubmit: boolean
+  grantId: string | null
+  submittedAt: string
+  updatedAt: string
+  resolvedAt: string | null
+  timeline: AppMembershipApplicationTimelineItem[]
+}
+
+export interface AppMembershipApplicationMutationResult {
+  application: AppMembershipApplication
+  created: boolean
+  replayed: boolean
 }
 
 export type AppConversationStatus = 'active' | 'restricted' | 'closed'

@@ -128,9 +128,24 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `GET /api/v2/membership/catalog` 提供公共五级目录；`GET /api/v2/me/entitlements` 使用 App Bearer 会话返回本人最高有效 App grant 和快照。`GET /api/v2/me` 复用同一摘要，不读取旧 Web `user_memberships`。
 - 管理后台在现有用户详情页提供独立 App 会员面板，支持预览、立即发放、续期和撤销。grant 不可变，撤销写入独立追加表；发放与撤销均要求幂等键、业务单号、标准原因和用户可见说明，并写审计。
 - `APP_MEMBERSHIP_ENABLED` 与 `APP_MEMBERSHIP_ADMIN_ENABLED` 分离；production 还要求 `APP_MEMBERSHIP_PRODUCTION_READY=true` 且目录行同时为 `published + production_ready=1`。production/dev 当前都显式关闭。
-- migration 不 seed 账号 grant、不回填 legacy 数据、不把 `vip/svip` 自动映射为五级会员。用户申请、批量/高风险双人复核、额度消耗、通知和旧会员迁移仍未实现。
+- migration 不 seed 账号 grant、不回填 legacy 数据、不把 `vip/svip` 自动映射为五级会员。批量/高风险双人复核、额度消耗、通知和旧会员迁移仍未实现。
 
 完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md`。
+
+### Membership-2 站内会员申请 `[开发验证，默认关闭]`
+
+`0075_app_membership_applications.sql` 和 App API v2 `1.8.0` 在 Membership-1 上增加申请到人工发放的纵向闭环：
+
+- 服务端只持久化 `submitted|processing|needs_information|approved|rejected|cancelled|expired`，未提交草稿只存在客户端进程。一个账号同时最多一条进行中申请。
+- 申请保存提交时的不可变目录版本与 tier 快照。后台队列跨目录版本展示；新批准只能在申请目录仍是当前运行目录时开始，不能在切换目录后静默改发新等级。旧目录申请只能拒绝/过期/取消并要求重新提交；若 grant 已取得发放锁后才发生目录切换，同键恢复仍按原目录完成，避免 grant 与申请终态分叉。
+- 联系方式固定引用账号已验证邮箱，不复制邮箱正文到申请表；列表只返回脱敏邮箱，管理员进入详情后才取得处理所需账号标识。申请说明最大 300 字，不进入分析或通用审计 JSON。
+- 用户可提交、查看时间线、按管理员要求补充和取消尚未领取/发放锁定的申请。提交、补充和取消都要求稳定 `Idempotency-Key` 与 `expectedVersion`；重复请求返回原结果，旧版本安全冲突。
+- 申请不会创建 grant、修改 rank 或下发 entitlement。管理员必须领取后处理；批准路径先取得不可并行的发放锁，再复用 Membership-1 grant 预览、幂等发放与审计。只有 grant 成功后才原子标记 `approved` 并关联 `grant_id`。
+- Nuxt `/admin/app/membership/applications` 提供队列、筛选、最小账号信息、详情、领取、补充、拒绝、过期、取消和正式发放；用户可见状态与 App 时间线使用同一服务端事实。
+- `APP_MEMBERSHIP_APPLICATIONS_ENABLED` 是用户申请独立开关，并继续依赖安全可用的 Auth、Membership 总开关、目录版本和 production-ready 门禁。production/dev 当前均显式为 `false`。
+- OQ-010 未关闭，因此 bootstrap 只说明“人工处理、不承诺固定时效或必然通过”；OQ-020 未关闭，因此 migration 不创建自动清理任务，也不授权 production 保存真实申请。
+
+完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_2_APPLICATION_INTEGRATION.md`。
 
 ### 独立 App 平台话题 `[开发验证，默认关闭]`
 
@@ -329,6 +344,11 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | DELETE | `/api/v2/me/devices/:deviceId` | 默认关闭：幂等远程退出其他设备 |
 | GET | `/api/v2/membership/catalog` | 默认关闭：Membership-1 五级开发目录与 typed entitlement |
 | GET | `/api/v2/me/entitlements` | 默认关闭：当前 App 账号的权威会员权益快照 |
+| GET | `/api/v2/me/membership-applications` | 默认关闭：本人最近会员申请与用户可见时间线 |
+| GET | `/api/v2/membership-applications/:applicationId` | 默认关闭：按本人归属读取单条会员申请 |
+| POST | `/api/v2/membership-applications` | 默认关闭：幂等提交申请，不产生 grant 或 entitlement |
+| POST | `/api/v2/membership-applications/:applicationId/resubmit` | 默认关闭：待补充申请重新确认说明并入队 |
+| POST | `/api/v2/membership-applications/:applicationId/cancel` | 默认关闭：取消尚未进入处理/发放锁定的申请 |
 | POST | `/api/v2/conversations` | 默认关闭：幂等创建或复用 Message-1 平台话题并原子消耗日额度 |
 | GET | `/api/v2/conversations` | 默认关闭：当前 App 账号的话题列表 |
 | GET | `/api/v2/conversations/:conversationId` | 默认关闭：对象归属内的话题详情和当前可发送状态 |
@@ -395,6 +415,12 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/memberships/grants/preview` | 预览立即发放或续期，不产生写入 | admin+ |
 | POST | `/api/admin/app/memberships/grants` | 幂等创建单账号 App grant | admin+ |
 | POST | `/api/admin/app/memberships/grants/:grantId/revoke` | 追加式撤销 App grant | admin+ |
+| GET | `/api/admin/app/memberships/applications` | 会员申请队列，支持状态、等级、时间和处理人筛选 | admin+ |
+| GET | `/api/admin/app/memberships/applications/:applicationId` | 申请详情、当前会员和用户可见时间线 | admin+ |
+| POST | `/api/admin/app/memberships/applications/:applicationId/claim` | 以乐观版本领取申请 | admin+ |
+| POST | `/api/admin/app/memberships/applications/:applicationId/request-information` | 要求用户补充并写审计 | admin+ |
+| POST | `/api/admin/app/memberships/applications/:applicationId/reject\|expire\|cancel` | 以标准原因形成终态并写审计 | admin+ |
+| POST | `/api/admin/app/memberships/applications/:applicationId/approve` | 锁定申请并复用正式 grant 流程，成功后才显示已发放 | admin+ |
 | GET | `/api/admin/app/conversations` | Message-1 平台话题队列，不返回正文 | admin+ |
 | GET | `/api/admin/app/conversations/:conversationId` | 读取话题元数据；正文访问目的固定为 `service_operation` 并审计 | admin+ |
 | GET | `/api/admin/app/conversations/:conversationId/messages` | 受控读取话题正文并写访问审计 | admin+ |
@@ -612,6 +638,18 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 | `app_membership_grants` | 不可变账号发放事实 | 快照化等级、有效区间、原因、用户说明、发放人；账号内业务单号唯一 |
 | `app_membership_grant_revocations` | 追加式撤销 | 每个 grant 最多一条；不更新或删除原 grant |
 | `app_membership_admin_requests` | 后台写操作幂等结果 | 幂等键唯一；绑定规范化请求哈希、目标账号和结果 grant |
+
+### App Membership-2 申请表族 `[开发验证，默认关闭]`
+
+`0075_app_membership_applications.sql` 不创建申请 seed、不迁移旧站咨询，也不创建保留期清理任务：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_membership_applications` | 申请权威状态与意向等级快照 | 账号进行中状态部分唯一；`approved` 当且仅当关联正式 grant；发放锁阻止并行终态 |
+| `app_membership_application_events` | 用户可见业务时间线 | 申请内 sequence 唯一；只保存状态和用户可见说明，不复制申请正文 |
+| `app_membership_application_requests` | 用户提交、补充和取消幂等结果 | 账号 + key 唯一；绑定规范化请求哈希和原申请 |
+
+管理员状态写入使用 `expectedVersion` 条件更新，并在同一个 D1 `batch()` 中通过后续 `INSERT ... SELECT` 绑定事件与审计；调用方检查每条语句 `changes=1`。批准先以稳定幂等键取得 `approval_request_key`，再执行不可变 grant，最后关联 `grant_id`；若响应中断，使用同一键可恢复原 grant 并完成申请终态，不能换键重复发放。
 
 当前解析只选择未撤销且满足 `starts_at <= now < expires_at` 的最高 `rank` grant。客户端快照不构成授权；未来接入受限业务 API 时仍须在服务端按请求重新解析并完成额度原子消耗。
 
