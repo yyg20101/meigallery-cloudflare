@@ -74,3 +74,54 @@ export interface AdminMessagingRuntimeControl {
   version: number
   updatedAt: string
 }
+
+export type AdminSafetyAppealStatus = 'submitted' | 'processing' | 'upheld' | 'changed' | 'closed'
+
+export interface AdminSafetyAppealSummary {
+  appealId: string
+  reportId: string
+  type: 'report_no_violation_review'
+  status: AdminSafetyAppealStatus
+  userVisibleMessage: string
+  originalReportVersion: number
+  version: number
+  assignedToMe: boolean
+  canClaim: boolean
+  isolationBlocked: boolean
+  submittedAt: string
+  updatedAt: string
+  resolvedAt: string | null
+}
+
+export interface AdminSafetyAppealDetail extends AdminSafetyAppealSummary {
+  statement: string
+  report: {
+    targetType: string
+    profileId: string
+    mediaId: string | null
+    conversationId: string | null
+    messageId: string | null
+    reasonCode: string
+    reasonLabel: string
+    description: string
+    status: string
+    version: number
+    evidence: {
+      profileContentVersion: number | null
+      profileProjectionVersion: number | null
+      messageSequence: number | null
+      messageSenderType: string | null
+      messageBodySha256: string | null
+      contextBeforeMessageId: string | null
+      contextAfterMessageId: string | null
+      evidenceDigest: string
+      capturedAt: string
+    }
+  }
+  timeline: Array<{
+    sequence: number
+    status: AdminSafetyAppealStatus
+    message: string
+    createdAt: string
+  }>
+}

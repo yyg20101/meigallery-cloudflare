@@ -11,12 +11,21 @@ import {
   type AdminMessagingRuntimeControlInput,
   type AdminSafetyReportDecisionInput,
 } from '../../services/admin-app-safety'
+import {
+  claimAdminSafetyAppeal,
+  decideAdminSafetyAppeal,
+  getAdminSafetyAppeal,
+  listAdminSafetyAppeals,
+  parseAdminSafetyAppealListQuery,
+  type AdminSafetyAppealDecisionInput,
+} from '../../services/admin-app-safety-appeals'
 import { AppMessagingError } from '../../services/app-messaging'
 import {
   AppSafetyError,
   getAppMessagingRuntimeControl,
   getAppSafetyRuntimeConfig,
   requireAppSafetyAdminEnabled,
+  requireAppSafetyAdminAppealsEnabled,
 } from '../../services/app-safety'
 import { errorJson } from '../../utils/api-error'
 
@@ -87,6 +96,78 @@ adminAppSafetyRoutes.post('/reports/:reportId/decision', async (c) => {
   }
 })
 
+adminAppSafetyRoutes.get('/appeals', async (c) => {
+  try {
+    const config = appealsEnabledConfig(c.env)
+    const query = parseAdminSafetyAppealListQuery({
+      status: c.req.query('status'),
+      limit: c.req.query('limit'),
+    })
+    return c.json({
+      data: await listAdminSafetyAppeals(c.env.DB, c.get('userId')!, query),
+      policyId: config.appealPolicyId,
+    })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.post('/appeals/:appealId/claim', async (c) => {
+  try {
+    const config = appealsEnabledConfig(c.env)
+    const data = await claimAdminSafetyAppeal(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('appealId'),
+      config.appealPolicyId,
+      c.req.header('Idempotency-Key') ?? null,
+      new Date(),
+      config.requireAppealsProductionReady,
+    )
+    return c.json({ message: data.replayed ? '已返回原领取结果' : '申诉已领取', data })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.get('/appeals/:appealId', async (c) => {
+  try {
+    appealsEnabledConfig(c.env)
+    requireAppealAccessReason(c.req.query('accessReason'))
+    return c.json({ data: await getAdminSafetyAppeal(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('appealId'),
+      c.get('appRequestId') || crypto.randomUUID(),
+    ) })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.post('/appeals/:appealId/decision', async (c) => {
+  try {
+    const config = appealsEnabledConfig(c.env)
+    const data = await decideAdminSafetyAppeal(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('appealId'),
+      config.appealPolicyId,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminSafetyAppealDecisionInput>(),
+      new Date(),
+      config.requireAppealsProductionReady,
+    )
+    return c.json({ message: data.replayed ? '已返回原复核结论' : '复核结论已记录', data })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
 adminAppSafetyRoutes.get('/runtime-control', async (c) => {
   try {
     enabledConfig(c.env)
@@ -119,9 +200,21 @@ function enabledConfig(env: Bindings) {
   return config
 }
 
+function appealsEnabledConfig(env: Bindings) {
+  const config = getAppSafetyRuntimeConfig(env)
+  requireAppSafetyAdminAppealsEnabled(config)
+  return config
+}
+
 function requireSafetyAccessReason(value: string | undefined) {
   if (value !== 'safety_review') {
     throw new AppSafetyError(400, 'ACCESS_REASON_REQUIRED', '查看举报证据必须声明 safety_review')
+  }
+}
+
+function requireAppealAccessReason(value: string | undefined) {
+  if (value !== 'appeal_review') {
+    throw new AppSafetyError(400, 'ACCESS_REASON_REQUIRED', '查看申诉说明和证据必须声明 appeal_review')
   }
 }
 

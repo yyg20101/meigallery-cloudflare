@@ -1,5 +1,5 @@
 /**
- * App API v2 公共发现、账号访问、互动、会员、平台话题与 Message-2 安全契约。
+ * App API v2 公共发现、账号访问、互动、会员、平台话题、Message-2 安全与 Safety-2 申诉契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -10,7 +10,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.6.0'
+  contractVersion: '1.7.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -61,6 +61,7 @@ export interface AppBootstrapConfig {
       reports: boolean
       blocks: boolean
       conversationClose: boolean
+      appeals: boolean
     }
     payments: false
     systemPush: false
@@ -102,7 +103,9 @@ export interface AppBootstrapConfig {
   }
   safety: {
     reasonCatalogVersion: string
+    appealPolicyVersion: string
     maxDescriptionLength: number
+    maxAppealStatementLength: number
     reportTargets: AppSafetyReportTargetType[]
     reasons: AppSafetyReason[]
   }
@@ -321,6 +324,13 @@ export interface AppConversationMessagesPage {
 export type AppSafetyReportTargetType = 'person_profile' | 'media' | 'conversation' | 'message'
 export type AppSafetyPriority = 'p0' | 'p1' | 'p2' | 'p3'
 export type AppSafetyReportStatus = 'submitted' | 'processing' | 'actioned' | 'no_violation' | 'closed'
+export type AppSafetyAppealStatus = 'submitted' | 'processing' | 'upheld' | 'changed' | 'closed'
+export type AppSafetyAppealUnavailableReason =
+  | 'FEATURE_DISABLED'
+  | 'REPORT_NOT_ELIGIBLE'
+  | 'APPEAL_WINDOW_EXPIRED'
+  | 'APPEAL_ALREADY_EXISTS'
+  | 'POLICY_NOT_READY'
 
 export interface AppSafetyReason {
   code: string
@@ -355,12 +365,19 @@ export interface AppSafetyReportSummary {
   reasonLabel: string
   status: AppSafetyReportStatus
   userVisibleMessage: string
+  version: number
   submittedAt: string
   updatedAt: string
 }
 
 export interface AppSafetyReportDetail extends AppSafetyReportSummary {
   description: string
+  appeal: {
+    canAppeal: boolean
+    unavailableReason: AppSafetyAppealUnavailableReason | null
+    appealId: string | null
+    status: AppSafetyAppealStatus | null
+  }
   timeline: Array<{
     sequence: number
     status: AppSafetyReportStatus
@@ -371,6 +388,34 @@ export interface AppSafetyReportDetail extends AppSafetyReportSummary {
 
 export interface AppSafetyReportCreateResult {
   report: AppSafetyReportDetail
+  replayed: boolean
+}
+
+export interface AppSafetyAppealSummary {
+  appealId: string
+  reportId: string
+  type: 'report_no_violation_review'
+  status: AppSafetyAppealStatus
+  userVisibleMessage: string
+  originalReportVersion: number
+  version: number
+  submittedAt: string
+  updatedAt: string
+  resolvedAt: string | null
+}
+
+export interface AppSafetyAppealDetail extends AppSafetyAppealSummary {
+  statement: string
+  timeline: Array<{
+    sequence: number
+    status: AppSafetyAppealStatus
+    message: string
+    createdAt: string
+  }>
+}
+
+export interface AppSafetyAppealCreateResult {
+  appeal: AppSafetyAppealDetail
   replayed: boolean
 }
 

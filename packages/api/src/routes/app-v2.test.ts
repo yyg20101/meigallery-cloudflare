@@ -37,7 +37,7 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.6.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.7.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
@@ -57,6 +57,7 @@ describe('App API v2 路由契约', () => {
         reports: false,
         blocks: false,
         conversationClose: false,
+        appeals: false,
       },
       payments: false,
       systemPush: false,
@@ -64,7 +65,7 @@ describe('App API v2 路由契约', () => {
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.6.0',
+      contractVersion: '1.7.0',
     })
   })
 
@@ -95,7 +96,7 @@ describe('App API v2 路由契约', () => {
       data: {
         capabilities: {
           messaging: true,
-          safety: { reports: true, blocks: true, conversationClose: true },
+          safety: { reports: true, blocks: true, conversationClose: true, appeals: false },
         },
       },
     })
@@ -128,6 +129,54 @@ describe('App API v2 路由契约', () => {
     )
     expect(await productionResponse.json()).toMatchObject({
       data: { capabilities: { messaging: false } },
+    })
+  })
+
+  it('Safety-2 申诉能力使用独立开关且生产要求单独发布门禁', async () => {
+    const base = {
+      APP_AUTH_ENABLED: 'true',
+      APP_AUTH_TERMS_VERSION: 'terms-1',
+      APP_AUTH_PRIVACY_VERSION: 'privacy-1',
+      APP_AUTH_PLATFORM_NOTICE_VERSION: 'platform-1',
+      APP_AUTH_ELIGIBILITY_VERSION: 'eligibility-1',
+      APP_AUTH_TERMS_URL: 'https://legal.test/terms',
+      APP_AUTH_PRIVACY_URL: 'https://legal.test/privacy',
+      APP_AUTH_PLATFORM_NOTICE_URL: 'https://legal.test/platform',
+      APP_AUTH_ELIGIBILITY_URL: 'https://legal.test/eligibility',
+      APP_SAFETY_ENABLED: 'true',
+      APP_SAFETY_REASON_CATALOG_VERSION: 'src_app_1_0_message_2_dev_1',
+      APP_SAFETY_APPEALS_ENABLED: 'true',
+      APP_SAFETY_APPEAL_POLICY_VERSION: 'sap_app_1_0_safety_2_dev_1',
+    } satisfies Partial<Bindings>
+    const development = createApp({}, base)
+    const developmentResponse = await development.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      development.env,
+      {} as ExecutionContext,
+    )
+    expect(await developmentResponse.json()).toMatchObject({
+      data: {
+        capabilities: { safety: { appeals: true } },
+        safety: {
+          appealPolicyVersion: 'sap_app_1_0_safety_2_dev_1',
+          maxAppealStatementLength: 500,
+        },
+      },
+    })
+
+    const production = createApp({}, {
+      ...base,
+      APP_ENV: 'production',
+      APP_SAFETY_PRODUCTION_READY: 'true',
+      APP_SAFETY_APPEALS_PRODUCTION_READY: 'false',
+    })
+    const productionResponse = await production.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      production.env,
+      {} as ExecutionContext,
+    )
+    expect(await productionResponse.json()).toMatchObject({
+      data: { capabilities: { safety: { appeals: false } } },
     })
   })
 

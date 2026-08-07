@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('数据库迁移契约', () => {
-  it('migration 索引从 0001 到 0073 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0074 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 73 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 74 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -44,6 +44,20 @@ describe('数据库迁移契约', () => {
     expect(sql).not.toMatch(/INSERT INTO\s+app_safety_reports/iu)
     expect(sql).not.toMatch(/INSERT INTO\s+app_profile_blocks/iu)
     expect(sql).not.toMatch(/INSERT INTO\s+app_conversation_assignment_state/iu)
+  })
+
+  it('0074 只建立默认关闭的独立复核结构，不预置申诉或自动处置', async () => {
+    const sql = await readMigration('0074_app_safety_appeals.sql')
+
+    expect(sql).toContain('CREATE TABLE app_safety_appeal_policies')
+    expect(sql).toContain('CREATE TABLE app_safety_appeals')
+    expect(sql).toContain('CREATE TABLE app_safety_appeal_events')
+    expect(sql).toContain('CREATE TABLE app_safety_appeal_idempotency')
+    expect(sql).toContain("'development'")
+    expect(sql).toContain("'srp_message_2_unresolved_dev_1'")
+    expect(sql).toContain('original_decision_admin_id')
+    expect(sql).not.toMatch(/INSERT INTO\s+app_safety_appeals/iu)
+    expect(sql).not.toMatch(/UPDATE\s+app_safety_reports/iu)
   })
 
   it('0071 只写开发会员目录，不迁移旧会员或预发放账号权益', async () => {

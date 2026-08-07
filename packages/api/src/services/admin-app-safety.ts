@@ -5,7 +5,6 @@ import type {
   AppSafetyReportTargetType,
 } from '@meigallery/shared'
 import {
-  AppMessagingError,
   hashCanonical,
   normalizeIdempotencyKey,
   prefixedId,

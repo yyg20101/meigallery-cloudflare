@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-07
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1、Membership-1、Message-1 与 Message-2 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1、Membership-1、Message-1、Message-2 与 Safety-2 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -76,6 +76,18 @@ Message-2 以兼容新增方式把累计契约提升为 `1.6.0`，冻结并实�
 
 完整实现与生产门禁见 [Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md)。
 
+### 1.7 Safety-2 局部冻结记录
+
+Safety-2 以兼容新增方式把累计契约提升为 `1.7.0`，只冻结举报“未发现违规”结论的独立复核：
+
+- bootstrap 增加 `capabilities.safety.appeals`、`appealPolicyVersion` 与 `maxAppealStatementLength`；用户端、后台端和 production-ready 开关相互独立且当前全部关闭。
+- 举报摘要增加单调 `version`，详情增加服务端权威申诉资格、不可用原因、既有申诉 ID 与状态。客户端不得本地推导申请窗口。
+- `POST /api/v2/appeals` 只接受 `report_no_violation_review` 的举报 ID、预期举报版本和 1–500 字说明；同一举报结论版本只允许一个申诉，不接受文件证据。
+- `GET /api/v2/me/appeals` 与 `GET /api/v2/me/appeals/:appealId` 只返回本人记录和用户可见时间线。
+- 复核必须由不同于原审核人的管理员领取。`upheld` 维持原结论；`changed` 只把原举报重开为调查中，不自动认定违规或执行处置。
+
+完整实现与生产门禁见 [Safety-2 跨仓集成边界](./SAFETY_2_APPEAL_INTEGRATION.md)。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -104,7 +116,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.6.0"
+    "contractVersion": "1.7.0"
   }
 }
 ```
@@ -382,16 +394,18 @@ App 1.0 钱包路由只读，余额来自追加式分录/受控快照，客户�
 | POST | `/api/v2/reports` | Message-2：幂等举报真人、媒体、本人会话或本人消息 |
 | GET | `/api/v2/me/reports` | Message-2：本人举报状态游标分页 |
 | GET | `/api/v2/me/reports/:reportId` | Message-2：举报必要详情与用户可见时间线 |
+| POST | `/api/v2/appeals` | Safety-2：幂等申请本人未发现违规举报结论的独立复核 |
+| GET | `/api/v2/me/appeals` | Safety-2：本人复核申请游标分页 |
+| GET | `/api/v2/me/appeals/:appealId` | Safety-2：本人复核详情与用户可见时间线 |
 | GET | `/api/v2/help/topics` | 后续：帮助与政策 |
-| POST | `/api/v2/appeals` | 后续：申诉；Message-2 不部署 |
 
-拉黑后由服务端清理喜欢/关注、关闭关联话题、禁止后续互动/建话题/发送，并在登录发现页停止推荐目标；解除拉黑不恢复旧关系或旧话题。举报说明最多 500 字，原因来自版本化目录；客户端不能提交证据正文，服务端只固定目标版本、目标消息摘要及相邻引用。所有入口要求有效 Auth-1，但举报不要求会员。
+拉黑后由服务端清理喜欢/关注、关闭关联话题、禁止后续互动/建话题/发送，并在登录发现页停止推荐目标；解除拉黑不恢复旧关系或旧话题。举报说明最多 500 字，原因来自版本化目录；客户端不能提交证据正文，服务端只固定目标版本、目标消息摘要及相邻引用。申诉只接受文本说明，不开放证据上传，申请本身不自动改变原结论。所有入口要求有效 Auth-1，但举报和申诉不要求会员。
 
 ## 14. 管理 API
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
-M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、预览、低风险发放/续期与追加式撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
+M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、预览、低风险发放/续期与追加式撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
 
 | 资源 | 主要能力 |
 |------|----------|

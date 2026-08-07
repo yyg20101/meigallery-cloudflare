@@ -57,6 +57,7 @@ import {
 } from '../services/app-messaging'
 import {
   APP_SAFETY_MAX_DESCRIPTION_LENGTH,
+  APP_SAFETY_MAX_APPEAL_STATEMENT_LENGTH,
   APP_SAFETY_REASONS,
   APP_SAFETY_REPORT_TARGETS,
   AppSafetyError,
@@ -70,9 +71,17 @@ import {
   parseAppBlockListQuery,
   parseAppReportListQuery,
   requireAppSafetyEnabled,
+  requireAppSafetyAppealsEnabled,
   setAppProfileBlock,
   type CreateAppSafetyReportInput,
 } from '../services/app-safety'
+import {
+  createAppSafetyAppeal,
+  getAppSafetyAppeal,
+  listAppSafetyAppeals,
+  parseAppAppealListQuery,
+  type CreateAppSafetyAppealInput,
+} from '../services/app-safety-appeals'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -127,6 +136,8 @@ for (const path of [
   '/person-profiles/:profileId/block',
   '/reports',
   '/reports/*',
+  '/appeals',
+  '/appeals/*',
   '/conversations',
   '/conversations/*',
 ]) {
@@ -523,6 +534,7 @@ appV2Routes.post('/reports', async (c) => {
       await c.req.json<CreateAppSafetyReportInput>(),
       new Date(),
       config.requireProductionReady,
+      appealEligibilityOptions(config),
     )
     return appApiSuccess(c, result, result.replayed ? 200 : 201)
   }
@@ -558,11 +570,70 @@ appV2Routes.get('/me/reports', async (c) => {
 
 appV2Routes.get('/me/reports/:reportId', async (c) => {
   try {
-    safetyConfig(c.env)
+    const config = safetyConfig(c.env)
     return appApiSuccess(c, await getAppSafetyReport(
       c.env.DB,
       appPrincipal(c).accountInternalId,
       c.req.param('reportId'),
+      appealEligibilityOptions(config),
+    ))
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.post('/appeals', async (c) => {
+  try {
+    const config = appealConfig(c.env)
+    const result = await createAppSafetyAppeal(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      config.appealPolicyId,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<CreateAppSafetyAppealInput>(),
+      new Date(),
+      config.requireAppealsProductionReady,
+    )
+    return appApiSuccess(c, result, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.get('/me/appeals', async (c) => {
+  try {
+    appealConfig(c.env)
+    const principal = appPrincipal(c)
+    const query = parseAppAppealListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppSafetyAppeals(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      query,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.get('/me/appeals/:appealId', async (c) => {
+  try {
+    appealConfig(c.env)
+    return appApiSuccess(c, await getAppSafetyAppeal(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('appealId'),
     ))
   }
   catch (error) {
@@ -661,6 +732,7 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
         reports: auth.enabled && safety.enabled,
         blocks: auth.enabled && safety.enabled,
         conversationClose: auth.enabled && safety.enabled && messaging.enabled,
+        appeals: auth.enabled && safety.appealsEnabled,
       },
       payments: false,
       systemPush: false,
@@ -699,7 +771,9 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
     },
     safety: {
       reasonCatalogVersion: safety.reasonCatalogId,
+      appealPolicyVersion: safety.appealPolicyId,
       maxDescriptionLength: APP_SAFETY_MAX_DESCRIPTION_LENGTH,
+      maxAppealStatementLength: APP_SAFETY_MAX_APPEAL_STATEMENT_LENGTH,
       reportTargets: APP_SAFETY_REPORT_TARGETS,
       reasons: APP_SAFETY_REASONS,
     },
@@ -716,6 +790,20 @@ function safetyConfig(env: Bindings) {
   const config = getAppSafetyRuntimeConfig(env)
   requireAppSafetyEnabled(config)
   return config
+}
+
+function appealConfig(env: Bindings) {
+  const config = getAppSafetyRuntimeConfig(env)
+  requireAppSafetyAppealsEnabled(config)
+  return config
+}
+
+function appealEligibilityOptions(config: ReturnType<typeof getAppSafetyRuntimeConfig>) {
+  return {
+    enabled: config.appealsEnabled,
+    policyId: config.appealPolicyId,
+    requireProductionReady: config.requireAppealsProductionReady,
+  }
 }
 
 function appSafetyError(

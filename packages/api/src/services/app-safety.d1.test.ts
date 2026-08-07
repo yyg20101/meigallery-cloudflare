@@ -9,6 +9,12 @@ import {
   updateAdminMessagingRuntimeControl,
 } from './admin-app-safety'
 import {
+  claimAdminSafetyAppeal,
+  decideAdminSafetyAppeal,
+  getAdminSafetyAppeal,
+  parseAdminSafetyAppealListQuery,
+} from './admin-app-safety-appeals'
+import {
   claimAdminAppConversation,
   listAdminAppConversationMessages,
   parseAdminAppConversationMessageQuery,
@@ -21,14 +27,22 @@ import {
 } from './app-messaging'
 import {
   APP_SAFETY_REASON_CATALOG_ID,
+  APP_SAFETY_APPEAL_POLICY_ID,
   createAppSafetyReport,
   getAppSafetyReport,
   setAppProfileBlock,
 } from './app-safety'
+import {
+  createAppSafetyAppeal,
+  getAppSafetyAppeal,
+  listAppSafetyAppeals,
+  parseAppAppealListQuery,
+} from './app-safety-appeals'
 
 const MEMBERSHIP_MIGRATION = migration('0071_app_membership_catalog_and_grants.sql')
 const MESSAGE_MIGRATION = migration('0072_app_managed_conversations.sql')
 const SAFETY_MIGRATION = migration('0073_app_messaging_safety_operations.sql')
+const APPEAL_MIGRATION = migration('0074_app_safety_appeals.sql')
 const NOW = new Date('2026-08-07T08:00:00.000Z')
 
 let miniflare: Miniflare
@@ -118,10 +132,14 @@ beforeAll(async () => {
   await db.exec(executableSql(MEMBERSHIP_MIGRATION))
   await db.exec(executableSql(MESSAGE_MIGRATION))
   await db.exec(executableSql(SAFETY_MIGRATION))
+  await db.exec(executableSql(APPEAL_MIGRATION))
 })
 
 beforeEach(async () => {
   await db.exec(executableSql(`
+    DELETE FROM app_safety_appeal_idempotency;
+    DELETE FROM app_safety_appeal_events;
+    DELETE FROM app_safety_appeals;
     DELETE FROM app_safety_report_events;
     DELETE FROM app_safety_report_evidence;
     DELETE FROM app_safety_reports;
@@ -225,6 +243,14 @@ describe('Message-2 举报、拉黑和运营安全闭环', () => {
       .toMatchObject({ status: null, limit: 100 })
   })
 
+  it('申诉队列默认只读待处理案件且游标与账号隔离', () => {
+    expect(parseAdminSafetyAppealListQuery({})).toMatchObject({ status: 'open', limit: 40 })
+    expect(parseAdminSafetyAppealListQuery({ status: 'all', limit: '500' }))
+      .toMatchObject({ status: 'all', limit: 100 })
+    expect(parseAppAppealListQuery({ accountScope: 'acc_safety_viewer' }))
+      .toMatchObject({ limit: 20, cursor: null })
+  })
+
   it('举报幂等固定最小证据，领取后可形成无违规结论且审计不复制说明', async () => {
     const first = await createAppSafetyReport(
       db,
@@ -297,6 +323,261 @@ describe('Message-2 举报、拉黑和运营安全闭环', () => {
       'moderation.report.decision',
     ]))
     expect(JSON.stringify(audits.results)).not.toContain('这是只允许案件审核读取的举报说明')
+  })
+
+  it('未发现违规结论可由非原审核人独立复核，改判只重新打开原举报', async () => {
+    const created = await createAppSafetyReport(
+      db,
+      2,
+      APP_SAFETY_REASON_CATALOG_ID,
+      'safety.appeal.report.0001',
+      {
+        targetType: 'person_profile',
+        profileId: 'pp_one',
+        reasonCode: 'authorization_impersonation',
+        description: '原举报说明，不得复制到审计日志。',
+      },
+      NOW,
+    )
+    const reportClaim = await claimAdminSafetyReport(
+      db,
+      1,
+      created.report.reportId,
+      'safety.appeal.report.claim.0001',
+      NOW,
+    )
+    await decideAdminSafetyReport(
+      db,
+      1,
+      created.report.reportId,
+      'safety.appeal.report.decision.0001',
+      {
+        expectedVersion: reportClaim.report.version,
+        outcome: 'no_violation',
+        actionType: 'none',
+        decisionReasonCode: 'review_no_violation',
+        userVisibleMessage: '平台已完成审核，当前未发现违规。',
+      },
+      NOW,
+    )
+    const report = await getAppSafetyReport(db, 2, created.report.reportId, {
+      enabled: true,
+      policyId: APP_SAFETY_APPEAL_POLICY_ID,
+      requireProductionReady: false,
+      now: NOW,
+    })
+    expect(report.appeal).toEqual({
+      canAppeal: true,
+      unavailableReason: null,
+      appealId: null,
+      status: null,
+    })
+
+    const first = await createAppSafetyAppeal(
+      db,
+      2,
+      APP_SAFETY_APPEAL_POLICY_ID,
+      'safety.appeal.create.0001',
+      {
+        reportId: report.reportId,
+        expectedReportVersion: report.version,
+        statement: '请由不同审核人员复核这次结论。',
+      },
+      NOW,
+    )
+    const replay = await createAppSafetyAppeal(
+      db,
+      2,
+      APP_SAFETY_APPEAL_POLICY_ID,
+      'safety.appeal.create.0001',
+      {
+        reportId: report.reportId,
+        expectedReportVersion: report.version,
+        statement: '请由不同审核人员复核这次结论。',
+      },
+      NOW,
+    )
+    expect(replay).toMatchObject({ replayed: true, appeal: { appealId: first.appeal.appealId } })
+    await expect(claimAdminSafetyAppeal(
+      db,
+      1,
+      first.appeal.appealId,
+      APP_SAFETY_APPEAL_POLICY_ID,
+      'safety.appeal.claim.denied.0001',
+      NOW,
+    )).rejects.toMatchObject({ code: 'APPEAL_REVIEWER_SEPARATION_REQUIRED', status: 403 })
+
+    const appealClaim = await claimAdminSafetyAppeal(
+      db,
+      3,
+      first.appeal.appealId,
+      APP_SAFETY_APPEAL_POLICY_ID,
+      'safety.appeal.claim.0001',
+      NOW,
+    )
+    expect(appealClaim.appeal).toMatchObject({ assignedToMe: true, status: 'processing' })
+    const detail = await getAdminSafetyAppeal(
+      db,
+      3,
+      first.appeal.appealId,
+      'req_appeal_review',
+      NOW,
+    )
+    expect(detail).toMatchObject({
+      statement: '请由不同审核人员复核这次结论。',
+      report: { description: '原举报说明，不得复制到审计日志。' },
+    })
+
+    const decided = await decideAdminSafetyAppeal(
+      db,
+      3,
+      first.appeal.appealId,
+      APP_SAFETY_APPEAL_POLICY_ID,
+      'safety.appeal.decision.0001',
+      {
+        expectedVersion: appealClaim.appeal.version,
+        outcome: 'changed',
+        reasonCode: 'independent_review_changed',
+        userVisibleMessage: '独立复核后，举报已重新进入审核。',
+      },
+      NOW,
+    )
+    expect(decided.appeal.status).toBe('changed')
+    await expect(getAppSafetyAppeal(db, 2, first.appeal.appealId))
+      .resolves.toMatchObject({ status: 'changed' })
+    const reopened = await db.prepare(`
+      SELECT status, user_visible_status, assigned_admin_id, resolved_at
+      FROM app_safety_reports WHERE id = ?
+    `).bind(report.reportId).first<{
+      status: string
+      user_visible_status: string
+      assigned_admin_id: number
+      resolved_at: string | null
+    }>()
+    expect(reopened).toEqual({
+      status: 'investigating',
+      user_visible_status: 'processing',
+      assigned_admin_id: 3,
+      resolved_at: null,
+    })
+    const appeals = await listAppSafetyAppeals(
+      db,
+      2,
+      'acc_safety_viewer',
+      parseAppAppealListQuery({ accountScope: 'acc_safety_viewer' }),
+    )
+    expect(appeals.data).toHaveLength(1)
+    const audits = await db.prepare(`SELECT action, before_value, after_value FROM admin_audit_logs`)
+      .all<{ action: string; before_value: string | null; after_value: string | null }>()
+    expect(audits.results.map(row => row.action)).toEqual(expect.arrayContaining([
+      'moderation.appeal.claim_denied',
+      'moderation.appeal.claim',
+      'moderation.appeal.detail_access',
+      'moderation.appeal.decision',
+    ]))
+    expect(JSON.stringify(audits.results)).not.toContain('请由不同审核人员复核这次结论')
+    expect(JSON.stringify(audits.results)).not.toContain('原举报说明')
+  })
+
+  it('独立复核维持原结论时不改写举报状态且同一结论不再开放申请', async () => {
+    const created = await createAppSafetyReport(
+      db,
+      2,
+      APP_SAFETY_REASON_CATALOG_ID,
+      'safety.upheld.report.0001',
+      {
+        targetType: 'person_profile',
+        profileId: 'pp_two',
+        reasonCode: 'privacy_exposure',
+        description: '请核实该资料是否存在隐私问题。',
+      },
+      NOW,
+    )
+    const reportClaim = await claimAdminSafetyReport(
+      db,
+      1,
+      created.report.reportId,
+      'safety.upheld.report.claim.0001',
+      NOW,
+    )
+    const originalDecision = await decideAdminSafetyReport(
+      db,
+      1,
+      created.report.reportId,
+      'safety.upheld.report.decision.0001',
+      {
+        expectedVersion: reportClaim.report.version,
+        outcome: 'no_violation',
+        actionType: 'none',
+        decisionReasonCode: 'review_no_violation',
+        userVisibleMessage: '平台已完成审核，当前未发现违规。',
+      },
+      NOW,
+    )
+    const createdAppeal = await createAppSafetyAppeal(
+      db,
+      2,
+      APP_SAFETY_APPEAL_POLICY_ID,
+      'safety.upheld.appeal.create.0001',
+      {
+        reportId: created.report.reportId,
+        expectedReportVersion: originalDecision.report.version,
+        statement: '我仍认为结论需要不同审核人员复核。',
+      },
+      NOW,
+    )
+    const appealClaim = await claimAdminSafetyAppeal(
+      db,
+      3,
+      createdAppeal.appeal.appealId,
+      APP_SAFETY_APPEAL_POLICY_ID,
+      'safety.upheld.appeal.claim.0001',
+      NOW,
+    )
+    const upheld = await decideAdminSafetyAppeal(
+      db,
+      3,
+      createdAppeal.appeal.appealId,
+      APP_SAFETY_APPEAL_POLICY_ID,
+      'safety.upheld.appeal.decision.0001',
+      {
+        expectedVersion: appealClaim.appeal.version,
+        outcome: 'upheld',
+        reasonCode: 'independent_review_upheld',
+        userVisibleMessage: '独立复核已完成，维持原审核结论。',
+      },
+      NOW,
+    )
+    expect(upheld.appeal.status).toBe('upheld')
+
+    const reportRow = await db.prepare(`
+      SELECT status, version, assigned_admin_id, resolved_at
+      FROM app_safety_reports
+      WHERE id = ?
+    `).bind(created.report.reportId).first<{
+      status: string
+      version: number
+      assigned_admin_id: number
+      resolved_at: string | null
+    }>()
+    expect(reportRow).toEqual({
+      status: 'no_violation',
+      version: originalDecision.report.version,
+      assigned_admin_id: 1,
+      resolved_at: NOW.toISOString(),
+    })
+    const reportDetail = await getAppSafetyReport(db, 2, created.report.reportId, {
+      enabled: true,
+      policyId: APP_SAFETY_APPEAL_POLICY_ID,
+      requireProductionReady: false,
+      now: NOW,
+    })
+    expect(reportDetail.appeal).toEqual({
+      canAppeal: false,
+      unavailableReason: 'APPEAL_ALREADY_EXISTS',
+      appealId: createdAppeal.appeal.appealId,
+      status: 'upheld',
+    })
   })
 
   it('消息举报只返回目标消息和前后一条，并可将关联话题原子转为只读', async () => {

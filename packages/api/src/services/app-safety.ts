@@ -1,8 +1,9 @@
 import type {
-  AppPersonProfile,
   AppProfileBlockListItem,
   AppProfileBlockState,
   AppSafetyReason,
+  AppSafetyAppealStatus,
+  AppSafetyAppealUnavailableReason,
   AppSafetyReportCreateResult,
   AppSafetyReportDetail,
   AppSafetyReportStatus,
@@ -16,6 +17,8 @@ import { getPublicPersonProfilesByIds } from './app-discovery'
 export const APP_MESSAGE_2_CATALOG_ID = 'amc_app_1_0_message_2_dev_1'
 export const APP_SAFETY_REASON_CATALOG_ID = 'src_app_1_0_message_2_dev_1'
 export const APP_SAFETY_MAX_DESCRIPTION_LENGTH = 500
+export const APP_SAFETY_APPEAL_POLICY_ID = 'sap_app_1_0_safety_2_dev_1'
+export const APP_SAFETY_MAX_APPEAL_STATEMENT_LENGTH = 500
 export const APP_SAFETY_REPORT_TARGETS: AppSafetyReportTargetType[] = [
   'person_profile',
   'media',
@@ -49,6 +52,17 @@ export interface AppSafetyRuntimeConfig {
   adminEnabled: boolean
   reasonCatalogId: string
   requireProductionReady: boolean
+  appealsEnabled: boolean
+  adminAppealsEnabled: boolean
+  appealPolicyId: string
+  requireAppealsProductionReady: boolean
+}
+
+export interface AppSafetyAppealEligibilityOptions {
+  enabled: boolean
+  policyId: string
+  requireProductionReady: boolean
+  now?: Date
 }
 
 export interface AppMessagingRuntimeControl {
@@ -133,6 +147,10 @@ type ReportRow = {
   user_visible_message: string
   submitted_at: string
   updated_at: string
+  resolved_at: string | null
+  internal_status: string
+  assigned_admin_id: number | null
+  version: number
 }
 
 type ReportEventRow = {
@@ -166,20 +184,40 @@ export function getAppSafetyRuntimeConfig(env: Pick<Bindings,
   | 'APP_SAFETY_ADMIN_ENABLED'
   | 'APP_SAFETY_REASON_CATALOG_VERSION'
   | 'APP_SAFETY_PRODUCTION_READY'
+  | 'APP_SAFETY_APPEALS_ENABLED'
+  | 'APP_SAFETY_APPEALS_ADMIN_ENABLED'
+  | 'APP_SAFETY_APPEAL_POLICY_VERSION'
+  | 'APP_SAFETY_APPEALS_PRODUCTION_READY'
 >): AppSafetyRuntimeConfig {
   const requireProductionReady = env.APP_ENV === 'production'
   const reasonCatalogId = normalizePolicyVersion(env.APP_SAFETY_REASON_CATALOG_VERSION)
     ?? APP_SAFETY_REASON_CATALOG_ID
   const productionGateSatisfied = !requireProductionReady || env.APP_SAFETY_PRODUCTION_READY === 'true'
+  const appealPolicyId = normalizePolicyVersion(env.APP_SAFETY_APPEAL_POLICY_VERSION)
+    ?? APP_SAFETY_APPEAL_POLICY_ID
+  const appealProductionGateSatisfied = !requireProductionReady
+    || env.APP_SAFETY_APPEALS_PRODUCTION_READY === 'true'
+  const enabled = env.APP_SAFETY_ENABLED === 'true'
+    && Boolean(normalizePolicyVersion(env.APP_SAFETY_REASON_CATALOG_VERSION))
+    && productionGateSatisfied
+  const adminEnabled = env.APP_SAFETY_ADMIN_ENABLED === 'true'
+    && Boolean(normalizePolicyVersion(env.APP_SAFETY_REASON_CATALOG_VERSION))
+    && productionGateSatisfied
   return {
-    enabled: env.APP_SAFETY_ENABLED === 'true'
-      && Boolean(normalizePolicyVersion(env.APP_SAFETY_REASON_CATALOG_VERSION))
-      && productionGateSatisfied,
-    adminEnabled: env.APP_SAFETY_ADMIN_ENABLED === 'true'
-      && Boolean(normalizePolicyVersion(env.APP_SAFETY_REASON_CATALOG_VERSION))
-      && productionGateSatisfied,
+    enabled,
+    adminEnabled,
     reasonCatalogId,
     requireProductionReady,
+    appealsEnabled: enabled
+      && env.APP_SAFETY_APPEALS_ENABLED === 'true'
+      && Boolean(normalizePolicyVersion(env.APP_SAFETY_APPEAL_POLICY_VERSION))
+      && appealProductionGateSatisfied,
+    adminAppealsEnabled: adminEnabled
+      && env.APP_SAFETY_APPEALS_ADMIN_ENABLED === 'true'
+      && Boolean(normalizePolicyVersion(env.APP_SAFETY_APPEAL_POLICY_VERSION))
+      && appealProductionGateSatisfied,
+    appealPolicyId,
+    requireAppealsProductionReady: requireProductionReady,
   }
 }
 
@@ -192,6 +230,18 @@ export function requireAppSafetyEnabled(config: AppSafetyRuntimeConfig) {
 export function requireAppSafetyAdminEnabled(config: AppSafetyRuntimeConfig) {
   if (!config.adminEnabled) {
     throw new AppSafetyError(403, 'FEATURE_DISABLED', '安全运营工作台尚未开放')
+  }
+}
+
+export function requireAppSafetyAppealsEnabled(config: AppSafetyRuntimeConfig) {
+  if (!config.appealsEnabled) {
+    throw new AppSafetyError(403, 'FEATURE_DISABLED', '举报申诉能力尚未开放')
+  }
+}
+
+export function requireAppSafetyAdminAppealsEnabled(config: AppSafetyRuntimeConfig) {
+  if (!config.adminAppealsEnabled) {
+    throw new AppSafetyError(403, 'FEATURE_DISABLED', '申诉复核工作台尚未开放')
   }
 }
 
@@ -488,6 +538,7 @@ export async function createAppSafetyReport(
   input: CreateAppSafetyReportInput,
   now = new Date(),
   requireProductionReady = false,
+  appealOptions?: AppSafetyAppealEligibilityOptions,
 ): Promise<AppSafetyReportCreateResult> {
   const target = normalizeReportTargetInput(input)
   const reasonCode = normalizeReasonCode(input.reasonCode)
@@ -498,7 +549,7 @@ export async function createAppSafetyReport(
   const replay = await findSafetyIdempotency(db, actorScope, 'report_create', idempotencyKey)
   if (replay) {
     assertIdempotencyHash(replay, requestHash)
-    return { report: await getAppSafetyReport(db, accountId, replay.result_id), replayed: true }
+    return { report: await getAppSafetyReport(db, accountId, replay.result_id, appealOptions), replayed: true }
   }
 
   const catalog = await requireReasonCatalog(
@@ -593,11 +644,11 @@ export async function createAppSafetyReport(
     const concurrent = await findSafetyIdempotency(db, actorScope, 'report_create', idempotencyKey)
     if (concurrent) {
       assertIdempotencyHash(concurrent, requestHash)
-      return { report: await getAppSafetyReport(db, accountId, concurrent.result_id), replayed: true }
+      return { report: await getAppSafetyReport(db, accountId, concurrent.result_id, appealOptions), replayed: true }
     }
     throw new AppSafetyError(503, 'REPORT_WRITE_FAILED', '举报暂时无法提交，请稍后重试', true)
   }
-  return { report: await getAppSafetyReport(db, accountId, reportId), replayed: false }
+  return { report: await getAppSafetyReport(db, accountId, reportId, appealOptions), replayed: false }
 }
 
 export async function listAppSafetyReports(
@@ -638,6 +689,7 @@ export async function getAppSafetyReport(
   db: D1Database,
   accountId: number,
   reportIdValue: string,
+  appealOptions?: AppSafetyAppealEligibilityOptions,
 ): Promise<AppSafetyReportDetail> {
   const reportId = normalizeReportId(reportIdValue)
   const report = await db.prepare(`${REPORT_SELECT}
@@ -645,6 +697,7 @@ export async function getAppSafetyReport(
     LIMIT 1
   `).bind(reportId, accountId).first<ReportRow>()
   if (!report) throw reportNotFound()
+  const appeal = await getReportAppealEligibility(db, report, appealOptions)
   const events = await db.prepare(`
     SELECT sequence, user_visible_status, user_visible_message, created_at
     FROM app_safety_report_events
@@ -654,6 +707,7 @@ export async function getAppSafetyReport(
   return {
     ...mapReportSummary(report),
     description: report.description_text,
+    appeal,
     timeline: events.results.map(event => ({
       sequence: Number(event.sequence),
       status: normalizeVisibleReportStatus(event.user_visible_status),
@@ -1115,7 +1169,8 @@ const REPORT_SELECT = `
          report.conversation_id, report.message_id, report.reason_code,
          reason.display_label AS reason_label, report.description_text,
          report.user_visible_status, report.user_visible_message,
-         report.submitted_at, report.updated_at
+         report.submitted_at, report.updated_at, report.resolved_at,
+         report.status AS internal_status, report.assigned_admin_id, report.version
   FROM app_safety_reports report
   JOIN app_safety_reason_definitions reason
     ON reason.catalog_id = report.reason_catalog_id
@@ -1136,8 +1191,91 @@ function mapReportSummary(row: ReportRow): AppSafetyReportSummary {
     reasonLabel: row.reason_label,
     status: normalizeVisibleReportStatus(row.user_visible_status),
     userVisibleMessage: row.user_visible_message,
+    version: Number(row.version),
     submittedAt: row.submitted_at,
     updatedAt: row.updated_at,
+  }
+}
+
+async function getReportAppealEligibility(
+  db: D1Database,
+  report: ReportRow,
+  options?: AppSafetyAppealEligibilityOptions,
+): Promise<{
+  canAppeal: boolean
+  unavailableReason: AppSafetyAppealUnavailableReason | null
+  appealId: string | null
+  status: AppSafetyAppealStatus | null
+}> {
+  if (!options?.enabled) {
+    return { canAppeal: false, unavailableReason: 'FEATURE_DISABLED', appealId: null, status: null }
+  }
+  const policy = await db.prepare(`
+    SELECT policy.state, policy.production_ready, policy.appeal_window_days,
+           retention.state AS retention_state,
+           retention.production_ready AS retention_ready,
+           retention.decision_status
+    FROM app_safety_appeal_policies policy
+    JOIN app_safety_retention_policies retention ON retention.id = policy.retention_policy_id
+    WHERE policy.id = ?
+    LIMIT 1
+  `).bind(options.policyId).first<{
+    state: string
+    production_ready: number
+    appeal_window_days: number
+    retention_state: string
+    retention_ready: number
+    decision_status: string
+  }>()
+  if (!policy || (
+    options.requireProductionReady
+    && (
+      policy.state !== 'published'
+      || policy.production_ready !== 1
+      || policy.retention_state !== 'published'
+      || policy.retention_ready !== 1
+      || policy.decision_status !== 'approved'
+    )
+  )) {
+    return { canAppeal: false, unavailableReason: 'POLICY_NOT_READY', appealId: null, status: null }
+  }
+  const existing = await db.prepare(`
+    SELECT id, user_visible_status
+    FROM app_safety_appeals
+    WHERE report_id = ? AND original_report_version = ?
+      AND appeal_type = 'report_no_violation_review'
+    LIMIT 1
+  `).bind(report.id, report.version).first<{ id: string; user_visible_status: string }>()
+  if (existing) {
+    return {
+      canAppeal: false,
+      unavailableReason: 'APPEAL_ALREADY_EXISTS',
+      appealId: existing.id,
+      status: normalizeVisibleAppealStatus(existing.user_visible_status),
+    }
+  }
+  if (report.internal_status !== 'no_violation' || !report.resolved_at || !report.assigned_admin_id) {
+    return { canAppeal: false, unavailableReason: 'REPORT_NOT_ELIGIBLE', appealId: null, status: null }
+  }
+  const now = options.now ?? new Date()
+  const deadline = new Date(report.resolved_at).getTime()
+    + Number(policy.appeal_window_days) * 24 * 60 * 60 * 1000
+  if (!Number.isFinite(deadline) || now.getTime() > deadline) {
+    return { canAppeal: false, unavailableReason: 'APPEAL_WINDOW_EXPIRED', appealId: null, status: null }
+  }
+  return { canAppeal: true, unavailableReason: null, appealId: null, status: null }
+}
+
+function normalizeVisibleAppealStatus(value: string): AppSafetyAppealStatus {
+  switch (value) {
+    case 'submitted':
+    case 'processing':
+    case 'upheld':
+    case 'changed':
+    case 'closed':
+      return value
+    default:
+      return 'processing'
   }
 }
 

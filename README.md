@@ -15,4 +15,4 @@
 - `docs/TELEGRAM_IMPORT_API.md`：Telegram 外部导入 API 对接契约。
 - `docs/SEO_CONFIGURATION.md`：SEO 关键词和运营配置说明。
 - `docs/AD_PLATFORM_ARCHITECTURE.md`：广告平台统一事实、投递和 adapter 架构。
-- `docs/app/README.md`：独立真人发现与互动 App 1.0 的需求、共享平台迁移、KMP/CMP 客户端、UI、安全、商业化和实施路线图；当前已按默认关闭的纵向切片推进到 Message-2，仍未获准生产开放。
+- `docs/app/README.md`：独立真人发现与互动 App 1.0 的需求、共享平台迁移、KMP/CMP 客户端、UI、安全、商业化和实施路线图；当前已按默认关闭的纵向切片推进到 Safety-2 独立复核，仍未获准生产开放。

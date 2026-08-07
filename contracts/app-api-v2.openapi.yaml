@@ -1,13 +1,14 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.6.0
+  version: 1.7.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
-    五级会员开发基线、Message-1 平台话题 HTTP 权威闭环与 Message-2 举报、屏蔽、话题关闭安全闭环。账号能力必须同时具备
+    五级会员开发基线、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
     APP_AUTH_ENABLED、版本化文档、可阅读正文 URL 和生产人机验证配置才会由 bootstrap 启用；默认关闭，
     会员、消息和安全能力使用独立开关且生产环境还要求发布门禁。只有 available 且 executable 的消息权益可执行。
-    话题始终由平台运营接收，不代表真人本人入驻或回复；实时通道、媒体消息、申诉、会员申请、支付、金币和媒体访问仍未纳入本次契约。
+    话题始终由平台运营接收，不代表真人本人入驻或回复；Safety-2 仅支持本人举报“未发现违规”结论的一次文字复核申请。
+    实时通道、媒体消息、账号/金币等其他申诉、会员申请、支付、金币和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -729,6 +730,99 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v2/appeals:
+    post:
+      tags: [Safety]
+      operationId: createAppSafetyAppeal
+      summary: 对本人举报的未发现违规结论申请独立复核
+      description: >-
+        只接受 report_no_violation_review，不接受用户上传媒体证据。同一举报结论版本只允许一个申诉；
+        申诉本身不自动改变原结论或执行安全动作。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SafetyAppealCreateRequest'
+      responses:
+        '200':
+          description: 幂等重放原申诉
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyAppealCreateResponse'
+        '201':
+          description: 申诉已接收
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyAppealCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/appeals:
+    get:
+      tags: [Safety]
+      operationId: listMyAppSafetyAppeals
+      summary: 获取本人的申诉记录
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 本人的申诉摘要列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyAppealListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v2/me/appeals/{appealId}:
+    get:
+      tags: [Safety]
+      operationId: getMyAppSafetyAppeal
+      summary: 获取本人的申诉详情和用户可见时间线
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: appealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^apl_[A-Za-z0-9_-]{1,76}$'
+      responses:
+        '200':
+          description: 本人申诉详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyAppealDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v2/discovery/feed:
     get:
       tags: [Discovery]
@@ -1019,7 +1113,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.6.0
+        const: 1.7.0
   parameters:
     ProfileId:
       name: profileId
@@ -1129,7 +1223,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.6.0
+          const: 1.7.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -2116,13 +2210,15 @@ components:
             safety:
               type: object
               additionalProperties: false
-              required: [reports, blocks, conversationClose]
+              required: [reports, blocks, conversationClose, appeals]
               properties:
                 reports:
                   type: boolean
                 blocks:
                   type: boolean
                 conversationClose:
+                  type: boolean
+                appeals:
                   type: boolean
             payments:
               type: boolean
@@ -2255,13 +2351,20 @@ components:
         safety:
           type: object
           additionalProperties: false
-          required: [reasonCatalogVersion, maxDescriptionLength, reportTargets, reasons]
+          required: [reasonCatalogVersion, appealPolicyVersion, maxDescriptionLength, maxAppealStatementLength, reportTargets, reasons]
           properties:
             reasonCatalogVersion:
               type: string
               minLength: 1
               maxLength: 80
+            appealPolicyVersion:
+              type: string
+              minLength: 1
+              maxLength: 80
             maxDescriptionLength:
+              type: integer
+              const: 500
+            maxAppealStatementLength:
               type: integer
               const: 500
             reportTargets:
@@ -2303,6 +2406,9 @@ components:
     SafetyReportStatus:
       type: string
       enum: [submitted, processing, actioned, no_violation, closed]
+    SafetyAppealStatus:
+      type: string
+      enum: [submitted, processing, upheld, changed, closed]
     ProfileBlockState:
       type: object
       additionalProperties: false
@@ -2438,6 +2544,7 @@ components:
         - reasonLabel
         - status
         - userVisibleMessage
+        - version
         - submittedAt
         - updatedAt
       properties:
@@ -2454,6 +2561,9 @@ components:
           $ref: '#/components/schemas/SafetyReportStatus'
         userVisibleMessage:
           type: string
+        version:
+          type: integer
+          minimum: 1
         submittedAt:
           type: string
           format: date-time
@@ -2476,19 +2586,41 @@ components:
           type: string
           format: date-time
     SafetyReportDetail:
-      allOf:
-        - $ref: '#/components/schemas/SafetyReportSummary'
-        - type: object
-          required: [description, timeline]
-          properties:
-            description:
-              type: string
-              maxLength: 500
-            timeline:
-              type: array
-              items:
-                $ref: '#/components/schemas/SafetyReportTimelineItem'
-      unevaluatedProperties: false
+      type: object
+      additionalProperties: false
+      required: [reportId, target, reasonCode, reasonLabel, status, userVisibleMessage, version, submittedAt, updatedAt, description, appeal, timeline]
+      properties:
+        reportId:
+          type: string
+          pattern: '^rpt_[A-Za-z0-9_-]{1,76}$'
+        target:
+          $ref: '#/components/schemas/SafetyReportTarget'
+        reasonCode:
+          type: string
+        reasonLabel:
+          type: string
+        status:
+          $ref: '#/components/schemas/SafetyReportStatus'
+        userVisibleMessage:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        submittedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+          maxLength: 500
+        appeal:
+          $ref: '#/components/schemas/SafetyAppealEligibility'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/SafetyReportTimelineItem'
     SafetyReportCreateResponse:
       type: object
       additionalProperties: false
@@ -2524,6 +2656,164 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/SafetyReportDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SafetyAppealEligibility:
+      type: object
+      additionalProperties: false
+      required: [canAppeal, unavailableReason, appealId, status]
+      properties:
+        canAppeal:
+          type: boolean
+        unavailableReason:
+          enum: [null, FEATURE_DISABLED, REPORT_NOT_ELIGIBLE, APPEAL_WINDOW_EXPIRED, APPEAL_ALREADY_EXISTS, POLICY_NOT_READY]
+        appealId:
+          type: [string, 'null']
+          pattern: '^apl_[A-Za-z0-9_-]{1,76}$'
+        status:
+          oneOf:
+            - $ref: '#/components/schemas/SafetyAppealStatus'
+            - type: 'null'
+    SafetyAppealCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [reportId, expectedReportVersion, statement]
+      properties:
+        reportId:
+          type: string
+          pattern: '^rpt_[A-Za-z0-9_-]{1,76}$'
+        expectedReportVersion:
+          type: integer
+          minimum: 1
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 500
+    SafetyAppealSummary:
+      type: object
+      additionalProperties: false
+      required: [appealId, reportId, type, status, userVisibleMessage, originalReportVersion, version, submittedAt, updatedAt, resolvedAt]
+      properties:
+        appealId:
+          type: string
+          pattern: '^apl_[A-Za-z0-9_-]{1,76}$'
+        reportId:
+          type: string
+          pattern: '^rpt_[A-Za-z0-9_-]{1,76}$'
+        type:
+          type: string
+          const: report_no_violation_review
+        status:
+          $ref: '#/components/schemas/SafetyAppealStatus'
+        userVisibleMessage:
+          type: string
+        originalReportVersion:
+          type: integer
+          minimum: 1
+        version:
+          type: integer
+          minimum: 1
+        submittedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: [string, 'null']
+          format: date-time
+    SafetyAppealTimelineItem:
+      type: object
+      additionalProperties: false
+      required: [sequence, status, message, createdAt]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/SafetyAppealStatus'
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    SafetyAppealDetail:
+      type: object
+      additionalProperties: false
+      required: [appealId, reportId, type, status, userVisibleMessage, originalReportVersion, version, submittedAt, updatedAt, resolvedAt, statement, timeline]
+      properties:
+        appealId:
+          type: string
+          pattern: '^apl_[A-Za-z0-9_-]{1,76}$'
+        reportId:
+          type: string
+          pattern: '^rpt_[A-Za-z0-9_-]{1,76}$'
+        type:
+          type: string
+          const: report_no_violation_review
+        status:
+          $ref: '#/components/schemas/SafetyAppealStatus'
+        userVisibleMessage:
+          type: string
+        originalReportVersion:
+          type: integer
+          minimum: 1
+        version:
+          type: integer
+          minimum: 1
+        submittedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: [string, 'null']
+          format: date-time
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 500
+        timeline:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/SafetyAppealTimelineItem'
+    SafetyAppealCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [appeal, replayed]
+          properties:
+            appeal:
+              $ref: '#/components/schemas/SafetyAppealDetail'
+            replayed:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SafetyAppealListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/SafetyAppealSummary'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    SafetyAppealDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SafetyAppealDetail'
         meta:
           $ref: '#/components/schemas/Meta'
     ViewerInteractionType:

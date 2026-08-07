@@ -160,6 +160,18 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整跨仓边界与验收要求见 `docs/app/MESSAGE_2_CROSS_REPO_INTEGRATION.md`。
 
+### Safety-2 独立申诉复核 `[开发验证，默认关闭]`
+
+`0074_app_safety_appeals.sql` 和 App API v2 `1.7.0` 在 Message-2 上增加举报结论独立复核闭环：
+
+- 仅本人举报的 `no_violation` 结论可申请 `report_no_violation_review`；请求必须携带当前举报 `version`，同一举报结论版本最多一条申诉。
+- 观看者只提交 1–500 字说明，不上传媒体或证据。申请窗口、策略状态和 production-ready 由服务端版本化策略决定，客户端不得本地推导。
+- 原举报结论管理员不能领取对应申诉；管理员领取后才可按 `appeal_review` 目的读取申诉详情，领取、敏感读取和结论都写审计。
+- `upheld` 维持原举报结论；`changed` 在同一 D1 条件批次中把原举报重开为 `investigating`、分配给复核管理员并更新申诉，不自动认定违规或执行安全动作。
+- `APP_SAFETY_APPEALS_ENABLED`、`APP_SAFETY_APPEALS_ADMIN_ENABLED` 与 `APP_SAFETY_APPEALS_PRODUCTION_READY` 相互独立；production/dev 当前全部关闭。开发策略的 30 天窗口不是生产承诺，且策略引用未关闭的保留决策。
+
+完整跨仓边界与验收要求见 `docs/app/SAFETY_2_APPEAL_INTEGRATION.md`。
+
 ### 速率限制 `[当前实现 / 外部配置]`
 
 当前实现分两层：
@@ -626,6 +638,19 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 | `app_messaging_runtime_controls` | 全局暂停、容量、租约和保留引用 | 单例 scope、版本条件写；只有 owner 可修改且必须审计 |
 
 所有安全联动在 D1 条件批次中通过同一 mutation token 或前置消息事实串联。SQL 执行成功但条件未命中时，调用方必须检查幂等结果并返回冲突，不能把“零行变更”当作成功。
+
+### App Safety-2 申诉表族 `[开发验证，默认关闭]`
+
+`0074_app_safety_appeals.sql` 不创建举报、申诉或管理员业务 seed：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_safety_appeal_policies` | 版本化申请窗口、文本上限和保留策略引用 | development 与 production-ready 分离；生产策略必须引用已就绪保留策略 |
+| `app_safety_appeals` | 举报结论复核权威状态 | 举报 ID + 原结论版本唯一；固定申诉类型；原审核人与复核人分离；单调 version/mutation token |
+| `app_safety_appeal_events` | 用户可见与内部复核时间线 | 申诉内 sequence 唯一；actor 类型与账号/管理员字段组合受 CHECK 限制 |
+| `app_safety_appeal_idempotency` | 观看者创建、管理员领取和结论幂等结果 | actor scope + operation + key 唯一；绑定规范化请求哈希和结果版本 |
+
+`changed` 路径通过 D1 `batch()` 串联举报更新、举报事件、申诉更新、申诉事件、幂等结果和审计；后续语句依赖前序 mutation token。批次完成后仍必须读取幂等结果与目标版本确认条件命中，零行更新不能视为成功。
 
 ### media_assets
 
