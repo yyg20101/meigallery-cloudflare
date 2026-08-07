@@ -289,7 +289,7 @@ export async function approveAdminAppMembershipApplication(
 ): Promise<{ application: AdminAppMembershipApplicationView; grant: AdminAppMembershipGrantResult }> {
   const normalizedKey = normalizeIdempotencyKey(idempotencyKey)
   const expectedVersion = normalizeExpectedVersion(body.expectedVersion)
-  let current = await getAdminApplicationRow(db, applicationId)
+  const current = await getAdminApplicationRow(db, applicationId)
   const grantInput = {
     userId: current.user_id,
     tierId: current.tier_id,
@@ -357,7 +357,6 @@ export async function approveAdminAppMembershipApplication(
         AND assigned_to = ? AND approval_request_key IS NULL
     `).bind(normalizedKey, now.toISOString(), now.toISOString(), applicationId, expectedVersion, adminId).run()
     if (Number(locked.meta.changes ?? 0) !== 1) throw versionConflict()
-    current = await getAdminApplicationRow(db, applicationId)
   }
 
   const grant = await grantAdminAppMembership(
@@ -642,10 +641,21 @@ function normalizeMessage(value: unknown) {
     throw new AppMembershipError(400, 'MEMBERSHIP_APPLICATION_MESSAGE_INVALID', '用户可见说明为必填')
   }
   const message = value.trim()
-  if (!message || message.length > 240 || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(message)) {
+  if (!message || message.length > 240 || hasControlCharacter(message)) {
     throw new AppMembershipError(400, 'MEMBERSHIP_APPLICATION_MESSAGE_INVALID', '用户可见说明长度或字符无效')
   }
   return message
+}
+
+function hasControlCharacter(value: string) {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0
+    return codePoint <= 8
+      || codePoint === 11
+      || codePoint === 12
+      || (codePoint >= 14 && codePoint <= 31)
+      || codePoint === 127
+  })
 }
 
 function normalizeVisibleNote(value: unknown) {

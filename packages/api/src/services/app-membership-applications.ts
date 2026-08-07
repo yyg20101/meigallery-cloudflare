@@ -546,11 +546,22 @@ function normalizeStatement(value: unknown): string | null {
   if (!normalized) return null
   if (
     normalized.length > APP_MEMBERSHIP_APPLICATION_MAX_STATEMENT_LENGTH
-    || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(normalized)
+    || hasControlCharacter(normalized)
   ) {
     throw new AppMembershipError(400, 'MEMBERSHIP_APPLICATION_INPUT_INVALID', '申请说明包含无效字符或超过长度限制')
   }
   return normalized
+}
+
+function hasControlCharacter(value: string) {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0
+    return codePoint <= 8
+      || codePoint === 11
+      || codePoint === 12
+      || (codePoint >= 14 && codePoint <= 31)
+      || codePoint === 127
+  })
 }
 
 function normalizeContactWindow(value: unknown): AppMembershipContactWindow {
