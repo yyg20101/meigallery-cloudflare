@@ -8,13 +8,13 @@ async function readMigration(name: string) {
 }
 
 describe('数据库迁移契约', () => {
-  it('migration 索引从 0001 到 0074 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0075 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 74 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 75 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
   })
 
@@ -58,6 +58,20 @@ describe('数据库迁移契约', () => {
     expect(sql).toContain('original_decision_admin_id')
     expect(sql).not.toMatch(/INSERT INTO\s+app_safety_appeals/iu)
     expect(sql).not.toMatch(/UPDATE\s+app_safety_reports/iu)
+  })
+
+  it('0075 只建立会员申请结构，不预置申请、发放权益或开启会员目录', async () => {
+    const sql = await readMigration('0075_app_membership_applications.sql')
+
+    expect(sql).toContain('CREATE TABLE app_membership_applications')
+    expect(sql).toContain('CREATE TABLE app_membership_application_events')
+    expect(sql).toContain('CREATE TABLE app_membership_application_requests')
+    expect(sql).toContain('idx_app_membership_applications_one_active_per_user')
+    expect(sql).toContain("contact_method = 'verified_email'")
+    expect(sql).toContain('REFERENCES app_membership_grants(id)')
+    expect(sql).not.toMatch(/INSERT INTO\s+app_membership_applications/iu)
+    expect(sql).not.toMatch(/INSERT INTO\s+app_membership_grants/iu)
+    expect(sql).not.toMatch(/UPDATE\s+app_membership_catalog_versions/iu)
   })
 
   it('0071 只写开发会员目录，不迁移旧会员或预发放账号权益', async () => {
