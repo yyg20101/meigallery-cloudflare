@@ -15,6 +15,7 @@ App 版本：1.0
 - [Message-3 站内通知与可靠到达跨仓交付基线](./MESSAGE_3_NOTIFICATION_INTEGRATION.md)：冻结五类通知、D1 Outbox、固定安全模板、HTTP 拉取、未读/已读、偏好、受控目标、后台运行台与生产门禁。
 - [Wallet-1 金币账本跨仓交付基线](./WALLET_1_LEDGER_INTEGRATION.md)：冻结追加式账本、管理员单笔调币与独立复核、用户只读余额/明细、KMP/Nuxt/API 边界和生产门禁。
 - [Wallet-1 dev 迁移与验收 Runbook](./WALLET_1_DEV_VALIDATION_RUNBOOK.md)：定义仓库外备份、短期 manifest、部署硬门禁、迁移后只读验收、一次性写入 smoke 和事故恢复边界。
+- [Wallet-1 一次性功能验收 Runbook](./WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md)：定义一次性 D1 + 临时 Worker、机器 gate、16 类 HTTP/D1 断言、Worker → D1 自动销毁、聚合证据与恢复命令。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终状态和 169 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
 - [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、92 页/349 状态覆盖、2,284 个有效交互动作、排版与 Icon 修正、QA 结果和交付门禁。
@@ -112,6 +113,7 @@ App 版本：1.0
 | [Safety-2 独立复核跨仓集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) | 举报结论复核的产品边界、服务端状态机、管理员职责分离、KMP 交互和上线门禁 |
 | [Message-3 站内通知与可靠到达跨仓交付基线](./MESSAGE_3_NOTIFICATION_INTEGRATION.md) | 站内通知事件、Outbox、模板、未读/已读、偏好、受控目标、KMP 页面、后台运行台和启用门禁 |
 | [Wallet-1 金币账本跨仓交付基线](./WALLET_1_LEDGER_INTEGRATION.md) | 本人余额/明细、追加式分录、管理员单笔调币、独立复核、完整冲正、KMP 页面和启用门禁 |
+| [Wallet-1 一次性功能验收 Runbook](./WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md) | 合成数据隔离环境、短期授权、完整 HTTP/D1 验收、自动销毁、聚合证据和失败恢复 |
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
 | [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) | 固化 Figma 最终文件、排版与 Icon 一致性、92 页/349 状态覆盖、原型连线、QA 和交付门禁 |
 | [Figma Design System Phase 1](./FIGMA_DESIGN_SYSTEM_PHASE1.md) | Figma 变量、跨端代码映射、Noto Sans SC 排版、基础效果与校验证据 |

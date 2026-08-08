@@ -186,7 +186,7 @@ export async function searchAdminAppWalletAccounts(
            users.status AS account_status, wallet.balance, wallet.sequence,
            wallet.status AS wallet_status, wallet.last_entry_at
     FROM app_account_security security
-    JOIN users ON users.id = security.user_id
+    JOIN users ON users.id = security.account_id
     LEFT JOIN app_wallets wallet ON wallet.account_id = users.id
     WHERE (? = '' OR security.account_public_id = ? OR users.email LIKE ? ESCAPE '\\' OR users.nickname LIKE ? ESCAPE '\\')
     ORDER BY COALESCE(wallet.updated_at, users.created_at) DESC, users.id DESC
@@ -838,7 +838,7 @@ async function requireAccount(db: D1Database, accountPublicId: string): Promise<
            users.status AS account_status, wallet.balance, wallet.sequence,
            wallet.status AS wallet_status, wallet.last_entry_at
     FROM app_account_security security
-    JOIN users ON users.id = security.user_id
+    JOIN users ON users.id = security.account_id
     LEFT JOIN app_wallets wallet ON wallet.account_id = users.id
     WHERE security.account_public_id = ?
     LIMIT 1
@@ -900,7 +900,7 @@ function adjustmentSelect() {
            wallet.status AS wallet_status, wallet.last_entry_at
     FROM app_wallet_adjustments adjustment
     JOIN users account ON account.id = adjustment.account_id
-    JOIN app_account_security security ON security.user_id = account.id
+    JOIN app_account_security security ON security.account_id = account.id
     JOIN users requester ON requester.id = adjustment.requested_by
     LEFT JOIN users reviewer ON reviewer.id = adjustment.reviewed_by
     LEFT JOIN app_wallets wallet ON wallet.account_id = account.id

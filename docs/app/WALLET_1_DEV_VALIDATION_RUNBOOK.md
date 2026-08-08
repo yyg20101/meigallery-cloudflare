@@ -4,7 +4,7 @@
 
 适用范围：独立 `dev` D1 `meigallery-db-dev`、API Worker `meigallery-api-dev`
 
-状态：工具与门禁已就绪；尚未获准执行远端 migration、写入合成账务数据或开启任何钱包能力
+状态：共享 dev 迁移门禁、一次性 D1 + 临时 Worker 功能 smoke 工具与失败恢复均已就绪；所有远程执行 gate 仍关闭，尚未执行 migration、创建隔离资源、写入合成账务数据或开启任何钱包能力
 
 ## 1. 目标与非目标
 
@@ -51,7 +51,7 @@
 
 - 当前分支为 `dev`，已提交的 tracked worktree 干净；
 - 本次只安装 schema，所有 Wallet-1 与 Message-3 运行时开关继续为 `false`；
-- 已选择一次性 D1 + 临时 Worker 作为功能写入 smoke 环境；
+- 一次性 D1 + 临时 Worker 方案已按 `WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md` 评审，机器 gate 获得有期限的书面批准；
 - 变更窗口内没有其他 dev migration 或 D1 写入；
 - 操作人知道迁移失败、只读验收失败和 Worker 部署失败分别如何停止，而不是盲目 restore。
 
@@ -119,17 +119,22 @@ corepack pnpm verify:wallet1:schema:dev
 
 ## 8. 一次性环境功能 smoke
 
-功能写入 smoke 另立任务，最低覆盖：
+一次性环境的创建、完整 HTTP 验收、自动销毁和恢复工具已完成，执行入口为：
 
-- 两个不同管理员的申请与独立复核；
-- 加币、扣币、补偿、拒绝、余额不足、重复幂等键和业务引用冲突；
-- 预览后余额变化的并发冲突；
-- 一次完整冲正及二次冲正拒绝；
-- 分录、事件和复核记录 UPDATE/DELETE 被 D1 拒绝；
-- 通知生成关闭时不写 Outbox，受控开启时只生成本人必要通知；
-- API、Nuxt 和 KMP 的真实 HTTP 契约一致性。
+```bash
+corepack pnpm smoke:wallet1:disposable -- \
+  --confirm-disposable=wallet1-isolated-smoke
+```
 
-一次性环境必须从同一 commit 建库、按完整 migration 顺序初始化、只使用合成用户和合成管理员，并在验收后销毁数据库与临时 Worker。测试结果只记录匿名 ID、断言和数量，不保存访问 Token 或内部备注正文。
+当前机器 gate 保持 `remoteSmokeAuthorized=false`，所以该命令只会 fail closed，不会创建远程资源。未来获得 OQ-018、OQ-020、OQ-024 书面结论、短期授权和当次用户批准后，工具才会：
+
+- 从同一 `origin/dev` commit 创建一次性 D1 并应用完整 migration；
+- 部署只绑定该 D1、没有 route/R2/Queue/Email/secret 的临时 Worker；
+- 使用三个合成账号覆盖零余额、请求/批准幂等、自批拒绝、独立复核、负余额拦截、拒绝、旧预览冲突、完整冲正、二次冲正拒绝、通知双门禁和不可变 trigger；
+- 通过真实 HTTP API 产生账本事实，D1 直连只做策略切换、不可变验证和聚合取证；
+- 无论通过或失败都先删除 Worker、再删除 D1；销毁成功后只保留仓库外聚合证据。
+
+完整 16 项验收矩阵、资源命名、30 分钟边界、证据最小化和恢复命令见 `WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md`。测试不会保存访问 Token、fixture SQL、内部备注正文、资源名或 D1 UUID；只有销毁失败时才暂存严格受限的恢复 manifest。
 
 ## 9. 失败处理
 
@@ -139,16 +144,18 @@ corepack pnpm verify:wallet1:schema:dev
 | migration apply 失败 | 当前失败 migration 由 D1 回滚；此前已成功 migration 可能保留 | 停止部署，重新列出 migration、核对 D1 与 SQL 备份，不立即打开任何开关 |
 | Worker 部署失败 | schema 可能已安装，旧 Worker 仍可能运行 | 保持所有钱包开关关闭，修复 Worker 后重新部署并执行只读验收 |
 | 只读验收失败 | schema/Worker 可能不一致，但钱包仍关闭 | 保存失败代码和查询证据，停止后续；由变更负责人决定前向修复或事故恢复 |
+| 一次性 smoke 业务失败 | 只存在合成数据 | 工具先删 Worker、再删 D1，只保留聚合失败证据；修复后必须使用新 run ID |
+| 一次性资源销毁失败 | 临时 Worker 或 D1 可能残留 | 使用工具输出的严格恢复 manifest/confirm-destroy 命令继续清理，不复用到共享 dev |
 | 误写共享 dev 不可变账本 | 普通 DELETE 无法清理 | 立即停止其他写入并升级为事故；不得自行 restore 或篡改 trigger |
 
 D1 每个 migration 失败时会回滚该 migration，但此前成功的 migration 不会自动撤销；迁移状态必须重新读取。D1 Time Travel 会自动维护恢复能力，但 restore 是覆盖性操作。详细行为以 Cloudflare 官方的 [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)、[Wrangler D1 commands](https://developers.cloudflare.com/d1/wrangler-commands/) 和 [Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/) 为准。
 
 ## 10. 本阶段完成定义
 
-当前阶段完成于“工具、门禁、文档和本地测试就绪”。进入远端 schema 安装阶段前仍需：
+当前阶段完成于“共享 dev 门禁、一次性功能 smoke、失败恢复、文档和本地测试就绪”。进入任何远端阶段前仍需：
 
 1. OQ-018、OQ-020、OQ-024 有书面最终结论；
-2. 一次性 D1 + 临时 Worker 的创建、验收和销毁方案完成评审；
+2. `WALLET_1_DISPOSABLE_SMOKE_GATE.json` 获得与书面结论一致的短期批准，并先完成一次实际隔离 smoke；
 3. 明确变更窗口、操作人、复核人和事故负责人；
 4. 重新生成当次有效的 SQL 备份、bookmark 和短期 manifest；
 5. 用户再次明确批准执行 dev 远端变更。

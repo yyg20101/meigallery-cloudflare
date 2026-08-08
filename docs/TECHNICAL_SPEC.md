@@ -217,8 +217,10 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - KMP 客户端只实现余额和明细查询，不存在充值、支付、消费、赠礼、装扮购买、转赠、兑换、转账、提现或用户申诉入口；未知 capability、方向、原因或余额关系一律安全拒绝。
 - `deploy.sh` 发现 `0077` 待执行时对 production 无条件阻断；dev 必须提供由 `prepare-dev-wallet1.mjs` 生成且仍有效的仓库外 SQL/manifest，并显式设置一次性放行变量。migration 和 Worker 部署完成后自动运行 `verify-dev-wallet1-schema.mjs`，只读校验 commit、契约、关闭能力、17 张预期表、15 个 trigger、安全策略、空业务账本和零钱包通知 Outbox。
 - 已生效分录及复核事件不能普通删除，因此共享 dev 不承担写入型功能 smoke；加扣币、复核、冲正和通知恢复使用一次性 D1 + 临时 Worker，测试结束销毁整套资源。共享 dev Time Travel restore 只属于独占维护窗口下的事故恢复，不是测试清理手段。
+- `run-wallet1-disposable-smoke.mjs` 以机器 gate、`HEAD==origin/dev`、显式确认和批准的数据位置为前置，只生成单 D1 binding 的 workers.dev 配置。它从真实 migration 建空库，以三个合成会话执行 16 类 HTTP/D1 断言，并在成功或失败时固定按 Worker → D1 清理；凭证不落盘，成功清理后只保留聚合证据。当前 gate 为未授权状态，工具和测试完成不构成远程执行授权。
+- Wallet 管理查询统一以 `app_account_security.account_id` 连接 `users.id`；测试 fixture 已与 `0069_app_account_access.sql` 的真实列契约对齐，不再使用会掩盖空库联调错误的 `user_id` 简化列。
 
-完整跨仓边界与启用清单见 `docs/app/WALLET_1_LEDGER_INTEGRATION.md`，dev 迁移操作见 `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`。
+完整跨仓边界与启用清单见 `docs/app/WALLET_1_LEDGER_INTEGRATION.md`，共享 dev 迁移操作见 `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`，隔离功能验收见 `docs/app/WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md`。
 
 ### 速率限制 `[当前实现 / 外部配置]`
 

@@ -75,7 +75,7 @@ beforeEach(async () => {
       (2, 'viewer-two@example.com', '观看者二号', 'active', '2026-08-08T00:00:00.000Z'),
       (10, 'admin-one@example.com', '管理员甲', 'active', '2026-08-08T00:00:00.000Z'),
       (11, 'admin-two@example.com', '管理员乙', 'active', '2026-08-08T00:00:00.000Z');
-    INSERT INTO app_account_security (user_id, account_public_id) VALUES
+    INSERT INTO app_account_security (account_id, account_public_id) VALUES
       (1, 'acc_viewer_one'),
       (2, 'acc_viewer_two');
   `))
@@ -330,7 +330,7 @@ const BASE_SCHEMA = `
     created_at TEXT NOT NULL
   );
   CREATE TABLE app_account_security (
-    user_id INTEGER PRIMARY KEY,
+    account_id INTEGER PRIMARY KEY,
     account_public_id TEXT NOT NULL UNIQUE
   );
   CREATE TABLE admin_audit_logs (

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "wallet1-disposable-smoke-gate",
+  "remoteSmokeAuthorized": false,
+  "authorization": {
+    "scope": "wallet1_disposable_synthetic_smoke",
+    "status": "unresolved",
+    "approvedAt": null,
+    "expiresAt": null,
+    "approvedBy": []
+  },
+  "decisions": {
+    "OQ-018": {
+      "status": "unresolved",
+      "scope": "wallet1_disposable_synthetic_smoke",
+      "approvedAt": null,
+      "approvedBy": [],
+      "requiredConclusion": "确认仅合成数据的一次性验证仍执行双人复核、禁止负余额、禁止批量调币，并明确异常处置责任。"
+    },
+    "OQ-020": {
+      "status": "unresolved",
+      "scope": "wallet1_disposable_synthetic_smoke",
+      "approvedAt": null,
+      "approvedBy": [],
+      "requiredConclusion": "确认运行数据随一次性 D1 销毁，只在仓库外保留聚合证据，不保留凭证、SQL 或逐笔业务数据。"
+    },
+    "OQ-024": {
+      "status": "unresolved",
+      "scope": "wallet1_disposable_synthetic_smoke",
+      "approvedAt": null,
+      "approvedBy": [],
+      "requiredConclusion": "为一次性 D1 明确批准 location 或 jurisdiction；不得由脚本猜测数据位置。"
+    }
+  },
+  "placement": {
+    "mode": "unresolved",
+    "value": null
+  },
+  "resourcePolicy": {
+    "syntheticDataOnly": true,
+    "evidenceMode": "aggregate_only",
+    "maximumLifetimeMinutes": 30,
+    "requireIndependentReview": true,
+    "allowNegativeBalance": false,
+    "batchAdjustmentsEnabled": false
+  }
+}

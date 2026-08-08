@@ -67,7 +67,7 @@ dev 使用独立 Worker、D1 和 R2，不绑定真实广告 Queue，不执行 Cr
 
 ### Wallet-1 dev migration
 
-`0077_app_wallet_ledger.sql` 尚未获准远端执行。未来关闭 OQ-018、OQ-020、OQ-024、完成一次性功能 smoke 方案并再次获得明确批准后，先生成仓库外短期备份清单：
+`0077_app_wallet_ledger.sql` 尚未获准远端执行。一次性 D1 + 临时 Worker 的完整功能 smoke、失败自动销毁和恢复工具已经完成，但机器 gate 当前保持关闭，尚未创建任何远程资源。未来关闭 OQ-018、OQ-020、OQ-024 后，应先按 `docs/app/WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md` 获得短期授权并完成隔离 smoke；通过不自动放行共享 dev。随后再次获得明确批准，才生成仓库外短期备份清单：
 
 ```bash
 corepack pnpm prepare:wallet1:dev
@@ -87,7 +87,7 @@ WALLET1_DEV_READINESS_MANIFEST=/绝对路径/到/manifest.json \
 corepack pnpm verify:wallet1:schema:dev
 ```
 
-production 只要仍有 `0077` 待执行就会被部署脚本硬阻断，不能沿用 dev 放行变量。共享 dev 不执行会产生不可删除分录的功能 smoke；完整流程、失败处理和 Time Travel 边界见 `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`。
+production 只要仍有 `0077` 待执行就会被部署脚本硬阻断，不能沿用 dev 放行变量。共享 dev 不执行会产生不可删除分录的功能 smoke；共享 dev 的完整流程、失败处理和 Time Travel 边界见 `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`，一次性功能验收见 `docs/app/WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md`。
 
 ## CI
 

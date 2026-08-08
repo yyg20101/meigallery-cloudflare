@@ -127,4 +127,4 @@ App 版本：1.0
 
 ## 9. 下一批应关闭的决策
 
-客户需求确认书签署前先关闭 OQ-034、OQ-035 和 OQ-036。进入 M0 技术细化前优先关闭 OQ-001、OQ-002、OQ-003、OQ-006、OQ-007、OQ-020、OQ-024、OQ-026 和 OQ-030。进入 App 1.0 平台话题与运营实现前关闭 OQ-010、OQ-014、OQ-018、OQ-021、OQ-022、OQ-028 和 OQ-033；Safety-2 独立环境启用前同时关闭 OQ-037。Wallet-1 远端 schema/写入阶段当前单独受 `WALLET_1_DEV_VALIDATION_RUNBOOK.md` 约束，OQ-018、OQ-020、OQ-024 未形成书面结论前不得设置 dev migration 放行变量。OQ-013、OQ-015、OQ-017、OQ-019 和 OQ-032 延后到未来在线商业化或推送立项，不阻塞 App 1.0。
+客户需求确认书签署前先关闭 OQ-034、OQ-035 和 OQ-036。进入 M0 技术细化前优先关闭 OQ-001、OQ-002、OQ-003、OQ-006、OQ-007、OQ-020、OQ-024、OQ-026 和 OQ-030。进入 App 1.0 平台话题与运营实现前关闭 OQ-010、OQ-014、OQ-018、OQ-021、OQ-022、OQ-028 和 OQ-033；Safety-2 独立环境启用前同时关闭 OQ-037。Wallet-1 远端 schema/写入阶段当前受 `WALLET_1_DEV_VALIDATION_RUNBOOK.md` 与 `WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md` 双重约束；OQ-018、OQ-020、OQ-024 未形成书面结论前，机器 gate 保持未授权，不得创建一次性资源或设置 dev migration 放行变量。OQ-013、OQ-015、OQ-017、OQ-019 和 OQ-032 延后到未来在线商业化或推送立项，不阻塞 App 1.0。
