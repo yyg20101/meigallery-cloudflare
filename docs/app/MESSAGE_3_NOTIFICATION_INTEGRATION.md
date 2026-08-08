@@ -45,13 +45,13 @@ Message-3 建立“业务状态变化 → D1 原子 Outbox → 固定安全模�
 | 举报 | `safety.report_actioned`、`safety.report_no_violation`、`safety.report_closed` | `system_security` | 本人举报 |
 | 独立复核 | `safety.appeal_upheld`、`safety.appeal_changed`、`safety.appeal_closed` | `system_security` | 本人申诉 |
 | 账号安全 | `account.session_logged_in`、`account.device_revoked`、`account.refresh_token_reuse_detected` | `system_security` | 本人账号安全记录 |
+| 金币账本 | `wallet.entry_posted` | `membership_coin` | 本人钱包分录 |
 
 业务表触发器只有在 D1 策略 `generation_enabled=1` 时才写 Outbox，因此默认 migration 不会对已有业务数据或新写入产生通知。会员到期没有原始写事件，由定时恢复任务按策略 `effective_at` 之后的到期记录补建稳定 Outbox；它不会扫描或补发策略生效前的历史。
 
 ### 3.2 已预留但保持 inactive
 
 - `interaction.followed_profile_updated`
-- `wallet.entry_posted`
 - `data.export_ready`
 - `account.deletion_updated`
 - `marketing.campaign`
@@ -112,12 +112,12 @@ KMP 只有在 Auth、通知开关、策略 ID、HTTP 传输、分页范围和完
 
 ## 6. 受控目标动作
 
-当前契约预留以下目标：会话、人物资料、会员、会员申请、钱包分录、举报、申诉、账号安全、数据任务和无目标。服务端在每次响应时重新验证：
+当前契约支持以下目标：会话、人物资料、会员、会员申请、钱包分录、举报、申诉、账号安全、数据任务和无目标。服务端在每次响应时重新验证：
 
 - 会话、会员、申请、举报、申诉和账号安全记录必须属于当前账号。
 - 人物资料必须仍是公开且可见的权威投影。
 - 对应业务 capability 必须当前可用。
-- 钱包和数据任务尚未交付，目标一律返回不可用。
+- Wallet-1 开启时，钱包分录必须属于当前账号且仍为 posted；数据任务尚未交付，目标继续返回不可用。
 
 目标不可用时通知正文仍可安全读取，但 `available=false`，客户端不执行动作。客户端当前动作只进入已有权威页面；通知中的历史文案不直接改变会员、消息或安全状态。
 
@@ -178,5 +178,5 @@ Nuxt 路由：`/admin/app/notifications`。
 
 - dev/production `0076` migration、远程 Worker 部署、真实 HTTP smoke、真机 UI 与多设备验收。
 - OQ-020、生产模板审批、正式告警阈值、值班与数据权利 Runbook。
-- 实时刷新信号、APNs/FCM、钱包、关注更新、数据导出/注销和营销事件的业务启用。
+- 实时刷新信号、APNs/FCM、关注更新、数据导出/注销和营销事件的业务启用；Wallet-1 仍需独立完成远端 migration 与启用门禁。
 - 模板/策略写后台、受控补发/撤回、统计看板和 production 发布。

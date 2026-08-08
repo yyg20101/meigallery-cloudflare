@@ -32,6 +32,7 @@ const navItems = [
   { to: '/admin/app/persons', label: 'App 人物供给', icon: 'users' },
   { to: '/admin/app/conversations', label: 'App 平台话题', icon: 'message' },
   { to: '/admin/app/notifications', label: 'App 站内通知', icon: 'message' },
+  { to: '/admin/app/wallets', label: 'App 金币钱包', icon: 'ticket' },
   { to: '/admin/app/membership/applications', label: 'App 会员申请', icon: 'ticket' },
   { to: '/admin/app/safety', label: 'App 安全审核', icon: 'clipboard' },
   { to: '/admin/app/appeals', label: 'App 申诉复核', icon: 'clipboard' },

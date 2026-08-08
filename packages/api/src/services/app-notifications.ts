@@ -49,6 +49,7 @@ export interface AppNotificationTargetCapabilities {
   safetyReports: boolean
   safetyAppeals: boolean
   accountSecurity: boolean
+  wallet: boolean
 }
 
 export interface AppNotificationListQuery {
@@ -609,6 +610,7 @@ export async function drainAppNotificationOutbox(
       }
 
       const notificationId = await stableNotificationId(row.outbox_id)
+      const copy = await notificationCopyForDelivery(db, row)
       await db.batch([
         db.prepare(`
           INSERT OR IGNORE INTO app_notifications (
@@ -624,9 +626,9 @@ export async function drainAppNotificationOutbox(
           row.event_type,
           row.template_id,
           row.template_version_code,
-          row.title_text,
-          row.summary_text,
-          row.body_text,
+          copy.title,
+          copy.summary,
+          copy.body,
           row.target_type,
           row.target_id,
           row.action,
@@ -911,6 +913,7 @@ function targetCapabilityEnabled(
   if (type === 'safety_report') return capabilities.safetyReports
   if (type === 'safety_appeal') return capabilities.safetyAppeals
   if (type === 'account_security') return capabilities.accountSecurity
+  if (type === 'wallet_entry') return capabilities.wallet
   return false
 }
 
@@ -927,6 +930,7 @@ async function targetBelongsToAccount(
   if (type === 'safety_report') query = 'SELECT 1 AS found FROM app_safety_reports WHERE id = ? AND account_id = ?'
   if (type === 'safety_appeal') query = 'SELECT 1 AS found FROM app_safety_appeals WHERE id = ? AND account_id = ?'
   if (type === 'account_security') query = 'SELECT 1 AS found FROM app_account_security_events WHERE id = ? AND account_id = ?'
+  if (type === 'wallet_entry') query = 'SELECT 1 AS found FROM app_wallet_entries WHERE id = ? AND account_id = ? AND status = \'posted\''
   if (type === 'person_profile') {
     query = `
       SELECT 1 AS found
@@ -938,6 +942,49 @@ async function targetBelongsToAccount(
   }
   if (!query) return false
   return Boolean(await db.prepare(`${query} LIMIT 1`).bind(targetId, accountId).first<{ found: number }>())
+}
+
+async function notificationCopyForDelivery(
+  db: D1Database,
+  row: OutboxDeliveryRow,
+): Promise<{ title: string; summary: string; body: string }> {
+  if (row.event_type !== 'wallet.entry_posted') {
+    return { title: row.title_text, summary: row.summary_text, body: row.body_text }
+  }
+  const entry = await db.prepare(`
+    SELECT direction, amount, reason_code
+    FROM app_wallet_entries
+    WHERE id = ? AND account_id = ? AND status = 'posted'
+    LIMIT 1
+  `).bind(row.target_id, row.account_id).first<{
+    direction: string
+    amount: number
+    reason_code: string
+  }>()
+  if (!entry || !Number.isSafeInteger(entry.amount) || entry.amount < 1) {
+    throw new Error('WALLET_NOTIFICATION_ENTRY_UNAVAILABLE')
+  }
+  const direction = entry.direction === 'credit'
+    ? '增加'
+    : entry.direction === 'debit'
+      ? '扣减'
+      : null
+  if (!direction) throw new Error('WALLET_NOTIFICATION_ENTRY_INVALID')
+  const reason = walletNotificationReasonLabel(entry.reason_code)
+  const summary = `金币已${direction} ${entry.amount} · ${reason}`
+  return {
+    title: `金币已${direction}`,
+    summary,
+    body: `${summary}。打开金币明细可核对权威余额、业务编号与冲正关系。金币当前不可购买、消费、转赠、兑换或提现。`,
+  }
+}
+
+function walletNotificationReasonLabel(value: string) {
+  if (value === 'manual_adjustment') return '管理员调整'
+  if (value === 'service_compensation') return '平台服务补偿'
+  if (value === 'correction') return '账务纠正'
+  if (value === 'reversal') return '原分录冲正'
+  throw new Error('WALLET_NOTIFICATION_REASON_INVALID')
 }
 
 function deriveNotificationState(

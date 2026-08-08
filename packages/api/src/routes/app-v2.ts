@@ -112,6 +112,17 @@ import {
   updateAppNotificationPreferences,
   type UpdateAppNotificationPreferencesInput,
 } from '../services/app-notifications'
+import {
+  APP_WALLET_DISCLAIMER,
+  APP_WALLET_MAX_PAGE_SIZE,
+  AppWalletError,
+  getAppWalletEntry,
+  getAppWalletRuntimeConfig,
+  getAppWalletSummary,
+  listAppWalletEntries,
+  parseAppWalletEntryListQuery,
+  requireAppWalletEnabled,
+} from '../services/app-wallet'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -320,6 +331,61 @@ appV2Routes.put('/me/notification-preferences', async (c) => {
   }
   catch (error) {
     return appNotificationError(c, error)
+  }
+})
+
+appV2Routes.get('/me/wallet', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    return appApiSuccess(c, await getAppWalletSummary(
+      c.env.DB,
+      principal.accountInternalId,
+      walletConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appWalletError(c, error)
+  }
+})
+
+appV2Routes.get('/me/wallet/entries', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const query = parseAppWalletEntryListQuery({
+      direction: c.req.query('direction'),
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppWalletEntries(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      walletConfig(c.env),
+      query,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appWalletError(c, error)
+  }
+})
+
+appV2Routes.get('/me/wallet/entries/:entryId', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    return appApiSuccess(c, await getAppWalletEntry(
+      c.env.DB,
+      principal.accountInternalId,
+      c.req.param('entryId'),
+      walletConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appWalletError(c, error)
   }
 })
 
@@ -955,6 +1021,7 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
   const messaging = getAppMessagingRuntimeConfig(env)
   const safety = getAppSafetyRuntimeConfig(env)
   const notifications = getAppNotificationRuntimeConfig(env)
+  const wallet = getAppWalletRuntimeConfig(env)
   return {
     product: 'meigallery',
     appVersion: '1.0',
@@ -974,6 +1041,7 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
       },
       messaging: auth.enabled && messaging.enabled,
       notifications: auth.enabled && notifications.enabled,
+      wallet: auth.enabled && wallet.enabled,
       safety: {
         reports: auth.enabled && safety.enabled,
         blocks: auth.enabled && safety.enabled,
@@ -1028,6 +1096,20 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
       maxPageSize: APP_NOTIFICATION_MAX_PAGE_SIZE,
       categories: [...APP_NOTIFICATION_CATEGORIES],
     },
+    wallet: {
+      policyVersion: wallet.policyId,
+      currencyCode: 'mei_coin',
+      displayName: '金币',
+      minorUnit: 0,
+      maxPageSize: APP_WALLET_MAX_PAGE_SIZE,
+      directions: ['credit', 'debit'],
+      disclaimer: APP_WALLET_DISCLAIMER,
+      payments: false,
+      recharge: false,
+      spending: false,
+      transfer: false,
+      withdrawal: false,
+    },
     safety: {
       reasonCatalogVersion: safety.reasonCatalogId,
       appealPolicyVersion: safety.appealPolicyId,
@@ -1050,6 +1132,7 @@ function notificationTargetCapabilities(env: Bindings) {
   const membership = getAppMembershipRuntimeConfig(env)
   const messaging = getAppMessagingRuntimeConfig(env)
   const safety = getAppSafetyRuntimeConfig(env)
+  const wallet = getAppWalletRuntimeConfig(env)
   return {
     messaging: auth.enabled && messaging.enabled,
     profiles: true,
@@ -1058,7 +1141,14 @@ function notificationTargetCapabilities(env: Bindings) {
     safetyReports: auth.enabled && safety.enabled,
     safetyAppeals: auth.enabled && safety.appealsEnabled,
     accountSecurity: auth.enabled,
+    wallet: auth.enabled && wallet.enabled,
   }
+}
+
+function walletConfig(env: Bindings) {
+  const config = getAppWalletRuntimeConfig(env)
+  requireAppWalletEnabled(config)
+  return config
 }
 
 function messagingConfig(env: Bindings) {
@@ -1112,6 +1202,16 @@ function appNotificationError(
   error: unknown,
 ) {
   if (error instanceof AppNotificationError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  throw error
+}
+
+function appWalletError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppWalletError) {
     return appApiError(c, error.status, error.code, error.message, error.retryable)
   }
   throw error

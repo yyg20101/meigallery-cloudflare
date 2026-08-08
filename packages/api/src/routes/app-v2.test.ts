@@ -37,7 +37,7 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.9.0')
+    expect(response.headers.get('x-contract-version')).toBe('1.10.0')
     expect(body.data.capabilities).toEqual({
       discovery: true,
       auth: false,
@@ -54,6 +54,7 @@ describe('App API v2 路由契约', () => {
       },
       messaging: false,
       notifications: false,
+      wallet: false,
       safety: {
         reports: false,
         blocks: false,
@@ -66,7 +67,60 @@ describe('App API v2 路由契约', () => {
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.9.0',
+      contractVersion: '1.10.0',
+    })
+  })
+
+  it('Wallet-1 使用独立开关且明确关闭全部交易能力', async () => {
+    const configured = createApp({}, {
+      APP_AUTH_ENABLED: 'true',
+      APP_AUTH_TERMS_VERSION: 'terms-1',
+      APP_AUTH_PRIVACY_VERSION: 'privacy-1',
+      APP_AUTH_PLATFORM_NOTICE_VERSION: 'platform-1',
+      APP_AUTH_ELIGIBILITY_VERSION: 'eligibility-1',
+      APP_AUTH_TERMS_URL: 'https://legal.test/terms',
+      APP_AUTH_PRIVACY_URL: 'https://legal.test/privacy',
+      APP_AUTH_PLATFORM_NOTICE_URL: 'https://legal.test/platform',
+      APP_AUTH_ELIGIBILITY_URL: 'https://legal.test/eligibility',
+      APP_WALLET_ENABLED: 'true',
+      APP_WALLET_POLICY_VERSION: 'wlp_app_1_0_wallet_1_dev_1',
+    })
+    const response = await configured.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      configured.env,
+      {} as ExecutionContext,
+    )
+    expect(await response.json()).toMatchObject({
+      data: {
+        capabilities: { wallet: true, payments: false },
+        wallet: {
+          policyVersion: 'wlp_app_1_0_wallet_1_dev_1',
+          currencyCode: 'mei_coin',
+          displayName: '金币',
+          minorUnit: 0,
+          maxPageSize: 40,
+          directions: ['credit', 'debit'],
+          payments: false,
+          recharge: false,
+          spending: false,
+          transfer: false,
+          withdrawal: false,
+        },
+      },
+    })
+
+    const production = createApp({}, {
+      ...configured.env,
+      APP_ENV: 'production',
+      APP_WALLET_PRODUCTION_READY: 'false',
+    })
+    const productionResponse = await production.app.fetch(
+      new Request('https://api.test/api/v2/app/bootstrap'),
+      production.env,
+      {} as ExecutionContext,
+    )
+    expect(await productionResponse.json()).toMatchObject({
+      data: { capabilities: { wallet: false } },
     })
   })
 
@@ -447,5 +501,9 @@ describe('App API v2 路由契约', () => {
     expect(contract).toContain('/api/v2/notifications/{notificationId}:')
     expect(contract).toContain('/api/v2/notifications/{notificationId}/read:')
     expect(contract).toContain('/api/v2/me/notification-preferences:')
+    expect(contract).toContain('/api/v2/me/wallet:')
+    expect(contract).toContain('/api/v2/me/wallet/entries:')
+    expect(contract).toContain('/api/v2/me/wallet/entries/{entryId}:')
+    expect(contract).toContain('version: 1.10.0')
   })
 })

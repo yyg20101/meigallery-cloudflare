@@ -202,6 +202,22 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整跨仓边界与启用清单见 `docs/app/MESSAGE_3_NOTIFICATION_INTEGRATION.md`。
 
+### Wallet-1 金币账本与管理员单笔调币 `[开发验证，默认关闭]`
+
+`0077_app_wallet_ledger.sql` 和 App API v2 `1.10.0` 建立最小追加式金币账本：
+
+- 每个 App 账号最多一个钱包；未发生过分录的账号读取时返回虚拟零余额，不因 GET 创建钱包、分录或调币申请。
+- 用户 API 只提供本人权威余额、按方向筛选的游标明细和分录详情。明细使用整数金币、服务端 sequence、前后余额、固定原因与安全业务引用，不返回管理员身份、内部备注或其他账号数据。
+- 管理员过渡路由 `/api/admin/app/wallets` 支持账号确认、加币、扣币、补偿和完整冲正的预览、申请、列表、详情及批准/拒绝；不提供批量、余额直改、自动修账、余额导入或复核绕过。
+- OQ-018 未关闭前全部申请强制另一管理员独立复核；发起人不能批准自己的申请。批准时重新校验账号、钱包状态、预览余额和 sequence，过期预览返回冲突，不沿用旧结果。
+- 生效操作在同一 D1 条件批次中追加不可变分录、更新钱包快照、记录复核与审计；数据库 trigger 阻止没有对应分录的余额变化，并禁止修改或删除已生效分录。
+- 扣币和冲正均禁止负余额；当前冲正只允许对一条未被冲正的原分录做一次完整反向分录，原记录永久保留。
+- 钱包分录生效后可复用 Message-3 `wallet.entry_posted` 必要通知；通知文案只由方向、数量和固定原因生成，不复制用户说明或内部备注。通知失败不回滚权威账本。
+- `APP_WALLET_ENABLED`、`APP_WALLET_ADMIN_ENABLED`、`APP_WALLET_POLICY_VERSION` 与 `APP_WALLET_PRODUCTION_READY` 是独立门禁，production/dev 当前均关闭；development 策略自身也保持 `adjustments_enabled=0`、未决风险/保留/数据位置状态。
+- KMP 客户端只实现余额和明细查询，不存在充值、支付、消费、赠礼、装扮购买、转赠、兑换、转账、提现或用户申诉入口；未知 capability、方向、原因或余额关系一律安全拒绝。
+
+完整跨仓边界与启用清单见 `docs/app/WALLET_1_LEDGER_INTEGRATION.md`。
+
 ### 速率限制 `[当前实现 / 外部配置]`
 
 当前实现分两层：

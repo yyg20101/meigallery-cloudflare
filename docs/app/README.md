@@ -109,6 +109,7 @@ App 版本：1.0
 | [API 与实时通信契约](./API_AND_REALTIME_CONTRACT.md) | API 资源、鉴权、幂等、消息事件和错误模型 |
 | [Safety-2 独立复核跨仓集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) | 举报结论复核的产品边界、服务端状态机、管理员职责分离、KMP 交互和上线门禁 |
 | [Message-3 站内通知与可靠到达跨仓交付基线](./MESSAGE_3_NOTIFICATION_INTEGRATION.md) | 站内通知事件、Outbox、模板、未读/已读、偏好、受控目标、KMP 页面、后台运行台和启用门禁 |
+| [Wallet-1 金币账本跨仓交付基线](./WALLET_1_LEDGER_INTEGRATION.md) | 本人余额/明细、追加式分录、管理员单笔调币、独立复核、完整冲正、KMP 页面和启用门禁 |
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
 | [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) | 固化 Figma 最终文件、排版与 Icon 一致性、92 页/349 状态覆盖、原型连线、QA 和交付门禁 |
 | [Figma Design System Phase 1](./FIGMA_DESIGN_SYSTEM_PHASE1.md) | Figma 变量、跨端代码映射、Noto Sans SC 排版、基础效果与校验证据 |

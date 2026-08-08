@@ -34,6 +34,7 @@ const CAPABILITIES: AppNotificationTargetCapabilities = {
   safetyReports: true,
   safetyAppeals: true,
   accountSecurity: true,
+  wallet: false,
 }
 
 let miniflare: Miniflare

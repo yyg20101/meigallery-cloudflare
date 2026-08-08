@@ -31,7 +31,7 @@
 - 已在同级独立仓库 `meigallery-client` 创建 KMP + Compose Multiplatform 最小技术脚手架；客户端与本仓库继续通过版本化契约协作，不放入当前 pnpm monorepo。
 - 客户端当前锁定 Kotlin 2.4.10、Compose Multiplatform 1.11.1、AGP 9.0.1、Gradle 9.6.1、JDK 21，Android `minSdk = 26`、`compileSdk/targetSdk = 36`。
 - 四个共享模块的 Android Host Test、Android Debug APK 和 iOS Simulator Kotlin/Native 编译均已通过；iOS Framework 本地链接仍被尚未接受的 Xcode 许可拦截，正式链接继续由 macOS CI 门禁验证。
-- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.9.0`，包含 production 默认关闭的 Auth-1、Interaction-1、Membership-1、Membership-2、Message-1、Message-2、Safety-2 独立复核与 Message-3 站内通知契约；dev 可按独立阶段受控联调，收藏、历史、钱包和媒体访问仍按域冻结。
+- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.10.0`，包含 production 默认关闭的 Auth-1、Interaction-1、Membership-1、Membership-2、Message-1、Message-2、Safety-2 独立复核、Message-3 站内通知与 Wallet-1 金币账本契约；dev 可按独立阶段受控联调，收藏、历史和媒体访问仍按域冻结。
 - 已新增 `0067_app_public_profile_projection.sql` 空读投影和 App API v2 查询实现，强制 `verified + published + authorization active/unexpired + visible + source gallery published`；migration 不含 seed、回填或 legacy 自动映射，尚未执行生产 migration 或部署生产路由。
 - KMP 客户端 M0 公共发现纵向切片已完成：capability、地区目录、推荐/热门/最新、地区筛选、游标分页、公开人物卡和基础详情均已接通；点击卡片会按稳定公开 ID 重新请求详情并复核最新公开资格，不直接信任列表快照。Android 模拟器已回归筛选、排序、详情错误/重试/成功和长列表，未发现崩溃、文字溢出或底部导航遮挡。正式应用 ID、会员、消息、钱包和媒体访问继续受各自门禁约束。
 - 已完成 M1 人物供给最小开发闭环：`0068_app_person_supply_workflow.sql` 创建空的 Person、资料、用途授权、认证和发布复核权威表；内容版本与并发锁版本分离，审批绑定具体内容版本，发布动作单向生成公开投影，暂停或撤销会立即使投影不可见。
@@ -74,6 +74,11 @@
 - Nuxt 新增 `/admin/app/notifications` 只读运行台，展示运行时/D1 双门禁、事件、模板和投递状态，不返回平台话题正文、申请说明、安全证据、内部备注或 Token。KMP “消息”页新增平台话题/站内通知切换、五类列表、详情、未读、分类全部已读和通知偏好；当前只使用 HTTP 手动拉取，不申请系统通知权限或声称实时到达。
 - Message-3 D1 定向测试覆盖默认关闭、Outbox 投影、固定安全文案、可选抑制/必要通知、未读与原子已读审计、目标失效和游标隔离；API/Web 全量测试、TypeScript/Nuxt 类型检查、Android Host Test/Debug APK 与 iOS Simulator Kotlin/Native 编译通过。本机 iOS Framework 链接仍被未接受的 Xcode 许可拦截，继续由 macOS CI 执行正式门禁。
 - production/dev 的四个通知开关保持关闭，`0076` 尚未执行远端 migration，也没有真实通知数据。OQ-020 未关闭，开发策略 `generation_enabled=0`、`retention_days=NULL`、`purge_enabled=0`；完整边界见 `docs/app/MESSAGE_3_NOTIFICATION_INTEGRATION.md`。
+- 已完成 Wallet-1 默认关闭的跨仓代码闭环：`0077_app_wallet_ledger.sql` 建立 development 策略、钱包快照、管理员调币申请、不可变分录、申请事件和独立复核记录；migration 不创建账号钱包、不导入旧余额、不写业务调币数据，也不开放批量或迁移入口。
+- App API v2 `1.10.0` 新增本人余额、方向筛选的游标明细和分录安全详情；空钱包只返回虚拟零余额，不因读取创建数据库记录。分录只展示固定原因、用户安全业务单号、前后余额和完整冲正关系，不返回内部备注或管理员身份。
+- Nuxt 新增 `/admin/app/wallets` 单笔调币工作台，支持账号确认、加币/扣币/补偿/完整冲正预览、幂等申请、另一管理员批准或拒绝。OQ-018 未关闭前所有申请强制独立复核、发起人不能自批、余额变化必须由新分录驱动，任何扣币均不得形成负余额。
+- KMP “我的”页新增只读金币入口、余额卡、全部/增加/扣减筛选、明细分页与冲正详情；capability、策略或稳定枚举矛盾时安全关闭。客户端没有充值、支付、消费、礼物、装扮购买、转赠、兑换、转账、提现或申诉动作。
+- Wallet-1 D1 定向测试已覆盖默认关闭、虚拟零钱包、负余额拒绝、独立复核、请求幂等、旧预览冲突、完整冲正、分录不可变、账号/游标隔离和必要通知目标。API 125 个测试文件/989 项、Web 60 个文件/301 项、脚本 38 项、lint、TypeScript/Nuxt 类型检查、Nuxt/Worker 构建、KMP Android Host Test/Debug APK 与 iOS Simulator Kotlin/Native 编译均通过；本机 Framework 链接仍因未接受 Xcode 许可被 `xcrun` 69 拦截，继续由 macOS CI 执行正式门禁。production/dev 的四个钱包开关保持关闭，`0077` 尚未执行远端 migration，也没有真实余额或调币记录；完整边界见 `docs/app/WALLET_1_LEDGER_INTEGRATION.md`。
 - 已完成移动端 49 页和管理后台 43 页的页面级产品设计。
 - Figma 最终文件已完成移动端 49 页/186 状态、管理后台 43 页/163 状态，共 92 个 Page ID/349 个状态；`30｜Prototype Flows` 覆盖 92 个流程预览。
 - Figma 页面内与流程动作合计 2,284 个，缺失目标为 0；移动端关键点击热区不足为 0；正式页未绑定文字样式、原始填充/描边、缺失字体和文字溢出均为 0。

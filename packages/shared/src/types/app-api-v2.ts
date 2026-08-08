@@ -1,6 +1,6 @@
 /**
  * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
- * Message-2 安全、Safety-2 申诉与 Message-3 站内通知契约。
+ * Message-2 安全、Safety-2 申诉、Message-3 站内通知与 Wallet-1 契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -11,7 +11,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.9.0'
+  contractVersion: '1.10.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -59,6 +59,7 @@ export interface AppBootstrapConfig {
     }
     messaging: boolean
     notifications: boolean
+    wallet: boolean
     safety: {
       reports: boolean
       blocks: boolean
@@ -122,6 +123,20 @@ export interface AppBootstrapConfig {
       label: string
       preference: 'optional' | 'required'
     }>
+  }
+  wallet: {
+    policyVersion: string
+    currencyCode: 'mei_coin'
+    displayName: '金币'
+    minorUnit: 0
+    maxPageSize: number
+    directions: Array<'credit' | 'debit'>
+    disclaimer: string
+    payments: false
+    recharge: false
+    spending: false
+    transfer: false
+    withdrawal: false
   }
   safety: {
     reasonCatalogVersion: string
@@ -592,6 +607,61 @@ export interface AppNotificationPreferences {
     systemSecurity: true
   }
   updatedAt: string
+}
+
+export type AppWalletDirection = 'credit' | 'debit'
+
+export type AppWalletEntryType =
+  | 'admin_credit'
+  | 'admin_debit'
+  | 'compensation'
+  | 'reversal'
+
+export type AppWalletReasonCode =
+  | 'manual_adjustment'
+  | 'service_compensation'
+  | 'correction'
+  | 'reversal'
+
+export interface AppWalletSummary {
+  currencyCode: 'mei_coin'
+  displayName: '金币'
+  balance: number
+  ledgerVersion: number
+  status: 'active' | 'frozen'
+  lastEntryAt: string | null
+  lastSyncedAt: string
+  disclaimer: string
+}
+
+export interface AppWalletEntrySummary {
+  entryId: string
+  publicReference: string
+  type: AppWalletEntryType
+  direction: AppWalletDirection
+  amount: number
+  reason: {
+    code: AppWalletReasonCode
+    label: string
+  }
+  userVisibleNote: string
+  balanceAfter: number
+  sequence: number
+  status: 'posted'
+  postedAt: string
+  originalEntryId: string | null
+  reversalEntryId: string | null
+}
+
+export interface AppWalletEntryDetail extends AppWalletEntrySummary {
+  balanceBefore: number
+  relatedEntry: null | {
+    entryId: string
+    publicReference: string
+    direction: AppWalletDirection
+    amount: number
+    postedAt: string
+  }
 }
 
 export interface AppPersonRegion {

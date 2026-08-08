@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.9.0
+  version: 1.10.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -10,7 +10,8 @@ info:
     话题始终由平台运营接收，不代表真人本人入驻或回复；Safety-2 仅支持本人举报“未发现违规”结论的一次文字复核申请。
     会员申请本身不产生 grant 或 entitlement，只有管理员正式发放成功后才显示已发放。
     Message-3 新增 HTTP pull 站内通知、服务端未读数、已读审计和可选分类偏好；通知只保存审核过的固定文案，
-    受控动作打开时必须重新校验权威业务状态。系统推送、实时通道、媒体消息、账号/金币等其他申诉、支付、金币和媒体访问仍未纳入本次契约。
+    受控动作打开时必须重新校验权威业务状态。Wallet-1 新增本人金币余额、追加式明细与分录详情；金币只记录管理员独立复核后的单笔调整，
+    不开放购买、消费、转赠、兑换、提现或支付。系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -27,6 +28,7 @@ tags:
   - name: Membership
   - name: Messaging
   - name: Notification
+  - name: Wallet
   - name: Safety
 paths:
   /api/v2/app/bootstrap:
@@ -1419,6 +1421,87 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/v2/me/wallet:
+    get:
+      tags: [Wallet]
+      operationId: getAppWallet
+      summary: 获取本人金币权威余额
+      description: 未发生过调币时返回虚拟零余额，不因读取创建钱包记录。
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 当前余额、账本版本和能力边界声明
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/wallet/entries:
+    get:
+      tags: [Wallet]
+      operationId: listAppWalletEntries
+      summary: 分页获取本人金币明细
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [all, credit, debit]
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 只包含已入账的追加式分录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletEntryListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/wallet/entries/{entryId}:
+    get:
+      tags: [Wallet]
+      operationId: getAppWalletEntry
+      summary: 获取本人单条金币分录详情
+      description: 详情包含入账前后余额及原分录/冲正分录关系，不返回管理员内部备注。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^wle_[A-Za-z0-9_-]{1,92}$'
+      responses:
+        '200':
+          description: 本人金币分录详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletEntryDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   securitySchemes:
     BearerAuth:
@@ -1434,7 +1517,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.9.0
+        const: 1.10.0
   parameters:
     ProfileId:
       name: profileId
@@ -1568,7 +1651,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.9.0
+          const: 1.10.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -2957,6 +3040,177 @@ components:
           $ref: '#/components/schemas/NotificationPreferences'
         meta:
           $ref: '#/components/schemas/Meta'
+    WalletDirection:
+      type: string
+      enum: [credit, debit]
+    WalletEntryType:
+      type: string
+      enum: [admin_credit, admin_debit, compensation, reversal]
+    WalletReasonCode:
+      type: string
+      enum: [manual_adjustment, service_compensation, correction, reversal]
+    WalletSummary:
+      type: object
+      additionalProperties: false
+      required: [currencyCode, displayName, balance, ledgerVersion, status, lastEntryAt, lastSyncedAt, disclaimer]
+      properties:
+        currencyCode:
+          type: string
+          const: mei_coin
+        displayName:
+          type: string
+          const: 金币
+        balance:
+          type: integer
+          minimum: 0
+          maximum: 9000000000000
+        ledgerVersion:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [active, frozen]
+        lastEntryAt:
+          type: [string, 'null']
+          format: date-time
+        lastSyncedAt:
+          type: string
+          format: date-time
+        disclaimer:
+          type: string
+          minLength: 1
+          maxLength: 240
+    WalletReason:
+      type: object
+      additionalProperties: false
+      required: [code, label]
+      properties:
+        code:
+          $ref: '#/components/schemas/WalletReasonCode'
+        label:
+          type: string
+          minLength: 1
+          maxLength: 24
+    WalletEntrySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - entryId
+        - publicReference
+        - type
+        - direction
+        - amount
+        - reason
+        - userVisibleNote
+        - balanceAfter
+        - sequence
+        - status
+        - postedAt
+        - originalEntryId
+        - reversalEntryId
+      properties:
+        entryId:
+          type: string
+          pattern: '^wle_[A-Za-z0-9_-]{1,92}$'
+        publicReference:
+          type: string
+          pattern: '^WAL-[A-Z0-9-]{8,44}$'
+        type:
+          $ref: '#/components/schemas/WalletEntryType'
+        direction:
+          $ref: '#/components/schemas/WalletDirection'
+        amount:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        reason:
+          $ref: '#/components/schemas/WalletReason'
+        userVisibleNote:
+          type: string
+          minLength: 2
+          maxLength: 160
+        balanceAfter:
+          type: integer
+          minimum: 0
+          maximum: 9000000000000
+        sequence:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          const: posted
+        postedAt:
+          type: string
+          format: date-time
+        originalEntryId:
+          type: [string, 'null']
+          pattern: '^wle_[A-Za-z0-9_-]{1,92}$'
+        reversalEntryId:
+          type: [string, 'null']
+          pattern: '^wle_[A-Za-z0-9_-]{1,92}$'
+    WalletEntryDetail:
+      allOf:
+        - $ref: '#/components/schemas/WalletEntrySummary'
+        - type: object
+          required: [balanceBefore, relatedEntry]
+          properties:
+            balanceBefore:
+              type: integer
+              minimum: 0
+              maximum: 9000000000000
+            relatedEntry:
+              oneOf:
+                - type: 'null'
+                - type: object
+                  additionalProperties: false
+                  required: [entryId, publicReference, direction, amount, postedAt]
+                  properties:
+                    entryId:
+                      type: string
+                      pattern: '^wle_[A-Za-z0-9_-]{1,92}$'
+                    publicReference:
+                      type: string
+                      pattern: '^WAL-[A-Z0-9-]{8,44}$'
+                    direction:
+                      $ref: '#/components/schemas/WalletDirection'
+                    amount:
+                      type: integer
+                      minimum: 1
+                      maximum: 1000000
+                    postedAt:
+                      type: string
+                      format: date-time
+      unevaluatedProperties: false
+    WalletSummaryResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/WalletSummary'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    WalletEntryListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/WalletEntrySummary'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    WalletEntryDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/WalletEntryDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
     DeviceResponse:
       type: object
       additionalProperties: false
@@ -2981,7 +3235,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, auth, membershipApplications, messaging, notifications, safety]
+      required: [product, appVersion, capabilities, discovery, auth, membershipApplications, messaging, notifications, wallet, safety]
       properties:
         product:
           type: string
@@ -2992,7 +3246,7 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, auth, interactions, membership, messaging, notifications, safety, payments, systemPush]
+          required: [discovery, auth, interactions, membership, messaging, notifications, wallet, safety, payments, systemPush]
           properties:
             discovery:
               type: boolean
@@ -3028,6 +3282,8 @@ components:
             messaging:
               type: boolean
             notifications:
+              type: boolean
+            wallet:
               type: boolean
             safety:
               type: object
@@ -3237,6 +3493,64 @@ components:
                   preference:
                     type: string
                     enum: [optional, required]
+        wallet:
+          type: object
+          additionalProperties: false
+          required:
+            - policyVersion
+            - currencyCode
+            - displayName
+            - minorUnit
+            - maxPageSize
+            - directions
+            - disclaimer
+            - payments
+            - recharge
+            - spending
+            - transfer
+            - withdrawal
+          properties:
+            policyVersion:
+              type: string
+              pattern: '^wlp_[A-Za-z0-9_-]{1,76}$'
+            currencyCode:
+              type: string
+              const: mei_coin
+            displayName:
+              type: string
+              const: 金币
+            minorUnit:
+              type: integer
+              const: 0
+            maxPageSize:
+              type: integer
+              const: 40
+            directions:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items:
+                type: string
+                enum: [credit, debit]
+            disclaimer:
+              type: string
+              minLength: 1
+              maxLength: 240
+            payments:
+              type: boolean
+              const: false
+            recharge:
+              type: boolean
+              const: false
+            spending:
+              type: boolean
+              const: false
+            transfer:
+              type: boolean
+              const: false
+            withdrawal:
+              type: boolean
+              const: false
         safety:
           type: object
           additionalProperties: false

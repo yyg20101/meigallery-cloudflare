@@ -413,4 +413,10 @@ export type {
   AppViewerInteractionListItem,
   AppViewerInteractionState,
   AppViewerInteractionType,
+  AppWalletDirection,
+  AppWalletEntryDetail,
+  AppWalletEntrySummary,
+  AppWalletEntryType,
+  AppWalletReasonCode,
+  AppWalletSummary,
 } from './app-api-v2'

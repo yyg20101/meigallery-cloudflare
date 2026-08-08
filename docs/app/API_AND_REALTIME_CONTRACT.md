@@ -2,9 +2,9 @@
 
 App 版本：1.0
 
-日期：2026-08-07
+日期：2026-08-08
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1、Membership-1、Message-1、Message-2 与 Safety-2 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -31,7 +31,7 @@ App 版本：1.0
 - `GET /api/v2/person-profiles/:profileId`：返回同一公开资格边界下的基础详情投影。
 - 四个 M0 响应统一返回 `Cache-Control: no-store`，避免资格撤回、授权到期或源图库下线后被中间缓存继续展示；后续只有在完成可撤销缓存设计后才能调整。
 
-账号体系不属于 M0 冻结范围；Auth-1 只以默认关闭的开发基线独立推进。真人认领、通知、钱包和媒体访问仍按开放问题与专业门禁逐项冻结。M0 migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
+账号体系不属于 M0 冻结范围；Auth-1 只以默认关闭的开发基线独立推进。通知与 Wallet-1 已形成默认关闭的开发契约和代码闭环，真人认领、媒体访问及其生产启用仍按开放问题与专业门禁逐项冻结。M0 migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
 
 ### 1.3 M1 人物供给开发边界
 
@@ -87,6 +87,18 @@ Safety-2 以兼容新增方式把累计契约提升为 `1.7.0`，只冻结举报
 - 复核必须由不同于原审核人的管理员领取。`upheld` 维持原结论；`changed` 只把原举报重开为调查中，不自动认定违规或执行处置。
 
 完整实现与生产门禁见 [Safety-2 跨仓集成边界](./SAFETY_2_APPEAL_INTEGRATION.md)。
+
+### 1.8 Wallet-1 局部冻结记录
+
+Wallet-1 以兼容新增方式把累计契约提升为 `1.10.0`，只冻结并实现默认关闭的最小金币账本边界：
+
+- 用户侧只实现本人余额、按方向游标明细和分录详情；空钱包返回虚拟零余额，不因读取创建业务记录。
+- bootstrap 增加严格 wallet capability、development policy、整数金币格式和明确为 `false` 的支付、充值、消费、转账与提现能力。
+- 管理员过渡路由 `/api/admin/app/wallets` 只提供账号确认、单笔加币/扣币/补偿/完整冲正的预览、幂等申请和另一管理员批准/拒绝。
+- OQ-018 未关闭前所有申请强制独立复核，发起人不能自批；批准时重新校验账号、余额和 sequence，任何扣币不得产生负余额。
+- 已生效分录不可编辑或删除，余额变化必须匹配新分录；用户申诉、批量、迁移、自动对账、部分冲正和全部商业交易能力未进入本切片。
+
+production/dev 的用户、管理员和 production-ready 开关均保持关闭，`0077` 未执行远端 migration，也没有真实余额或调币数据。完整边界见 [Wallet-1 金币账本跨仓交付基线](./WALLET_1_LEDGER_INTEGRATION.md)。
 
 ## 2. 通用请求
 
@@ -382,7 +394,7 @@ Message-3 当前实现只通过 HTTP 拉取站内通知，不依赖 APNs、FCM�
 | POST | `/api/v2/cosmetics/:productId/purchase` | 未来：金币购买 |
 | PUT/DELETE | `/api/v2/me/cosmetics/:inventoryId/equip` | 未来：装备/卸下 |
 
-App 1.0 钱包路由只读，余额来自追加式分录/受控快照，客户端不得先行加减。赠礼等未来写路由只有独立 Feature 上线后才部署；启用时返回订单/业务记录、钱包分录和权威余额。
+Wallet-1 当前实现的用户路由只读，余额来自追加式分录/受控快照，客户端不得先行加减。读取空钱包只返回虚拟零余额，不创建业务记录；明细只使用固定原因和用户安全业务引用。赠礼等未来写路由只有独立 Feature 上线后才部署；启用时返回订单/业务记录、钱包分录和权威余额。
 
 ## 13. 举报、拉黑与支持 API
 
@@ -405,7 +417,7 @@ App 1.0 钱包路由只读，余额来自追加式分录/受控快照，客户�
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
-M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、预览、低风险发放/续期与追加式撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
+M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、预览、低风险发放/续期与追加式撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。Wallet-1 暂时使用 `/api/admin/app/wallets` 提供账号确认、单笔预览/申请、独立批准/拒绝和完整冲正，不提供直接改余额、批量或复核绕过。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
 
 | 资源 | 主要能力 |
 |------|----------|

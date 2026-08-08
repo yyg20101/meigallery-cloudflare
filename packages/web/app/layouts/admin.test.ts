@@ -7,6 +7,7 @@ describe('后台导航', () => {
     const source = readFileSync(join(process.cwd(), 'app/layouts/admin.vue'), 'utf8')
 
     expect(source).toContain("{ to: '/admin/attribution', label: '广告归因'")
+    expect(source).toContain("{ to: '/admin/app/wallets', label: 'App 金币钱包'")
     expect(source).not.toContain("label: 'Meta 归因'")
   })
 })
