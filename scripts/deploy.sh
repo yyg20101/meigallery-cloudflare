@@ -39,6 +39,7 @@ GIT_COMMIT="$(git rev-parse HEAD)"
 API_RELEASE_TAG=""
 WEB_RELEASE_TAG=""
 HAS_PENDING_MIGRATIONS=false
+WALLET1_MIGRATION_PENDING=false
 
 echo "=== MeiGallery 部署 (环境: $ENV, 范围: $SCOPE) ==="
 
@@ -80,6 +81,26 @@ if [ "$RUN_API" = "true" ]; then
       echo "错误: 0017_cases_cleanup.sql 需要先完成人工 R2 核验。"
       exit 1
     fi
+  fi
+
+  if [[ "$UNAPPLIED_MIGRATIONS" == *"0077_app_wallet_ledger.sql"* ]]; then
+    WALLET1_MIGRATION_PENDING=true
+    if [ "$IS_PRODUCTION" = "true" ]; then
+      echo "错误: Wallet-1 production migration 尚未获准；必须先关闭 OQ-018、OQ-020、OQ-024 并单独评审生产门禁。"
+      exit 1
+    fi
+    if [ "${ALLOW_WALLET1_DEV_MIGRATIONS:-}" != "true" ]; then
+      echo "错误: Wallet-1 dev migration 需要显式设置 ALLOW_WALLET1_DEV_MIGRATIONS=true。"
+      exit 1
+    fi
+    if [ -z "${WALLET1_DEV_READINESS_MANIFEST:-}" ]; then
+      echo "错误: Wallet-1 dev migration 需要仓库外的 WALLET1_DEV_READINESS_MANIFEST。"
+      exit 1
+    fi
+    echo "[API] 验证 Wallet-1 dev 迁移前备份与短期清单..."
+    node scripts/prepare-dev-wallet1.mjs \
+      --confirm-dev="$D1_DB" \
+      --validate-manifest="$WALLET1_DEV_READINESS_MANIFEST"
   fi
 
   if [ "$IS_PRODUCTION" = "true" ] && [ "$HAS_PENDING_MIGRATIONS" = "true" ]; then
@@ -149,6 +170,10 @@ if [ "$IS_PRODUCTION" = "true" ]; then
   fi
 else
   echo "dev 使用独立资源，不请求真实广告平台。"
+  if [ "$RUN_API" = "true" ] && [ "$WALLET1_MIGRATION_PENDING" = "true" ]; then
+    echo "[API] 只读验收 Wallet-1 schema、关闭策略与空业务账本..."
+    node scripts/verify-dev-wallet1-schema.mjs --confirm-dev="$D1_DB"
+  fi
 fi
 
 echo ""

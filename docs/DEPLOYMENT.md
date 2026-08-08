@@ -47,7 +47,7 @@ Web 和 API 都部署为 Cloudflare Workers，不使用 Cloudflare Pages。
 - API 部署通过 TypeScript；migration 测试统一在 CI 执行，production 发现任意待执行 migration 时先导出 D1 备份。
 - Web 部署通过 Nuxt build。
 - 只在部署 API 时检查和应用 D1 migration。
-- 只在高风险 migration 待执行时导出 production D1 备份。
+- production 存在任意待执行 migration 时由脚本导出 D1 备份；专项高风险 migration 还必须满足各自附加门禁。
 - API 与 Web 都先上传不接流量的 Worker Version，再执行向后兼容的 migration；成功后连续激活两个已就绪 Version。删除列或表的 contract migration 必须等兼容代码先完成独立生产发布后，再在下一次发布执行。
 - 部署后仅验证受影响服务。
 
@@ -64,6 +64,30 @@ Web 和 API 都部署为 Cloudflare Workers，不使用 Cloudflare Pages。
 ```
 
 dev 使用独立 Worker、D1 和 R2，不绑定真实广告 Queue，不执行 Cron，也不请求真实广告平台。Meta、TikTok、Google 的最终人工验证默认在 production 完成。
+
+### Wallet-1 dev migration
+
+`0077_app_wallet_ledger.sql` 尚未获准远端执行。未来关闭 OQ-018、OQ-020、OQ-024、完成一次性功能 smoke 方案并再次获得明确批准后，先生成仓库外短期备份清单：
+
+```bash
+corepack pnpm prepare:wallet1:dev
+```
+
+清单只在 30 分钟内对同一 `dev` commit、同一 D1 bookmark 和严格 `0075`～`0077` migration 队列有效。随后按输出的绝对路径执行：
+
+```bash
+ALLOW_WALLET1_DEV_MIGRATIONS=true \
+WALLET1_DEV_READINESS_MANIFEST=/绝对路径/到/manifest.json \
+./scripts/deploy.sh dev api
+```
+
+部署脚本会在写入前复验 manifest，并在 migration/Worker 完成后自动执行只读 schema 验收。Wallet-1 用户、管理员和通知生成开关仍保持关闭。可手工重复只读验收：
+
+```bash
+corepack pnpm verify:wallet1:schema:dev
+```
+
+production 只要仍有 `0077` 待执行就会被部署脚本硬阻断，不能沿用 dev 放行变量。共享 dev 不执行会产生不可删除分录的功能 smoke；完整流程、失败处理和 Time Travel 边界见 `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`。
 
 ## CI
 

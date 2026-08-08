@@ -215,8 +215,10 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 钱包分录生效后可复用 Message-3 `wallet.entry_posted` 必要通知；通知文案只由方向、数量和固定原因生成，不复制用户说明或内部备注。通知失败不回滚权威账本。
 - `APP_WALLET_ENABLED`、`APP_WALLET_ADMIN_ENABLED`、`APP_WALLET_POLICY_VERSION` 与 `APP_WALLET_PRODUCTION_READY` 是独立门禁，production/dev 当前均关闭；development 策略自身也保持 `adjustments_enabled=0`、未决风险/保留/数据位置状态。
 - KMP 客户端只实现余额和明细查询，不存在充值、支付、消费、赠礼、装扮购买、转赠、兑换、转账、提现或用户申诉入口；未知 capability、方向、原因或余额关系一律安全拒绝。
+- `deploy.sh` 发现 `0077` 待执行时对 production 无条件阻断；dev 必须提供由 `prepare-dev-wallet1.mjs` 生成且仍有效的仓库外 SQL/manifest，并显式设置一次性放行变量。migration 和 Worker 部署完成后自动运行 `verify-dev-wallet1-schema.mjs`，只读校验 commit、契约、关闭能力、17 张预期表、15 个 trigger、安全策略、空业务账本和零钱包通知 Outbox。
+- 已生效分录及复核事件不能普通删除，因此共享 dev 不承担写入型功能 smoke；加扣币、复核、冲正和通知恢复使用一次性 D1 + 临时 Worker，测试结束销毁整套资源。共享 dev Time Travel restore 只属于独占维护窗口下的事故恢复，不是测试清理手段。
 
-完整跨仓边界与启用清单见 `docs/app/WALLET_1_LEDGER_INTEGRATION.md`。
+完整跨仓边界与启用清单见 `docs/app/WALLET_1_LEDGER_INTEGRATION.md`，dev 迁移操作见 `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`。
 
 ### 速率限制 `[当前实现 / 外部配置]`
 

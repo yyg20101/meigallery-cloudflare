@@ -6,7 +6,7 @@ App API：v2 / `1.10.0`
 
 日期：2026-08-08
 
-状态：代码闭环与本地验证完成；production/dev 默认关闭；未执行远端 migration、真实余额导入、远程联调或生产发布
+状态：代码闭环、本地验证、dev 迁移前备份门禁与迁移后只读验收工具完成；production/dev 默认关闭；未执行远端 migration、真实余额导入、远程联调或生产发布
 
 ## 1. 本阶段目标
 
@@ -159,7 +159,7 @@ Nuxt 页面 `/admin/app/wallets` 提供账号确认、余额摘要、分录、�
 2. 关闭 OQ-020，明确钱包、申请、分录、复核、审计、通知和备份的保留、删除与数据权利边界。
 3. 关闭 OQ-024，确认 Cloudflare D1/R2 相关数据位置和生产适用性。
 4. 新建 published 且 production-ready 的策略版本，不原地提升 development 记录。
-5. 在隔离 dev 资源备份并演练 `0077`、回滚点、合成账号、双管理员申请/批准/拒绝、并发冲突、完整冲正和通知恢复；结束后清理全部测试余额与账号。
+5. 按 `WALLET_1_DEV_VALIDATION_RUNBOOK.md` 在共享 dev 完成仓库外备份、短期 manifest、默认关闭的 schema 安装和只读验收；写入型功能 smoke 必须在一次性 D1 + 临时 Worker 中完成并销毁整套资源，不能依赖 `DELETE` 清理不可变账本。
 6. 完成 Android/iOS 真机、多设备、断网、恢复、大字体、屏幕阅读器、窄屏和长中文验收。
 7. 先开启管理员只读观察，再按书面变更单开启单笔写入和用户读取；production 需独立审批，不能从 dev 自动复制。
 
@@ -175,12 +175,16 @@ Nuxt 页面 `/admin/app/wallets` 提供账号确认、余额摘要、分录、�
 - 一次完整冲正、原分录/冲正关系、钱包 sequence、分录/申请事件/复核记录不可变。
 - 账号与游标隔离、用户响应最小化、钱包必要通知目标归属和固定安全文案。
 - App API 路由/OpenAPI、Nuxt 管理页面、KMP 三条授权请求、capability 关闭零请求和非法响应安全拒绝。
-- API 125 个测试文件/989 项、Web 60 个测试文件/301 项和脚本 38 项全量通过；lint、API TypeScript、Web Vue TypeScript、Nuxt production build 与 API Worker dry-run build 通过。
+- API 125 个测试文件/989 项、Web 60 个测试文件/301 项和脚本 51 项全量通过；lint、API TypeScript、Web Vue TypeScript、Nuxt production build 与 API Worker dry-run build 通过。
 - KMP Android Host Test、Debug APK 与 iOS Simulator Kotlin/Native 编译通过；本机 Framework 链接仅因未接受 Xcode 许可导致 `xcrun` 69 失败，正式结果由 macOS CI 门禁确认。
+- `prepare-dev-wallet1.mjs` 已实现 dev 目标、资源隔离、关闭开关、migration 顺序、仓库外 SQL、SHA-256、Time Travel bookmark、commit 和 30 分钟 manifest 复验；`deploy.sh` 在 `0077` 待执行时对 production 硬阻断，dev 必须显式放行并提供有效 manifest。
+- `verify-dev-wallet1-schema.mjs` 已实现迁移后只读验收：校验部署 commit、`1.10.0` 契约、关闭 capability、完整 schema/trigger、development 安全策略、空业务账本和零钱包通知 Outbox。
 
 尚未完成：
 
-- dev/production `0077` migration、远程 Worker 部署、真实 HTTP smoke、真机 UI 和双管理员实际账号验收。
+- dev/production `0077` migration、远程 Worker 部署、真实 HTTP smoke、真机 UI 和双管理员实际账号验收；共享 dev 当前只允许未来执行默认关闭的 schema/只读验收，写入 smoke 尚待一次性 D1 + 临时 Worker 方案。
 - OQ-018、OQ-020、OQ-024、正式财务权限、告警阈值、对账/事件处置/恢复 Runbook。
 - 真实余额导入、旧系统迁移、批量调币、部分冲正、用户申诉、客服工单、自动对账与导出。
 - 充值、支付、消费、礼物、装扮购买、转赠、兑换、转账、提现和任何 production 商业化能力。
+
+dev 的完整执行顺序、失败处理与恢复边界见 `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`。

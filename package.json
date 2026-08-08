@@ -16,6 +16,8 @@
     "deploy:api": "./scripts/deploy.sh production api",
     "verify:production": "node scripts/verify-production.mjs all",
     "verify:safety2:dev": "node scripts/verify-dev-safety2.mjs --confirm-dev=meigallery-db-dev",
+    "prepare:wallet1:dev": "node scripts/prepare-dev-wallet1.mjs --confirm-dev=meigallery-db-dev",
+    "verify:wallet1:schema:dev": "node scripts/verify-dev-wallet1-schema.mjs --confirm-dev=meigallery-db-dev",
     "backup:production": "node scripts/export-production-d1-backup.mjs",
     "verify:seo:production": "node scripts/verify-production-seo.mjs",
     "test:scripts": "node --test scripts/*.test.mjs packages/api/migrations/*.test.mjs",
