@@ -200,7 +200,7 @@ APP_TAXONOMY_PRODUCTION_READY
 1. 完成细粒度 `taxonomy.edit/review/publish` 权限、敏感词隐私/法务升级和高风险双人复核。
 2. 完成合并/归档影响预览、多语言名称、目录渠道/地区灰度、显式回滚和迁移批次对账。
 3. 完成 Nuxt 管理页面与 KMP 目录缓存/ETag/未知类型降级。
-4. 在 Search-2 中新增 entitlement 定义、结构化筛选、结果数预估和保存条件。
+4. Search-2 已新增 entitlement 定义、结构化筛选、结果数预估和保存条件；后续按其独立文档完成客户端、配置与验证。
 5. 全部开发结束后再统一执行 migration、环境配置、专项测试、远端联调和上线验收。
 
 ## 8. 本阶段完成定义

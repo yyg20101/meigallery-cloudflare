@@ -1,10 +1,12 @@
 import type { Bindings } from '../index'
 
-export const APP_PERSON_SEARCH_POLICY_ID = 'sqp_app_1_0_search_1_dev_1'
+export const APP_PERSON_SEARCH_POLICY_ID = 'sqp_app_1_0_search_2_dev_1'
 export const APP_PERSON_SEARCH_DEFAULT_PAGE_SIZE = 20
 export const APP_PERSON_SEARCH_MAX_PAGE_SIZE = 40
 export const APP_PERSON_SEARCH_MAX_QUERY_LENGTH = 50
 export const APP_PERSON_SEARCH_MAX_HISTORY_ITEMS = 50
+export const APP_PERSON_SEARCH_MAX_FILTER_TERMS = 12
+export const APP_PERSON_SEARCH_MAX_SAVED_FILTER_NAME_LENGTH = 40
 
 const POLICY_ID_PATTERN = /^sqp_[A-Za-z0-9_-]{1,92}$/u
 const HISTORY_ID_PATTERN = /^sh_[0-9a-f]{64}$/u
@@ -29,12 +31,19 @@ export interface AppPersonSearchPolicy {
   maxQueryLength: number
   maxHistoryItems: number
   historyRetentionDays: number
+  structuredFiltersEnabled: boolean
+  filterPreviewEnabled: boolean
+  savedFiltersEnabled: boolean
+  maxFilterTerms: number
+  maxSavedFilterNameLength: number
   effectiveAt: string
 }
 
 export interface AppPersonSearchCapabilities {
   profiles: boolean
   history: boolean
+  filters: boolean
+  savedFilters: boolean
   policy: AppPersonSearchPolicy | null
 }
 
@@ -51,12 +60,17 @@ type SearchPolicyRow = {
   max_query_length: number
   max_history_items: number
   history_retention_days: number
+  structured_filters_enabled: number
+  filter_preview_enabled: number
+  saved_filters_enabled: number
+  max_filter_terms: number
+  max_saved_filter_name_length: number
   effective_at: string
 }
 
 export class AppPersonSearchError extends Error {
   constructor(
-    readonly status: 400 | 403 | 409 | 503,
+    readonly status: 400 | 403 | 404 | 409 | 422 | 503,
     readonly code: string,
     message: string,
     readonly retryable = false,
@@ -90,24 +104,28 @@ export async function resolveAppPersonSearchCapabilities(
   config: AppPersonSearchRuntimeConfig,
   now = new Date(),
 ): Promise<AppPersonSearchCapabilities> {
-  if (!config.enabled) return { profiles: false, history: false, policy: null }
+  if (!config.enabled) {
+    return { profiles: false, history: false, filters: false, savedFilters: false, policy: null }
+  }
   try {
     const policy = await loadAppPersonSearchPolicy(db, config, now)
     return {
       profiles: policy.personSearchEnabled,
       history: policy.historyEnabled && isHistoryReady(policy, config),
+      filters: policy.structuredFiltersEnabled && policy.filterPreviewEnabled,
+      savedFilters: policy.structuredFiltersEnabled && policy.savedFiltersEnabled,
       policy,
     }
   }
   catch {
-    return { profiles: false, history: false, policy: null }
+    return { profiles: false, history: false, filters: false, savedFilters: false, policy: null }
   }
 }
 
 export async function requireAppPersonSearchPolicy(
   db: D1Database,
   config: AppPersonSearchRuntimeConfig,
-  capability: 'profiles' | 'history',
+  capability: 'profiles' | 'history' | 'filters' | 'saved_filters',
   now = new Date(),
 ): Promise<AppPersonSearchPolicy> {
   const policy = await loadAppPersonSearchPolicy(db, config, now)
@@ -116,6 +134,12 @@ export async function requireAppPersonSearchPolicy(
   }
   if (capability === 'history' && (!policy.historyEnabled || !isHistoryReady(policy, config))) {
     throw new AppPersonSearchError(403, 'SEARCH_HISTORY_DISABLED', '搜索历史当前保持关闭')
+  }
+  if (capability === 'filters' && (!policy.structuredFiltersEnabled || !policy.filterPreviewEnabled)) {
+    throw new AppPersonSearchError(403, 'SEARCH_FILTERS_DISABLED', '人物筛选当前保持关闭')
+  }
+  if (capability === 'saved_filters' && (!policy.structuredFiltersEnabled || !policy.savedFiltersEnabled)) {
+    throw new AppPersonSearchError(403, 'SAVED_FILTERS_DISABLED', '保存条件当前保持关闭')
   }
   return policy
 }
@@ -188,7 +212,9 @@ async function loadAppPersonSearchPolicy(
     SELECT id, state, production_ready, person_search_enabled, history_enabled,
            history_production_ready, default_history_recording_enabled,
            history_retention_decision_status, purge_enabled, max_query_length,
-           max_history_items, history_retention_days, effective_at
+           max_history_items, history_retention_days,
+           structured_filters_enabled, filter_preview_enabled, saved_filters_enabled,
+           max_filter_terms, max_saved_filter_name_length, effective_at
     FROM app_person_search_policies
     WHERE id = ?
     LIMIT 1
@@ -223,6 +249,15 @@ async function loadAppPersonSearchPolicy(
     || !Number.isSafeInteger(row.history_retention_days)
     || row.history_retention_days < 1
     || row.history_retention_days > 3650
+    || ![0, 1].includes(row.structured_filters_enabled)
+    || ![0, 1].includes(row.filter_preview_enabled)
+    || ![0, 1].includes(row.saved_filters_enabled)
+    || !Number.isSafeInteger(row.max_filter_terms)
+    || row.max_filter_terms < 1
+    || row.max_filter_terms > APP_PERSON_SEARCH_MAX_FILTER_TERMS
+    || !Number.isSafeInteger(row.max_saved_filter_name_length)
+    || row.max_saved_filter_name_length < 1
+    || row.max_saved_filter_name_length > APP_PERSON_SEARCH_MAX_SAVED_FILTER_NAME_LENGTH
     || !['unresolved', 'approved'].includes(row.history_retention_decision_status)
   ) {
     throw new AppPersonSearchError(
@@ -244,6 +279,11 @@ async function loadAppPersonSearchPolicy(
     maxQueryLength: row.max_query_length,
     maxHistoryItems: row.max_history_items,
     historyRetentionDays: row.history_retention_days,
+    structuredFiltersEnabled: row.structured_filters_enabled === 1,
+    filterPreviewEnabled: row.filter_preview_enabled === 1,
+    savedFiltersEnabled: row.saved_filters_enabled === 1,
+    maxFilterTerms: row.max_filter_terms,
+    maxSavedFilterNameLength: row.max_saved_filter_name_length,
     effectiveAt: row.effective_at,
   }
 }

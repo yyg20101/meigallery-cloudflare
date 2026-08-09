@@ -41,6 +41,8 @@ App 版本：1.0
 
 本阶段不 seed 真实词条、不导入 MeiGallery 旧标签、不修改 Wrangler、不执行 migration，也不启用现有环境。`restricted` 敏感词在隐私/法务升级审批完成前不能激活；细粒度权限、影响预览、多语言、灰度/回滚、迁移批次、Nuxt/KMP 页面和专项验证后置。完整工程边界见 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
 
+Search-2 已在该事实源上新增目录父子/合并 closure、stable ID 分组筛选、旧条件重定向和失效诊断；保存条件不复制展示名或 legacy 值。该扩展仍默认关闭，详见 `docs/app/SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
+
 ## 4. User Personas
 
 | Persona | 目标 | 主要关注点 |

@@ -21,6 +21,7 @@ App 版本：1.0
 - [Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)：记录 App API `1.12.0` 发布事实复用、账号私有更新流、惰性去重通知、投递前资格复核和默认关闭门禁。
 - [Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)：记录隐私 POST 搜索、公开字段边界、账号绑定游标、默认关闭的私有搜索历史和 Search-2 前向兼容点。
 - [Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)：记录 App API `1.14.0` 稳定词条、不可变目录快照、合并重定向、legacy 待复核映射、人物内容版本关联及发布投影边界。
+- [Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)：记录 App API `1.15.0` taxonomy 组合语义、会员分层、结果数安全预估、账号私有保存条件和默认关闭边界。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终状态和 169 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
 - [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、92 页/349 状态覆盖、2,284 个有效交互动作、排版与 Icon 修正、QA 结果和交付门禁。

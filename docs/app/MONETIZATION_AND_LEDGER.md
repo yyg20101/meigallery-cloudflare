@@ -42,8 +42,8 @@ App 1.0 五级全部展示并可由管理员手动发放，不提供在线销售
 | `direct_message.create` | bool | 是否可创建由平台运营接收的话题 |
 | `direct_message.send` | bool | 是否可在有效平台话题中发送文本；会员到期后的历史策略待消息域冻结 |
 | `direct_message.new_threads_per_day` | quota | 每日新会话额度 |
-| `discovery.filter_tier` | enum | 基础/进阶/高级筛选档位 |
-| `discovery.saved_filters` | quota | 保存筛选数量 |
+| `discovery.filter.advanced` | enum | Search-2 高级筛选档位：`none/basic/full` |
+| `discovery.saved_filter.max` | quota | Search-2 保存条件数量上限 |
 | `history.retention_days` | quota | 浏览历史保留时长 |
 | `favorite.folder_count` | quota | 收藏文件夹数量 |
 | `wallet.monthly_bonus_coins` | quota | 每周期赠送金币 |

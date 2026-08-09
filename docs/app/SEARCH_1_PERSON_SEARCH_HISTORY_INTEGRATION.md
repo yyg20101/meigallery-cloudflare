@@ -202,15 +202,15 @@ APP_PERSON_SEARCH_PRODUCTION_READY
 - 所有分页请求复用原 query/sort；编辑输入后丢弃旧 cursor。
 - `401` 进入统一会话失效流程；`403 FEATURE_DISABLED` 关闭入口；`409` 刷新设置后由用户重新决定是否记录。
 
-## 9. Search-2 前向兼容点
+## 9. Search-2 前向兼容实现状态
 
-后续高级筛选使用同一 `POST /person-profiles/search` 请求体兼容新增结构化 `filters`，但必须先完成：
+Search-2 已使用同一 `POST /person-profiles/search` 请求体兼容新增结构化 `filters`，并完成：
 
 1. 地区、职业、风格等 taxonomy 稳定 ID 与 catalog version 契约（Taxonomy-1 已完成服务端开发基线）；
 2. `discovery.filter.advanced` 和 `discovery.saved_filter.max` 的可执行 entitlement；
 3. 条件冲突、结果数预估和受限条件说明；
 4. 保存条件的独立表、版本、删除和升级降级语义；
-5. 搜索/筛选是否可用于个性化推荐的独立同意与退出机制。
+搜索/筛选是否可用于个性化推荐的独立同意与退出机制仍未实现，不能从 Search-2 查询能力推导。
 
 Search-2 不得改变 Search-1 的公开资格、账号屏蔽、默认不记录和敏感词不入日志原则。
 
@@ -222,12 +222,12 @@ Search-2 不得改变 Search-1 的公开资格、账号屏蔽、默认不记录�
 - 搜索策略、capability、隐私请求规范化、相关度排序和账号绑定游标；
 - 人物搜索与搜索历史六组服务端路由；
 - 与 capability 解耦、受策略门禁的到期历史分批清理任务；
-- Search-1 引入版本为 `1.13.0`；当前 App API/OpenAPI/共享类型累计版本已由 Taxonomy-1 提升到 `1.14.0`；
+- Search-1 引入版本为 `1.13.0`；当前 App API/OpenAPI/共享类型累计版本已由 Search-2 提升到 `1.15.0`；
 - 产品、技术、契约与项目状态文档同步。
 
 统一后置到“全部开发完成”之后：
 
-1. 在 `meigallery-client` 按当前累计 `1.14.0` 契约接入 DTO、Repository、搜索页、历史设置和清除交互。
+1. 在 `meigallery-client` 按当前累计 `1.15.0` 契约接入 DTO、Repository、搜索页、历史设置和清除交互。
 2. 选择隔离环境策略并配置运行门禁。
 3. 执行 migration、D1 专项用例、SQL/契约兼容检查、KMP UI 回归和端到端联调。
 4. 单独完成搜索历史生产保留期、purge、隐私文案和上线审批；development 的 90 天不得直接转为生产承诺。

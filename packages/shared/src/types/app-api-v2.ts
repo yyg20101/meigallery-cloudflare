@@ -1,8 +1,8 @@
 /**
  * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
  * Message-2 安全、Safety-2 申诉、Message-3 站内通知、Wallet-1 与
- * Interaction-2 收藏历史、Interaction-3 关注更新、Search-1 搜索与
- * Taxonomy-1 稳定分类目录契约。
+ * Interaction-2 收藏历史、Interaction-3 关注更新、Search-1 搜索、
+ * Taxonomy-1 稳定分类目录与 Search-2 结构化筛选契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -14,7 +14,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.14.0'
+  contractVersion: '1.15.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -51,6 +51,8 @@ export interface AppBootstrapConfig {
     search: {
       profiles: boolean
       history: boolean
+      filters: boolean
+      savedFilters: boolean
     }
     taxonomy: {
       catalog: boolean
@@ -94,6 +96,10 @@ export interface AppBootstrapConfig {
     defaultPageSize: number
     maxPageSize: number
     maxQueryLength: number
+    maxFilterTerms: number
+    maxSavedFilterNameLength: number
+    advancedFilterEntitlement: 'discovery.filter.advanced'
+    savedFilterMaxEntitlement: 'discovery.saved_filter.max'
     historyRecordingDefault: false
     maxHistoryItems: number
   }
@@ -782,7 +788,7 @@ export interface AppPersonProfile {
   publishedAt: string
 }
 
-export type AppPersonSearchMatchField = 'display_name' | 'region' | 'tag'
+export type AppPersonSearchMatchField = 'display_name' | 'region' | 'tag' | 'filter'
 
 export interface AppPersonSearchItem {
   profile: AppPersonProfile
@@ -790,6 +796,111 @@ export interface AppPersonSearchItem {
     field: AppPersonSearchMatchField
     label: string
   }
+}
+
+export type AppSearchFilterTier = 'none' | 'basic' | 'full'
+export type AppSearchFilterGroup = 'region' | Exclude<
+  AppTaxonomyType,
+  'region_scope' | 'region_group' | 'city_country'
+>
+
+export interface AppSearchFilterInput {
+  catalogVersionId: string
+  termIds: string[]
+}
+
+export interface AppSearchFilterTermResolution {
+  sourceTermId: string
+  termId: string | null
+  type: AppTaxonomyType | null
+  displayName: string | null
+  status: 'active' | 'redirected' | 'invalid'
+  requiredTier: AppSearchFilterTier | null
+  accessible: boolean
+}
+
+export interface AppSearchFilterSelection {
+  sourceCatalogVersionId: string
+  catalogVersionId: string
+  termIds: string[]
+  groups: Array<{
+    group: AppSearchFilterGroup
+    termIds: string[]
+  }>
+  resolutions: AppSearchFilterTermResolution[]
+  invalidTermIds: string[]
+  restrictedTermIds: string[]
+  redundantTermIds: string[]
+  canApply: boolean
+  entitlement: {
+    advancedKey: 'discovery.filter.advanced'
+    advancedTier: AppSearchFilterTier
+    sourceTierId: string | null
+    membershipCatalogVersionId: string | null
+    membershipReady: boolean
+  }
+}
+
+export interface AppSearchFilterCapabilities {
+  policyVersion: string
+  catalogVersionId: string
+  maxFilterTerms: number
+  typeAccess: {
+    basic: AppTaxonomyType[]
+    advancedBasic: AppTaxonomyType[]
+    advancedFull: AppTaxonomyType[]
+  }
+  entitlement: {
+    advancedKey: 'discovery.filter.advanced'
+    advancedTier: AppSearchFilterTier
+    savedFilterMaxKey: 'discovery.saved_filter.max'
+    savedFilterMax: number
+    sourceTierId: string | null
+    membershipCatalogVersionId: string | null
+    membershipReady: boolean
+  }
+  savedFilters: {
+    count: number
+    max: number
+    canCreate: boolean
+  }
+}
+
+export interface AppSearchFilterPreview {
+  filters: AppSearchFilterSelection
+  resultCount: number | null
+  countMode: 'snapshot_exact' | 'not_calculated'
+}
+
+export type AppSavedFilterSort = 'popular' | 'latest'
+
+export interface AppSavedFilter {
+  filterId: string
+  name: string
+  defaultSort: AppSavedFilterSort
+  version: number
+  createdAt: string
+  updatedAt: string
+  filters: AppSearchFilterSelection
+}
+
+export interface AppSavedFilterCollection {
+  items: AppSavedFilter[]
+  count: number
+  max: number
+  canCreate: boolean
+}
+
+export interface AppSavedFilterCreateResult {
+  savedFilter: AppSavedFilter
+  replayed: boolean
+}
+
+export interface AppSavedFilterDeleteResult {
+  filterId: string
+  deleted: boolean
+  version: number | null
+  updatedAt: string | null
 }
 
 export interface AppSearchHistorySettings {

@@ -145,8 +145,8 @@ flowchart TD
 | `APP-DSC-02` | `/discover/regions` | 地区选择 | 最近/常用地区、层级目录、模糊范围 | 定位未使用、目录更新、无结果 |
 | `APP-DSC-03` | `/discover/categories` | 分类 | 分类组、标签入口、推荐主题 | 空分类、目录失效 |
 | `APP-DSC-04` | `/search` | 搜索 | 搜索输入、历史、热门建议、结果 | 初始、输入中、无结果、历史关闭 |
-| `APP-DSC-05` | `/search/filters` | 筛选 | 基础/高级条件、结果数、清空、应用、保存 | entitlement gate、目录冲突、无结果 |
-| `APP-DSC-06` | `/saved-filters` | 已保存条件 | 条件列表、使用、重命名、删除 | 空、额度满、引用标签合并 |
+| `APP-DSC-05` | `/search/filters` | 筛选 | 基础/高级条件、分组语义、结果预估、清空、应用、保存 | entitlement gate、目录冲突、失效/冗余、无结果 |
+| `APP-DSC-06` | `/saved-filters` | 已保存条件 | 条件列表、额度、使用前复核、重命名、改条件、删除 | 空、额度满、会员降级、引用标签合并/失效、版本冲突 |
 | `APP-DSC-07` | `/person/{profileId}` | 真人详情 | 媒体、认证、地区/标签、简介、运营说明、互动与发起话题 | 下架、受限、离线摘要、媒体不可用 |
 | `APP-DSC-08` | `/person/{profileId}/media` | 媒体浏览 | 图片分页、缩放、说明、举报 | 凭证刷新、加载失败、内容隐藏 |
 | `APP-DSC-09` | `/person/{profileId}/verification` | 认证说明 | 认证范围、更新时间、平台说明 | 认证失效、资料变化 |

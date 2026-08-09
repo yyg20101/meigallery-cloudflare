@@ -673,6 +673,50 @@ export async function createAdminTaxonomyCatalog(
         ORDER BY type ASC, sort_order ASC, display_name COLLATE NOCASE ASC, term_id ASC
       `).bind(catalogId),
       db.prepare(`
+        INSERT INTO app_taxonomy_catalog_closure (
+          catalog_id, ancestor_term_id, descendant_term_id
+        )
+        WITH RECURSIVE closure(catalog_id, ancestor_term_id, descendant_term_id) AS (
+          SELECT catalog_id, term_id, term_id
+          FROM app_taxonomy_catalog_items
+          WHERE catalog_id = ?
+
+          UNION
+
+          SELECT catalog_id, parent_term_id, term_id
+          FROM app_taxonomy_catalog_items
+          WHERE catalog_id = ? AND parent_term_id IS NOT NULL
+
+          UNION
+
+          SELECT catalog_id, redirect_target_term_id, term_id
+          FROM app_taxonomy_catalog_items
+          WHERE catalog_id = ?
+            AND public_state = 'redirect'
+            AND redirect_target_term_id IS NOT NULL
+
+          UNION
+
+          SELECT c.catalog_id, c.ancestor_term_id, edge.descendant_term_id
+          FROM closure c
+          JOIN (
+            SELECT catalog_id, parent_term_id AS ancestor_term_id, term_id AS descendant_term_id
+            FROM app_taxonomy_catalog_items
+            WHERE catalog_id = ? AND parent_term_id IS NOT NULL
+            UNION
+            SELECT catalog_id, redirect_target_term_id AS ancestor_term_id, term_id AS descendant_term_id
+            FROM app_taxonomy_catalog_items
+            WHERE catalog_id = ?
+              AND public_state = 'redirect'
+              AND redirect_target_term_id IS NOT NULL
+          ) edge
+            ON edge.catalog_id = c.catalog_id
+           AND edge.ancestor_term_id = c.descendant_term_id
+        )
+        SELECT catalog_id, ancestor_term_id, descendant_term_id
+        FROM closure
+      `).bind(catalogId, catalogId, catalogId, catalogId, catalogId),
+      db.prepare(`
         UPDATE app_taxonomy_catalogs
         SET item_count = (
           SELECT COUNT(*) FROM app_taxonomy_catalog_items WHERE catalog_id = ?

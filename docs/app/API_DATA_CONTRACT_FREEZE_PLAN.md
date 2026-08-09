@@ -4,11 +4,11 @@ App 版本：1.0
 
 日期：2026-08-09
 
-状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给、Auth-1 账号访问、Interaction-1/2/3、Search-1 与 Taxonomy-1 服务端为保守开发基线
+状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给、Auth-1 账号访问、Interaction-1/2/3、Search-1/2 与 Taxonomy-1 服务端为保守开发基线
 
 ## 1. 文档目的
 
-本文定义从需求讨论进入实现前，如何冻结 HTTP API、实时事件、Kotlin/TypeScript DTO、D1 表、状态机、错误码和迁移契约。M0 公共只读契约已局部冻结；M1/Auth-1/Interaction-1/2/3/Search-1/Taxonomy-1 仅形成可回滚的分阶段开发基线，不表示完整 schema、身份政策、认证政策、互动/搜索保留、敏感分类审批或个性化政策已冻结，也不授权部署生产、执行 production migration 或导入真实数据。
+本文定义从需求讨论进入实现前，如何冻结 HTTP API、实时事件、Kotlin/TypeScript DTO、D1 表、状态机、错误码和迁移契约。M0 公共只读契约已局部冻结；M1/Auth-1/Interaction-1/2/3/Search-1/2/Taxonomy-1 仅形成可回滚的分阶段开发基线，不表示完整 schema、身份政策、认证政策、互动/搜索保留、敏感分类审批或个性化政策已冻结，也不授权部署生产、执行 production migration 或导入真实数据。
 
 冻结的目标不是让所有字段永远不变，而是建立事实源、兼容规则、评审顺序和可验证产物，使 Android、iOS、Nuxt、Hono、D1、DO 和迁移任务不会各自解释产品规则。
 
@@ -16,13 +16,13 @@ App 版本：1.0
 
 2026-08-02 经项目负责人继续开发确认，允许先实现不依赖未决身份与合规参数的公共发现读链路：
 
-- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式累计更新到 `1.14.0`，API 主版本仍为 `2`。
+- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式累计更新到 `1.15.0`，API 主版本仍为 `2`。
 - 路由：bootstrap、发现 feed、地区目录和公开人物基础详情共四个 GET 路径。
 - D1：`0067_app_public_profile_projection.sql` 仅创建空的可重建公开投影及四个真实查询索引。
 - 安全边界：查询强制验证认证、发布、授权、有效期、可见性和来源图库发布状态；migration 没有 seed、回填或 legacy 自动映射。
 - 客户端：手写 transport model 必须接受未知字段，但未知 enum/capability 安全降级；不得把 transport DTO 直接作为 Domain model。
 
-正式应用 ID、互动推荐信号、媒体访问及各能力的生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，Interaction-1 增加依赖 Auth 的喜欢/关注基线，Interaction-2 增加独立默认关闭的收藏夹与浏览历史服务端契约，Interaction-3 增加复用已审核发布事实的关注更新与站内通知投影，Search-1 增加隐私 POST 人物搜索与默认关闭的账号私有搜索历史，Taxonomy-1 增加稳定词条、不可变目录和人物公开分类投影；首发登录政策、年龄/地区、保留期、真实目录、敏感审批和正式法律文档版本仍未冻结。本次实现的公开投影仍是可删除重建的读模型，不替代 Person、Authorization、Verification、Publication Review 和审计权威表。
+正式应用 ID、互动推荐信号、媒体访问及各能力的生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，Interaction-1 增加依赖 Auth 的喜欢/关注基线，Interaction-2 增加独立默认关闭的收藏夹与浏览历史服务端契约，Interaction-3 增加复用已审核发布事实的关注更新与站内通知投影，Search-1 增加隐私 POST 人物搜索与默认关闭的账号私有搜索历史，Taxonomy-1 增加稳定词条、不可变目录和人物公开分类投影，Search-2 增加权益分层结构化筛选、结果预估与账号私有保存条件；首发登录政策、年龄/地区、保留期、真实目录、敏感审批和正式法律文档版本仍未冻结。本次实现的公开投影仍是可删除重建的读模型，不替代 Person、Authorization、Verification、Publication Review 和审计权威表。
 
 ### 1.2 M1 保守开发基线
 
@@ -101,7 +101,7 @@ Auth-1 不关闭 G-01/G-03，不冻结法定年龄、首发地区、运营主体
 - 清理：单条删除和全部清除提升版本，阻止操作前的在途写请求重新写回；列表只显示本人未到期记录。
 - 数据：`0080_app_person_search_and_history.sql` 只创建 development 策略、空偏好/历史表和查询索引，不回填旧站搜索数据。
 - 能力：Auth、`APP_PERSON_SEARCH_ENABLED`、策略版本和 production-ready 控制基础搜索；production 历史另需保留期批准、purge 和历史生产门禁。
-- 后置：KMP 页面、环境配置、`0080` 执行、专项测试、远端联调、高级筛选与保存条件统一后置。
+- 后置：KMP 页面、环境配置、`0080` 执行、专项测试和远端联调统一后置；高级筛选与保存条件由独立 Search-2 切片实现。
 
 本切片不关闭 OQ-020/OQ-023，不把 development 90 天保留期作为生产承诺，也不把搜索词写入审计、分析或推荐信号。完整边界见 `SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md`。
 
@@ -118,6 +118,20 @@ Auth-1 不关闭 G-01/G-03，不冻结法定年龄、首发地区、运营主体
 - 后置：细粒度权限、敏感双重审批、影响预览、多语言、灰度/回滚、迁移批次、Nuxt/KMP 页面、专项测试和远端联调统一放到全部开发完成后。
 
 完整边界见 `TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
+
+### 1.9 Search-2 结构化筛选与保存条件服务端开发基线
+
+2026-08-09 按“先完成开发、后统一配置与测试”的顺序，冻结 production 默认关闭的 Search-2 服务端契约：
+
+- 条件：`filters` 只接受不可变目录版本和最多 12 个 stable term ID；地区同组 OR、跨组 AND、父级包含后代，同组父子冗余安全收敛。
+- 权益：基础筛选登录可用；高级类型由 canonical `discovery.filter.advanced` 判断，保存数量由 `discovery.saved_filter.max` 原子限制，不读取展示名称或 rank。
+- 预估：正式搜索与 preview 共享公开资格、账号屏蔽和结构化条件构造器；失效或受限条件不计算结果数、不扩大结果。
+- 目录：`app_taxonomy_catalog_closure` 投影父子与 merged 路径；旧目录条件按当前目录解析为 active/redirected/invalid。
+- 保存：账号私有条件不保存自由搜索词；创建要求幂等键，修改/删除要求 `expectedVersion`，降级保留数据，删除清空词条并保留最小 tombstone。
+- 会员目录：新建 `amc_app_1_0_search_2_dev_1` 不可变开发快照，不原地覆盖旧 key，不自动切换配置或迁移 grant。
+- 后置：环境配置、`0082` 执行、真实 taxonomy 和 grant 迁移、KMP/Nuxt 页面、migration/专项测试及远端联调统一后置。
+
+完整边界见 `SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
 
 ## 2. 契约事实源
 

@@ -79,7 +79,7 @@ App 1.0 需要同时展示五级会员，并让所有有效会员都能发起平
 
 - **MBR-FR-008**：每项 entitlement 必须具有稳定 key、值类型、schema 版本、默认安全值、合并策略、周期规则、客户端 capability 和用户可见说明。
 - **MBR-FR-009**：值类型至少支持布尔、整数额度、枚举、集合、时间窗和周期重置；未知类型或未知 key 在旧客户端安全忽略，不得扩大权限。
-- **MBR-FR-010**：App 1.0 至少定义 `direct_message.create`、`direct_message.send`、`direct_message.new_threads_per_day`、`discovery.filter_tier`、`discovery.saved_filters`、`history.retention_days`、`favorite.folder_count`；具体数值由 OQ-014 在契约冻结前关闭。
+- **MBR-FR-010**：App 1.0 至少定义 `direct_message.create`、`direct_message.send`、`direct_message.new_threads_per_day`、`discovery.filter.advanced`、`discovery.saved_filter.max`、`history.retention_days`、`favorite.folder_count`；Search-2 不再执行旧草案 key `discovery.filter_tier`、`discovery.saved_filters`。具体数值仍须按 OQ-014 的产品确认范围区分开发基线与正式售卖承诺。
 - **MBR-FR-011**：服务端解析结果必须包含目录版本、当前等级、rank、每项值、来源、有效区间、已用/剩余额度、重置时间、最低客户端版本和快照生成时间。
 - **MBR-FR-012**：存在多个有效会员 grant 时，当前等级取最高有效 rank；tier entitlement 按 rank 继承后，再应用经授权的账号级例外 grant。账号级拒绝项优先于允许项，冲突必须返回可审计原因。
 - **MBR-FR-013**：会员到期、撤销、账号受限或目录失效后，服务端立即重新解析；无其他有效 grant 时回落 `rank=0`，不能依赖客户端本地倒计时完成撤权。

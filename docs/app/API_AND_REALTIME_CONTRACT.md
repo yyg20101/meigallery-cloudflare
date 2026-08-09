@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-09
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -133,7 +133,7 @@ Search-1 以兼容新增方式把累计契约提升为 `1.13.0`，冻结并实�
 - 搜索读取不隐式记录历史。搜索历史必须由用户独立开启，并在成功呈现后提交 `searchId + query + expectedHistoryVersion` 的幂等写命令。
 - 搜索历史与浏览历史分表、分开关、分版本；支持本人分页、逐条删除和版本化全部清除，清除可同时关闭未来记录。
 - bootstrap 增加 `capabilities.search.profiles|history` 与 `search` 配置。production 可单独开放人物搜索；历史还必须通过保留期审批、purge 与独立生产门禁。
-- 当前不执行 `0080`、不配置环境、不实现 KMP 页面，不运行专项测试；高级筛选、保存条件、热门词、联想词和推荐信号进入 Search-2。
+- 当前不执行 `0080`、不配置环境、不实现 KMP 页面，不运行专项测试；高级筛选与保存条件由 Search-2 独立切片实现，热门词、联想词和推荐信号继续后置。
 
 完整边界见 [Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)。
 
@@ -146,9 +146,22 @@ Taxonomy-1 以兼容新增方式把累计契约提升为 `1.14.0`，冻结并实
 - 目录响应支持 ETag 条件请求和 300 秒公共短缓存；失败不回退到 legacy 标签，不返回跨目录版本混合结果。
 - `AppPersonProfile` 兼容新增 `taxonomyTerms`。人物结构化标注绑定内容版本、目录和词条版本；发布时与人物公开投影在同一 D1 batch 中刷新。
 - legacy 值只允许 exact/alias/split_required/unsupported/pending_review 显式映射；未知值默认待复核，不能自动公开。
-- 当前不执行 `0081`、不配置环境、不导入旧标签、不实现 Nuxt/KMP 页面，不运行专项测试；Search-2 在此稳定 ID 基线上继续冻结权益筛选和保存条件。
+- 当前不执行 `0081`、不配置环境、不导入旧标签、不实现 Nuxt/KMP 页面，不运行专项测试；Search-2 已在此稳定 ID 基线上实现权益筛选和保存条件，但仍保持独立默认关闭。
 
 完整边界见 [Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)。
+
+### 1.13 Search-2 局部冻结记录
+
+Search-2 以兼容新增方式把累计契约提升为 `1.15.0`，冻结并实现 production 默认关闭的结构化筛选、结果预估与保存条件边界：
+
+- `POST /api/v2/person-profiles/search` 兼容 `filters: {catalogVersionId, termIds}`；地区三类同组 OR、跨组 AND，父级包含后代，游标绑定账号、搜索词哈希、筛选哈希与排序。
+- 基础筛选向登录观看者开放；风格/职业/场景由 `discovery.filter.advanced=basic|full` 控制，其余高级类型要求 `full`。越权条件 fail closed，不得忽略后返回扩大结果。
+- `POST /api/v2/person-profiles/search/preview` 返回目录重定向、失效、冗余和权限状态；只有 `canApply=true` 时计算与正式搜索同资格口径的结果快照数。
+- `/api/v2/me/search-filter-capabilities` 返回本人当前筛选档位和保存额度；`/api/v2/me/saved-filters` 提供账号私有 CRUD、创建幂等和修改/删除乐观版本。
+- 保存条件只持久化 stable taxonomy ID、目录、名称和热门/最新排序，不保存自由搜索词。会员降级保留数据，删除清空词条并保留最小 tombstone。
+- `0082` 创建 Search-2 策略、目录 closure、保存条件表和新的不可变会员开发目录，但不执行 migration、不切换配置、不迁移 grant。
+
+完整边界见 [Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)。
 
 ## 2. 通用请求
 
@@ -178,7 +191,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.14.0"
+    "contractVersion": "1.15.0"
   }
 }
 ```
@@ -278,7 +291,8 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 | GET | `/api/v2/discovery/popular` | 后续兼容别名；M0 使用 `feed?sort=popular` |
 | GET | `/api/v2/discovery/latest` | 后续兼容别名；M0 使用 `feed?sort=latest` |
 | GET | `/api/v2/discovery/categories` | 不再单独实现；客户端统一读取 `/taxonomy/catalog` |
-| POST | `/api/v2/person-profiles/search` | Search-1：登录后按公开昵称、地区、标签搜索，正文传词并使用账号绑定游标 |
+| POST | `/api/v2/person-profiles/search` | Search-1/2：登录后按公开文本和可选稳定 taxonomy 条件搜索，正文传输并使用条件绑定游标 |
+| POST | `/api/v2/person-profiles/search/preview` | Search-2：解析目录/权限并仅在可执行时返回结果数快照 |
 | GET | `/api/v2/person-profiles/:profileId` | M0 已实现：公开基础详情投影 |
 | POST | `/api/v2/person-profiles/:profileId/media-access` | 待媒体授权契约冻结后实现 |
 
@@ -343,10 +357,13 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 | GET/POST | `/api/v2/me/search-history` | Search-1：本人未到期历史分页/显式幂等记录 |
 | POST | `/api/v2/me/search-history/clear` | Search-1：版本化全部清除，可同时关闭记录 |
 | DELETE | `/api/v2/me/search-history/:historyId` | Search-1：幂等删除单条并提升设置版本 |
+| GET | `/api/v2/me/search-filter-capabilities` | Search-2：本人筛选档位、保存额度和 taxonomy 类型分层 |
+| GET/POST | `/api/v2/me/saved-filters` | Search-2：本人保存条件列表与幂等创建 |
+| GET/PATCH/DELETE | `/api/v2/me/saved-filters/:filterId` | Search-2：本人单项读取、乐观修改和内容清理式删除 |
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`，已提供稳定分类目录和人物公开分类投影；高级筛选、保存条件与推荐信号仍由 Search-2 实现。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
+Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`，已提供稳定分类目录和人物公开分类投影；Search-2 再提升为 `1.15.0`，实现权益分层的结构化筛选、结果预估与账号私有保存条件。推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
 
 ## 8. 会员和目录 API
 

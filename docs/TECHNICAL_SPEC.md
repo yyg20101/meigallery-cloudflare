@@ -156,7 +156,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `app_search_history_preferences` 以默认关闭、乐观版本和 mutation token 管理账号选择；`app_person_search_history` 只在客户端成功呈现后显式命令写入，同一规范化搜索词聚合、`searchId` 幂等、容量裁剪并按行到期。
 - 单条删除和全部清除都会原子提升设置版本，使旧在途记录命令失效；列表和删除只使用 Bearer 会话的内部账号 ID，不接受请求体账号 ID。
 - 每日维护任务只在显式策略版本且 `purge_enabled=1` 时分批物理删除到期搜索历史；删除义务不依赖搜索 capability 继续开放，日志只记录数量与固定错误码。
-- 当前未配置 `APP_PERSON_SEARCH_*`、未执行 `0080`、未实现 KMP 页面，也未运行 migration/专项测试/远端联调；高级筛选、taxonomy 稳定 ID、保存条件、热门词、联想词和推荐信号由 Search-2 后续冻结。
+- 当前未配置 `APP_PERSON_SEARCH_*`、未执行 `0080`、未实现 KMP 页面，也未运行 migration/专项测试/远端联调；高级筛选与保存条件已由 Search-2 独立实现，热门词、联想词和推荐信号仍后置。
 
 完整边界见 `docs/app/SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md`。
 
@@ -175,6 +175,21 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 当前未配置 `APP_TAXONOMY_*`、未执行 `0081`、未导入 legacy 标签、未实现 Nuxt/KMP 页面，也未运行 migration/专项测试/远端联调；细粒度权限、敏感升级审批、影响预览、多语言、灰度/回滚和迁移批次后置。
 
 完整边界见 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
+
+### Search-2 结构化筛选、结果预估与保存条件 `[服务端开发完成，默认关闭]`
+
+`0082_app_search_filters_and_saved_filters.sql` 和 App API v2 `1.15.0` 在 Search-1/Taxonomy-1 基线上建立可执行筛选闭环：
+
+- `POST /api/v2/person-profiles/search` 兼容新增 `filters: { catalogVersionId, termIds }`。地区三类形成一个逻辑组；同组 OR、跨组 AND，目录父级包含后代。游标升级为内部 v2，并绑定账号、搜索词哈希、筛选哈希和排序。
+- 基础筛选对登录观看者开放；`style/occupation/scene` 需要 `discovery.filter.advanced=basic|full`，`identity/personality/hair/clothing` 需要 `full`。权限每次从服务端会员快照解析，不从等级名称或 rank 推导。
+- `POST /api/v2/person-profiles/search/preview` 与正式搜索共用公开资格、屏蔽和筛选 SQL 构造器。只有目录和权限均有效时返回当前精确快照数量；失效或受限条件返回诊断且不计算结果。
+- `app_taxonomy_catalog_closure` 快照化父子/merged 闭包，使父级匹配后代，并让合并目标继续匹配仍引用源 stable ID 的公开人物投影。目录生成事务同步创建 closure。
+- `app_saved_person_filters` 只保存账号私有名称、canonical taxonomy stable ID、目录和热门/最新默认排序，不保存自由搜索词。创建使用 SHA-256 幂等标识和条件 INSERT 原子限制 `discovery.saved_filter.max`，修改/删除使用乐观版本。
+- 会员降级保留既有保存条件；列表按当前目录返回 `active/redirected/invalid` 和权限状态。删除保留最小 tombstone 并清空名称语义与词条内容，禁止旧幂等请求复活。
+- `0082` 新增不可变会员开发目录 `amc_app_1_0_search_2_dev_1`，复制五级展示与非搜索权益，只以 canonical `discovery.filter.advanced`、`discovery.saved_filter.max` 提供 Search-2 可执行值；不会自动切换目录或迁移 grant。
+- 当前未配置 Search-2 策略、未执行 `0082`、未切换 taxonomy/会员目录、未实现 KMP/Nuxt 页面，也未运行 migration/专项测试/远端联调；所有现有环境继续返回 `search.filters=false`、`search.savedFilters=false`。
+
+完整边界见 `docs/app/SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
 
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
@@ -429,7 +444,8 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/v2/discovery/feed` | 只读公开人物投影；推荐/热门/最新、地区筛选和不透明游标 |
 | GET | `/api/v2/discovery/regions` | 只统计当前仍具公开资格的人物地区 |
 | GET | `/api/v2/person-profiles/:profileId` | 按稳定公开资料 ID 重新校验并返回基础详情 |
-| POST | `/api/v2/person-profiles/search` | 默认关闭：正文传输搜索词，按公开昵称/地区/标签搜索并使用账号绑定游标 |
+| POST | `/api/v2/person-profiles/search` | 默认关闭：正文传输搜索词与可选稳定 taxonomy 条件，使用账号/搜索词/条件绑定游标 |
+| POST | `/api/v2/person-profiles/search/preview` | 默认关闭：解析目录变化和筛选权限，仅在可执行时返回当前结果数 |
 | POST | `/api/v2/auth/email-challenges` | 默认关闭：申请注册邮箱验证码，统一响应不披露账号存在性 |
 | POST | `/api/v2/auth/register` | 默认关闭：创建观看者账号、当前同意、设备和 App 会话 |
 | POST | `/api/v2/auth/login` | 默认关闭：邮箱密码登录与当前同意校验 |
@@ -453,6 +469,9 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET/POST | `/api/v2/me/search-history` | 默认关闭：本人未到期搜索历史分页/显式幂等记录 |
 | POST | `/api/v2/me/search-history/clear` | 默认关闭：原子清空搜索历史并使旧版本写请求失效 |
 | DELETE | `/api/v2/me/search-history/:historyId` | 默认关闭：幂等删除本人单条搜索历史 |
+| GET | `/api/v2/me/search-filter-capabilities` | 默认关闭：本人高级筛选档位、保存额度和 taxonomy 类型分层 |
+| GET/POST | `/api/v2/me/saved-filters` | 默认关闭：本人保存条件列表/原子额度校验的幂等创建 |
+| GET/PATCH/DELETE | `/api/v2/me/saved-filters/:filterId` | 默认关闭：本人保存条件详情、乐观并发修改和隐私清理式删除 |
 | GET | `/api/v2/membership/catalog` | 默认关闭：Membership-1 五级开发目录与 typed entitlement |
 | GET | `/api/v2/me/entitlements` | 默认关闭：当前 App 账号的权威会员权益快照 |
 | GET | `/api/v2/me/membership-applications` | 默认关闭：本人最近会员申请与用户可见时间线 |
@@ -761,6 +780,23 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 | `app_follow_update_policies` | 关注更新流与通知投影版本化门禁 | 生效时间禁止历史回填；development/production-ready 分离；不复制发布事件 |
 
 Interaction-2/3 策略都只 seed 默认关闭的 development 配置，不 seed 收藏夹、收藏条目、偏好、历史、更新或通知。当前没有执行 `0078`/`0079` migration；保留策略未决时不创建 purge 任务，也不允许 production-ready。
+
+### App 搜索、分类与保存条件表族 `[服务端开发完成，默认关闭]`
+
+`0080`、`0081` 与 `0082` 依次建立隐私搜索、稳定 taxonomy 和 Search-2 筛选闭环，不回填旧搜索记录、legacy 标签或用户保存条件：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_person_search_policies` | 搜索、历史、筛选、预估和保存条件版本化门禁 | production-ready 与历史保留门禁分离；默认历史关闭；筛选最多 12 项 |
+| `app_search_history_preferences` / `app_person_search_history` | 本人私有搜索历史 | 显式开启与显式记录；乐观版本清除；搜索词不进入审计/分析 |
+| `app_taxonomy_terms` / `app_taxonomy_term_revisions` | 稳定词条编辑事实和不可变修订 | 生命周期、父子同类型、合并目标和敏感状态受约束 |
+| `app_taxonomy_catalogs` / `app_taxonomy_catalog_items` | 不可变客户端目录快照 | 目录版本唯一；公开只包含受控快照，不混合版本 |
+| `app_taxonomy_catalog_closure` | 目录父子与合并闭包 | ancestor/descendant 三元组唯一；父级包含后代，合并目标兼容旧投影 ID |
+| `person_profile_taxonomy_assignments` / `profile_public_taxonomy_terms` | 人物内容版本标注与可重建公开投影 | 发布门禁校验目录/词条版本；公开查询不读取编辑态 |
+| `app_taxonomy_legacy_mappings` | legacy 值显式迁移决策 | 未知值待复核；split/unsupported 不进入人物公开投影 |
+| `app_saved_person_filters` | 本人账号私有结构化保存条件 | 不保存自由搜索词；幂等摘要、原子 quota、同名唯一、乐观版本、删除清空内容 |
+
+Search-2 新会员目录是独立不可变快照；在配置切换前没有账号 grant 指向它。目录切换必须与 grant 迁移策略一起评审，不能只修改环境变量。
 
 ### App 五级会员表族 `[开发验证，默认关闭]`
 
@@ -1376,8 +1412,9 @@ queued → processing → completed
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - **Interaction-2 服务端开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 接入、配置、migration、专项测试与远端联调后置。
 - **Interaction-3 服务端开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 接入、配置、migration、专项测试与远端联调后置。
-- **Search-1 服务端开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 接入、高级筛选、配置、migration、专项测试与远端联调后置。
+- **Search-1 服务端开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 接入、配置、migration、专项测试与远端联调后置。
 - **Taxonomy-1 服务端开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；Nuxt/KMP 接入、真实目录、配置、migration、专项测试与远端联调后置。
+- **Search-2 服务端开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP/Nuxt 接入、真实目录与 grant 迁移、配置、migration、专项测试与远端联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
 

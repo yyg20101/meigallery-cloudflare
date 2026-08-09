@@ -96,7 +96,7 @@ App API：v2 / `1.11.0`
 
 ## 7. 后续开发顺序
 
-1. 在 `meigallery-client` 按当前累计 `1.14.0` 契约接入 Interaction-2 DTO、Repository、状态与 `APP-INT-03/04/05` Compose 页面。
+1. 在 `meigallery-client` 按当前累计 `1.15.0` 契约接入 Interaction-2 DTO、Repository、状态与 `APP-INT-03/04/05` Compose 页面。
 2. Interaction-3 服务端关注更新与必要通知投影已完成；后续在客户端统一接入 `1.12.0` 更新流与通知跳转，仍不接系统推送。
 3. 继续完成 App 1.0 剩余开发模块。
 4. 全部开发完成后统一补齐环境配置、目录 available 值、migration、专项测试、KMP 回归、隔离联调和上线门禁。

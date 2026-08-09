@@ -225,7 +225,7 @@ Interaction-3 在不接系统推送、不新增第二套发布事实、不向目
 - 站内提醒在用户 HTTP pull 时按账号惰性写入 Message-3 Outbox，相同账号与发布事件只保留一项，不在发布事务同步枚举全部关注者。
 - 投递前重验当前关注、屏蔽、认证、发布、授权、有效期、可见性与来源图库；取消关注或失效后的待投递项永久抑制，恢复时不补发旧事件。
 - bootstrap 独立返回 `interactions.followUpdates`；Auth、运行开关、策略版本和 production-ready 任一缺失都安全关闭。
-- 当前只完成服务端代码、D1 schema；其接口已包含在当前累计 OpenAPI `1.14.0` 中。KMP、配置、migration、专项测试和远端联调统一后置。
+- 当前只完成服务端代码、D1 schema；其接口已包含在当前累计 OpenAPI `1.15.0` 中。KMP、配置、migration、专项测试和远端联调统一后置。
 
 详细边界见 `docs/app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
 

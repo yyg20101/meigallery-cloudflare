@@ -13,14 +13,17 @@ import {
 } from '../services/app-discovery'
 import {
   APP_PERSON_SEARCH_SORTS,
+  countPublicPersonSearchResults,
   parseAppPersonSearchInput,
   searchPublicPersonProfiles,
 } from '../services/app-person-search'
 import {
   APP_PERSON_SEARCH_DEFAULT_PAGE_SIZE,
   APP_PERSON_SEARCH_MAX_HISTORY_ITEMS,
+  APP_PERSON_SEARCH_MAX_FILTER_TERMS,
   APP_PERSON_SEARCH_MAX_PAGE_SIZE,
   APP_PERSON_SEARCH_MAX_QUERY_LENGTH,
+  APP_PERSON_SEARCH_MAX_SAVED_FILTER_NAME_LENGTH,
   APP_PERSON_SEARCH_POLICY_ID,
   AppPersonSearchError,
   getAppPersonSearchRuntimeConfig,
@@ -39,6 +42,22 @@ import {
   type RecordAppSearchHistoryInput,
   type UpdateAppSearchHistorySettingsInput,
 } from '../services/app-search-history'
+import {
+  APP_ADVANCED_FILTER_ENTITLEMENT,
+  APP_SAVED_FILTER_MAX_ENTITLEMENT,
+  assertAppFilterSelectionCanApply,
+  getAppSearchFilterCapabilities,
+  readAppSearchFilterInput,
+  resolveAppPersonFilterSelection,
+  toAppSearchFilterSelectionResponse,
+} from '../services/app-search-filters'
+import {
+  createAppSavedFilter,
+  deleteAppSavedFilter,
+  getAppSavedFilter,
+  listAppSavedFilters,
+  updateAppSavedFilter,
+} from '../services/app-saved-filters'
 import { appApiError, appApiListSuccess, appApiSuccess } from '../utils/app-api-v2'
 import { appAuthRoutes, appAccountError } from './app-auth'
 import {
@@ -271,6 +290,7 @@ for (const path of [
   '/me',
   '/me/*',
   '/person-profiles/search',
+  '/person-profiles/search/*',
   '/person-profiles/:profileId/interactions',
   '/person-profiles/:profileId/like',
   '/person-profiles/:profileId/follow',
@@ -844,10 +864,24 @@ appV2Routes.post('/person-profiles/search', async (c) => {
     const principal = appPrincipal(c)
     const config = getAppPersonSearchRuntimeConfig(c.env)
     const policy = await requireAppPersonSearchPolicy(c.env.DB, config, 'profiles')
+    const body = await c.req.json<unknown>()
+    const filterInput = readAppSearchFilterInput(body)
+    const filters = filterInput === undefined
+      ? null
+      : await resolveAppPersonFilterSelection(
+          c.env.DB,
+          principal.accountInternalId,
+          filterInput,
+          await requireAppPersonSearchPolicy(c.env.DB, config, 'filters'),
+          getAppTaxonomyRuntimeConfig(c.env),
+          getAppMembershipRuntimeConfig(c.env),
+        )
+    if (filterInput !== undefined) assertAppFilterSelectionCanApply(filters)
     const query = await parseAppPersonSearchInput(
-      await c.req.json<unknown>(),
+      body,
       principal.accountId,
       policy,
+      filters,
     )
     const result = await searchPublicPersonProfiles(
       c.env.DB,
@@ -859,6 +893,52 @@ appV2Routes.post('/person-profiles/search', async (c) => {
     return appApiListSuccess(c, result.data, {
       nextCursor: result.nextCursor,
       hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.post('/person-profiles/search/preview', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const config = getAppPersonSearchRuntimeConfig(c.env)
+    const policy = await requireAppPersonSearchPolicy(c.env.DB, config, 'filters')
+    const body = await c.req.json<unknown>()
+    const filterInput = readAppSearchFilterInput(body)
+    if (filterInput === undefined) {
+      throw new AppPersonSearchError(400, 'SEARCH_FILTERS_REQUIRED', '结果预估需要结构化筛选条件')
+    }
+    const filters = await resolveAppPersonFilterSelection(
+      c.env.DB,
+      principal.accountInternalId,
+      filterInput,
+      policy,
+      getAppTaxonomyRuntimeConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    )
+    if (!filters) {
+      throw new AppPersonSearchError(400, 'SEARCH_FILTERS_REQUIRED', '结果预估需要结构化筛选条件')
+    }
+    const query = await parseAppPersonSearchInput(
+      body,
+      principal.accountId,
+      policy,
+      filters,
+      { preview: true },
+    )
+    const resultCount = filters.canApply
+      ? await countPublicPersonSearchResults(
+          c.env.DB,
+          principal.accountInternalId,
+          query,
+        )
+      : null
+    return appApiSuccess(c, {
+      filters: toAppSearchFilterSelectionResponse(filters),
+      resultCount,
+      countMode: filters.canApply ? 'snapshot_exact' : 'not_calculated',
     })
   }
   catch (error) {
@@ -1450,6 +1530,135 @@ appV2Routes.delete('/me/view-history/:profileId', async (c) => {
   }
 })
 
+appV2Routes.get('/me/search-filter-capabilities', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const policy = await requireAppPersonSearchPolicy(
+      c.env.DB,
+      getAppPersonSearchRuntimeConfig(c.env),
+      'filters',
+    )
+    return appApiSuccess(c, await getAppSearchFilterCapabilities(
+      c.env.DB,
+      principal.accountInternalId,
+      policy,
+      getAppTaxonomyRuntimeConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.get('/me/saved-filters', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const policy = await requireAppPersonSearchPolicy(
+      c.env.DB,
+      getAppPersonSearchRuntimeConfig(c.env),
+      'saved_filters',
+    )
+    return appApiSuccess(c, await listAppSavedFilters(
+      c.env.DB,
+      principal.accountInternalId,
+      policy,
+      getAppTaxonomyRuntimeConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.post('/me/saved-filters', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const policy = await requireAppPersonSearchPolicy(
+      c.env.DB,
+      getAppPersonSearchRuntimeConfig(c.env),
+      'saved_filters',
+    )
+    const result = await createAppSavedFilter(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      await c.req.json<unknown>(),
+      c.req.header('Idempotency-Key') ?? null,
+      policy,
+      getAppTaxonomyRuntimeConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    )
+    return appApiSuccess(c, result, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.get('/me/saved-filters/:filterId', async (c) => {
+  try {
+    const policy = await requireAppPersonSearchPolicy(
+      c.env.DB,
+      getAppPersonSearchRuntimeConfig(c.env),
+      'saved_filters',
+    )
+    return appApiSuccess(c, await getAppSavedFilter(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('filterId'),
+      policy,
+      getAppTaxonomyRuntimeConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.patch('/me/saved-filters/:filterId', async (c) => {
+  try {
+    const policy = await requireAppPersonSearchPolicy(
+      c.env.DB,
+      getAppPersonSearchRuntimeConfig(c.env),
+      'saved_filters',
+    )
+    return appApiSuccess(c, await updateAppSavedFilter(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('filterId'),
+      await c.req.json<unknown>(),
+      policy,
+      getAppTaxonomyRuntimeConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.delete('/me/saved-filters/:filterId', async (c) => {
+  try {
+    await requireAppPersonSearchPolicy(
+      c.env.DB,
+      getAppPersonSearchRuntimeConfig(c.env),
+      'saved_filters',
+    )
+    return appApiSuccess(c, await deleteAppSavedFilter(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('filterId'),
+      c.req.query('expectedVersion'),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
 appV2Routes.get('/me/search-history/settings', async (c) => {
   try {
     return appApiSuccess(c, await getAppSearchHistorySettings(
@@ -1564,7 +1773,7 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
     : [
         { favorite: false, history: false },
         false,
-        { profiles: false, history: false, policy: null },
+        { profiles: false, history: false, filters: false, savedFilters: false, policy: null },
       ]
   const taxonomyCatalogCapability = await resolveAppTaxonomyCatalogCapability(env.DB, taxonomy)
   return {
@@ -1575,6 +1784,8 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       search: {
         profiles: personSearchCapabilities.profiles,
         history: personSearchCapabilities.history,
+        filters: personSearchCapabilities.filters && taxonomyCatalogCapability,
+        savedFilters: personSearchCapabilities.savedFilters && taxonomyCatalogCapability,
       },
       taxonomy: {
         catalog: taxonomyCatalogCapability,
@@ -1619,6 +1830,12 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       maxPageSize: APP_PERSON_SEARCH_MAX_PAGE_SIZE,
       maxQueryLength: personSearchCapabilities.policy?.maxQueryLength
         ?? APP_PERSON_SEARCH_MAX_QUERY_LENGTH,
+      maxFilterTerms: personSearchCapabilities.policy?.maxFilterTerms
+        ?? APP_PERSON_SEARCH_MAX_FILTER_TERMS,
+      maxSavedFilterNameLength: personSearchCapabilities.policy?.maxSavedFilterNameLength
+        ?? APP_PERSON_SEARCH_MAX_SAVED_FILTER_NAME_LENGTH,
+      advancedFilterEntitlement: APP_ADVANCED_FILTER_ENTITLEMENT,
+      savedFilterMaxEntitlement: APP_SAVED_FILTER_MAX_ENTITLEMENT,
       historyRecordingDefault: false,
       maxHistoryItems: personSearchCapabilities.policy?.maxHistoryItems
         ?? APP_PERSON_SEARCH_MAX_HISTORY_ITEMS,

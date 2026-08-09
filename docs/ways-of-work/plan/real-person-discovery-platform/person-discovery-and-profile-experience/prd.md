@@ -95,13 +95,13 @@ MeiGallery 当前以图库为主，无法直接向观看者提供以真人为中
 
 - **DSP-FR-030**：搜索覆盖审核后的展示名、地区、职业和标签；不得索引法定姓名、证件、精确地址、内部备注或未发布字段。
 - **DSP-FR-031**：基础搜索和基础筛选向登录观看者开放；高级筛选与可保存条件数量分别由 `discovery.filter.advanced` 和 `discovery.saved_filter.max` entitlement 判断。
-- **DSP-FR-032**：筛选页显示当前条件、可选项、结果数、清空操作和冲突条件说明；应用筛选前不修改当前结果。
+- **DSP-FR-032**：筛选页显示当前条件、可选项、结果数、清空操作和冲突条件说明；应用筛选前不修改当前结果。地区范围/地区组/城市国家同组 OR，不同 taxonomy 逻辑组之间 AND，选择父级包含后代。
 - **DSP-FR-033**：受限高级筛选可以展示名称和价值说明，但点击时只进入权益说明，不返回受限结果或创建订单。
-- **DSP-FR-034**：保存条件必须记录 taxonomy 稳定 ID 和目录版本；已下线项在编辑时标记失效并允许移除。
+- **DSP-FR-034**：保存条件必须记录 taxonomy 稳定 ID 和目录版本，不得保存自由搜索词；已合并项重定向并提示更新，已下线项在编辑时标记失效并允许移除。
 - **DSP-FR-035**：无结果时提供放宽筛选、清空条件或查看热门的建议，不以未认证资料填充结果。
 - **DSP-FR-036**：搜索历史默认只在本人账号范围使用，支持逐条和全部清除；敏感自由文本不进入分析日志。
 
-Search-1 已按 `DSP-FR-030/031/035/036` 完成 production 默认关闭的服务端开发基线：登录观看者通过 `POST /api/v2/person-profiles/search` 搜索审核展示名、公开地区与公开标签，支持相关度/热门/最新稳定分页并排除本人已屏蔽人物；搜索读取不隐式写历史，历史独立默认关闭并支持显式幂等记录、逐条删除和版本化全部清除。自由搜索词不进入 URL、游标、审计或分析事件。Taxonomy-1 随后完成稳定 ID、不可变目录和人物公开分类投影，职业等结构化字段的数据前提已具备；基础/高级筛选、结果数预估和保存条件仍由 Search-2 在 entitlement 冻结后实现。详细契约见 `docs/app/SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md` 与 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
+Search-1 已按 `DSP-FR-030/031/035/036` 完成 production 默认关闭的服务端开发基线：登录观看者通过 `POST /api/v2/person-profiles/search` 搜索审核展示名、公开地区与公开标签，支持相关度/热门/最新稳定分页并排除本人已屏蔽人物；搜索读取不隐式写历史，历史独立默认关闭并支持显式幂等记录、逐条删除和版本化全部清除。自由搜索词不进入 URL、游标、审计或分析事件。Taxonomy-1 随后完成稳定 ID、不可变目录和人物公开分类投影。Search-2 已进一步完成 taxonomy 分组筛选、父级包含后代、会员高级条件校验、目录变化诊断、结果数安全预估与账号私有保存条件；保存数量原子受 entitlement 限制，会员降级保留数据但不扩大权限。三个切片的客户端、配置、migration 与专项验证仍按当前开发顺序后置。详细契约见 `docs/app/SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md`、`docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md` 与 `docs/app/SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
 
 #### 真人卡片与详情
 

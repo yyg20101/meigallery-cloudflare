@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.14.0
+  version: 1.15.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -15,8 +15,9 @@ info:
     收藏不等于喜欢或匹配，历史默认不记录且必须携带当前偏好版本写入。Interaction-3 新增关注对象已审核公开发布更新流，
     并在用户拉取通知时以同一发布事实惰性生成去重站内提醒；取消关注、拉黑或资料失效后不再投影。Search-1 新增登录后人物搜索与
     独立、默认关闭的账号私有搜索历史；搜索词通过 POST 正文传输，不进入 URL、游标、审计或分析事件。Taxonomy-1 新增稳定词条 ID、
-    不可变目录快照和合并重定向的默认关闭公开目录；未知旧标签只能进入管理员待复核映射，不能自动公开。高级筛选、保存条件、推荐信号、
-    系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
+    不可变目录快照和合并重定向的默认关闭公开目录；未知旧标签只能进入管理员待复核映射，不能自动公开。Search-2
+    在稳定分类 ID 上新增权益分层的结构化筛选、结果数预估与账号私有保存条件；组内取并集、组间取交集，会员不足时不得返回筛选结果。
+    推荐信号、系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -1186,6 +1187,180 @@ paths:
           $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/search-filter-capabilities:
+    get:
+      tags: [Search]
+      operationId: getAppSearchFilterCapabilities
+      summary: 获取本人结构化筛选档位与保存额度
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 当前目录、筛选类型分层、会员权益与本人保存数量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchFilterCapabilitiesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/saved-filters:
+    get:
+      tags: [Search]
+      operationId: listAppSavedFilters
+      summary: 获取本人保存的结构化筛选条件
+      description: 会员降级不会删除既有条件；每项都会按当前目录解析重定向、失效与权限状态。
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 本人保存条件和当前额度
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedFilterCollectionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [Search]
+      operationId: createAppSavedFilter
+      summary: 幂等创建本人保存条件
+      description: 只保存稳定 taxonomy 条件和默认排序，不接受或持久化自由搜索词；创建时原子校验当前会员额度。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedFilterCreateRequest'
+      responses:
+        '200':
+          description: 相同正文和幂等键的重放结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedFilterCreateResponse'
+        '201':
+          description: 新保存条件已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedFilterCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/saved-filters/{filterId}:
+    get:
+      tags: [Search]
+      operationId: getAppSavedFilter
+      summary: 获取本人单个保存条件
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SavedFilterId'
+      responses:
+        '200':
+          description: 按当前目录和权益解析后的保存条件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedFilterResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    patch:
+      tags: [Search]
+      operationId: updateAppSavedFilter
+      summary: 使用 expectedVersion 更新保存条件
+      description: 改条件时重新校验当前高级筛选权限；会员降级后仍允许重命名、查看和删除既有条件。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SavedFilterId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedFilterUpdateRequest'
+      responses:
+        '200':
+          description: 更新后的保存条件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedFilterResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Search]
+      operationId: deleteAppSavedFilter
+      summary: 使用 expectedVersion 软删除保存条件并清除其词条内容
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SavedFilterId'
+        - name: expectedVersion
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: 删除结果；资源已不存在时 deleted=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedFilterDeleteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/me/search-history/settings:
     get:
       tags: [Search]
@@ -1644,9 +1819,10 @@ paths:
       operationId: searchAppPersonProfiles
       summary: 搜索当前可见的审核公开人物资料
       description: >-
-        必须登录；只搜索 displayName、公开地区和公开标签，并排除当前账号已屏蔽人物。
+        必须登录；自由搜索只读取 displayName、公开地区和公开标签，结构化筛选只读取稳定 taxonomy 公开投影，
+        并排除当前账号已屏蔽人物。地区类型组成一个逻辑组；同组条件为 OR，不同组为 AND，选择父级包含其后代。
         搜索词放在 JSON 正文中，不写 URL、游标、审计日志或分析事件；本读取接口不会隐式写入搜索历史。
-        游标与账号、搜索词哈希和排序绑定，条件变化后必须从第一页重新请求。
+        游标与账号、搜索词哈希、筛选哈希和排序绑定，条件变化后必须从第一页重新请求。受限高级条件返回 403，不会降级为忽略条件。
       security:
         - BearerAuth: []
       requestBody:
@@ -1668,6 +1844,43 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/person-profiles/search/preview:
+    post:
+      tags: [Search]
+      operationId: previewAppPersonProfileSearch
+      summary: 校验结构化筛选并预估当前结果数
+      description: >-
+        返回目录重定向、失效条件、冗余条件和会员权限状态。只有全部条件当前可执行时才计算公开结果快照数量；
+        会员不足或词条失效时 resultCount=null，服务端不会通过忽略受限条件泄露结果。
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchFilterPreviewRequest'
+      responses:
+        '200':
+          description: 筛选解析状态和可选的当前精确快照数量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchFilterPreviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/person-profiles/{profileId}:
@@ -2249,7 +2462,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.14.0
+        const: 1.15.0
   parameters:
     ProfileId:
       name: profileId
@@ -2265,6 +2478,13 @@ components:
       schema:
         type: string
         pattern: '^ff_[A-Za-z0-9_-]{1,93}$'
+    SavedFilterId:
+      name: filterId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^sf_[0-9a-f]{64}$'
     ListLimit:
       name: limit
       in: query
@@ -2399,7 +2619,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.14.0
+          const: 1.15.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -4002,11 +4222,15 @@ components:
             search:
               type: object
               additionalProperties: false
-              required: [profiles, history]
+              required: [profiles, history, filters, savedFilters]
               properties:
                 profiles:
                   type: boolean
                 history:
+                  type: boolean
+                filters:
+                  type: boolean
+                savedFilters:
                   type: boolean
             taxonomy:
               type: object
@@ -4088,7 +4312,7 @@ components:
         search:
           type: object
           additionalProperties: false
-          required: [policyVersion, transport, defaultSort, allowedSorts, defaultPageSize, maxPageSize, maxQueryLength, historyRecordingDefault, maxHistoryItems]
+          required: [policyVersion, transport, defaultSort, allowedSorts, defaultPageSize, maxPageSize, maxQueryLength, maxFilterTerms, maxSavedFilterNameLength, advancedFilterEntitlement, savedFilterMaxEntitlement, historyRecordingDefault, maxHistoryItems]
           properties:
             policyVersion:
               type: string
@@ -4115,6 +4339,20 @@ components:
               type: integer
               minimum: 1
               maximum: 50
+            maxFilterTerms:
+              type: integer
+              minimum: 1
+              maximum: 12
+            maxSavedFilterNameLength:
+              type: integer
+              minimum: 1
+              maximum: 40
+            advancedFilterEntitlement:
+              type: string
+              const: discovery.filter.advanced
+            savedFilterMaxEntitlement:
+              type: string
+              const: discovery.saved_filter.max
             historyRecordingDefault:
               type: boolean
               const: false
@@ -5769,16 +6007,402 @@ components:
             $ref: '#/components/schemas/PersonProfile'
         meta:
           $ref: '#/components/schemas/ListMeta'
+    SearchFilterTier:
+      type: string
+      enum: [none, basic, full]
+    SearchFilterInput:
+      type: object
+      additionalProperties: false
+      required: [catalogVersionId, termIds]
+      properties:
+        catalogVersionId:
+          type: string
+          pattern: '^txc_[A-Za-z0-9_-]{4,92}$'
+        termIds:
+          type: array
+          minItems: 1
+          maxItems: 12
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+    SearchFilterTermResolution:
+      type: object
+      additionalProperties: false
+      required: [sourceTermId, termId, type, displayName, status, requiredTier, accessible]
+      properties:
+        sourceTermId:
+          type: string
+          pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+        termId:
+          type: [string, 'null']
+          pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+        type:
+          oneOf:
+            - $ref: '#/components/schemas/TaxonomyType'
+            - type: 'null'
+        displayName:
+          type: [string, 'null']
+          maxLength: 40
+        status:
+          type: string
+          enum: [active, redirected, invalid]
+        requiredTier:
+          oneOf:
+            - $ref: '#/components/schemas/SearchFilterTier'
+            - type: 'null'
+        accessible:
+          type: boolean
+    SearchFilterSelection:
+      type: object
+      additionalProperties: false
+      required: [sourceCatalogVersionId, catalogVersionId, termIds, groups, resolutions, invalidTermIds, restrictedTermIds, redundantTermIds, canApply, entitlement]
+      properties:
+        sourceCatalogVersionId:
+          type: string
+          pattern: '^txc_[A-Za-z0-9_-]{4,92}$'
+        catalogVersionId:
+          type: string
+          pattern: '^txc_[A-Za-z0-9_-]{4,92}$'
+        termIds:
+          type: array
+          maxItems: 12
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+        groups:
+          type: array
+          maxItems: 9
+          items:
+            type: object
+            additionalProperties: false
+            required: [group, termIds]
+            properties:
+              group:
+                type: string
+                enum: [region, identity, personality, style, occupation, hair, clothing, scene, content_type]
+              termIds:
+                type: array
+                minItems: 1
+                maxItems: 12
+                uniqueItems: true
+                items:
+                  type: string
+                  pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+        resolutions:
+          type: array
+          minItems: 1
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/SearchFilterTermResolution'
+        invalidTermIds:
+          type: array
+          maxItems: 12
+          uniqueItems: true
+          items:
+            type: string
+        restrictedTermIds:
+          type: array
+          maxItems: 12
+          uniqueItems: true
+          items:
+            type: string
+        redundantTermIds:
+          type: array
+          maxItems: 12
+          uniqueItems: true
+          items:
+            type: string
+        canApply:
+          type: boolean
+        entitlement:
+          type: object
+          additionalProperties: false
+          required: [advancedKey, advancedTier, sourceTierId, membershipCatalogVersionId, membershipReady]
+          properties:
+            advancedKey:
+              type: string
+              const: discovery.filter.advanced
+            advancedTier:
+              $ref: '#/components/schemas/SearchFilterTier'
+            sourceTierId:
+              type: [string, 'null']
+            membershipCatalogVersionId:
+              type: [string, 'null']
+            membershipReady:
+              type: boolean
+    SearchFilterPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [filters]
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 50
+        filters:
+          $ref: '#/components/schemas/SearchFilterInput'
+        sort:
+          $ref: '#/components/schemas/PersonSearchSort'
+    SearchFilterPreview:
+      type: object
+      additionalProperties: false
+      required: [filters, resultCount, countMode]
+      properties:
+        filters:
+          $ref: '#/components/schemas/SearchFilterSelection'
+        resultCount:
+          type: [integer, 'null']
+          minimum: 0
+        countMode:
+          type: string
+          enum: [snapshot_exact, not_calculated]
+    SearchFilterPreviewResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SearchFilterPreview'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SearchFilterCapabilities:
+      type: object
+      additionalProperties: false
+      required: [policyVersion, catalogVersionId, maxFilterTerms, typeAccess, entitlement, savedFilters]
+      properties:
+        policyVersion:
+          type: string
+          pattern: '^sqp_[A-Za-z0-9_-]{1,92}$'
+        catalogVersionId:
+          type: string
+          pattern: '^txc_[A-Za-z0-9_-]{4,92}$'
+        maxFilterTerms:
+          type: integer
+          minimum: 1
+          maximum: 12
+        typeAccess:
+          type: object
+          additionalProperties: false
+          required: [basic, advancedBasic, advancedFull]
+          properties:
+            basic:
+              type: array
+              items:
+                $ref: '#/components/schemas/TaxonomyType'
+            advancedBasic:
+              type: array
+              items:
+                $ref: '#/components/schemas/TaxonomyType'
+            advancedFull:
+              type: array
+              items:
+                $ref: '#/components/schemas/TaxonomyType'
+        entitlement:
+          type: object
+          additionalProperties: false
+          required: [advancedKey, advancedTier, savedFilterMaxKey, savedFilterMax, sourceTierId, membershipCatalogVersionId, membershipReady]
+          properties:
+            advancedKey:
+              type: string
+              const: discovery.filter.advanced
+            advancedTier:
+              $ref: '#/components/schemas/SearchFilterTier'
+            savedFilterMaxKey:
+              type: string
+              const: discovery.saved_filter.max
+            savedFilterMax:
+              type: integer
+              minimum: 0
+              maximum: 100
+            sourceTierId:
+              type: [string, 'null']
+            membershipCatalogVersionId:
+              type: [string, 'null']
+            membershipReady:
+              type: boolean
+        savedFilters:
+          type: object
+          additionalProperties: false
+          required: [count, max, canCreate]
+          properties:
+            count:
+              type: integer
+              minimum: 0
+              maximum: 100
+            max:
+              type: integer
+              minimum: 0
+              maximum: 100
+            canCreate:
+              type: boolean
+    SearchFilterCapabilitiesResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SearchFilterCapabilities'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SavedFilter:
+      type: object
+      additionalProperties: false
+      required: [filterId, name, defaultSort, version, createdAt, updatedAt, filters]
+      properties:
+        filterId:
+          type: string
+          pattern: '^sf_[0-9a-f]{64}$'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        defaultSort:
+          type: string
+          enum: [popular, latest]
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        filters:
+          $ref: '#/components/schemas/SearchFilterSelection'
+    SavedFilterCollection:
+      type: object
+      additionalProperties: false
+      required: [items, count, max, canCreate]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/SavedFilter'
+        count:
+          type: integer
+          minimum: 0
+          maximum: 100
+        max:
+          type: integer
+          minimum: 0
+          maximum: 100
+        canCreate:
+          type: boolean
+    SavedFilterCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, filters]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        filters:
+          $ref: '#/components/schemas/SearchFilterInput'
+        defaultSort:
+          type: string
+          enum: [popular, latest]
+          default: popular
+    SavedFilterUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      anyOf:
+        - required: [name]
+        - required: [filters]
+        - required: [defaultSort]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        filters:
+          $ref: '#/components/schemas/SearchFilterInput'
+        defaultSort:
+          type: string
+          enum: [popular, latest]
+    SavedFilterCreateResult:
+      type: object
+      additionalProperties: false
+      required: [savedFilter, replayed]
+      properties:
+        savedFilter:
+          $ref: '#/components/schemas/SavedFilter'
+        replayed:
+          type: boolean
+    SavedFilterDeleteResult:
+      type: object
+      additionalProperties: false
+      required: [filterId, deleted, version, updatedAt]
+      properties:
+        filterId:
+          type: string
+          pattern: '^sf_[0-9a-f]{64}$'
+        deleted:
+          type: boolean
+        version:
+          type: [integer, 'null']
+          minimum: 1
+        updatedAt:
+          type: [string, 'null']
+          format: date-time
+    SavedFilterResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SavedFilter'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SavedFilterCollectionResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SavedFilterCollection'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SavedFilterCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SavedFilterCreateResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SavedFilterDeleteResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SavedFilterDeleteResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
     PersonSearchRequest:
       type: object
       additionalProperties: false
-      required: [query]
+      anyOf:
+        - required: [query]
+        - required: [filters]
       properties:
         query:
           type: string
           minLength: 1
           maxLength: 50
           description: 服务端执行 NFKC、首尾去空白和连续空白折叠；禁止控制字符与方向控制字符。
+        filters:
+          $ref: '#/components/schemas/SearchFilterInput'
         sort:
           $ref: '#/components/schemas/PersonSearchSort'
         limit:
@@ -5790,7 +6414,7 @@ components:
           type: [string, 'null']
           minLength: 1
           maxLength: 2048
-          description: 只包含账号范围、搜索词哈希、排序和分页键，不包含原始搜索词。
+          description: 只包含账号范围、搜索词哈希、筛选哈希、排序和分页键，不包含原始搜索词或词条展示名。
     PersonSearchMatch:
       type: object
       additionalProperties: false
@@ -5798,7 +6422,7 @@ components:
       properties:
         field:
           type: string
-          enum: [display_name, region, tag]
+          enum: [display_name, region, tag, filter]
         label:
           type: string
           minLength: 1
