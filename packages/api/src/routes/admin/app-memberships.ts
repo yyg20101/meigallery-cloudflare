@@ -24,6 +24,15 @@ import {
   type AdminAppMembershipApplicationApproveInput,
   type AdminAppMembershipApplicationMutationInput,
 } from '../../services/admin-app-membership-applications'
+import {
+  createAdminAppMembershipGrantChangeRequest,
+  createAdminAppMembershipRevokeChangeRequest,
+  getAdminAppMembershipChangeRequest,
+  listAdminAppMembershipChangeRequests,
+  previewAdminAppMembershipRevokeChange,
+  reviewAdminAppMembershipChangeRequest,
+  type AdminAppMembershipChangeReviewInput,
+} from '../../services/admin-app-membership-reviews'
 
 export const adminAppMembershipRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -128,7 +137,7 @@ for (const [path, transition] of [
 adminAppMembershipRoutes.post('/applications/:applicationId/approve', async (c) => {
   try {
     const config = enabledConfig(c.env)
-    return c.json({ data: await approveAdminAppMembershipApplication(
+    const data = await approveAdminAppMembershipApplication(
       c.env.DB,
       config.catalogVersionId,
       c.req.param('applicationId'),
@@ -137,7 +146,11 @@ adminAppMembershipRoutes.post('/applications/:applicationId/approve', async (c) 
       await c.req.json<AdminAppMembershipApplicationApproveInput>(),
       new Date(),
       config.requireProductionReady,
-    ) })
+    )
+    return c.json({
+      message: data.replayed ? '已返回原独立复核申请' : '会员发放已提交独立复核',
+      data,
+    }, data.replayed ? 200 : 201)
   }
   catch (error) {
     return handleAppMembershipError(c, error)
@@ -170,6 +183,133 @@ adminAppMembershipRoutes.post('/grants/preview', async (c) => {
       new Date(),
       config.requireProductionReady,
     ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/change-requests', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const data = await createAdminAppMembershipGrantChangeRequest(
+      c.env.DB,
+      config.catalogVersionId,
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminAppMembershipGrantInput>(),
+      new Date(),
+      config.requireProductionReady,
+    )
+    return c.json({
+      message: data.replayed ? '已返回原独立复核申请' : '会员发放已提交独立复核',
+      data: data.request,
+    }, data.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/grants/:grantId/revoke-preview', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await previewAdminAppMembershipRevokeChange(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('grantId'),
+      new Date(),
+      config.requireProductionReady,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/grants/:grantId/revoke-request', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const data = await createAdminAppMembershipRevokeChangeRequest(
+      c.env.DB,
+      config.catalogVersionId,
+      c.get('userId')!,
+      c.req.param('grantId'),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminAppMembershipRevokeInput>(),
+      new Date(),
+      config.requireProductionReady,
+    )
+    return c.json({
+      message: data.replayed ? '已返回原撤销复核申请' : '会员撤销已提交独立复核',
+      data: data.request,
+    }, data.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/reviews', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await listAdminAppMembershipChangeRequests(
+      c.env.DB,
+      c.get('userId')!,
+      config.catalogVersionId,
+      {
+        status: c.req.query('status'),
+        operation: c.req.query('operation'),
+        limit: c.req.query('limit'),
+      },
+      new Date(),
+      config.requireProductionReady,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/reviews/:requestId', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await getAdminAppMembershipChangeRequest(
+      c.env.DB,
+      c.req.param('requestId'),
+      c.get('userId')!,
+      new Date(),
+      config.requireProductionReady,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/reviews/:requestId/decision', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const body = await c.req.json<AdminAppMembershipChangeReviewInput & { decision?: unknown }>()
+    const decision = parseReviewDecision(body.decision)
+    const data = await reviewAdminAppMembershipChangeRequest(
+      c.env.DB,
+      c.req.param('requestId'),
+      c.get('userId')!,
+      decision,
+      c.req.header('Idempotency-Key') ?? null,
+      body,
+      new Date(),
+      config.requireProductionReady,
+    )
+    return c.json({
+      message: data.replayed
+        ? '已返回原复核结果'
+        : decision === 'approve'
+          ? '复核通过，会员变更已生效'
+          : '复核已拒绝，未产生会员变更',
+      data: data.request,
+    })
   }
   catch (error) {
     return handleAppMembershipError(c, error)
@@ -224,6 +364,11 @@ function parseUserId(raw: string): number {
     throw new AppMembershipError(400, 'ACCOUNT_ID_INVALID', 'userId 必须为正整数')
   }
   return userId
+}
+
+function parseReviewDecision(value: unknown): 'approve' | 'reject' {
+  if (value === 'approve' || value === 'reject') return value
+  throw new AppMembershipError(400, 'MEMBERSHIP_REVIEW_DECISION_INVALID', 'decision 必须为 approve 或 reject')
 }
 
 function handleAppMembershipError(c: Parameters<typeof errorJson>[0], error: unknown) {

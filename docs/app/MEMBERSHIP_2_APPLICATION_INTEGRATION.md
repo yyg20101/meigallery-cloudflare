@@ -24,7 +24,8 @@ Membership-2 补齐“查看五级会员 → 提交站内申请 → 平台人工
 ```text
 submitted ──领取──> processing ──要求补充──> needs_information
     │                    │                          │
-    │                    ├─正式 grant 成功────────> approved
+    │                    ├─提交独立复核────────────┤（仍为 processing）
+    │                    ├─复核批准且 grant 成功──> approved
     │                    ├─拒绝────────────────────> rejected
     │                    ├─过期────────────────────> expired
     │                    └─平台取消────────────────> cancelled
@@ -39,7 +40,7 @@ needs_information ──用户取消──────────────�
 约束：
 
 - 一个账号同时最多一条 `submitted|processing|needs_information` 申请。
-- 申请绑定提交时的目录版本与 tier 快照；后台队列跨版本保留。尚未取得发放锁的旧目录申请不得在新目录下批准，应结束旧申请并要求重新提交；已经锁定并成功/可能成功创建 grant 的操作必须复用原键和原目录恢复，不能留下 grant 与申请终态分叉。
+- 申请绑定提交时的目录版本与 tier 快照；后台队列跨版本保留。尚未取得发放锁的旧目录申请不得在新目录下提交复核，应结束旧申请并要求重新提交；已经锁定的复核操作必须复用原键和原目录恢复，不能留下 grant、复核结果与申请终态分叉。
 - 用户只能取消 `submitted|needs_information`；`processing` 和发放锁定阶段禁止取消，避免 grant 与申请终态分叉。
 - 用户补充时不能更换原意向等级；如需改等级，应取消后重新提交。
 - 每次状态变化增加单调 `version`，并追加同序号用户可见事件。
@@ -74,17 +75,17 @@ Nuxt 路由：`/admin/app/membership/applications`。
 | POST | `.../:applicationId/reject` | 标准原因拒绝 |
 | POST | `.../:applicationId/expire` | 标准原因过期 |
 | POST | `.../:applicationId/cancel` | 平台取消 |
-| POST | `.../:applicationId/approve` | 锁定申请并执行 Membership-1 正式 grant |
+| POST | `.../:applicationId/approve` | 锁定申请并提交 Membership-3 发放独立复核 |
 
 管理员写操作均写 `admin_audit_logs`。通用审计只保存申请引用、前后状态、版本、标准原因、grant ID 和“是否存在说明/内部备注”，不保存邮箱、申请说明或用户可见自由文本正文。
 
-批准恢复规则：
+复核与恢复规则：
 
-1. 先执行 Membership-1 grant 预览，验证账号、tier、时间、业务单和目录门禁。
-2. 使用请求幂等键条件写入 `approval_request_key`；其他终态操作随即被拒绝。
-3. 以同一键调用正式 grant，业务单固定为 `membership-application:{applicationId}`。
-4. grant 成功后，把申请改为 `approved`、关联 `grant_id`、追加事件和审计。
-5. 若网络在第 3、4 步之间中断，管理员必须复用原键；服务端恢复原 grant 并完成第 4 步，不得生成第二个 grant。
+1. 先执行 Membership-1 grant 预览，验证账号、tier、时间、业务单、目录门禁和 Membership-3 风险策略。
+2. 使用请求幂等键在同一 D1 批次创建 `pending_review` 申请并写入 `approval_request_key`；其他申请终态操作随即被拒绝。
+3. 申请继续显示 `processing`，rank、grant 与 entitlement 均不变化；发起管理员不得自行复核。
+4. 另一管理员批准时重新核对账号、当前最高有效 grant、业务单与申请锁；全部一致才原子创建正式 grant、把申请改为 `approved`、关联 `grant_id`、追加事件和审计。
+5. 复核拒绝或账号状态变化会释放发放锁，原处理人可修正后使用新幂等键重新提交；重复请求必须复用原键，不能生成第二条进行中复核或第二个 grant。
 
 ## 5. 数据模型
 
@@ -147,13 +148,14 @@ OQ-010 未关闭，因此正文固定说明人工处理但不承诺固定 SLA。
 - OQ-010 服务时段和运营排班确认；当前不得承诺 SLA。
 - OQ-020 申请、事件、审计和备份保留/删除政策；当前不得创建生产清理任务。
 - Message-3 站内通知；当前状态依赖用户主动刷新，不伪装系统推送或实时到达。
-- 批量发放、高风险双人复核、旧会员迁移、在线支付、礼物、金币和虚拟商品。
+- Membership-3 `0088` migration、真实风险策略、专项测试和环境联调。
+- 批量发放、旧会员迁移、在线支付、礼物和虚拟商品。
 
 ## 9. 启用前门禁
 
 1. 完成客户对申请字段、状态文案、拒绝原因和服务边界的需求确认。
 2. 关闭 OQ-010/OQ-020，形成运营排班、保留政策、数据主体请求和事故处置 Runbook。
 3. 创建新的 `published + production_ready` 会员目录，不原地提升开发目录。
-4. 在隔离 dev 数据执行 `0075`、API/后台部署、真实 HTTP smoke、并发/断网/重复提交与回滚演练。
+4. 在隔离 dev 数据连续执行 `0075` 与 `0088`、API/后台部署、真实 HTTP smoke、双人隔离、并发/断网/重复提交与回滚演练。
 5. 完成 Android/iOS 真机、大字体、屏幕阅读器、软键盘、长中文、窄屏和弱网验收。
 6. 先开启后台能力验证，再小范围开启用户申请；production 必须独立审批，不因 dev 成功自动开启。

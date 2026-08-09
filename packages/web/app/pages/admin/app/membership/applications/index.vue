@@ -46,6 +46,14 @@ interface ApplicationView {
     tier: MembershipTierSummary | null
     grant: { expiresAt: string } | null
   }
+  grantReview: null | {
+    requestId: string
+    status: 'pending_review' | 'executing' | 'approved' | 'rejected' | 'stale' | 'cancelled'
+    version: number
+    requestedBy: number
+    createdAt: string
+    reviewedAt: string | null
+  }
 }
 
 interface MembershipCatalog {
@@ -56,6 +64,7 @@ interface MembershipCatalog {
 }
 
 const { api } = useApi()
+const toast = useToast()
 const statusFilter = ref('submitted')
 const tierFilter = ref('')
 const selectedId = ref<string | null>(null)
@@ -73,7 +82,7 @@ const actionModes = [
   { value: 'reject', label: '拒绝' },
   { value: 'expire', label: '标记过期' },
   { value: 'cancel', label: '平台取消' },
-  { value: 'approve', label: '批准并发放' },
+  { value: 'approve', label: '提交发放复核' },
 ] as const
 const reasonOptions = computed(() => {
   if (actionMode.value === 'request-information') {
@@ -279,14 +288,14 @@ async function approveApplication() {
     operationError.value = '有效期必须为 1–366 天。'
     return
   }
-  if (!window.confirm(`确认发放 ${current.application.intendedTier.displayName} 会员 ${actionForm.durationDays} 天？正式 grant 成功后，申请才会显示“已发放”。`)) return
+  if (!window.confirm(`确认把 ${current.application.intendedTier.displayName} 会员 ${actionForm.durationDays} 天的发放方案提交独立复核？提交后不会立即产生会员权限。`)) return
   operating.value = true
   operationError.value = ''
   if (!approvalIdempotencyKey.value) {
     approvalIdempotencyKey.value = `membership.application.approve.${crypto.randomUUID().replaceAll('-', '')}`
   }
   try {
-    await api(`/api/admin/app/memberships/applications/${current.application.applicationId}/approve`, {
+    const response = await api<{ message: string; data: { review: { requestId: string } } }>(`/api/admin/app/memberships/applications/${current.application.applicationId}/approve`, {
       method: 'POST',
       headers: { 'Idempotency-Key': approvalIdempotencyKey.value },
       body: {
@@ -297,10 +306,11 @@ async function approveApplication() {
       },
     })
     approvalIdempotencyKey.value = ''
-    await showMutationResult(current.application.applicationId, 'approved')
+    toast.add({ title: response.message, color: 'success' })
+    await showMutationResult(current.application.applicationId, 'processing')
   }
   catch (error) {
-    operationError.value = apiErrorMessage(error, '会员发放失败；请保留当前页面并按提示安全重试。')
+    operationError.value = apiErrorMessage(error, '发放复核提交失败；请保留当前页面并按提示安全重试。')
   }
   finally {
     operating.value = false
@@ -349,13 +359,14 @@ function apiErrorMessage(error: unknown, fallback: string) {
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 class="text-xl font-bold text-gray-900">App 会员申请</h1>
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-500">申请与正式 grant 分离。领取、补充、拒绝和发放均由服务端版本控制并写入审计；列表仅返回脱敏邮箱。</p>
+        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-500">申请、独立复核与正式 grant 分离。发起人与复核人必须不同；只有复核通过且 grant 原子写入后才产生会员权限。</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <span v-if="catalog" class="rounded-full px-3 py-1 text-xs font-medium" :class="catalog.productionReady ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'">
           {{ catalog.productionReady ? '生产目录' : '开发目录 · 禁止上线' }}
         </span>
-        <NuxtLink to="/admin/app/membership/grants/new" class="inline-flex min-h-10 items-center rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-black">直接发放会员</NuxtLink>
+        <NuxtLink to="/admin/app/membership/reviews" class="inline-flex min-h-10 items-center rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100">独立复核队列</NuxtLink>
+        <NuxtLink to="/admin/app/membership/grants/new" class="inline-flex min-h-10 items-center rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-black">创建会员变更</NuxtLink>
       </div>
     </div>
 
@@ -435,20 +446,24 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
           <div v-if="detail.application.status === 'processing' && detail.assignedTo" class="rounded-xl border border-gray-200 bg-white p-5">
             <h3 class="font-semibold text-gray-900">处理申请</h3>
+            <div v-if="detail.grantReview" class="mt-3 rounded-lg border p-3 text-sm leading-6" :class="detail.grantReview.status === 'pending_review' || detail.grantReview.status === 'executing' ? 'border-violet-200 bg-violet-50 text-violet-900' : detail.grantReview.status === 'rejected' || detail.grantReview.status === 'stale' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'">
+              <p class="font-semibold">发放复核：{{ detail.grantReview.status === 'pending_review' ? '待另一位管理员复核' : detail.grantReview.status === 'executing' ? '正在执行' : detail.grantReview.status === 'rejected' ? '已拒绝，可修正后重新提交' : detail.grantReview.status === 'stale' ? '账号状态已变化，可重新提交' : detail.grantReview.status === 'approved' ? '已通过并生效' : '已取消' }}</p>
+              <NuxtLink :to="`/admin/app/membership/reviews/${detail.grantReview.requestId}`" class="mt-1 inline-block font-medium underline">查看独立复核详情</NuxtLink>
+            </div>
             <p v-if="catalog && detail.application.catalogVersionId !== catalog.catalogVersionId" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">该申请绑定旧目录 {{ detail.application.catalogVersionId }}。可要求补充、拒绝、过期或取消，但不能静默按当前目录发放；请结束旧申请并让用户重新提交。</p>
-            <div class="mt-4 flex flex-wrap gap-2">
+            <div v-if="!detail.grantReview || !['pending_review', 'executing'].includes(detail.grantReview.status)" class="mt-4 flex flex-wrap gap-2">
               <button v-for="item in actionModes" :key="item.value" class="rounded-full border px-3 py-1.5 text-xs" :class="actionMode === item.value ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-gray-300 text-gray-600'" @click="actionMode = item.value">{{ item.label }}</button>
             </div>
 
-            <template v-if="actionMode === 'approve'">
+            <template v-if="(!detail.grantReview || !['pending_review', 'executing'].includes(detail.grantReview.status)) && actionMode === 'approve'">
               <div class="mt-4 grid gap-3 sm:grid-cols-2">
                 <label class="text-sm text-gray-700">有效天数<input v-model.number="actionForm.durationDays" type="number" min="1" max="366" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
                 <label class="text-sm text-gray-700 sm:col-span-2">用户可见发放说明<textarea v-model="actionForm.userVisibleNote" maxlength="240" rows="2" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
                 <label class="text-sm text-gray-700 sm:col-span-2">内部备注（不会进入申请审计正文）<textarea v-model="actionForm.internalNote" maxlength="1000" rows="2" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
               </div>
-              <button :disabled="operating || !catalog || detail.application.catalogVersionId !== catalog.catalogVersionId" class="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50" @click="approveApplication">{{ operating ? '发放中…' : '复核并正式发放' }}</button>
+              <button :disabled="operating || !catalog || detail.application.catalogVersionId !== catalog.catalogVersionId" class="mt-4 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50" @click="approveApplication">{{ operating ? '提交中…' : '提交独立复核' }}</button>
             </template>
-            <template v-else>
+            <template v-else-if="!detail.grantReview || !['pending_review', 'executing'].includes(detail.grantReview.status)">
               <div class="mt-4 grid gap-3">
                 <label class="text-sm text-gray-700">处理原因<select v-model="actionForm.reasonCode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"><option v-for="option in reasonOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
                 <label class="text-sm text-gray-700">用户可见说明<textarea v-model="actionForm.message" maxlength="240" rows="3" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>

@@ -64,8 +64,8 @@ App 版本：1.0
 
 需求范围仍按本文完整追踪，代码按可回滚纵向切片逐步落地；“已实现开发切片”不等于客户需求已整体冻结或获准生产发布。
 
-- M0、M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 已形成生产默认关闭的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
-- Membership-1 Nuxt 已补齐 `ADM-MBR-04` 独立单账号发放工作台，覆盖账号搜索确认、五级 tier、立即/预约生效、同级续期、稳定 entitlement availability、预览、二次确认、幂等 grant 和追加式撤销，并与旧 Web vip/svip 隔离。批量、旧会员迁移和 `ADM-MBR-05` 高风险双人复核状态机仍未实现，页面不得伪造待复核或已批准状态。
+- M0、M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Membership-1/2/3、Message-1/2/3、Safety-2 与 Wallet-1 已形成生产默认关闭的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
+- Membership-1/2/3 Nuxt 已补齐 `ADM-MBR-03/04/05` 单账号闭环：账号搜索确认、五级 tier、立即/预约发放、同级续期、追加式撤销、会员申请、策略预览、独立复核队列和逐单批准/拒绝。发起人不能自审，批准时服务端重新核对当前 grant 与申请锁，并原子写入会员事实、复核结果、用户申请终态和审计；未发布正式风险阈值时全部变更保守复核。`0088` migration、真实策略、配置和专项测试统一后置；批量与旧会员迁移仍未实现。
 - Interaction-2 已完成多文件夹收藏与默认关闭浏览历史的 Cloudflare/KMP 跨仓开发，覆盖默认收藏、文件夹管理、全部收藏、人物归属、历史显式开关、详情成功后稳定事件记录、逐条删除、版本化全部清除和屏蔽联动。环境配置、`0078` migration、会员执行值、专项测试、模拟器/真机与远端联调按“先完成全部开发、后统一配置测试”的顺序后置，当前 capability 继续关闭。
 - Interaction-3 已完成关注后已审核公开发布更新流、独立 capability、Message-3 惰性去重站内通知和投递前资格复核的服务端代码、D1 schema 与 App API v2 `1.12.0` 契约；KMP 已完成独立 transport、“更新 / 已关注 / 喜欢”关注页、取消关注回收、详情返回刷新与通知目标跳转。它不复制发布内容、不接系统推送、不向目标真人或运营端披露关注者；环境配置、migration、专项测试、模拟器/真机与远端联调继续后置，当前 `followUpdates=false`。
 - Search-1 已完成人物公开字段搜索、相关度/热度/最新稳定分页、账号屏蔽过滤，以及默认关闭、显式记录、版本化清除的私有搜索历史 Cloudflare 与 KMP 开发。搜索词使用 POST 正文，不进入 URL、游标、本地持久化、审计、分析或推荐画像；环境配置、`0080` 执行、专项测试、模拟器/真机与远端联调后置，当前 `search.profiles=false`、`search.history=false`。
@@ -76,7 +76,7 @@ App 版本：1.0
 - `ADM-MSG-02` 已进一步接通追加式内部备注、显式转派和内部安全升级：备注与平台回复使用独立 API/视觉区域，只有当前有效租约持有人可读写；转派必须携带当前 assignment version、稳定原因、目标管理员和交接说明，并在服务端重新校验目标状态与容量。安全升级与用户举报分表分队列，固定最小消息证据并强制发起人/审核人隔离，独立审核只允许无需动作、话题只读或关闭。`ADM-MSG-03` 已接通运营组、成员职责与容量、上海时区跨日班次、真人/地区/默认规则、自动分配、补偿分配和人工领取同源门禁。`ADM-MSG-04` 已接通实际操作员事实、无正文抽检队列、确定性抽样、质检职责隔离、限时最小证据、三维评分、改进任务和独立安全转介；`0084/0085/0086/0087` migration 执行、真实配置与专项测试统一后置。
 - Message-2 冻结屏蔽/解除、四类举报目标契约、本人举报时间线、话题关闭、会话 assignment、最小证据、结论处置和全局暂停/容量控制；Safety-2 进一步实现 `APP-SET-08`“举报未发现违规结论的一次独立复核”以及 `ADM-SAF-03/04` 申诉队列和详情。账号限制/金币等其他来源申诉、用户补充媒体证据、撤回、实时通道和跨周期聚合质量看板仍未实现。
 - 已完成的既有跨仓切片具备对应代码和既有测试；Interaction-2/3、Search-1/2、Taxonomy-1 与 Recommendation-1 已完成 KMP 客户端开发，但新切片专项测试按当前开发顺序统一后置，不能据此推断配置、模拟器/真机或联调已完成。production 的 Auth、会员、消息、安全、搜索、taxonomy、推荐、互动收藏/历史/关注更新、后台和 production-ready 开关及新目录选择保持关闭；既有 dev 联调状态不向这些新切片扩散。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
-- Interaction-2、Interaction-3、Search-1、Taxonomy-1、Search-2、Recommendation-1、Message-1、Message-2 与 Safety-2 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)、[Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)、[Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md) 和 [Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
+- Interaction-2、Interaction-3、Search-1、Taxonomy-1、Search-2、Recommendation-1、Membership-3、Message-1、Message-2 与 Safety-2 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)、[Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)、[Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)、[Membership-3 会员变更独立复核开发基线](./MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md) 和 [Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
 
 ## 3. 不可违反的业务与安全边界
 
@@ -3818,7 +3818,7 @@ App 版本：1.0
 - UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。
 - 加载、空、错误、离线、无权限、对象失效和服务端状态变化必须按本页状态集合安全收敛。
 
-**当前开发实现（2026-08-09）：** `/admin/app/conversations` 以内嵌详情工作区承载 `ADM-MSG-01/02`，已覆盖限时领取、正文访问、平台身份回复、运营/质量内部备注、稳定原因转派、目标容量显示、租约版本冲突、转派后立即失权和内部安全升级。安全升级在 `/admin/app/safety?tab=escalations` 使用独立队列、职责分离领取、最小证据和受控结论；分组班次已在 `ADM-MSG-03` 独立页面实现，独立会话详情路由和质量抽检继续按对应 Page ID 独立开发，不以占位按钮代替。
+**当前开发实现（2026-08-09）：** `/admin/app/conversations` 以内嵌详情工作区承载 `ADM-MSG-01/02`，已覆盖限时领取、正文访问、平台身份回复、运营/质量内部备注、稳定原因转派、目标容量显示、租约版本冲突、转派后立即失权和内部安全升级。安全升级在 `/admin/app/safety?tab=escalations` 使用独立队列、职责分离领取、最小证据和受控结论；分组班次已在 `ADM-MSG-03` 独立页面实现，`ADM-MSG-04` 也已在 `/admin/app/conversation-quality` 完成抽样、最小证据、三维评分、改进任务和安全转介。独立会话详情仍以内嵌工作区实现，不创建重复正文入口。
 
 ![ADM-MSG-02 会话工作台默认状态“正常”原型](./assets/page-prototypes/admin/adm-msg-02__default.png)
 
@@ -4384,6 +4384,8 @@ App 版本：1.0
 - 等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。
 - UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。
 - 加载、空、错误、离线、无权限、对象失效和服务端状态变化必须按本页状态集合安全收敛。
+
+**当前开发实现（2026-08-09）：** `/admin/app/membership/reviews` 提供不含内部备注的复核队列，`/admin/app/membership/reviews/{id}` 提供受控逐单详情、策略快照、提交时基线与当前权威会员对比、发起人冲突和批准/拒绝。`0088_app_membership_change_reviews.sql` 固化策略版本、幂等申请、不可变事件与复核决定；没有正式策略时全部复核。批准在同一 D1 条件批次内重验账号、当前 grant、业务单号和来源申请锁，成功才写正式 grant/revocation 与用户申请终态，变化则进入 `stale` 且不产生权限。migration、真实策略、配置和专项测试后置。
 
 ![ADM-MBR-05 会员发放复核默认状态“正常”原型](./assets/page-prototypes/admin/adm-mbr-05__default.png)
 

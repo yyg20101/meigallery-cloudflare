@@ -55,10 +55,13 @@ bootstrap 在 App API `1.4.0` 增加 `membership` capability：
 | `GET /api/admin/app/memberships/catalog` | 读取开发目录 |
 | `GET /api/admin/app/memberships/users/:userId` | 读取目标账号当前状态与 grant 时间线 |
 | `POST /api/admin/app/memberships/grants/preview` | 预览等级、有效区间、当前等级和风险提示，不产生写入 |
-| `POST /api/admin/app/memberships/grants` | 使用 `Idempotency-Key` 创建立即发放或续期 grant |
-| `POST /api/admin/app/memberships/grants/:grantId/revoke` | 使用 `Idempotency-Key` 创建撤销记录，不改写原 grant |
+| `POST /api/admin/app/memberships/change-requests` | 使用 `Idempotency-Key` 创建发放或续期独立复核申请 |
+| `POST /api/admin/app/memberships/grants/:grantId/revoke-request` | 使用 `Idempotency-Key` 创建撤销独立复核申请 |
+| `GET /api/admin/app/memberships/reviews` | 读取不含内部备注的复核队列 |
+| `GET /api/admin/app/memberships/reviews/:requestId` | 受控读取复核详情并写访问审计 |
+| `POST /api/admin/app/memberships/reviews/:requestId/decision` | 独立管理员批准/拒绝并原子执行 |
 
-发放时要求标准原因、用户可见说明、业务单号和可选内部备注。同一账号不能重复使用业务单号；持续时间为 1–366 天，预约生效最多提前 90 天；续期从同目录同等级的较晚有效到期时间延展。预览后仍需显式二次确认，提交沿用预览开始时间，避免人工确认耗时导致展示与结果漂移。审计记录只保存是否存在内部备注，不复制内部备注正文。当前页面只执行 Membership-1 单账号基线；批量和高风险双人复核仍在“未交付”范围，不显示伪入口。
+发放时要求标准原因、用户可见说明、业务单号和可选内部备注。同一账号不能重复使用正在处理或已经生效的业务单号；持续时间为 1–366 天，预约生效最多提前 90 天；续期从同目录同等级的较晚有效到期时间延展。预览后仍需显式二次确认，提交沿用预览开始时间，避免人工确认耗时导致展示与结果漂移。Membership-3 已把发放、续期和撤销接入独立复核；没有正式策略时全部复核，发起人不能自审。通用审计不复制内部备注或复核意见正文。详细状态机见 [Membership-3 会员变更独立复核开发基线](./MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md)。
 
 ### KMP 客户端
 

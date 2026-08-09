@@ -5,6 +5,22 @@ export type AppMembershipGrantAction = 'grant' | 'renew'
 export type AppMembershipGrantReason = 'manual_review' | 'customer_support' | 'promotion' | 'compensation'
 export type AppMembershipRevokeReason = 'admin_correction' | 'customer_request' | 'account_restriction' | 'policy_enforcement'
 
+export type AdminAppMembershipReviewRiskCode =
+  | 'POLICY_UNRESOLVED_ALL_REVIEW'
+  | 'POLICY_REVIEW_ALL'
+  | 'RANK_THRESHOLD'
+  | 'DURATION_THRESHOLD'
+  | 'LOWER_THAN_CURRENT_TIER'
+  | 'REVOCATION'
+
+export interface AdminAppMembershipReviewRequirement {
+  required: boolean
+  policyId: string | null
+  policyVersionCode: string
+  mode: 'conservative_review_all' | 'review_all' | 'risk_based'
+  riskCodes: AdminAppMembershipReviewRiskCode[]
+}
+
 export interface AdminAppMembershipGrantInput {
   userId?: unknown
   tierId?: unknown
@@ -49,6 +65,7 @@ export interface AdminAppMembershipGrantPreview {
   current: AppMembershipSnapshot
   willBecomeCurrentImmediately: boolean
   warnings: Array<'DEVELOPMENT_CATALOG' | 'ENTITLEMENTS_PLANNED' | 'LOWER_THAN_CURRENT_TIER'>
+  review: AdminAppMembershipReviewRequirement
 }
 
 export interface AdminAppMembershipGrantView {
@@ -110,7 +127,7 @@ interface AdminRequestRow {
   grant_id: string
 }
 
-interface NormalizedGrantInput {
+export interface NormalizedAdminAppMembershipGrantInput {
   userId: number
   tierId: string
   action: AppMembershipGrantAction
@@ -122,11 +139,22 @@ interface NormalizedGrantInput {
   businessReference: string
 }
 
-interface NormalizedRevokeInput {
+export interface NormalizedAdminAppMembershipRevokeInput {
   reasonCode: AppMembershipRevokeReason
   userVisibleNote: string
   internalNote: string | null
   businessReference: string
+}
+
+interface ReviewPolicyRow {
+  id: string
+  version_code: string
+  risk_decision_status: string
+  review_mode: string
+  grant_rank_threshold: number | null
+  grant_duration_days_threshold: number | null
+  review_lower_rank_grant: number
+  review_revocation: number
 }
 
 export async function previewAdminAppMembershipGrant(
@@ -136,7 +164,7 @@ export async function previewAdminAppMembershipGrant(
   now = new Date(),
   requireProductionReady = false,
 ): Promise<AdminAppMembershipGrantPreview> {
-  const input = normalizeGrantInput(body)
+  const input = normalizeAdminAppMembershipGrantInput(body)
   return buildGrantPreview(db, catalogVersionId, input, now, requireProductionReady)
 }
 
@@ -149,7 +177,7 @@ export async function grantAdminAppMembership(
   now = new Date(),
   requireProductionReady = false,
 ): Promise<AdminAppMembershipGrantResult> {
-  const input = normalizeGrantInput(body)
+  const input = normalizeAdminAppMembershipGrantInput(body)
   const normalizedKey = normalizeIdempotencyKey(idempotencyKey)
   const requestHash = await sha256Hex(JSON.stringify({ operation: 'grant', ...input }))
   const existing = await findAdminRequest(db, normalizedKey)
@@ -158,6 +186,13 @@ export async function grantAdminAppMembership(
   }
 
   const preview = await buildGrantPreview(db, catalogVersionId, input, now, requireProductionReady)
+  if (preview.review.required) {
+    throw new AppMembershipError(
+      409,
+      'MEMBERSHIP_REVIEW_REQUIRED',
+      '该会员变更必须先提交独立复核，不能直接发放',
+    )
+  }
   const grantId = secureId('amg')
   const requestId = secureId('amr')
   const auditId = secureId('audit')
@@ -229,7 +264,7 @@ export async function grantAdminAppMembership(
   }
 
   return {
-    ...(await getGrantById(db, grantId)),
+    ...(await getAdminAppMembershipGrantById(db, grantId)),
     replayed: false,
   }
 }
@@ -245,13 +280,21 @@ export async function revokeAdminAppMembershipGrant(
   if (!/^amg_[A-Za-z0-9_-]{1,76}$/u.test(grantId)) {
     throw new AppMembershipError(404, 'MEMBERSHIP_GRANT_NOT_FOUND', '会员发放记录不存在')
   }
-  const input = normalizeRevokeInput(body)
+  const input = normalizeAdminAppMembershipRevokeInput(body)
   const normalizedKey = normalizeIdempotencyKey(idempotencyKey)
-  const grant = await getGrantById(db, grantId)
+  const grant = await getAdminAppMembershipGrantById(db, grantId)
   const requestHash = await sha256Hex(JSON.stringify({ operation: 'revoke', grantId, ...input }))
   const existing = await findAdminRequest(db, normalizedKey)
   if (existing) {
     return resolveExistingRequest(db, existing, requestHash, 'revoke', grant.userId)
+  }
+  const review = await resolveAdminAppMembershipRevokeReviewRequirement(db)
+  if (review.required) {
+    throw new AppMembershipError(
+      409,
+      'MEMBERSHIP_REVIEW_REQUIRED',
+      '该会员撤销必须先提交独立复核，不能直接执行',
+    )
   }
   if (grant.revoked) return { ...grant, replayed: true }
 
@@ -302,12 +345,12 @@ export async function revokeAdminAppMembershipGrant(
   catch (error) {
     const raced = await findAdminRequest(db, normalizedKey)
     if (raced) return resolveExistingRequest(db, raced, requestHash, 'revoke', grant.userId)
-    const current = await getGrantById(db, grantId)
+    const current = await getAdminAppMembershipGrantById(db, grantId)
     if (current.revoked) return { ...current, replayed: true }
     throw error
   }
 
-  return { ...(await getGrantById(db, grantId)), replayed: false }
+  return { ...(await getAdminAppMembershipGrantById(db, grantId)), replayed: false }
 }
 
 export async function getAdminAppMembershipUserState(
@@ -347,7 +390,7 @@ export async function getAdminAppMembershipUserState(
 async function buildGrantPreview(
   db: D1Database,
   catalogVersionId: string,
-  input: NormalizedGrantInput,
+  input: NormalizedAdminAppMembershipGrantInput,
   now: Date,
   requireProductionReady: boolean,
 ): Promise<AdminAppMembershipGrantPreview> {
@@ -393,6 +436,12 @@ async function buildGrantPreview(
   if (tier.entitlements.some(item => item.availability === 'planned')) warnings.push('ENTITLEMENTS_PLANNED')
   if ((current.tier?.rank ?? 0) > tier.rank) warnings.push('LOWER_THAN_CURRENT_TIER')
 
+  const review = await resolveAdminAppMembershipGrantReviewRequirement(db, {
+    rank: tier.rank,
+    durationDays: input.durationDays,
+    isLowerThanCurrent: (current.tier?.rank ?? 0) > tier.rank,
+  })
+
   return {
     user: {
       userId: user.id,
@@ -413,6 +462,7 @@ async function buildGrantPreview(
     willBecomeCurrentImmediately: startsAt.getTime() <= now.getTime()
       && tier.rank >= (current.tier?.rank ?? 0),
     warnings,
+    review,
   }
 }
 
@@ -431,7 +481,10 @@ async function getActiveUser(db: D1Database, userId: number): Promise<UserRow> {
   return user
 }
 
-async function getGrantById(db: D1Database, grantId: string): Promise<AdminAppMembershipGrantView> {
+export async function getAdminAppMembershipGrantById(
+  db: D1Database,
+  grantId: string,
+): Promise<AdminAppMembershipGrantView> {
   const grant = await db.prepare(`
     SELECT g.id, g.user_id, g.catalog_version_id, g.tier_id, g.tier_code_snapshot,
            g.tier_name_snapshot, g.rank_snapshot, g.starts_at, g.expires_at,
@@ -444,6 +497,92 @@ async function getGrantById(db: D1Database, grantId: string): Promise<AdminAppMe
   `).bind(grantId).first<GrantRow>()
   if (!grant) throw new AppMembershipError(404, 'MEMBERSHIP_GRANT_NOT_FOUND', '会员发放记录不存在')
   return toGrantView(grant)
+}
+
+export async function resolveAdminAppMembershipGrantReviewRequirement(
+  db: D1Database,
+  input: { rank: number; durationDays: number; isLowerThanCurrent: boolean },
+): Promise<AdminAppMembershipReviewRequirement> {
+  const policy = await getPublishedReviewPolicy(db)
+  if (!policy || policy.risk_decision_status !== 'approved') return conservativeReviewRequirement()
+  if (policy.review_mode === 'review_all') {
+    return {
+      required: true,
+      policyId: policy.id,
+      policyVersionCode: policy.version_code,
+      mode: 'review_all',
+      riskCodes: ['POLICY_REVIEW_ALL'],
+    }
+  }
+  if (policy.review_mode !== 'risk_based') return conservativeReviewRequirement()
+
+  const riskCodes: AdminAppMembershipReviewRiskCode[] = []
+  if (policy.grant_rank_threshold !== null && input.rank >= Number(policy.grant_rank_threshold)) {
+    riskCodes.push('RANK_THRESHOLD')
+  }
+  if (
+    policy.grant_duration_days_threshold !== null
+    && input.durationDays >= Number(policy.grant_duration_days_threshold)
+  ) {
+    riskCodes.push('DURATION_THRESHOLD')
+  }
+  if (Number(policy.review_lower_rank_grant) === 1 && input.isLowerThanCurrent) {
+    riskCodes.push('LOWER_THAN_CURRENT_TIER')
+  }
+  return {
+    required: riskCodes.length > 0,
+    policyId: policy.id,
+    policyVersionCode: policy.version_code,
+    mode: 'risk_based',
+    riskCodes,
+  }
+}
+
+export async function resolveAdminAppMembershipRevokeReviewRequirement(
+  db: D1Database,
+): Promise<AdminAppMembershipReviewRequirement> {
+  const policy = await getPublishedReviewPolicy(db)
+  if (!policy || policy.risk_decision_status !== 'approved') return conservativeReviewRequirement()
+  if (policy.review_mode === 'review_all') {
+    return {
+      required: true,
+      policyId: policy.id,
+      policyVersionCode: policy.version_code,
+      mode: 'review_all',
+      riskCodes: ['POLICY_REVIEW_ALL', 'REVOCATION'],
+    }
+  }
+  if (policy.review_mode !== 'risk_based') return conservativeReviewRequirement()
+  const required = Number(policy.review_revocation) === 1
+  return {
+    required,
+    policyId: policy.id,
+    policyVersionCode: policy.version_code,
+    mode: 'risk_based',
+    riskCodes: required ? ['REVOCATION'] : [],
+  }
+}
+
+async function getPublishedReviewPolicy(db: D1Database): Promise<ReviewPolicyRow | null> {
+  return db.prepare(`
+    SELECT id, version_code, risk_decision_status, review_mode,
+           grant_rank_threshold, grant_duration_days_threshold,
+           review_lower_rank_grant, review_revocation
+    FROM app_membership_review_policies
+    WHERE state = 'published'
+    ORDER BY published_at DESC, id DESC
+    LIMIT 1
+  `).first<ReviewPolicyRow>()
+}
+
+function conservativeReviewRequirement(): AdminAppMembershipReviewRequirement {
+  return {
+    required: true,
+    policyId: null,
+    policyVersionCode: 'unconfigured-v1',
+    mode: 'conservative_review_all',
+    riskCodes: ['POLICY_UNRESOLVED_ALL_REVIEW'],
+  }
 }
 
 async function findAdminRequest(db: D1Database, idempotencyKey: string): Promise<AdminRequestRow | null> {
@@ -490,10 +629,12 @@ async function resolveExistingRequest(
   ) {
     throw new AppMembershipError(409, 'IDEMPOTENCY_CONFLICT', '幂等键已被其他会员操作使用')
   }
-  return { ...(await getGrantById(db, request.grant_id)), replayed: true }
+  return { ...(await getAdminAppMembershipGrantById(db, request.grant_id)), replayed: true }
 }
 
-function normalizeGrantInput(body: AdminAppMembershipGrantInput): NormalizedGrantInput {
+export function normalizeAdminAppMembershipGrantInput(
+  body: AdminAppMembershipGrantInput,
+): NormalizedAdminAppMembershipGrantInput {
   const userId = Number(body.userId)
   if (!Number.isInteger(userId) || userId <= 0) {
     throw new AppMembershipError(400, 'ACCOUNT_ID_INVALID', 'userId 必须为正整数')
@@ -529,7 +670,9 @@ function normalizeGrantInput(body: AdminAppMembershipGrantInput): NormalizedGran
   }
 }
 
-function normalizeRevokeInput(body: AdminAppMembershipRevokeInput): NormalizedRevokeInput {
+export function normalizeAdminAppMembershipRevokeInput(
+  body: AdminAppMembershipRevokeInput,
+): NormalizedAdminAppMembershipRevokeInput {
   if (!isRevokeReason(body.reasonCode)) {
     throw new AppMembershipError(400, 'MEMBERSHIP_REASON_INVALID', '会员撤销原因无效')
   }

@@ -78,6 +78,20 @@ interface GrantPreview {
   businessReference: string
   willBecomeCurrentImmediately: boolean
   warnings: Array<'DEVELOPMENT_CATALOG' | 'ENTITLEMENTS_PLANNED' | 'LOWER_THAN_CURRENT_TIER'>
+  review: ReviewRequirement
+}
+
+interface ReviewRequirement {
+  required: boolean
+  policyId: string | null
+  policyVersionCode: string
+  mode: 'conservative_review_all' | 'review_all' | 'risk_based'
+  riskCodes: Array<'POLICY_UNRESOLVED_ALL_REVIEW' | 'POLICY_REVIEW_ALL' | 'RANK_THRESHOLD' | 'DURATION_THRESHOLD' | 'LOWER_THAN_CURRENT_TIER' | 'REVOCATION'>
+}
+
+interface ChangeRequestResult {
+  requestId: string
+  status: string
 }
 
 const props = withDefaults(defineProps<{ userId: number; autoload?: boolean }>(), {
@@ -96,6 +110,7 @@ const previewLoading = ref(false)
 const commitLoading = ref(false)
 const showCommitModal = ref(false)
 const grantIdempotencyKey = ref('')
+const submittedReviewId = ref('')
 
 const form = reactive({
   tierId: '',
@@ -110,6 +125,8 @@ const form = reactive({
 
 const revokeGrant = ref<MembershipGrant | null>(null)
 const revokeLoading = ref(false)
+const revokePreviewLoading = ref(false)
+const revokeReview = ref<ReviewRequirement | null>(null)
 const revokeIdempotencyKey = ref('')
 const revokeForm = reactive({
   reasonCode: 'admin_correction',
@@ -187,13 +204,17 @@ async function commitGrant() {
   commitLoading.value = true
   errorMessage.value = ''
   try {
-    const response = await api<{ data: MembershipGrant; message: string }>('/api/admin/app/memberships/grants', {
+    const path = preview.value.review.required
+      ? '/api/admin/app/memberships/change-requests'
+      : '/api/admin/app/memberships/grants'
+    const response = await api<{ data: MembershipGrant | ChangeRequestResult; message: string }>(path, {
       method: 'POST',
       headers: { 'Idempotency-Key': grantIdempotencyKey.value },
       body: grantBody(preview.value.startsAt),
     })
     showCommitModal.value = false
     toast.add({ title: response.message, color: 'success' })
+    if ('requestId' in response.data) submittedReviewId.value = response.data.requestId
     preview.value = null
     grantIdempotencyKey.value = ''
     form.businessReference = ''
@@ -208,11 +229,28 @@ async function commitGrant() {
   }
 }
 
-function requestRevoke(grant: MembershipGrant) {
+async function requestRevoke(grant: MembershipGrant) {
   revokeGrant.value = grant
+  revokeReview.value = null
   revokeIdempotencyKey.value = `membership:${crypto.randomUUID()}`
   revokeForm.businessReference = ''
   revokeForm.internalNote = ''
+  revokePreviewLoading.value = true
+  errorMessage.value = ''
+  try {
+    const response = await api<{ data: { review: ReviewRequirement } }>(
+      `/api/admin/app/memberships/grants/${grant.grantId}/revoke-preview`,
+      { method: 'POST' },
+    )
+    revokeReview.value = response.data.review
+  }
+  catch (error) {
+    revokeGrant.value = null
+    errorMessage.value = resolveApiErrorMessage(error, '会员撤销预览失败')
+  }
+  finally {
+    revokePreviewLoading.value = false
+  }
 }
 
 async function commitRevoke() {
@@ -224,8 +262,13 @@ async function commitRevoke() {
   revokeLoading.value = true
   errorMessage.value = ''
   try {
-    const response = await api<{ data: MembershipGrant; message: string }>(
-      `/api/admin/app/memberships/grants/${revokeGrant.value.grantId}/revoke`,
+    if (!revokeReview.value) {
+      errorMessage.value = '撤销策略尚未载入，请关闭弹窗后重新操作'
+      return
+    }
+    const suffix = revokeReview.value.required ? 'revoke-request' : 'revoke'
+    const response = await api<{ data: MembershipGrant | ChangeRequestResult; message: string }>(
+      `/api/admin/app/memberships/grants/${revokeGrant.value.grantId}/${suffix}`,
       {
         method: 'POST',
         headers: { 'Idempotency-Key': revokeIdempotencyKey.value },
@@ -234,6 +277,7 @@ async function commitRevoke() {
     )
     revokeGrant.value = null
     toast.add({ title: response.message, color: 'success' })
+    if ('requestId' in response.data) submittedReviewId.value = response.data.requestId
     await loadState()
   }
   catch (error: any) {
@@ -286,6 +330,17 @@ function warningLabel(warning: GrantPreview['warnings'][number]): string {
   }[warning]
 }
 
+function reviewRiskLabel(code: ReviewRequirement['riskCodes'][number]): string {
+  return {
+    POLICY_UNRESOLVED_ALL_REVIEW: '风险阈值尚未正式发布，按保守规则全部复核',
+    POLICY_REVIEW_ALL: '当前策略要求全部会员变更独立复核',
+    RANK_THRESHOLD: '目标等级达到独立复核阈值',
+    DURATION_THRESHOLD: '发放有效期达到独立复核阈值',
+    LOWER_THAN_CURRENT_TIER: '目标等级低于当前生效等级',
+    REVOCATION: '撤销操作要求独立复核',
+  }[code]
+}
+
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—'
   return new Intl.DateTimeFormat('zh-CN', {
@@ -304,7 +359,7 @@ function formatDate(value: string | null | undefined): string {
           <h2 class="text-base font-semibold text-gray-900">独立 App 五级会员</h2>
           <span class="rounded-full px-2 py-1 text-xs font-medium" :class="!state ? 'bg-gray-100 text-gray-700' : state.catalog.productionReady ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">{{ !state ? 'App 1.0' : state.catalog.productionReady ? '生产目录' : '开发目录' }}</span>
         </div>
-        <p class="mt-1 text-xs leading-5 text-gray-600">与旧 Web vip/svip 隔离；管理员写操作均使用幂等键并记录审计日志。</p>
+        <p class="mt-1 text-xs leading-5 text-gray-600">与旧 Web vip/svip 隔离；发放、续期和撤销按服务端策略进入双人复核并记录审计。</p>
       </div>
       <button
         type="button"
@@ -316,6 +371,11 @@ function formatDate(value: string | null | undefined): string {
 
     <div v-if="errorMessage" class="mx-5 mt-5 rounded-lg border p-3 text-sm leading-6" :class="unavailable ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-red-200 bg-red-50 text-red-700'">
       {{ errorMessage }}
+    </div>
+
+    <div v-if="submittedReviewId" class="mx-5 mt-5 flex flex-col gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm leading-6 text-blue-900 sm:flex-row sm:items-center sm:justify-between">
+      <span>变更尚未生效，已进入独立复核队列。</span>
+      <NuxtLink :to="`/admin/app/membership/reviews/${submittedReviewId}`" class="shrink-0 font-medium text-blue-700 hover:underline">查看复核申请</NuxtLink>
     </div>
 
     <div v-if="state" class="space-y-6 p-5">
@@ -426,8 +486,15 @@ function formatDate(value: string | null | undefined): string {
         <ul v-if="preview.warnings.length" class="mt-3 space-y-1 text-xs leading-5 text-amber-800">
           <li v-for="warning in preview.warnings" :key="warning">• {{ warningLabel(warning) }}</li>
         </ul>
+        <div class="mt-3 rounded-lg border p-3 text-xs leading-5" :class="preview.review.required ? 'border-violet-200 bg-violet-50 text-violet-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'">
+          <p class="font-semibold">{{ preview.review.required ? '需要独立复核，提交后不会立即生效' : '当前策略允许直接执行' }}</p>
+          <ul v-if="preview.review.riskCodes.length" class="mt-1 space-y-1">
+            <li v-for="code in preview.review.riskCodes" :key="code">• {{ reviewRiskLabel(code) }}</li>
+          </ul>
+          <p class="mt-1 break-all text-[11px] opacity-75">策略：{{ preview.review.policyVersionCode }}</p>
+        </div>
         <button type="button" class="mt-4 min-h-11 w-full rounded-lg bg-rose-600 px-4 text-sm font-medium text-white hover:bg-rose-700 sm:w-auto" @click="requestCommit">
-          进入最终确认
+          {{ preview.review.required ? '确认并提交复核' : '进入最终确认' }}
         </button>
       </div>
 
@@ -464,8 +531,8 @@ function formatDate(value: string | null | undefined): string {
   <UModal v-model:open="showCommitModal">
     <template #content>
       <div class="max-h-[85vh] overflow-y-auto p-6">
-        <h3 class="text-base font-semibold text-gray-900">最终确认 App 会员发放</h3>
-        <p class="mt-2 text-sm leading-6 text-gray-600">确认后会创建不可变 grant、幂等请求记录和管理员审计日志。草案权益仍不会放行业务能力。</p>
+        <h3 class="text-base font-semibold text-gray-900">{{ preview?.review.required ? '提交 App 会员独立复核' : '最终确认 App 会员发放' }}</h3>
+        <p class="mt-2 text-sm leading-6 text-gray-600">{{ preview?.review.required ? '提交后只创建待复核申请，不产生会员权限；必须由另一位管理员核对并批准。' : '确认后会创建不可变 grant、幂等请求记录和管理员审计日志。' }}草案权益仍不会放行业务能力。</p>
         <div v-if="preview" class="mt-4 rounded-lg bg-gray-50 p-4 text-sm leading-7 text-gray-700">
           <p>账号：{{ preview.user.emailMasked }}</p>
           <p>等级：{{ preview.tier.displayName }} · Rank {{ preview.tier.rank }}</p>
@@ -474,7 +541,7 @@ function formatDate(value: string | null | undefined): string {
         </div>
         <div class="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button type="button" class="min-h-11 rounded-lg border border-gray-300 px-4 text-sm" :disabled="commitLoading" @click="showCommitModal = false">返回修改</button>
-          <button type="button" class="min-h-11 rounded-lg bg-rose-600 px-4 text-sm font-medium text-white disabled:opacity-50" :disabled="commitLoading" @click="commitGrant">{{ commitLoading ? '提交中…' : '确认并发放' }}</button>
+          <button type="button" class="min-h-11 rounded-lg bg-rose-600 px-4 text-sm font-medium text-white disabled:opacity-50" :disabled="commitLoading" @click="commitGrant">{{ commitLoading ? '提交中…' : preview?.review.required ? '提交独立复核' : '确认并发放' }}</button>
         </div>
       </div>
     </template>
@@ -484,7 +551,12 @@ function formatDate(value: string | null | undefined): string {
     <template #content>
       <div class="max-h-[85vh] overflow-y-auto p-6">
         <h3 class="text-base font-semibold text-gray-900">撤销 App 会员发放</h3>
-        <p class="mt-2 text-sm leading-6 text-red-700">撤销以追加记录表达，不删除原 grant；提交后用户会立即按剩余有效 grant 重新计算等级。</p>
+        <p class="mt-2 text-sm leading-6 text-red-700">撤销以追加记录表达，不删除原 grant。需要独立复核时，提交申请不会立即改变用户权益。</p>
+        <p v-if="revokePreviewLoading" class="mt-3 rounded-lg bg-gray-50 p-3 text-sm text-gray-500">正在载入撤销策略…</p>
+        <div v-else-if="revokeReview" class="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs leading-5 text-violet-900">
+          <p class="font-semibold">{{ revokeReview.required ? '本次撤销需要另一位管理员独立复核' : '当前策略允许直接撤销' }}</p>
+          <p class="mt-1 break-all opacity-75">策略：{{ revokeReview.policyVersionCode }}</p>
+        </div>
         <div class="mt-4 space-y-4">
           <label class="block text-sm text-gray-700">撤销原因
             <select v-model="revokeForm.reasonCode" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3">
@@ -497,7 +569,7 @@ function formatDate(value: string | null | undefined): string {
         </div>
         <div class="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button type="button" class="min-h-11 rounded-lg border border-gray-300 px-4 text-sm" :disabled="revokeLoading" @click="revokeGrant = null">取消</button>
-          <button type="button" class="min-h-11 rounded-lg bg-red-600 px-4 text-sm font-medium text-white disabled:opacity-50" :disabled="revokeLoading" @click="commitRevoke">{{ revokeLoading ? '撤销中…' : '确认撤销' }}</button>
+          <button type="button" class="min-h-11 rounded-lg bg-red-600 px-4 text-sm font-medium text-white disabled:opacity-50" :disabled="revokeLoading || revokePreviewLoading || !revokeReview" @click="commitRevoke">{{ revokeLoading ? '提交中…' : revokeReview?.required ? '提交撤销复核' : '确认撤销' }}</button>
         </div>
       </div>
     </template>

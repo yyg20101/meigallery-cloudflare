@@ -219,11 +219,11 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 心遇、心悦、心知、心契、心耀使用稳定 code/tier ID 和 `rank=10/20/30/40/50`。展示名称、颜色和文案不参与权限判断。
 - entitlement 以稳定 key、schema 版本和值类型定义；当前支持 `boolean|integer|enum`。七项开发配置全部为 `planned`，只能展示，不能据此开放消息、筛选、历史或收藏夹业务。
 - `GET /api/v2/membership/catalog` 提供公共五级目录；`GET /api/v2/me/entitlements` 使用 App Bearer 会话返回本人最高有效 App grant 和快照。`GET /api/v2/me` 复用同一摘要，不读取旧 Web `user_memberships`。
-- 管理后台在现有用户详情页提供独立 App 会员面板，并以 `/admin/app/membership/grants/new` 提供 `ADM-MBR-04` 独立工作台；支持账号搜索确认、预览、立即/预约发放、同级续期和撤销。grant 不可变，撤销写入独立追加表；发放与撤销均要求幂等键、业务单号、标准原因和用户可见说明，并写审计。当前仍是 Membership-1 单账号执行基线，高风险双人复核不得由页面伪装为已实现。
+- 管理后台在现有用户详情页提供独立 App 会员面板，并以 `/admin/app/membership/grants/new` 提供 `ADM-MBR-04` 单账号变更工作台；支持账号搜索确认、预览、立即/预约发放、同级续期和撤销。`0088_app_membership_change_reviews.sql` 进一步交付 `ADM-MBR-05` 独立复核队列与逐单详情：发起人不得自审，批准时在 D1 条件批次内重验账号、当前 grant、业务单号和会员申请锁，并原子写入正式 grant/revocation、复核结果、事件和审计。没有已发布风险策略时服务端保守要求全部复核。
 - `APP_MEMBERSHIP_ENABLED` 与 `APP_MEMBERSHIP_ADMIN_ENABLED` 分离；production 还要求 `APP_MEMBERSHIP_PRODUCTION_READY=true` 且目录行同时为 `published + production_ready=1`。production/dev 当前都显式关闭。
-- migration 不 seed 账号 grant、不回填 legacy 数据、不把 `vip/svip` 自动映射为五级会员。批量/高风险双人复核、额度消耗、通知和旧会员迁移仍未实现。
+- migration 不 seed 账号 grant、不回填 legacy 数据、不把 `vip/svip` 自动映射为五级会员。`0088` 同样不 seed 风险策略；正式阈值、migration 执行、配置和专项测试统一后置。批量发放、额度消耗和旧会员迁移仍未实现。
 
-完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md`。
+完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md` 和 `docs/app/MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md`。
 
 ### Membership-2 站内会员申请 `[开发验证，默认关闭]`
 
@@ -577,14 +577,20 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | GET | `/api/admin/app/memberships/catalog` | 读取 Membership-1 当前配置目录 | admin+ |
 | GET | `/api/admin/app/memberships/users/:userId` | 读取指定账号 App 会员状态与 grant 时间线 | admin+ |
 | POST | `/api/admin/app/memberships/grants/preview` | 预览立即发放或续期，不产生写入 | admin+ |
-| POST | `/api/admin/app/memberships/grants` | 幂等创建单账号 App grant | admin+ |
-| POST | `/api/admin/app/memberships/grants/:grantId/revoke` | 追加式撤销 App grant | admin+ |
+| POST | `/api/admin/app/memberships/change-requests` | 幂等创建单账号发放/续期独立复核申请 | admin+ |
+| POST | `/api/admin/app/memberships/grants/:grantId/revoke-preview` | 预览撤销目标、当前会员和复核策略 | admin+ |
+| POST | `/api/admin/app/memberships/grants/:grantId/revoke-request` | 幂等创建单账号撤销独立复核申请 | admin+ |
+| GET | `/api/admin/app/memberships/reviews` | 会员变更复核队列，不返回内部备注 | admin+ |
+| GET | `/api/admin/app/memberships/reviews/:requestId` | 受控读取复核详情并写访问审计 | admin+ |
+| POST | `/api/admin/app/memberships/reviews/:requestId/decision` | 独立复核批准/拒绝并原子执行 | admin+ |
+| POST | `/api/admin/app/memberships/grants` | 策略允许时幂等直达创建单账号 App grant | admin+ |
+| POST | `/api/admin/app/memberships/grants/:grantId/revoke` | 策略允许时追加式直达撤销 App grant | admin+ |
 | GET | `/api/admin/app/memberships/applications` | 会员申请队列，支持状态、等级、时间和处理人筛选 | admin+ |
 | GET | `/api/admin/app/memberships/applications/:applicationId` | 申请详情、当前会员和用户可见时间线 | admin+ |
 | POST | `/api/admin/app/memberships/applications/:applicationId/claim` | 以乐观版本领取申请 | admin+ |
 | POST | `/api/admin/app/memberships/applications/:applicationId/request-information` | 要求用户补充并写审计 | admin+ |
 | POST | `/api/admin/app/memberships/applications/:applicationId/reject\|expire\|cancel` | 以标准原因形成终态并写审计 | admin+ |
-| POST | `/api/admin/app/memberships/applications/:applicationId/approve` | 锁定申请并复用正式 grant 流程，成功后才显示已发放 | admin+ |
+| POST | `/api/admin/app/memberships/applications/:applicationId/approve` | 锁定申请并提交独立发放复核；复核原子执行成功后才显示已发放 | admin+ |
 | GET | `/api/admin/app/conversations` | Message-1 平台话题队列，不返回正文 | admin+ |
 | GET | `/api/admin/app/conversations/:conversationId` | 读取话题元数据；正文访问目的固定为 `service_operation` 并审计 | admin+ |
 | GET | `/api/admin/app/conversations/:conversationId/messages` | 受控读取话题正文并写访问审计 | admin+ |

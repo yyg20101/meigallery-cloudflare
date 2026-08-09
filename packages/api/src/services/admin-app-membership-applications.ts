@@ -4,10 +4,10 @@ import type {
   AppMembershipSnapshot,
 } from '@meigallery/shared'
 import {
-  grantAdminAppMembership,
-  previewAdminAppMembershipGrant,
-  type AdminAppMembershipGrantResult,
-} from './admin-app-membership'
+  createAdminAppMembershipGrantChangeRequest,
+  getAdminAppMembershipChangeRequest,
+  type AdminAppMembershipChangeRequestView,
+} from './admin-app-membership-reviews'
 import {
   getAppMembershipApplicationForAdmin,
 } from './app-membership-applications'
@@ -27,6 +27,14 @@ export interface AdminAppMembershipApplicationView {
   }
   assignedTo: number | null
   currentMembership: AppMembershipSnapshot
+  grantReview: null | {
+    requestId: string
+    status: AdminAppMembershipChangeRequestView['status']
+    version: number
+    requestedBy: number
+    createdAt: string
+    reviewedAt: string | null
+  }
 }
 
 export interface AdminAppMembershipApplicationListQuery {
@@ -286,7 +294,11 @@ export async function approveAdminAppMembershipApplication(
   body: AdminAppMembershipApplicationApproveInput,
   now = new Date(),
   requireProductionReady = false,
-): Promise<{ application: AdminAppMembershipApplicationView; grant: AdminAppMembershipGrantResult }> {
+): Promise<{
+  application: AdminAppMembershipApplicationView
+  review: AdminAppMembershipChangeRequestView
+  replayed: boolean
+}> {
   const normalizedKey = normalizeIdempotencyKey(idempotencyKey)
   const expectedVersion = normalizeExpectedVersion(body.expectedVersion)
   const current = await getAdminApplicationRow(db, applicationId)
@@ -307,15 +319,14 @@ export async function approveAdminAppMembershipApplication(
     if (current.approval_request_key !== normalizedKey) {
       throw new AppMembershipError(409, 'MEMBERSHIP_APPLICATION_ALREADY_APPROVED', '该申请已经完成会员发放')
     }
-    const replayedGrant = await grantAdminAppMembership(
-      db,
-      applicationCatalogVersionId,
-      adminId,
-      normalizedKey,
-      grantInput,
-      now,
-      requireProductionReady,
-    )
+    const replayed = await db.prepare(`
+      SELECT id FROM app_membership_change_requests
+      WHERE source_application_id = ? AND requested_by = ? AND request_idempotency_key = ?
+      LIMIT 1
+    `).bind(applicationId, adminId, normalizedKey).first<{ id: string }>()
+    if (!replayed) {
+      throw new AppMembershipError(409, 'MEMBERSHIP_APPLICATION_ALREADY_APPROVED', '该申请已经完成会员发放')
+    }
     return {
       application: await getAdminAppMembershipApplication(
         db,
@@ -324,7 +335,14 @@ export async function approveAdminAppMembershipApplication(
         now,
         requireProductionReady,
       ),
-      grant: replayedGrant,
+      review: await getAdminAppMembershipChangeRequest(
+        db,
+        replayed.id,
+        adminId,
+        now,
+        requireProductionReady,
+      ),
+      replayed: true,
     }
   }
   if (current.status !== 'processing' || Number(current.assigned_to) !== adminId) {
@@ -342,24 +360,7 @@ export async function approveAdminAppMembershipApplication(
     )
   }
 
-  if (!current.approval_request_key) {
-    await previewAdminAppMembershipGrant(
-      db,
-      applicationCatalogVersionId,
-      grantInput,
-      now,
-      requireProductionReady,
-    )
-    const locked = await db.prepare(`
-      UPDATE app_membership_applications
-      SET approval_request_key = ?, approval_started_at = ?, updated_at = ?
-      WHERE id = ? AND status = 'processing' AND version = ?
-        AND assigned_to = ? AND approval_request_key IS NULL
-    `).bind(normalizedKey, now.toISOString(), now.toISOString(), applicationId, expectedVersion, adminId).run()
-    if (Number(locked.meta.changes ?? 0) !== 1) throw versionConflict()
-  }
-
-  const grant = await grantAdminAppMembership(
+  const reviewResult = await createAdminAppMembershipGrantChangeRequest(
     db,
     applicationCatalogVersionId,
     adminId,
@@ -367,54 +368,8 @@ export async function approveAdminAppMembershipApplication(
     grantInput,
     now,
     requireProductionReady,
+    { applicationId, expectedVersion },
   )
-
-  const nextVersion = expectedVersion + 1
-  const createdAt = now.toISOString()
-  const eventId = secureId('amae')
-  const auditId = secureId('audit')
-  const results = await db.batch([
-    db.prepare(`
-      UPDATE app_membership_applications
-      SET status = 'approved', version = ?, grant_id = ?,
-          decision_message = ?, updated_at = ?, resolved_at = ?
-      WHERE id = ? AND status = 'processing' AND version = ?
-        AND assigned_to = ? AND approval_request_key = ? AND grant_id IS NULL
-    `).bind(
-      nextVersion,
-      grant.grantId,
-      '管理员已完成会员发放，请刷新本人权益。',
-      createdAt,
-      createdAt,
-      applicationId,
-      expectedVersion,
-      adminId,
-      normalizedKey,
-    ),
-    transitionEventStatement(db, {
-      eventId,
-      applicationId,
-      sequence: nextVersion,
-      eventType: 'approved',
-      fromStatus: 'processing',
-      toStatus: 'approved',
-      message: '管理员已完成会员发放，请刷新本人权益。',
-      adminId,
-      createdAt,
-    }),
-    auditStatement(db, {
-      auditId,
-      adminId,
-      action: 'app_membership_application_approve',
-      applicationId,
-      before: { status: 'processing', version: expectedVersion },
-      after: { status: 'approved', version: nextVersion, grantId: grant.grantId },
-      createdAt,
-      expectedStatus: 'approved',
-      expectedVersion: nextVersion,
-    }),
-  ])
-  assertBatchChanged(results)
   return {
     application: await getAdminAppMembershipApplication(
       db,
@@ -423,7 +378,8 @@ export async function approveAdminAppMembershipApplication(
       now,
       requireProductionReady,
     ),
-    grant,
+    review: reviewResult.request,
+    replayed: reviewResult.replayed,
   }
 }
 
@@ -435,9 +391,23 @@ async function adminApplicationView(
   requireProductionReady: boolean,
   revealEmail: boolean,
 ): Promise<AdminAppMembershipApplicationView> {
-  const [application, currentMembership] = await Promise.all([
+  const [application, currentMembership, reviewRow] = await Promise.all([
     getAppMembershipApplicationForAdmin(db, row.id),
     resolveAppMembershipSnapshot(db, row.user_id, catalogVersionId, now, { requireProductionReady }),
+    db.prepare(`
+      SELECT id, status, version, requested_by, created_at, reviewed_at
+      FROM app_membership_change_requests
+      WHERE source_application_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `).bind(row.id).first<{
+      id: string
+      status: AdminAppMembershipChangeRequestView['status']
+      version: number
+      requested_by: number
+      created_at: string
+      reviewed_at: string | null
+    }>(),
   ])
   return {
     application,
@@ -450,6 +420,16 @@ async function adminApplicationView(
     },
     assignedTo: row.assigned_to === null ? null : Number(row.assigned_to),
     currentMembership,
+    grantReview: reviewRow
+      ? {
+          requestId: reviewRow.id,
+          status: reviewRow.status,
+          version: Number(reviewRow.version),
+          requestedBy: Number(reviewRow.requested_by),
+          createdAt: reviewRow.created_at,
+          reviewedAt: reviewRow.reviewed_at,
+        }
+      : null,
   }
 }
 
