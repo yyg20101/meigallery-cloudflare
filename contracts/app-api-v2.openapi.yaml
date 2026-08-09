@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.18.0
+  version: 1.19.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -19,7 +19,8 @@ info:
     在稳定分类 ID 上新增权益分层的结构化筛选、结果数预估与账号私有保存条件；组内取并集、组间取交集，会员不足时不得返回筛选结果。
     Recommendation-1 以默认关闭方式新增版本化推荐流、用户可解释原因、显式偏好开关和固定“平台精选”披露；OQ-023 未批准时仅允许非个性化模式，且证据留存保持关闭。Privacy-1
     新增密码二次验证、数据导出/账号注销申请、请求级状态凭证、进度查询和可取消窗口；默认关闭且不生成导出包、不执行不可逆删除。Media-1
-    新增复用既有图库素材的人物图片列表、短期会员访问凭证和公开认证范围说明；每次取图都重新核验公开资格，受保护图片不允许持久缓存，视频继续关闭。
+    新增复用既有图库素材的人物图片列表、短期会员访问凭证和公开认证范围说明；每次取图都重新核验公开资格，受保护图片不允许持久缓存，视频继续关闭。App Core-1
+    新增版本化运行策略、帮助中心、法律文档目录和账号限制摘要；客户端必须在强制升级、维护或地区不可用时停止进入业务页面。
     系统推送、实时通道、媒体消息、账号/金币申诉和视频播放仍未纳入本次契约。
 servers:
   - url: https://{host}
@@ -29,6 +30,7 @@ servers:
   - url: http://127.0.0.1:8787
 tags:
   - name: Bootstrap
+  - name: Support
   - name: Auth
   - name: Account
   - name: Discovery
@@ -62,6 +64,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BootstrapResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v2/app/support:
+    get:
+      tags: [Support]
+      operationId: getAppSupportCenter
+      summary: 获取帮助主题、平台联系方式和法律文档目录
+      description: >-
+        恢复场景也必须可访问的只读入口。内容只包含用户可见服务边界，不返回内部风控规则、审核证据或管理员信息。
+      responses:
+        '200':
+          description: 当前版本帮助中心内容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportCenterResponse'
         '500':
           $ref: '#/components/responses/InternalError'
   /api/v2/taxonomy/catalog:
@@ -2969,7 +2987,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.18.0
+        const: 1.19.0
   parameters:
     ProfileId:
       name: profileId
@@ -3191,7 +3209,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.18.0
+          const: 1.19.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -3484,10 +3502,40 @@ components:
         expiresAt:
           type: [string, 'null']
           format: date-time
+    AccountRestrictionSummary:
+      type: object
+      additionalProperties: false
+      required: [mode, reasonCategory, title, message, restrictedUntil, actions]
+      properties:
+        mode:
+          type: string
+          enum: [partial, full]
+        reasonCategory:
+          type: string
+          enum: [security_review, account_deletion, policy, administrative]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        message:
+          type: string
+          minLength: 1
+          maxLength: 240
+        restrictedUntil:
+          type: [string, 'null']
+          format: date-time
+        actions:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items:
+            type: string
+            enum: [help, data_rights, logout]
     MeSummary:
       type: object
       additionalProperties: false
-      required: [account, membership, currentDeviceId]
+      required: [account, membership, currentDeviceId, restriction]
       properties:
         account:
           $ref: '#/components/schemas/AccountSummary'
@@ -3495,6 +3543,10 @@ components:
           $ref: '#/components/schemas/MembershipSummary'
         currentDeviceId:
           type: string
+        restriction:
+          oneOf:
+            - $ref: '#/components/schemas/AccountRestrictionSummary'
+            - type: 'null'
     MeResponse:
       type: object
       additionalProperties: false
@@ -5056,10 +5108,208 @@ components:
             $ref: '#/components/schemas/DeviceSummary'
         meta:
           $ref: '#/components/schemas/Meta'
+    RuntimePolicy:
+      type: object
+      additionalProperties: false
+      required: [policyVersion, service, client, region]
+      properties:
+        policyVersion:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{2,79}$'
+        service:
+          type: object
+          additionalProperties: false
+          required: [mode, title, message, retryAfterSeconds, statusUrl]
+          properties:
+            mode:
+              type: string
+              enum: [normal, maintenance, partial]
+            title:
+              type: string
+              minLength: 1
+              maxLength: 80
+            message:
+              type: string
+              minLength: 1
+              maxLength: 240
+            retryAfterSeconds:
+              type: integer
+              minimum: 30
+              maximum: 86400
+            statusUrl:
+              type: [string, 'null']
+              format: uri-reference
+        client:
+          type: object
+          additionalProperties: false
+          required: [minimumVersion, latestVersion, upgradeUrl, storeAvailable]
+          properties:
+            minimumVersion:
+              type: string
+              pattern: '^\d{1,5}\.\d{1,5}(?:\.\d{1,5})?$'
+            latestVersion:
+              type: string
+              pattern: '^\d{1,5}\.\d{1,5}(?:\.\d{1,5})?$'
+            upgradeUrl:
+              type: [string, 'null']
+              format: uri-reference
+            storeAvailable:
+              type: boolean
+        region:
+          type: object
+          additionalProperties: false
+          required: [available, countryCode, unavailableReason, title, message]
+          properties:
+            available:
+              type: boolean
+            countryCode:
+              type: [string, 'null']
+              pattern: '^[A-Z]{2}$'
+            unavailableReason:
+              oneOf:
+                - type: string
+                  enum: [region_not_supported, policy_changed]
+                - type: 'null'
+            title:
+              type: [string, 'null']
+              maxLength: 80
+            message:
+              type: [string, 'null']
+              maxLength: 240
+    SupportTopic:
+      type: object
+      additionalProperties: false
+      required: [topicId, category, categoryLabel, title, summary, sections, keywords]
+      properties:
+        topicId:
+          type: string
+          pattern: '^help_[a-z0-9_]{3,72}$'
+        category:
+          type: string
+          enum: [platform, membership, messaging, wallet, safety, privacy]
+        categoryLabel:
+          type: string
+          minLength: 1
+          maxLength: 30
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        summary:
+          type: string
+          minLength: 1
+          maxLength: 160
+        sections:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: object
+            additionalProperties: false
+            required: [heading, body]
+            properties:
+              heading:
+                type: string
+                minLength: 1
+                maxLength: 60
+              body:
+                type: string
+                minLength: 1
+                maxLength: 500
+        keywords:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+    SupportContact:
+      type: object
+      additionalProperties: false
+      required: [contactId, platform, label, value, linkUrl]
+      properties:
+        contactId:
+          type: string
+          minLength: 1
+          maxLength: 96
+        platform:
+          type: string
+          minLength: 1
+          maxLength: 40
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+        value:
+          type: string
+          minLength: 1
+          maxLength: 200
+        linkUrl:
+          type: [string, 'null']
+          format: uri
+    LegalDocument:
+      type: object
+      additionalProperties: false
+      required: [type, title, version, url, available]
+      properties:
+        type:
+          type: string
+          enum: [terms, privacy, platform_operation, eligibility]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        version:
+          type: [string, 'null']
+          maxLength: 80
+        url:
+          type: [string, 'null']
+          format: uri
+        available:
+          type: boolean
+    SupportCenter:
+      type: object
+      additionalProperties: false
+      required: [contentVersion, serviceBoundary, topics, contacts, legalDocuments]
+      properties:
+        contentVersion:
+          type: string
+          const: app_core_help_1
+        serviceBoundary:
+          type: string
+          minLength: 1
+          maxLength: 300
+        topics:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/SupportTopic'
+        contacts:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/SupportContact'
+        legalDocuments:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/LegalDocument'
+    SupportCenterResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SupportCenter'
+        meta:
+          $ref: '#/components/schemas/Meta'
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, media, recommendation, search, taxonomy, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety, dataRights]
+      required: [product, appVersion, runtime, capabilities, support, discovery, media, recommendation, search, taxonomy, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety, dataRights]
       properties:
         product:
           type: string
@@ -5067,10 +5317,12 @@ components:
         appVersion:
           type: string
           const: '1.0'
+        runtime:
+          $ref: '#/components/schemas/RuntimePolicy'
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, recommendation, search, taxonomy, auth, interactions, membership, media, messaging, notifications, wallet, safety, dataRights, payments, systemPush]
+          required: [discovery, recommendation, search, taxonomy, auth, interactions, membership, media, messaging, notifications, wallet, safety, dataRights, support, payments, systemPush]
           properties:
             discovery:
               type: boolean
@@ -5178,12 +5430,26 @@ components:
                   type: boolean
                 deletion:
                   type: boolean
+            support:
+              type: boolean
+              const: true
             payments:
               type: boolean
               const: false
             systemPush:
               type: boolean
               const: false
+        support:
+          type: object
+          additionalProperties: false
+          required: [contentVersion, centerPath]
+          properties:
+            contentVersion:
+              type: string
+              const: app_core_help_1
+            centerPath:
+              type: string
+              const: /api/v2/app/support
         discovery:
           type: object
           additionalProperties: false

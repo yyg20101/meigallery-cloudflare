@@ -1,3 +1,4 @@
+import type { AppAccountRestrictionSummary } from '@meigallery/shared'
 import type { Bindings } from '../index'
 import { verifyCode } from './email-verification'
 import { generateId } from '../utils/db'
@@ -557,14 +558,20 @@ export async function getAppAccount(
   account: AppAccountSummary
   membership: { code: string; name: string; rank: number; expiresAt: string | null }
   currentDeviceId: string
+  restriction: AppAccountRestrictionSummary | null
 }> {
-  const membership = await getAppMembershipSummary(
-    db,
-    principal.accountInternalId,
-    appMembership?.catalogVersionId ?? null,
-    now,
-    { requireProductionReady: appMembership?.requireProductionReady },
-  )
+  const [membership, security] = await Promise.all([
+    getAppMembershipSummary(
+      db,
+      principal.accountInternalId,
+      appMembership?.catalogVersionId ?? null,
+      now,
+      { requireProductionReady: appMembership?.requireProductionReady },
+    ),
+    principal.accountStatus === 'restricted'
+      ? getSecurityRow(db, principal.accountInternalId)
+      : Promise.resolve(null),
+  ])
 
   return {
     account: {
@@ -576,6 +583,32 @@ export async function getAppAccount(
     },
     membership,
     currentDeviceId: principal.deviceId,
+    restriction: principal.accountStatus === 'restricted'
+      ? restrictionSummary(security)
+      : null,
+  }
+}
+
+function restrictionSummary(security: SecurityRow | null): AppAccountRestrictionSummary {
+  const reasonCode = security?.restriction_reason_code?.toLowerCase() ?? ''
+  const reasonCategory = reasonCode.includes('deletion')
+    ? 'account_deletion'
+    : reasonCode.includes('policy') || reasonCode.includes('terms') || reasonCode.includes('consent')
+      ? 'policy'
+      : reasonCode.includes('admin') || reasonCode.includes('manual')
+        ? 'administrative'
+        : 'security_review'
+  const fullRestriction = reasonCategory === 'account_deletion'
+
+  return {
+    mode: fullRestriction ? 'full' : 'partial',
+    reasonCategory,
+    title: fullRestriction ? '账号正在处理注销' : '账号部分功能受限',
+    message: fullRestriction
+      ? '账号已进入数据权利处理流程，普通业务入口保持关闭。请通过数据任务入口查看权威状态。'
+      : '平台正在复核账号状态。受限期间仅保留帮助、必要数据权利和退出登录等安全入口。',
+    restrictedUntil: security?.restricted_until ?? null,
+    actions: ['help', 'data_rights', 'logout'],
   }
 }
 

@@ -232,6 +232,18 @@ Media-1 以兼容新增方式把累计契约提升为 `1.18.0`，冻结并实现
 
 完整边界见 [Media-1 人物图片与认证说明跨仓开发基线](./MEDIA_1_PERSON_MEDIA_AND_VERIFICATION_INTEGRATION.md)。
 
+### 1.17 App Core-1 局部冻结记录
+
+App Core-1 以兼容新增方式把累计契约提升为 `1.19.0`：
+
+- bootstrap 新增版本化 `runtime`，强制升级、维护/部分恢复、地区不可用按固定优先级阻止业务入口；
+- bootstrap 新增 `support` 能力，`GET /api/v2/app/support` 返回版本化帮助、公开联系方式和四类法律文档目录；
+- `/me` 新增可空 `restriction`，内部原因只映射为稳定用户类别，受限账号不放宽任何业务 API；
+- 未启用运行策略配置时保持 `normal + App 1.0` 兼容基线；显式启用但配置非法时安全进入维护状态；
+- 系统页不依赖系统推送或实时通道，用户重试时重新拉取 bootstrap 权威状态。
+
+完整边界见 [App Core-1 运行策略、帮助与系统状态跨仓开发基线](./APP_CORE_1_RUNTIME_SUPPORT_SYSTEM_INTEGRATION.md)。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -260,7 +272,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.18.0"
+    "contractVersion": "1.19.0"
   }
 }
 ```
@@ -384,6 +396,7 @@ Privacy-1 的账号路径和申请级路径均强制 `Cache-Control: private, no
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/v2/app/bootstrap` | M0 已实现：能力与发现配置 |
+| GET | `/api/v2/app/support` | App Core-1 已实现：版本化帮助、公开联系方式与法律文档目录 |
 | GET | `/api/v2/discovery/feed` | M0 已实现：规则推荐、热门、最新、地区筛选和游标分页；Message-2 登录请求排除本人已屏蔽人物 |
 | GET | `/api/v2/discovery/regions` | M0 已实现：当前可用地区目录 |
 | GET | `/api/v2/taxonomy/catalog` | Taxonomy-1：默认关闭的不可变稳定分类目录，支持 ETag |
@@ -462,7 +475,7 @@ Privacy-1 的账号路径和申请级路径均强制 `Cache-Control: private, no
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`；Search-2 提升为 `1.15.0`；Recommendation-1 提升到 `1.16.0`；Privacy-1 提升到 `1.17.0`；Media-1 再提升到 `1.18.0`，复用现有图库并提供逐次资格核验的图片和最小认证说明。其他互动推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
+Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`；Search-2 提升为 `1.15.0`；Recommendation-1 提升到 `1.16.0`；Privacy-1 提升到 `1.17.0`；Media-1 提升到 `1.18.0`；App Core-1 再提升到 `1.19.0`，新增全局运行门禁、帮助/法律和受限账号摘要。其他互动推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
 
 ## 8. 会员和目录 API
 

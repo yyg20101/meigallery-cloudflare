@@ -242,6 +242,19 @@ App API v2 `1.18.0` 复用现有 `galleries`、`media_assets` 和 `profile_publi
 
 完整边界见 `docs/app/MEDIA_1_PERSON_MEDIA_AND_VERIFICATION_INTEGRATION.md`。
 
+### App Core-1 运行策略、帮助与系统状态 `[Cloudflare 与 KMP 开发完成，配置和测试后置]`
+
+App API v2 `1.19.0` 在既有 bootstrap 上兼容新增版本化 `runtime` 与 `support`：
+
+- `runtime.client` 提供最低/最新客户端版本与受控更新 URL；KMP 在版本不足时先于所有业务页面展示强制升级。
+- `runtime.service` 使用 `normal/maintenance/partial` 稳定枚举；显式启用但配置不完整或 production 门禁未通过时安全收敛为维护，而不是猜测正常。
+- `runtime.region` 只读取 Cloudflare `CF-IPCountry` 和服务端允许国家集合；已配置白名单但国家未知时不开放业务入口。
+- `GET /api/v2/app/support` 返回六类版本化帮助主题、公开联系方式和四类法律文档目录；恢复和系统状态页可以访问，但不返回内部风控、审核或账号敏感信息。
+- `/me.restriction` 把内部原因映射为四类稳定用户原因，只允许帮助、必要数据权利和退出入口；受限账号不会继续加载设备或进入其他业务页。
+- KMP 门禁优先级固定为强制升级 → 维护/部分恢复 → 地区不可用 → 账号受限 → 正常业务，并在人物对象失效时提供返回、重试和帮助。
+
+本阶段不新增 migration，不写 Wrangler 值，不运行 Cloudflare/KMP 构建与专项测试。完整边界见 `docs/app/APP_CORE_1_RUNTIME_SUPPORT_SYSTEM_INTEGRATION.md`。
+
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
 `0071_app_membership_catalog_and_grants.sql` 和 App API v2 `1.4.0` 建立 Membership-1 最小闭环：

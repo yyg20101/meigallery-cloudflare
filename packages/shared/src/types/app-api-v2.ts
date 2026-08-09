@@ -17,7 +17,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.18.0'
+  contractVersion: '1.19.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -46,9 +46,84 @@ export interface AppApiErrorResponse {
   meta: AppApiMeta
 }
 
+export type AppRuntimeServiceMode = 'normal' | 'maintenance' | 'partial'
+export type AppRuntimeRegionUnavailableReason = 'region_not_supported' | 'policy_changed'
+
+export interface AppRuntimePolicy {
+  policyVersion: string
+  service: {
+    mode: AppRuntimeServiceMode
+    title: string
+    message: string
+    retryAfterSeconds: number
+    statusUrl: string | null
+  }
+  client: {
+    minimumVersion: string
+    latestVersion: string
+    upgradeUrl: string | null
+    storeAvailable: boolean
+  }
+  region: {
+    available: boolean
+    countryCode: string | null
+    unavailableReason: AppRuntimeRegionUnavailableReason | null
+    title: string | null
+    message: string | null
+  }
+}
+
+export type AppSupportTopicCategory =
+  | 'platform'
+  | 'membership'
+  | 'messaging'
+  | 'wallet'
+  | 'safety'
+  | 'privacy'
+
+export interface AppSupportTopic {
+  topicId: string
+  category: AppSupportTopicCategory
+  categoryLabel: string
+  title: string
+  summary: string
+  sections: Array<{
+    heading: string
+    body: string
+  }>
+  keywords: string[]
+}
+
+export interface AppSupportContact {
+  contactId: string
+  platform: string
+  label: string
+  value: string
+  linkUrl: string | null
+}
+
+export type AppLegalDocumentType = 'terms' | 'privacy' | 'platform_operation' | 'eligibility'
+
+export interface AppLegalDocument {
+  type: AppLegalDocumentType
+  title: string
+  version: string | null
+  url: string | null
+  available: boolean
+}
+
+export interface AppSupportCenter {
+  contentVersion: string
+  serviceBoundary: string
+  topics: AppSupportTopic[]
+  contacts: AppSupportContact[]
+  legalDocuments: AppLegalDocument[]
+}
+
 export interface AppBootstrapConfig {
   product: 'meigallery'
   appVersion: '1.0'
+  runtime: AppRuntimePolicy
   capabilities: {
     discovery: boolean
     recommendation: {
@@ -98,8 +173,13 @@ export interface AppBootstrapConfig {
       export: boolean
       deletion: boolean
     }
+    support: boolean
     payments: false
     systemPush: false
+  }
+  support: {
+    contentVersion: string
+    centerPath: '/api/v2/app/support'
   }
   discovery: {
     defaultSort: AppDiscoverySort
@@ -333,6 +413,25 @@ export interface AppMeSummary {
     expiresAt: string | null
   }
   currentDeviceId: string
+  restriction: AppAccountRestrictionSummary | null
+}
+
+export type AppAccountRestrictionMode = 'partial' | 'full'
+export type AppAccountRestrictionReasonCategory =
+  | 'security_review'
+  | 'account_deletion'
+  | 'policy'
+  | 'administrative'
+
+export type AppAccountRestrictionAction = 'help' | 'data_rights' | 'logout'
+
+export interface AppAccountRestrictionSummary {
+  mode: AppAccountRestrictionMode
+  reasonCategory: AppAccountRestrictionReasonCategory
+  title: string
+  message: string
+  restrictedUntil: string | null
+  actions: AppAccountRestrictionAction[]
 }
 
 export type AppDataRightsRequestType = 'export' | 'deletion'

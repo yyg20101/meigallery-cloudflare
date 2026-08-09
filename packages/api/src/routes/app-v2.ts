@@ -77,6 +77,12 @@ import {
   type AppSessionPrincipal,
 } from '../services/app-account-access'
 import {
+  APP_SUPPORT_CENTER_PATH,
+  APP_SUPPORT_CONTENT_VERSION,
+  getAppRuntimePolicy,
+  getAppSupportCenter,
+} from '../services/app-core'
+import {
   AppViewerInteractionError,
   getViewerInteractionState,
   listViewerInteractions,
@@ -297,7 +303,11 @@ appV2Routes.use('*', async (c, next) => {
 })
 
 appV2Routes.get('/app/bootstrap', async (c) => {
-  return appApiSuccess(c, await bootstrapConfig(c.env))
+  return appApiSuccess(c, await bootstrapConfig(c.env, c.req.header('CF-IPCountry')))
+})
+
+appV2Routes.get('/app/support', async (c) => {
+  return appApiSuccess(c, await getAppSupportCenter(c.env))
 })
 
 appV2Routes.get('/taxonomy/catalog', async (c) => {
@@ -2189,7 +2199,10 @@ appV2Routes.delete('/me/search-history/:historyId', async (c) => {
   }
 })
 
-async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
+async function bootstrapConfig(
+  env: Bindings,
+  requestCountry?: string,
+): Promise<AppBootstrapConfig> {
   const auth = getAppAuthRuntimeConfig(env)
   const membership = getAppMembershipRuntimeConfig(env)
   const messaging = getAppMessagingRuntimeConfig(env)
@@ -2203,6 +2216,7 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   const recommendation = getAppRecommendationRuntimeConfig(env)
   const dataRights = getAppDataRightsRuntimeConfig(env)
   const media = getAppPersonMediaRuntimeConfig(env)
+  const runtime = getAppRuntimePolicy(env, requestCountry)
   const [interactionCollectionCapabilities, followUpdatesCapability, personSearchCapabilities] = auth.enabled
     ? await Promise.all([
         resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections),
@@ -2232,6 +2246,7 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   return {
     product: 'meigallery',
     appVersion: '1.0',
+    runtime,
     capabilities: {
       discovery: true,
       recommendation: {
@@ -2284,8 +2299,13 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
         export: auth.enabled && dataRightsCapabilities.export,
         deletion: auth.enabled && dataRightsCapabilities.deletion,
       },
+      support: true,
       payments: false,
       systemPush: false,
+    },
+    support: {
+      contentVersion: APP_SUPPORT_CONTENT_VERSION,
+      centerPath: APP_SUPPORT_CENTER_PATH,
     },
     discovery: {
       defaultSort: 'recommended',

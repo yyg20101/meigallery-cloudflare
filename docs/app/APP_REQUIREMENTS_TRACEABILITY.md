@@ -119,6 +119,8 @@ App 版本：1.0
 | APP-SET-11 | 帮助中心 | P0 | PRD-FR-080、PRD-FR-081、PRD-FR-082 | SCP-FR-013 | [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*） |
 | APP-SET-12 | 关于与法律 | P1 | PRD-FR-080、PRD-FR-081、PRD-FR-082 | SCP-FR-013 | [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*） |
 
+实现状态（2026-08-10）：`APP-SET-11/12` 已由 App Core-1 完成 Cloudflare 只读内容契约和 KMP 页面开发；环境配置、构建、专项测试与联调后置。
+
 ### 移动端 · 系统状态
 
 | Page ID | 页面 | 优先级 | 产品总需求 | 发布范围 | Feature PRD |
@@ -128,6 +130,8 @@ App 版本：1.0
 | APP-SYS-03 | 账号受限 | P0 | PRD-FR-001、PRD-FR-002、PRD-FR-082 | SCP-FR-031、SCP-FR-032、SCP-FR-033 | [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*） |
 | APP-SYS-04 | 对象不可用 | P0 | PRD-FR-013、PRD-FR-032 | SCP-FR-031、SCP-FR-032、SCP-FR-033 | [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*） |
 | APP-SYS-05 | 地区不可用 | P1 | PRD-FR-020、PRD-FR-022 | SCP-FR-031、SCP-FR-032、SCP-FR-033 | [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*） |
+
+实现状态（2026-08-10）：`APP-SYS-01～05` 已由 App Core-1 完成服务端稳定策略与 KMP 全局门禁/安全返回路径开发；对象不可用当前覆盖人物详情，其他未来深链目标继续复用同一安全状态模型。
 
 ### 管理后台 · 总览与异常
 
