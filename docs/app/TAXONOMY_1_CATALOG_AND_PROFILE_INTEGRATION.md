@@ -174,6 +174,8 @@ PUT /api/admin/app/persons/:personId/taxonomy
 4. 普通人物资料编辑生成新内容版本时，会继承上一版本的稳定 taxonomy 关联；
 5. 所有变化记录审计事实。
 
+Nuxt 人物工作台已按该契约提供不可变目录选择、按固定类型搜索/勾选最多 30 个稳定词条、失效项显式移除、当前草稿与线上投影对比，以及保存前的新内容版本影响确认。页面不从 legacy 标签自动推导 stable ID，也不允许前端绕过服务端目录与公开资格校验。
+
 ### 6.2 发布投影
 
 人物提交/批准发布时新增 `TAXONOMY_ASSIGNMENTS_VALID` 门禁。未设置结构化分类当前允许通过；一旦设置，必须满足：
@@ -211,5 +213,5 @@ APP_TAXONOMY_PRODUCTION_READY
 - 人物内容版本关联、发布门禁和公开投影已落地；
 - OpenAPI 累计版本提升到 `1.14.0`；
 - KMP 通用 Taxonomy Repository 已由 Recommendation 与 Search 共用，Android Debug APK 与 iOS Simulator Kotlin/Native 编译通过；
-- Nuxt 后台已交付词条目录/筛选/创建、详情编辑/复核/生命周期/合并、legacy 映射，以及快照生成、结构检查、客户端兼容确认和不可变发布；
+- Nuxt 后台已交付词条目录/筛选/创建、详情编辑/复核/生命周期/合并、legacy 映射，以及快照生成、结构检查、客户端兼容确认和不可变发布；人物工作台已接通稳定分类标注和草稿/线上投影对比；
 - 未配置、未执行 migration、未运行专项测试、未部署。

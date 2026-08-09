@@ -1,11 +1,24 @@
 <script setup lang="ts">
 import type { AdminPersonDetail } from '~/types/admin-app-person'
+import type {
+  TaxonomyCatalog,
+  TaxonomyCatalogDetail,
+  TaxonomyCatalogItem,
+  TaxonomyType,
+} from '~/types/admin-app-taxonomy'
 import {
   formatAdminDate,
   PERSON_STATUS_LABELS,
   personStatusClass,
   VERIFICATION_ITEM_LABELS,
 } from '~/types/admin-app-person'
+import {
+  TAXONOMY_CATALOG_STATE_LABELS,
+  TAXONOMY_TYPES,
+  TAXONOMY_TYPE_LABELS,
+  formatTaxonomyDate,
+  taxonomyApiError,
+} from '~/types/admin-app-taxonomy'
 
 definePageMeta({ layout: 'admin' })
 
@@ -30,6 +43,60 @@ const galleries = computed(() => galleryData.value?.data ?? [])
 const sourceGalleryMissing = computed(() => Boolean(
   detail.value && !galleries.value.some(item => item.id === detail.value!.sourceGallery.id),
 ))
+
+const { data: taxonomyCatalogResponse, status: taxonomyCatalogStatus, error: taxonomyCatalogError, refresh: refreshTaxonomyCatalogs } = await useAsyncData(
+  `admin-app-person-taxonomy-catalogs-${personId.value}`,
+  () => api<{ data: TaxonomyCatalog[] }>('/api/admin/app/taxonomy/catalogs'),
+)
+const taxonomyCatalogs = computed(() => taxonomyCatalogResponse.value?.data ?? [])
+const selectedTaxonomyCatalogId = ref(detail.value?.taxonomy.catalogVersionId ?? '')
+const selectedTaxonomyTermIds = ref(detail.value?.taxonomy.current.map(item => item.termId) ?? [])
+const taxonomyQuery = ref('')
+const taxonomyTypeFilter = ref<'' | TaxonomyType>('')
+
+const taxonomyCatalogOptions = computed(() => taxonomyCatalogs.value.filter((catalog) => {
+  const isCurrent = catalog.catalogVersionId === detail.value?.taxonomy.catalogVersionId
+  const effectiveAt = Date.parse(catalog.effectiveAt)
+  return isCurrent || (
+    ['development', 'published'].includes(catalog.state)
+    && Number.isFinite(effectiveAt)
+    && effectiveAt <= Date.now()
+  )
+}))
+
+const { data: selectedTaxonomyCatalogResponse, status: selectedTaxonomyCatalogStatus, error: selectedTaxonomyCatalogError, refresh: refreshSelectedTaxonomyCatalog } = await useAsyncData(
+  () => `admin-app-person-taxonomy-catalog-${selectedTaxonomyCatalogId.value || 'none'}`,
+  async () => selectedTaxonomyCatalogId.value
+    ? api<{ data: TaxonomyCatalogDetail }>(`/api/admin/app/taxonomy/catalogs/${selectedTaxonomyCatalogId.value}`)
+    : null,
+  { watch: [selectedTaxonomyCatalogId] },
+)
+const selectedTaxonomyCatalog = computed(() => selectedTaxonomyCatalogResponse.value?.data ?? null)
+const assignableTaxonomyItems = computed(() => (selectedTaxonomyCatalog.value?.items ?? []).filter(item => (
+  item.publicState === 'active'
+  && item.visibility === 'public'
+  && item.sensitivity === 'standard'
+  && item.allowedForProfile
+)))
+const assignableTaxonomyIds = computed(() => new Set(assignableTaxonomyItems.value.map(item => item.termId)))
+const selectedTaxonomyIds = computed(() => new Set(selectedTaxonomyTermIds.value))
+const invalidSelectedTaxonomyIds = computed(() => selectedTaxonomyTermIds.value.filter(termId => !assignableTaxonomyIds.value.has(termId)))
+const filteredTaxonomyItems = computed(() => assignableTaxonomyItems.value.filter((item) => {
+  if (taxonomyTypeFilter.value && item.type !== taxonomyTypeFilter.value) return false
+  if (!taxonomyQuery.value.trim()) return true
+  const keyword = taxonomyQuery.value.trim().toLocaleLowerCase('zh-CN')
+  return [item.displayName, item.termId, item.slug, ...item.aliases]
+    .some(value => value.toLocaleLowerCase('zh-CN').includes(keyword))
+}))
+const taxonomyItemGroups = computed(() => TAXONOMY_TYPES.map(type => ({
+  type,
+  items: filteredTaxonomyItems.value.filter(item => item.type === type),
+})).filter(group => group.items.length))
+const taxonomySelectionChanged = computed(() => {
+  if (!detail.value) return false
+  if (selectedTaxonomyCatalogId.value !== (detail.value.taxonomy.catalogVersionId ?? '')) return true
+  return [...selectedTaxonomyTermIds.value].sort().join('|') !== detail.value.taxonomy.current.map(item => item.termId).sort().join('|')
+})
 
 const form = reactive({
   sourceGalleryId: '',
@@ -77,6 +144,8 @@ watch(detail, (value) => {
   form.recommendationScore = value.recommendation.score
   form.heatScore = value.recommendation.heatScore
   form.recommendationReasonCode = value.recommendation.reasonCode
+  selectedTaxonomyCatalogId.value = value.taxonomy.catalogVersionId ?? ''
+  selectedTaxonomyTermIds.value = value.taxonomy.current.map(item => item.termId)
 }, { immediate: true })
 
 const pendingPublication = computed(() => detail.value?.history.publications.find(item =>
@@ -133,6 +202,56 @@ async function saveProfile() {
   } catch (requestError: any) {
     message.value = { type: 'error', text: resolveApiErrorMessage(requestError, '保存失败') }
   } finally {
+    busyAction.value = ''
+  }
+}
+
+function resetTaxonomySelection() {
+  if (!detail.value) return
+  selectedTaxonomyTermIds.value = selectedTaxonomyCatalogId.value === detail.value.taxonomy.catalogVersionId
+    ? detail.value.taxonomy.current.map(item => item.termId)
+    : []
+}
+
+function toggleTaxonomyTerm(item: TaxonomyCatalogItem) {
+  const selected = selectedTaxonomyIds.value.has(item.termId)
+  if (selected) {
+    selectedTaxonomyTermIds.value = selectedTaxonomyTermIds.value.filter(termId => termId !== item.termId)
+    return
+  }
+  if (selectedTaxonomyTermIds.value.length >= 30) return
+  selectedTaxonomyTermIds.value = [...selectedTaxonomyTermIds.value, item.termId]
+}
+
+function removeInvalidTaxonomyTerm(termId: string) {
+  selectedTaxonomyTermIds.value = selectedTaxonomyTermIds.value.filter(item => item !== termId)
+}
+
+async function saveTaxonomyAssignments() {
+  if (!detail.value || !selectedTaxonomyCatalogId.value || busyAction.value) return
+  if (invalidSelectedTaxonomyIds.value.length) {
+    message.value = { type: 'error', text: '当前选择仍包含已失效或不可用于人物的词条，请先移除后再保存。' }
+    return
+  }
+  if (detail.value.liveProjection?.visible && !window.confirm('更新结构化分类会创建新的不可见草稿版本，并使新版本重新进入授权、认证和发布流程。当前线上版本保持不变。确认继续？')) return
+  busyAction.value = 'taxonomy-save'
+  message.value = null
+  try {
+    await api(`/api/admin/app/persons/${personId.value}/taxonomy`, {
+      method: 'PUT',
+      body: {
+        expectedVersion: detail.value.lockVersion,
+        catalogVersionId: selectedTaxonomyCatalogId.value,
+        termIds: selectedTaxonomyTermIds.value,
+      },
+    })
+    await refresh()
+    message.value = { type: 'success', text: '稳定分类已保存为新内容版本；原线上分类投影未被覆盖。' }
+  }
+  catch (requestError) {
+    message.value = { type: 'error', text: taxonomyApiError(requestError, '结构化分类保存失败，请刷新目录和编辑锁后重试。') }
+  }
+  finally {
     busyAction.value = ''
   }
 }
@@ -336,6 +455,72 @@ function pausePublication() {
           </section>
         </aside>
       </div>
+
+      <section class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+        <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div class="min-w-0">
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 class="text-base font-semibold text-gray-950">稳定 Taxonomy 分类</h2>
+              <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="detail.taxonomy.ready ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'">{{ detail.taxonomy.ready ? '发布门禁通过' : '存在失效条件' }}</span>
+            </div>
+            <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-500">按不可变目录和稳定词条 ID 标注当前内容版本。legacy 标签只保留迁移期展示兼容，搜索、筛选和推荐不得引用其文案。</p>
+          </div>
+          <NuxtLink to="/admin/app/taxonomy" class="shrink-0 text-sm font-medium text-blue-600 hover:underline">管理分类目录</NuxtLink>
+        </div>
+
+        <div class="mt-4 grid min-w-0 gap-3 lg:grid-cols-2">
+          <article class="min-w-0 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div class="flex min-w-0 items-start justify-between gap-3"><div class="min-w-0"><h3 class="text-sm font-semibold text-gray-900">当前草稿 v{{ detail.contentVersion }}</h3><p class="mt-1 break-all font-mono text-xs text-gray-500">{{ detail.taxonomy.catalogVersionId || '尚未绑定目录' }}</p></div><span class="shrink-0 text-xs text-gray-500">{{ detail.taxonomy.current.length }} 项</span></div>
+            <p class="mt-3 text-xs leading-5" :class="detail.taxonomy.ready ? 'text-emerald-700' : 'text-red-700'">{{ detail.taxonomy.readinessDetail }}</p>
+            <div v-if="detail.taxonomy.current.length" class="mt-3 flex flex-wrap gap-2"><NuxtLink v-for="item in detail.taxonomy.current" :key="item.termId" :to="`/admin/app/taxonomy/${item.termId}`" class="max-w-full rounded-full bg-white px-2.5 py-1 text-xs text-gray-700 ring-1 ring-gray-200 hover:text-blue-700"><span class="break-words">{{ item.displayName }}</span><span class="ml-1 font-mono text-gray-400">v{{ item.termVersion }}</span></NuxtLink></div>
+            <p v-else class="mt-3 text-xs text-gray-500">当前内容版本未设置结构化分类，这是允许的安全空状态。</p>
+          </article>
+          <article class="min-w-0 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div class="flex min-w-0 items-start justify-between gap-3"><div class="min-w-0"><h3 class="text-sm font-semibold text-gray-900">App 线上分类</h3><p class="mt-1 text-xs text-gray-500">只读取已通过发布复核的投影</p></div><span class="shrink-0 text-xs text-gray-500">{{ detail.taxonomy.live.length }} 项</span></div>
+            <div v-if="detail.taxonomy.live.length" class="mt-3 flex flex-wrap gap-2"><NuxtLink v-for="item in detail.taxonomy.live" :key="`${item.catalogVersionId}:${item.termId}`" :to="`/admin/app/taxonomy/${item.termId}`" class="max-w-full rounded-full bg-white px-2.5 py-1 text-xs text-gray-700 ring-1 ring-gray-200 hover:text-blue-700"><span class="break-words">{{ item.displayName }}</span><span class="ml-1 font-mono text-gray-400">内容 v{{ item.profileVersion }}</span></NuxtLink></div>
+            <p v-else class="mt-3 text-xs text-gray-500">当前没有线上结构化分类投影。</p>
+          </article>
+        </div>
+
+        <div v-if="taxonomyCatalogError" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+          {{ taxonomyApiError(taxonomyCatalogError, 'Taxonomy 后台能力当前不可用。') }}
+          <button type="button" class="ml-2 font-semibold underline" @click="refreshTaxonomyCatalogs()">重试</button>
+          <p class="mt-1 text-xs">在统一配置阶段启用后台能力前，人物基础资料和既有线上投影仍可安全查看，但不能修改稳定分类。</p>
+        </div>
+
+        <template v-else>
+          <div class="mt-4 grid min-w-0 gap-4 lg:grid-cols-[minmax(16rem,1fr)_minmax(0,2fr)]">
+            <label class="min-w-0"><span class="mb-1 block text-sm font-medium text-gray-700">分类目录版本</span><select v-model="selectedTaxonomyCatalogId" :disabled="taxonomyCatalogStatus === 'pending' || Boolean(busyAction)" class="min-h-11 w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100" @change="resetTaxonomySelection"><option value="">请选择不可变目录</option><option v-for="catalog in taxonomyCatalogOptions" :key="catalog.catalogVersionId" :value="catalog.catalogVersionId">{{ catalog.versionCode }} · {{ TAXONOMY_CATALOG_STATE_LABELS[catalog.state] }}{{ catalog.productionReady ? ' · Production Ready' : '' }}</option></select></label>
+            <div v-if="selectedTaxonomyCatalog" class="grid min-w-0 gap-2 rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-600 sm:grid-cols-3"><div><span class="block text-gray-400">稳定目录 ID</span><span class="break-all font-mono text-gray-700">{{ selectedTaxonomyCatalog.catalogVersionId }}</span></div><div><span class="block text-gray-400">最低客户端</span><span class="font-mono text-gray-700">{{ selectedTaxonomyCatalog.minimumClientVersion }}</span></div><div><span class="block text-gray-400">计划生效</span><span class="text-gray-700">{{ formatTaxonomyDate(selectedTaxonomyCatalog.effectiveAt) }}</span></div></div>
+          </div>
+
+          <div v-if="selectedTaxonomyCatalogError" class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ taxonomyApiError(selectedTaxonomyCatalogError, '所选目录明细加载失败。') }} <button type="button" class="ml-2 font-semibold underline" @click="refreshSelectedTaxonomyCatalog()">重试</button></div>
+          <div v-if="selectedTaxonomyCatalogStatus === 'pending' && selectedTaxonomyCatalogId" class="mt-4 rounded-lg bg-gray-50 p-8 text-center text-sm text-gray-500">正在读取目录快照…</div>
+
+          <template v-if="selectedTaxonomyCatalog">
+            <div class="mt-4 flex min-w-0 flex-col gap-3 rounded-xl border border-gray-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+              <div class="min-w-0"><p class="text-sm font-semibold text-gray-900">已选择 {{ selectedTaxonomyTermIds.length }} / 30 个稳定词条</p><p class="mt-1 text-xs leading-5 text-gray-500">只有 active + public + standard + allowedForProfile 的快照项可选；保存空列表可清除当前草稿的结构化分类。</p></div>
+              <div class="flex min-w-0 flex-col gap-2 sm:flex-row"><input v-model.trim="taxonomyQuery" maxlength="80" placeholder="搜索名称、别名或稳定 ID" class="min-h-10 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm sm:w-64" /><select v-model="taxonomyTypeFilter" class="min-h-10 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="">全部类型</option><option v-for="type in TAXONOMY_TYPES" :key="type" :value="type">{{ TAXONOMY_TYPE_LABELS[type] }}</option></select></div>
+            </div>
+
+            <div v-if="invalidSelectedTaxonomyIds.length" class="mt-4 rounded-xl border border-red-200 bg-red-50 p-4"><p class="text-sm font-semibold text-red-900">选择中包含 {{ invalidSelectedTaxonomyIds.length }} 个已失效或不可分配词条</p><p class="mt-1 text-xs leading-5 text-red-700">目录状态变化不会被静默忽略。移除后才能保存，避免发布范围被意外扩大。</p><div class="mt-3 flex flex-wrap gap-2"><button v-for="invalidId in invalidSelectedTaxonomyIds" :key="invalidId" type="button" class="max-w-full rounded-full bg-white px-2.5 py-1 text-left font-mono text-xs text-red-700 ring-1 ring-red-200 hover:bg-red-100" @click="removeInvalidTaxonomyTerm(invalidId)"><span class="break-all">{{ invalidId }}</span><span class="ml-1 font-sans">× 移除</span></button></div></div>
+
+            <div v-if="!filteredTaxonomyItems.length" class="mt-4 rounded-xl border border-dashed border-gray-300 px-5 py-10 text-center text-sm text-gray-500">{{ assignableTaxonomyItems.length ? '当前搜索或类型筛选没有可用词条。' : '该目录没有可用于人物资料的 active 公开标准词条。' }}</div>
+            <div v-else class="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
+              <section v-for="group in taxonomyItemGroups" :key="group.type" class="min-w-0 overflow-hidden rounded-xl border border-gray-200">
+                <div class="flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3"><div><h3 class="text-sm font-semibold text-gray-900">{{ TAXONOMY_TYPE_LABELS[group.type] }}</h3><p class="mt-0.5 font-mono text-xs text-gray-400">{{ group.type }}</p></div><span class="text-xs text-gray-500">{{ group.items.length }} 项</span></div>
+                <div class="grid min-w-0 gap-2 p-3 sm:grid-cols-2">
+                  <label v-for="item in group.items" :key="item.termId" class="flex min-w-0 cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm" :class="selectedTaxonomyIds.has(item.termId) ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'"><input type="checkbox" class="mt-1" :checked="selectedTaxonomyIds.has(item.termId)" :disabled="!selectedTaxonomyIds.has(item.termId) && selectedTaxonomyTermIds.length >= 30" @change="toggleTaxonomyTerm(item)" /><span class="min-w-0"><span class="block break-words font-medium text-gray-900">{{ item.displayName }}</span><span class="mt-1 block break-all font-mono text-xs text-gray-500">{{ item.termId }} · v{{ item.termVersion }}</span><span v-if="item.aliases.length" class="mt-1 block break-words text-xs text-gray-500">别名：{{ item.aliases.slice(0, 3).join('、') }}</span></span></label>
+                </div>
+              </section>
+            </div>
+
+            <div class="mt-4 flex min-w-0 flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between"><p class="text-xs leading-5 text-gray-500">保存使用人物并发锁 {{ detail.lockVersion }}；目录项资格由服务端重新校验，前端选择不能绕过。</p><button type="button" :disabled="Boolean(busyAction) || !taxonomySelectionChanged || !selectedTaxonomyCatalogId || invalidSelectedTaxonomyIds.length > 0" class="inline-flex min-h-11 max-w-full items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50" @click="saveTaxonomyAssignments">{{ busyAction === 'taxonomy-save' ? '保存中…' : '保存稳定分类为新草稿版本' }}</button></div>
+          </template>
+
+          <div v-else-if="taxonomyCatalogStatus !== 'pending' && !taxonomyCatalogOptions.length" class="mt-4 rounded-xl border border-dashed border-gray-300 px-5 py-10 text-center"><p class="text-sm font-medium text-gray-700">尚无已生效的可编辑目录版本</p><p class="mt-2 text-sm text-gray-500">先在 Taxonomy 工作区审核词条并生成目录快照。</p></div>
+        </template>
+      </section>
 
       <div class="grid min-w-0 gap-5 xl:grid-cols-3">
         <section class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">

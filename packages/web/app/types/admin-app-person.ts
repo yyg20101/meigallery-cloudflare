@@ -1,3 +1,5 @@
+import type { TaxonomyType } from './admin-app-taxonomy'
+
 export type PersonWorkflowGate = {
   code: string
   label: string
@@ -59,6 +61,26 @@ export type AdminPersonDetail = {
   operation: { mode: string; label: string }
   region: { code: string; label: string; precision: string } | null
   recommendation: { score: number; heatScore: number; reasonCode: string }
+  taxonomy: {
+    ready: boolean
+    readinessDetail: string
+    catalogVersionId: string | null
+    current: Array<{
+      termId: string
+      termVersion: number
+      type: TaxonomyType
+      displayName: string
+    }>
+    live: Array<{
+      termId: string
+      termVersion: number
+      type: TaxonomyType
+      displayName: string
+      catalogVersionId: string
+      profileVersion: number
+    }>
+    invalidTermIds: string[]
+  }
   verificationStatus: string
   publicationStatus: string
   authorizationStatus: string

@@ -173,7 +173,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `person_profile_taxonomy_assignments` 绑定人物内容版本、目录和词条版本。设置分类与普通资料编辑一样创建新内容版本、重置认证/发布草稿状态并保留线上投影；普通资料编辑会显式继承当前结构化分类。
 - 人物发布新增 `TAXONOMY_ASSIGNMENTS_VALID` 门禁，并在同一 D1 batch 中刷新 `profile_public_projections` 与 `profile_public_taxonomy_terms`；公开 DTO 兼容新增 `taxonomyTerms`，legacy `tags` 只保留迁移期展示兼容。
 - 后台 `/api/admin/app/taxonomy` 提供词条草稿/审核/生命周期/合并、目录快照/发布和旧标签映射 API；`PUT /api/admin/app/persons/:personId/taxonomy` 提供人物结构化标注。所有修改要求管理员认证、独立后台能力开关、乐观版本并写审计。
-- KMP 已实现 Recommendation/Search 共用的通用目录领域、capability 校验、进程内缓存、ETag 条件重验证和稳定 ID/父级/重定向完整性校验。Nuxt 已实现 `ADM-TAX-01/02/03`，覆盖词条目录、编辑/审核/生命周期/合并、legacy 映射、快照生成、结构与客户端影响检查及不可变发布确认。当前未配置 `APP_TAXONOMY_*`、未执行 `0081`、未导入 legacy 标签，也未运行 migration/专项测试/模拟器或远端联调；细粒度权限、敏感升级审批、跨域完整影响计数、多语言、灰度/显式回滚和迁移批次后置。
+- KMP 已实现 Recommendation/Search 共用的通用目录领域、capability 校验、进程内缓存、ETag 条件重验证和稳定 ID/父级/重定向完整性校验。Nuxt 已实现 `ADM-TAX-01/02/03`，覆盖词条目录、编辑/审核/生命周期/合并、legacy 映射、快照生成、结构与客户端影响检查及不可变发布确认；`ADM-PER-03` 人物工作台已接入目录选择、稳定词条标注、失效项处理和草稿/线上投影对比。当前未配置 `APP_TAXONOMY_*`、未执行 `0081`、未导入 legacy 标签，也未运行 migration/专项测试/模拟器或远端联调；细粒度权限、敏感升级审批、跨域完整影响计数、多语言、灰度/显式回滚和迁移批次后置。
 
 完整边界见 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
 
@@ -1433,7 +1433,7 @@ queued → processing → completed
 - **Interaction-2 跨仓开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 已完成收藏夹、人物归属、浏览记录与成功详情记录闭环，配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Interaction-3 跨仓开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 已接入严格 transport、“更新 / 已关注 / 喜欢”关注页、取消关注回收与通知目标跳转。配置、migration、专项测试、模拟器/真机与远端联调后置，所有环境继续默认关闭。
 - **Search-1 跨仓开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 已完成严格 transport、搜索分页和账号历史全交互，配置、migration、专项测试、模拟器/真机与远端联调后置。
-- **Taxonomy-1 跨仓开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；KMP 已完成 Recommendation/Search 共用目录、缓存和 ETag 重验证；Nuxt 已完成 `ADM-TAX-01/02/03` 目录、词条和发布工作区。真实目录、配置、migration、专项测试、模拟器/真机与远端联调后置。
+- **Taxonomy-1 跨仓开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；KMP 已完成 Recommendation/Search 共用目录、缓存和 ETag 重验证；Nuxt 已完成 `ADM-TAX-01/02/03` 目录、词条和发布工作区，并在 `ADM-PER-03` 接通稳定分类标注。真实目录、配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Search-2 跨仓开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP 已完成筛选、预估、权益、保存条件和完整来源重验交互，Nuxt 管理页面、真实目录与 grant 迁移、配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Recommendation-1 跨仓开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；KMP 已完成推荐 Feed、推荐解释、精选披露和本人偏好页面，配置、migration、专项测试、热度/证据决策与远端联调后置。
 
