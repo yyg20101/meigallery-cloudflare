@@ -26,7 +26,9 @@ onUnmounted(() => {
   if (import.meta.client) window.removeEventListener('resize', checkWidth)
 })
 
-const navItems = [
+type AdminNavItem = { to: string; label: string; icon: string; exact?: boolean; activePrefix?: string }
+
+const navItems: AdminNavItem[] = [
   { to: '/admin', label: '概览', exact: true, icon: 'grid' },
   { to: '/admin/galleries', label: '图库管理', icon: 'image' },
   { to: '/admin/app/persons', label: 'App 人物供给', icon: 'users' },
@@ -36,7 +38,7 @@ const navItems = [
   { to: '/admin/app/conversations', label: 'App 平台话题', icon: 'message' },
   { to: '/admin/app/notifications', label: 'App 站内通知', icon: 'message' },
   { to: '/admin/app/wallets', label: 'App 金币钱包', icon: 'ticket' },
-  { to: '/admin/app/membership/applications', label: 'App 会员申请', icon: 'ticket' },
+  { to: '/admin/app/membership/applications', activePrefix: '/admin/app/membership', label: 'App 会员运营', icon: 'ticket' },
   { to: '/admin/app/safety', label: 'App 安全审核', icon: 'clipboard' },
   { to: '/admin/app/appeals', label: 'App 申诉复核', icon: 'clipboard' },
   { to: '/admin/tags', label: '标签管理', icon: 'tag' },
@@ -55,9 +57,9 @@ const navItems = [
   { to: '/admin/audit-logs', label: '审计日志', icon: 'clipboard' },
 ]
 
-function isActive(item: { to: string; exact?: boolean }) {
+function isActive(item: AdminNavItem) {
   if (item.exact) return route.path === item.to
-  return route.path.startsWith(item.to)
+  return route.path.startsWith(item.activePrefix || item.to)
 }
 
 const pageTitle = computed(() => {

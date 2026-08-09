@@ -65,6 +65,7 @@ App 版本：1.0
 需求范围仍按本文完整追踪，代码按可回滚纵向切片逐步落地；“已实现开发切片”不等于客户需求已整体冻结或获准生产发布。
 
 - M0、M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 已形成生产默认关闭的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
+- Membership-1 Nuxt 已补齐 `ADM-MBR-04` 独立单账号发放工作台，覆盖账号搜索确认、五级 tier、立即/预约生效、同级续期、稳定 entitlement availability、预览、二次确认、幂等 grant 和追加式撤销，并与旧 Web vip/svip 隔离。批量、旧会员迁移和 `ADM-MBR-05` 高风险双人复核状态机仍未实现，页面不得伪造待复核或已批准状态。
 - Interaction-2 已完成多文件夹收藏与默认关闭浏览历史的 Cloudflare/KMP 跨仓开发，覆盖默认收藏、文件夹管理、全部收藏、人物归属、历史显式开关、详情成功后稳定事件记录、逐条删除、版本化全部清除和屏蔽联动。环境配置、`0078` migration、会员执行值、专项测试、模拟器/真机与远端联调按“先完成全部开发、后统一配置测试”的顺序后置，当前 capability 继续关闭。
 - Interaction-3 已完成关注后已审核公开发布更新流、独立 capability、Message-3 惰性去重站内通知和投递前资格复核的服务端代码、D1 schema 与 App API v2 `1.12.0` 契约；KMP 已完成独立 transport、“更新 / 已关注 / 喜欢”关注页、取消关注回收、详情返回刷新与通知目标跳转。它不复制发布内容、不接系统推送、不向目标真人或运营端披露关注者；环境配置、migration、专项测试、模拟器/真机与远端联调继续后置，当前 `followUpdates=false`。
 - Search-1 已完成人物公开字段搜索、相关度/热度/最新稳定分页、账号屏蔽过滤，以及默认关闭、显式记录、版本化清除的私有搜索历史 Cloudflare 与 KMP 开发。搜索词使用 POST 正文，不进入 URL、游标、本地持久化、审计、分析或推荐画像；环境配置、`0080` 执行、专项测试、模拟器/真机与远端联调后置，当前 `search.profiles=false`、`search.history=false`。

@@ -80,7 +80,9 @@ interface GrantPreview {
   warnings: Array<'DEVELOPMENT_CATALOG' | 'ENTITLEMENTS_PLANNED' | 'LOWER_THAN_CURRENT_TIER'>
 }
 
-const props = defineProps<{ userId: number }>()
+const props = withDefaults(defineProps<{ userId: number; autoload?: boolean }>(), {
+  autoload: false,
+})
 const { api } = useApi()
 const toast = useToast()
 
@@ -98,6 +100,7 @@ const grantIdempotencyKey = ref('')
 const form = reactive({
   tierId: '',
   action: 'grant' as 'grant' | 'renew',
+  startsAtLocal: '',
   durationDays: 30,
   reasonCode: 'manual_review',
   userVisibleNote: '平台审核通过，会员权益已发放。',
@@ -119,6 +122,10 @@ watch(form, () => {
   preview.value = null
   grantIdempotencyKey.value = ''
 }, { deep: true })
+
+onMounted(() => {
+  if (props.autoload) loadState()
+})
 
 async function loadState() {
   loading.value = true
@@ -242,7 +249,7 @@ function grantBody(startsAt?: string) {
     userId: props.userId,
     tierId: form.tierId,
     action: form.action,
-    startsAt,
+    startsAt: startsAt || parseLocalDateTime(form.startsAtLocal),
     durationDays: Number(form.durationDays),
     reasonCode: form.reasonCode,
     userVisibleNote: form.userVisibleNote,
@@ -251,14 +258,24 @@ function grantBody(startsAt?: string) {
   }
 }
 
+function parseLocalDateTime(value: string): string | undefined {
+  if (!value) return undefined
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toISOString()
+}
+
 function entitlementLabel(tier: MembershipTier, definition: MembershipDefinition): string {
   const entitlement = tier.entitlements.find(item => item.key === definition.key)
   if (!entitlement) return '未配置'
   if (typeof entitlement.value === 'boolean') return entitlement.value ? '包含' : '未包含'
-  if (definition.key === 'discovery.filter_tier') {
+  if (definition.key === 'discovery.filter_tier' || definition.key === 'discovery.filter.advanced') {
     return ({ none: '暂不开放', basic: '基础筛选', full: '完整筛选' } as Record<string, string>)[String(entitlement.value)] || String(entitlement.value)
   }
   return `${entitlement.value}${definition.unitLabel || ''}`
+}
+
+function entitlementAvailability(tier: MembershipTier, key: string) {
+  return tier.entitlements.find(item => item.key === key)?.availability ?? null
 }
 
 function warningLabel(warning: GrantPreview['warnings'][number]): string {
@@ -285,7 +302,7 @@ function formatDate(value: string | null | undefined): string {
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
           <h2 class="text-base font-semibold text-gray-900">独立 App 五级会员</h2>
-          <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">Membership-1 开发验证</span>
+          <span class="rounded-full px-2 py-1 text-xs font-medium" :class="!state ? 'bg-gray-100 text-gray-700' : state.catalog.productionReady ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'">{{ !state ? 'App 1.0' : state.catalog.productionReady ? '生产目录' : '开发目录' }}</span>
         </div>
         <p class="mt-1 text-xs leading-5 text-gray-600">与旧 Web vip/svip 隔离；管理员写操作均使用幂等键并记录审计日志。</p>
       </div>
@@ -335,13 +352,16 @@ function formatDate(value: string | null | undefined): string {
 
       <div v-if="form.tierId" class="rounded-xl border border-gray-200 bg-gray-50 p-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <h3 class="text-sm font-semibold text-gray-900">所选等级权益草案</h3>
-          <span class="rounded-full bg-gray-200 px-2 py-1 text-xs text-gray-700">全部仅规划展示</span>
+          <h3 class="text-sm font-semibold text-gray-900">所选等级权益</h3>
+          <span class="rounded-full bg-gray-200 px-2 py-1 text-xs text-gray-700">由稳定 entitlement 驱动</span>
         </div>
         <div class="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
           <div v-for="definition in state.catalog.definitions" :key="definition.key" class="flex min-w-0 items-start justify-between gap-3 text-xs leading-5">
             <span class="min-w-0 text-gray-600">{{ definition.displayName }}</span>
-            <span class="shrink-0 font-medium text-gray-900">{{ entitlementLabel(state.catalog.tiers.find(t => t.tierId === form.tierId)!, definition) }}</span>
+            <span class="flex shrink-0 items-center gap-1.5 font-medium text-gray-900">
+              {{ entitlementLabel(state.catalog.tiers.find(t => t.tierId === form.tierId)!, definition) }}
+              <span v-if="entitlementAvailability(state.catalog.tiers.find(t => t.tierId === form.tierId)!, definition.key) === 'planned'" class="rounded-full bg-amber-100 px-1.5 text-[10px] text-amber-800">规划</span>
+            </span>
           </div>
         </div>
       </div>
@@ -359,6 +379,11 @@ function formatDate(value: string | null | undefined): string {
           <label class="text-sm text-gray-700">
             有效天数（1–366）
             <input v-model.number="form.durationDays" type="number" min="1" max="366" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3" />
+          </label>
+          <label class="text-sm text-gray-700 sm:col-span-2">
+            预约生效时间（可选，最多提前 90 天）
+            <input v-model="form.startsAtLocal" type="datetime-local" class="mt-1 min-h-11 w-full rounded-lg border border-gray-300 px-3" />
+            <span class="mt-1 block text-xs leading-5 text-gray-500">留空立即生效；同级续期会自动从已有同级 grant 的最晚到期时间继续。</span>
           </label>
           <label class="text-sm text-gray-700">
             发放原因

@@ -219,7 +219,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 心遇、心悦、心知、心契、心耀使用稳定 code/tier ID 和 `rank=10/20/30/40/50`。展示名称、颜色和文案不参与权限判断。
 - entitlement 以稳定 key、schema 版本和值类型定义；当前支持 `boolean|integer|enum`。七项开发配置全部为 `planned`，只能展示，不能据此开放消息、筛选、历史或收藏夹业务。
 - `GET /api/v2/membership/catalog` 提供公共五级目录；`GET /api/v2/me/entitlements` 使用 App Bearer 会话返回本人最高有效 App grant 和快照。`GET /api/v2/me` 复用同一摘要，不读取旧 Web `user_memberships`。
-- 管理后台在现有用户详情页提供独立 App 会员面板，支持预览、立即发放、续期和撤销。grant 不可变，撤销写入独立追加表；发放与撤销均要求幂等键、业务单号、标准原因和用户可见说明，并写审计。
+- 管理后台在现有用户详情页提供独立 App 会员面板，并以 `/admin/app/membership/grants/new` 提供 `ADM-MBR-04` 独立工作台；支持账号搜索确认、预览、立即/预约发放、同级续期和撤销。grant 不可变，撤销写入独立追加表；发放与撤销均要求幂等键、业务单号、标准原因和用户可见说明，并写审计。当前仍是 Membership-1 单账号执行基线，高风险双人复核不得由页面伪装为已实现。
 - `APP_MEMBERSHIP_ENABLED` 与 `APP_MEMBERSHIP_ADMIN_ENABLED` 分离；production 还要求 `APP_MEMBERSHIP_PRODUCTION_READY=true` 且目录行同时为 `published + production_ready=1`。production/dev 当前都显式关闭。
 - migration 不 seed 账号 grant、不回填 legacy 数据、不把 `vip/svip` 自动映射为五级会员。批量/高风险双人复核、额度消耗、通知和旧会员迁移仍未实现。
 

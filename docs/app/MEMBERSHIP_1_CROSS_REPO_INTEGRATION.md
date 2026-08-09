@@ -48,7 +48,7 @@ bootstrap 在 App API `1.4.0` 增加 `membership` capability：
 
 ### Nuxt 管理后台
 
-现有 `/admin/users/:id` 用户工作台增加独立的“App 五级会员”面板，并明确与“旧 Web 会员（兼容）”隔离。后台接口为：
+现有 `/admin/users/:id` 用户工作台增加独立的“App 五级会员”面板，并新增 `/admin/app/membership/grants/new` 对应 `ADM-MBR-04` 的独立工作台；两处复用同一组件和 API，明确与“旧 Web 会员（兼容）”隔离。独立工作台先搜索并确认正常账号，再展示当前会员、五级目录和 grant 时间线，支持立即或最多提前 90 天预约生效、同级续期、逐项 `available/planned` entitlement、预览、二次确认和追加式撤销。后台接口为：
 
 | 方法与路径 | 用途 |
 |---|---|
@@ -58,7 +58,7 @@ bootstrap 在 App API `1.4.0` 增加 `membership` capability：
 | `POST /api/admin/app/memberships/grants` | 使用 `Idempotency-Key` 创建立即发放或续期 grant |
 | `POST /api/admin/app/memberships/grants/:grantId/revoke` | 使用 `Idempotency-Key` 创建撤销记录，不改写原 grant |
 
-发放时要求标准原因、用户可见说明、业务单号和可选内部备注。同一账号不能重复使用业务单号；持续时间为 1–366 天，预约生效最多提前 90 天；续期从同目录同等级的较晚有效到期时间延展。预览后仍需显式二次确认，提交沿用预览开始时间，避免人工确认耗时导致展示与结果漂移。审计记录只保存是否存在内部备注，不复制内部备注正文。
+发放时要求标准原因、用户可见说明、业务单号和可选内部备注。同一账号不能重复使用业务单号；持续时间为 1–366 天，预约生效最多提前 90 天；续期从同目录同等级的较晚有效到期时间延展。预览后仍需显式二次确认，提交沿用预览开始时间，避免人工确认耗时导致展示与结果漂移。审计记录只保存是否存在内部备注，不复制内部备注正文。当前页面只执行 Membership-1 单账号基线；批量和高风险双人复核仍在“未交付”范围，不显示伪入口。
 
 ### KMP 客户端
 
