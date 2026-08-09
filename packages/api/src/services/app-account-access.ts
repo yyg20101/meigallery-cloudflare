@@ -101,7 +101,7 @@ export type AppAccountSummary = {
   email: string
   nickname: string | null
   role: string
-  status: 'active'
+  status: 'active' | 'restricted'
 }
 
 export type AppDeviceSummary = {
@@ -131,6 +131,7 @@ export type AppSessionPrincipal = {
   email: string
   nickname: string | null
   role: string
+  accountStatus: 'active' | 'restricted'
 }
 
 type SecurityRow = {
@@ -381,7 +382,7 @@ export async function loginAppAccount(
   }
 
   const security = await ensureAccountFoundation(env.DB, user, requestId, now)
-  assertSecurityActive(security, now)
+  assertSecurityCanLogin(security, now)
   await ensureCurrentConsents(
     env.DB,
     user.id,
@@ -416,7 +417,7 @@ export async function refreshAppSession(
     await revokeRefreshReplayIfKnown(db, tokenHash, requestId, now)
     throw new AppAccountAccessError(401, 'SESSION_INVALID', '会话已失效，请重新登录')
   }
-  assertSessionUsable(row, now, 'refresh')
+  assertSessionUsable(row, now, 'refresh', { allowRestricted: true })
   if (requiredDocuments) {
     await assertCurrentConsents(db, row.account_id, requiredDocuments)
   }
@@ -480,6 +481,7 @@ export async function authenticateAppAccessToken(
   accessToken: string,
   now = new Date(),
   requiredDocuments?: AppAuthDocumentVersions | null,
+  options: { allowRestricted?: boolean } = {},
 ): Promise<AppSessionPrincipal> {
   const normalizedToken = normalizeToken(accessToken, 'mga_')
   const tokenHash = await hashOpaqueValue(normalizedToken)
@@ -487,7 +489,7 @@ export async function authenticateAppAccessToken(
   if (!row) {
     throw new AppAccountAccessError(401, 'AUTH_REQUIRED', '请重新登录')
   }
-  assertSessionUsable(row, now, 'access')
+  assertSessionUsable(row, now, 'access', options)
   if (requiredDocuments) {
     await assertCurrentConsents(db, row.account_id, requiredDocuments)
   }
@@ -513,6 +515,7 @@ export async function authenticateAppAccessToken(
     email: row.email,
     nickname: row.nickname,
     role: row.role,
+    accountStatus: row.account_security_status === 'restricted' ? 'restricted' : 'active',
   }
 }
 
@@ -569,7 +572,7 @@ export async function getAppAccount(
       email: principal.email,
       nickname: principal.nickname,
       role: principal.role,
-      status: 'active',
+      status: principal.accountStatus,
     },
     membership,
     currentDeviceId: principal.deviceId,
@@ -1082,8 +1085,9 @@ async function getSecurityRow(db: D1Database, accountId: number): Promise<Securi
   `).bind(accountId).first<SecurityRow>()
 }
 
-function assertSecurityActive(security: SecurityRow, now: Date): void {
+function assertSecurityCanLogin(security: SecurityRow, now: Date): void {
   if (security.status === 'active') return
+  if (security.status === 'restricted') return
   if (security.restricted_until && Date.parse(security.restricted_until) <= now.getTime()) {
     throw new AppAccountAccessError(403, 'ACCOUNT_REVIEW_REQUIRED', '账号限制已到期，状态仍需平台复核')
   }
@@ -1096,7 +1100,7 @@ function userSummary(user: UserRow, security: SecurityRow): AppAccountSummary {
     email: user.email,
     nickname: user.nickname,
     role: user.role,
-    status: 'active',
+    status: security.status === 'restricted' ? 'restricted' : 'active',
   }
 }
 
@@ -1166,15 +1170,22 @@ async function findSession(
   `).bind(hash).first<SessionLookupRow>()
 }
 
-function assertSessionUsable(row: SessionLookupRow, now: Date, credential: 'access' | 'refresh'): void {
+function assertSessionUsable(
+  row: SessionLookupRow,
+  now: Date,
+  credential: 'access' | 'refresh',
+  options: { allowRestricted?: boolean } = {},
+): void {
   const expiresAt = credential === 'access' ? row.access_expires_at : row.refresh_expires_at
   const versionValid = row.account_session_version === row.current_account_session_version
     && row.device_session_version === row.current_device_session_version
+  const accountSecurityUsable = row.account_security_status === 'active'
+    || (options.allowRestricted === true && row.account_security_status === 'restricted')
   if (
     row.session_status !== 'active'
     || row.device_status !== 'active'
     || row.user_status !== 'active'
-    || row.account_security_status !== 'active'
+    || !accountSecurityUsable
     || !versionValid
     || Date.parse(expiresAt) <= now.getTime()
   ) {
@@ -1217,7 +1228,7 @@ function accountSummaryFromSession(row: SessionLookupRow): AppAccountSummary {
     email: row.email,
     nickname: row.nickname,
     role: row.role,
-    status: 'active',
+    status: row.account_security_status === 'restricted' ? 'restricted' : 'active',
   }
 }
 

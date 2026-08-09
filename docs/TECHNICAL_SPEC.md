@@ -211,6 +211,24 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整边界见 `docs/app/RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md`。
 
+### Privacy-1 数据权利控制面 `[Cloudflare 与 KMP 开发完成，默认关闭]`
+
+`0094_app_data_rights_control_plane.sql` 和 App API v2 `1.17.0` 建立数据导出与账号注销的申请控制面，不执行尚未获批的真实数据处理：
+
+- `app_data_rights_policies` 分别控制概览、导出申请、注销申请、导出处理、注销处理和取消，并保存 retention、Owner/SLA、region 三类治理决策。development seed 全部关闭且决策为 `unresolved`。
+- 申请保存账号、类型和不可变策略快照，使用单调 `version + mutation_token`、受约束状态迁移和只追加事件；同账号同类型最多一条进行中申请。
+- 新申请与取消先执行密码二次验证。短期 step-up token 和长期请求级状态 token 只存 SHA-256 摘要，前者单用途单次消费，后者只能查询/验证/取消绑定申请。
+- 请求级状态 token 的失效时间以申请截止时间或注销计划执行时间中较晚者为锚点，再叠加不可变策略 TTL，避免等待期本身耗尽注销后唯一自助访问窗口。
+- 注销提交原子进入 `deletion_pending`、撤销 App/Web 会话并写安全事件；D1 triggers 阻止新增互动、收藏、历史、搜索历史、话题、观看者消息、会员申请/发放和钱包调整。取消恢复提交前账号快照但强制重新登录。
+- 注销创建前，KMP 仅在系统安全区暂存原幂等请求 token 与当次 Access Token。若服务端已提交注销并撤销该 session、但成功响应丢失，原注销 POST 可凭完全相同的幂等键和该已撤销 token 只读恢复原申请及未过期状态凭证；恢复分支重验 session 撤销原因、账号状态、原命令和申请绑定，不能创建新申请、恢复普通会话或访问其他 API。密码与 step-up token 不持久化。
+- App API 提供本人概览、列表/详情、导出/注销申请、取消，以及普通会话失效后的三条请求级状态路径。账号 `restricted` 仍可访问必要 `/me` 与数据权利路径，其他能力继续逐请求拒绝。
+- `/api/admin/app/data-rights` 和 Nuxt `ADM-PRI-01/02` 提供脱敏队列、领取、开始处理、失败、重试和证据核验取消；没有 Privacy-2 真实证据时不提供完成动作。
+- Operations-1 只对超过 `deadline_at` 的非终态申请生成聚合 `data_rights_overdue` Incident，不复制账号或申请敏感内容，也不代替权威状态机。
+- KMP 已实现严格 `1.17.0` DTO、系统安全状态凭证、手机单列/宽屏双栏、注销影响逐项确认、退出登录后的申请级访问，以及注销成功响应丢失时对原幂等命令的安全恢复。当前未修改 Wrangler、未执行 `0094`，也未运行 migration、专项测试、KMP 构建、模拟器/真机或远端联调。
+- Privacy-2 的 R2 导出制品、短期下载凭证、到期清理、下载审计、不可逆删除/匿名化、法定保留排除与完成证明后置，必须等待治理决策和生产处理门禁冻结。
+
+完整边界见 `docs/app/PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md`。
+
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
 `0071_app_membership_catalog_and_grants.sql` 和 App API v2 `1.4.0` 建立 Membership-1 最小闭环：
@@ -1578,6 +1596,7 @@ queued → processing → completed
 - **Taxonomy-1 跨仓开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；KMP 已完成 Recommendation/Search 共用目录、缓存和 ETag 重验证；Nuxt 已完成 `ADM-TAX-01/02/03` 目录、词条和发布工作区，并在 `ADM-PER-03` 接通稳定分类标注。真实目录、配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Search-2 跨仓开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP 已完成筛选、预估、权益、保存条件和完整来源重验交互；Nuxt 已完成只读搜索运营核查、跨目录引用诊断和 entitlement 矩阵。真实目录与 grant 迁移、配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Recommendation-1 跨仓开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；KMP 已完成推荐 Feed、推荐解释、精选披露和本人偏好页面，配置、migration、专项测试、热度/证据决策与远端联调后置。
+- **Privacy-1 跨仓开发基线**：App API v2 `1.17.0` 已完成二次验证、数据副本/注销申请、请求级状态访问和取消；D1 已建立默认关闭策略、不可变事件、幂等与注销待处理写入阻断；Nuxt 已完成 `ADM-PRI-01/02` 队列和详情，KMP 已完成系统安全凭证与响应式页面。真实制品、不可逆删除、配置、migration、专项测试与联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
 

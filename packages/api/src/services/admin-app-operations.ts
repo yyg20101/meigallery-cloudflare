@@ -1450,7 +1450,8 @@ export async function runAdminAppOperationalDetection(
   })))
   const timestamp = now.toISOString()
   const runId = generateId('opdr')
-  const unavailableDetectorCount = 3
+  // 会员到期撤销和 Cloudflare 平台健康仍待接入；数据权利逾期已由 Privacy-1 提供事实表。
+  const unavailableDetectorCount = 2
   const evidenceDigest = await sha256Hex(JSON.stringify(findings
     .map(item => ({ key: item.incidentKey, count: item.impactCount, severity: item.severity }))
     .sort((a, b) => a.key.localeCompare(b.key))))
@@ -1681,6 +1682,7 @@ async function collectOperationalFindings(db: D1Database, now: Date): Promise<De
     latestAuditCheck,
     sensitiveAuditFindings,
     notificationBacklog,
+    overdueDataRights,
   ] = await Promise.all([
     db.prepare(`
       SELECT COUNT(*) AS count
@@ -1760,6 +1762,13 @@ async function collectOperationalFindings(db: D1Database, now: Date): Promise<De
       WHERE status = 'dead_letter'
         OR (status IN ('pending', 'processing') AND datetime(next_attempt_at) < datetime(?))
     `).bind(backlogBoundary).first<{ count: number }>(),
+    db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM app_data_rights_requests
+      WHERE deadline_at IS NOT NULL
+        AND datetime(deadline_at) < datetime(?)
+        AND status NOT IN ('completed', 'cancelled', 'expired')
+    `).bind(nowIso).first<{ count: number }>(),
   ])
 
   const findings: DetectorFinding[] = []
@@ -1858,6 +1867,18 @@ async function collectOperationalFindings(db: D1Database, now: Date): Promise<De
       sourceReference: 'app_notification_outbox.backlog',
       impactCount: Number(notificationBacklog!.count), impactScope: { scope: 'global' },
       runbookId: 'oprb_notification_recovery_v1',
+    })
+  }
+  if (Number(overdueDataRights?.count ?? 0) > 0) {
+    findings.push({
+      detectorKey: 'privacy.data_rights_deadline',
+      incidentKey: 'detector:data_rights_overdue:global',
+      type: 'data_rights_overdue', domain: 'safety', severity: 'p1',
+      title: '数据权利申请超过处置期限',
+      summary: '检测到尚未结束且已超过策略期限的数据导出或账号注销申请；运营事件只保留聚合数量，不展示申请人信息。',
+      sourceReference: 'app_data_rights_requests.deadline',
+      impactCount: Number(overdueDataRights!.count), impactScope: { scope: 'global' },
+      runbookId: 'oprb_privacy_response_v1',
     })
   }
   return findings

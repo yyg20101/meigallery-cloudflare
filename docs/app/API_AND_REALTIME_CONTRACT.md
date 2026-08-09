@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-10
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1、Audit-1/2/3 与 Operations-1 进入默认关闭或未配置的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Privacy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1、Audit-1/2/3 与 Operations-1 进入默认关闭或未配置的保守开发验证
 
 ## 1. 契约原则
 
@@ -202,9 +202,22 @@ Recommendation-1 以兼容新增方式把累计契约提升为 `1.16.0`，冻结
 - 小于 100% 的灰度必须绑定已生效过的同模式回退版本；个性化目标与回退目录一致，并按服务端生成的会话稳定分桶。推荐游标使用短期 HMAC 签名，客户端不能改写会话 ID 选择灰度桶；未来生效规则不会提前暂停当前 active 版本。
 - 运营精选固定披露“平台精选”，并与规则候选复用统一公开资格和账号屏蔽过滤。
 - 过渡管理路由 `/api/admin/app/recommendations` 和 Nuxt 四页工作台覆盖规则版本、Dry-run、复核、排期、启用、暂停、回滚和精选。
-- 当前不配置环境、不执行 `0083`、不接 KMP、不写推荐证据、不运行专项测试；热度公式、证据保留、跨会话频控和监控自动停止仍未冻结。
+- 当前不配置环境、不执行 `0083`、不写推荐证据、不运行专项测试；KMP 已接入版本化推荐、实际模式、理由和显式偏好，热度公式、证据保留、跨会话频控和监控自动停止仍未冻结。
 
 完整边界见 [Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)。
+
+### 1.15 Privacy-1 局部冻结记录
+
+Privacy-1 以兼容新增方式把累计契约提升为 `1.17.0`，冻结并实现 production 默认关闭的数据权利登记、跟踪与取消控制面：
+
+- bootstrap 新增数据权利 capability 和策略快照；策略、治理决策、申请、处理与取消均独立门禁，缺配置、未发布或未通过 production-ready 时 fail-closed。
+- 用户可读取本人数据权利总览、申请列表和详情，并在密码二次验证后创建导出或注销申请；关键写入要求 `Idempotency-Key`，取消还要求 `expectedVersion`。
+- 注销申请要求三项明确确认，创建后立即撤销 App/Web 会话、将账号置为 `deletion_pending`，并由数据库约束阻止新互动、收藏、历史、平台话题、会员申请/发放和钱包调整。
+- 普通会话失效后只保留绑定单一申请的状态凭证访问：查询状态、为取消重新验证、取消申请；状态凭证不能访问其他申请或普通 App API。
+- 管理后台 `/api/admin/app/data-rights` 提供最小化队列、详情、领取、开始处理、失败、重试和经证据核验的取消；本阶段故意不提供完成动作。
+- Privacy-1 不生成导出制品、不签发下载凭证、不执行不可逆删除；真实处理、依法保留和对外 SLA 属于 Privacy-2，必须在地区、Owner、保留及恢复门禁冻结后实施。
+
+完整边界见 [Privacy-1 数据权利控制面跨仓开发基线](./PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md)。
 
 ## 2. 通用请求
 
@@ -234,7 +247,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.16.0"
+    "contractVersion": "1.17.0"
   }
 }
 ```
@@ -282,7 +295,19 @@ Accept-Language: zh-CN
 | `IDEMPOTENCY_CONFLICT` | 409 | 同一键对应不同请求 |
 | `APP_UPGRADE_REQUIRED` | 426 | 能力需要更高客户端版本 |
 | `RATE_LIMITED` | 429 | 频控，返回安全的重试时间 |
-| `PRIVACY_REQUEST_IN_PROGRESS` | 409 | 已有相同数据权利任务在处理 |
+| `DATA_RIGHTS_NOT_CONFIGURED` | 503 | 数据权利策略尚未配置 |
+| `DATA_RIGHTS_POLICY_NOT_READY` | 503 | 策略未通过生产门禁 |
+| `STEP_UP_FAILED` | 401 | 当前密码二次验证失败 |
+| `STEP_UP_RATE_LIMITED` | 429 | 二次验证失败次数达到服务端限制 |
+| `STEP_UP_REQUIRED` / `STEP_UP_EXPIRED` | 401 | 缺少有效、匹配用途的一次性二次验证凭证 |
+| `DATA_RIGHTS_ACCESS_INVALID` | 401 | 申请级状态凭证无效、过期或不匹配 |
+| `DELETION_RECOVERY_INVALID` | 401 | 注销成功响应恢复所需的旧会话或原幂等键不匹配 |
+| `DELETION_ACKNOWLEDGEMENTS_REQUIRED` | 422 | 注销三项影响确认不完整 |
+| `DELETION_SCHEDULE_NOT_CONFIGURED` | 503 | 注销等待规则尚未配置 |
+| `VERSION_CONFLICT` | 409 | 数据权利申请版本已变化 |
+| `REQUEST_NOT_CANCELLABLE` | 409 | 当前申请状态不允许取消 |
+| `DATA_RIGHTS_REQUEST_CONFLICT` | 409 | 已有在途申请或账号状态并发变化 |
+| `ACCOUNT_DELETION_ALREADY_PENDING` | 409 | 账号已有注销申请，应使用申请级状态访问 |
 | `TAXONOMY_VERSION_CONFLICT` | 409 | 目录或引用版本已变化 |
 | `RECOMMENDATION_PERSONALIZATION_UNAVAILABLE` | 403 | 当前政策、本人选择或生效规则不允许个性化 |
 | `RECOMMENDATION_PREFERENCE_VERSION_CONFLICT` | 409 | 本人推荐偏好发生并发变化 |
@@ -314,18 +339,28 @@ Accept-Language: zh-CN
 | DELETE | `/api/v2/me/devices/:deviceId` | Auth-1 已实现：幂等远程退出其他设备 |
 | GET/PUT | `/api/v2/me/preferences` | 地区、偏好、推荐和隐私设置 |
 | GET | `/api/v2/me/blocks` | 本人拉黑名单 |
-| POST | `/api/v2/me/data-exports` | 创建数据导出 Workflow |
-| GET | `/api/v2/me/data-exports/:requestId` | 查询导出状态 |
-| POST | `/api/v2/me/data-exports/:requestId/download-ticket` | 再次验证后签发短期下载凭证 |
-| POST | `/api/v2/me/deletion-requests` | 创建注销 Workflow |
-| GET | `/api/v2/me/deletion-requests/:requestId` | 查询注销状态 |
-| DELETE | `/api/v2/me/deletion-requests/:requestId` | 在允许阶段取消注销 |
+| GET | `/api/v2/me/data-rights` | Privacy-1：本人策略、治理决策、能力和最近申请 |
+| POST | `/api/v2/me/data-rights/step-up` | Privacy-1：按固定 purpose 进行密码二次验证 |
+| GET | `/api/v2/me/data-rights/requests` | Privacy-1：本人申请游标列表 |
+| POST | `/api/v2/me/data-rights/export-requests` | Privacy-1：二次验证后幂等创建导出申请 |
+| POST | `/api/v2/me/data-rights/deletion-requests` | Privacy-1：三项确认和二次验证后创建注销申请；原幂等键可窄化恢复丢失响应 |
+| GET | `/api/v2/me/data-rights/requests/:requestId` | Privacy-1：本人申请详情和用户可见时间线 |
+| POST | `/api/v2/me/data-rights/requests/:requestId/cancel` | Privacy-1：二次验证并按版本取消本人申请 |
+| GET | `/api/v2/data-rights/requests/:requestId` | Privacy-1：使用 `X-Data-Rights-Token` 读取绑定申请 |
+| POST | `/api/v2/data-rights/requests/:requestId/step-up` | Privacy-1：用状态凭证为取消申请重新验证 |
+| POST | `/api/v2/data-rights/requests/:requestId/cancel` | Privacy-1：注销退出后以状态凭证取消绑定申请 |
 
 注册响应不得返回 `personId` 或 `profileId`，除非该账号以后通过独立认领流程绑定真人。
 
 Auth-1 当前是默认关闭的开发基线：`APP_AUTH_ENABLED`、注册开关、四类文档版本、四个可阅读正文 URL 和 production Turnstile 必须同时满足，bootstrap 才返回 `auth=true`。`challenge.type=turnstile` 时同时返回固定 `pagePath`/`resultPath`，三类业务动作使用不同 action 且 token 单次使用。本阶段只启用邮箱身份，不写死年龄或地区，不开放手机号/第三方登录。现有 `users` 是唯一账号主体；旧 Web 账号只有在密码校验成功后才生成 App 身份映射，不按邮箱静默合并。
 
 Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D1 只保存 SHA-256 摘要。每次授权校验账号、设备、App session version、状态、有效期和当前文档同意。成功刷新会替换当前 Access/Refresh Token，使旧 Access Token 立即失效；旧 Refresh Token 重放将撤销该会话并写安全事件。客户端必须串行刷新并把两种 Token 仅存入 Keystore/Keychain。
+
+Privacy-1 的账号路径和申请级路径均强制 `Cache-Control: private, no-store`。`restricted` 账号仍可访问必要 `/me` 与数据权利路径；`deletion_pending` 账号不能继续使用普通会话，只能凭服务端签发且绑定单一申请的 `X-Data-Rights-Token` 使用上表三条申请级路径。该凭证不是身份 Bearer token，不能换取或恢复普通会话。
+
+请求级状态凭证的有效期从申请截止时间或注销计划执行时间中较晚者起计算策略 TTL，确保等待期不会先耗尽注销后的唯一自助状态窗口；过期后仍 fail-closed，不能由客户端延长。
+
+注销创建响应可能与会话撤销同时发生，客户端必须在发起前把随机幂等标识和当次 Access Token 作为单一待确认操作保存到系统安全区。若响应丢失，只允许携带原 `Idempotency-Key` 和被该注销动作撤销的发起 Access Token 重放既有结果；服务端还会重验发起 session、账号 `deletion_pending` 状态、创建命令和未过期状态凭证。该分支不消费新 step-up、不创建第二个申请，也不能恢复或换取普通会话。成功恢复或确定未创建后，客户端立即清理待确认操作。
 
 ## 6. 真人发现 API
 
@@ -410,7 +445,7 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`，已提供稳定分类目录和人物公开分类投影；Search-2 再提升为 `1.15.0`，实现权益分层的结构化筛选、结果预估与账号私有保存条件；Recommendation-1 累计提升到 `1.16.0`，当前只把主动 taxonomy 偏好作为受门禁的个性化结构，其他互动推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
+Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`，已提供稳定分类目录和人物公开分类投影；Search-2 再提升为 `1.15.0`，实现权益分层的结构化筛选、结果预估与账号私有保存条件；Recommendation-1 累计提升到 `1.16.0`，当前只把主动 taxonomy 偏好作为受门禁的个性化结构；Privacy-1 再累计提升到 `1.17.0`，实现数据权利登记、跟踪和取消控制面，但不执行真实导出或不可逆删除。其他互动推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
 
 ## 8. 会员和目录 API
 
@@ -550,7 +585,7 @@ Wallet-1 当前实现的用户路由只读，余额来自追加式分录/受控�
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
-M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1/2/3/4 同样暂时复用 `/api/admin/app/memberships`，提供版本化目录与 Entitlement 管理、账号状态、会员申请、单账号变更预览、独立复核申请/队列/决定，以及策略允许时的低风险直达发放或撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。Wallet-1 暂时使用 `/api/admin/app/wallets` 提供账号确认、单笔预览/申请、独立批准/拒绝和完整冲正，不提供直接改余额、批量或复核绕过。Recommendation-1 暂时使用 `/api/admin/app/recommendations` 提供规则、Dry-run、复核、排期、暂停/回滚和固定披露精选。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
+M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1/2/3/4 同样暂时复用 `/api/admin/app/memberships`，提供版本化目录与 Entitlement 管理、账号状态、会员申请、单账号变更预览、独立复核申请/队列/决定，以及策略允许时的低风险直达发放或撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。Wallet-1 暂时使用 `/api/admin/app/wallets` 提供账号确认、单笔预览/申请、独立批准/拒绝和完整冲正，不提供直接改余额、批量或复核绕过。Recommendation-1 暂时使用 `/api/admin/app/recommendations` 提供规则、Dry-run、复核、排期、暂停/回滚和固定披露精选。Privacy-1 暂时使用 `/api/admin/app/data-rights` 提供最小化总览、申请队列/详情及 Owner 领取、开始处理、失败、重试和凭证据取消；没有真实导出制品或不可逆删除证据时不提供完成动作。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
 
 | 资源 | 主要能力 |
 |------|----------|
@@ -569,6 +604,7 @@ M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情
 | `/claims`, `/handovers` | 未来：真人认领和交接 |
 | `/operation-dashboards`, `/operational-incidents` | 聚合指标、数据新鲜度、异常认领和受控安全开关 |
 | `/audit-events`, `/audit-exports`, `/audit-registry` | 只读审计查询、完整性状态、受控短期导出和 Owner Action 口径治理 |
+| `/data-rights` | 数据导出/注销申请队列、策略快照、领取、处理、失败重试、取消和未来完成证据 |
 
 管理员消息接口必须由服务端写入 `senderType=platform_operator`；客户端不能传入 `person` 冒充真人。会员发放、调币和审计导出均使用独立申请/批准/执行状态，批准不等于已经生效；任何余额变化只能产生新钱包分录。
 

@@ -16,7 +16,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.16.0'
+  contractVersion: '1.17.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -86,6 +86,11 @@ export interface AppBootstrapConfig {
       blocks: boolean
       conversationClose: boolean
       appeals: boolean
+    }
+    dataRights: {
+      overview: boolean
+      export: boolean
+      deletion: boolean
     }
     payments: false
     systemPush: false
@@ -210,6 +215,16 @@ export interface AppBootstrapConfig {
     reportTargets: AppSafetyReportTargetType[]
     reasons: AppSafetyReason[]
   }
+  dataRights: {
+    policyVersion: string
+    transport: 'http_poll'
+    stepUpTtlSeconds: number
+    statusAccessHeader: 'X-Data-Rights-Token'
+    systemPush: false
+    exportProcessing: boolean
+    deletionProcessing: boolean
+    cancellationEnabled: boolean
+  }
 }
 
 export type AppTaxonomyType =
@@ -264,7 +279,7 @@ export interface AppAccountSummary {
   email: string
   nickname: string | null
   role: string
-  status: 'active'
+  status: 'active' | 'restricted'
 }
 
 export interface AppDeviceSummary {
@@ -303,6 +318,75 @@ export interface AppMeSummary {
     expiresAt: string | null
   }
   currentDeviceId: string
+}
+
+export type AppDataRightsRequestType = 'export' | 'deletion'
+
+export type AppDataRightsRequestStatus =
+  | 'requested'
+  | 'verification_required'
+  | 'collecting'
+  | 'ready'
+  | 'expired'
+  | 'scheduled'
+  | 'processing'
+  | 'completed'
+  | 'cancelled'
+  | 'failed'
+
+export type AppDataRightsStepUpPurpose =
+  | 'export_request'
+  | 'deletion_request'
+  | 'export_cancel'
+  | 'deletion_cancel'
+  | 'export_download'
+
+export interface AppDataRightsRequestSummary {
+  requestId: string
+  type: AppDataRightsRequestType
+  status: AppDataRightsRequestStatus
+  statusMessage: string
+  version: number
+  policyVersion: string
+  requestedAt: string
+  updatedAt: string
+  deadlineAt: string | null
+  scheduledFor: string | null
+  completedAt: string | null
+  cancelledAt: string | null
+  failureCode: string | null
+  canCancel: boolean
+  requiresStatusToken: boolean
+}
+
+export interface AppDataRightsTimelineItem {
+  sequence: number
+  eventType: string
+  status: AppDataRightsRequestStatus
+  message: string
+  createdAt: string
+}
+
+export interface AppDataRightsRequestDetail extends AppDataRightsRequestSummary {
+  timeline: AppDataRightsTimelineItem[]
+}
+
+export interface AppDataRightsStepUpResult {
+  purpose: AppDataRightsStepUpPurpose
+  token: string
+  expiresAt: string
+}
+
+export interface AppDataRightsStatusAccess {
+  token: string
+  expiresAt: string
+}
+
+export interface AppDataRightsMutationResult {
+  request: AppDataRightsRequestDetail
+  statusAccess: AppDataRightsStatusAccess | null
+  replayed: boolean
+  sessionRevoked: boolean
 }
 
 export type AppMembershipCatalogState = 'development' | 'published'

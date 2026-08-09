@@ -64,7 +64,7 @@ App 版本：1.0
 
 需求范围仍按本文完整追踪，代码按可回滚纵向切片逐步落地；“已实现开发切片”不等于客户需求已整体冻结或获准生产发布。
 
-- M0、M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1/2/3 已形成生产默认关闭或未配置的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
+- M0、M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Privacy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1/2/3 已形成生产默认关闭或未配置的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
 - Membership-1/2/3 Nuxt 已补齐 `ADM-MBR-03/04/05` 单账号闭环：账号搜索确认、五级 tier、立即/预约发放、同级续期、追加式撤销、会员申请、策略预览、独立复核队列和逐单批准/拒绝。发起人不能自审，批准时服务端重新核对当前 grant 与申请锁，并原子写入会员事实、复核结果、用户申请终态和审计；未发布正式风险阈值时全部变更保守复核。`0088` migration、真实策略、配置和专项测试统一后置；批量与旧会员迁移仍未实现。
 - Membership-4 Nuxt 已补齐 `ADM-MBR-01/02` 目录管理闭环：基线完整复制、目录设置、完整五级原子编辑、typed entitlement、五级显式值、安全默认值、客户端 capability、基线比较、影响分析和 Owner 独立发布复核。当前环境引用、已发布、待复核以及被 grant、申请或后继目录引用的版本只读；发布不切换 Wrangler 目录、不迁移 grant，也不开放 capability。`0089`、真实数值、生产决策、配置和专项测试统一后置。
 - Interaction-2 已完成多文件夹收藏与默认关闭浏览历史的 Cloudflare/KMP 跨仓开发，覆盖默认收藏、文件夹管理、全部收藏、人物归属、历史显式开关、详情成功后稳定事件记录、逐条删除、版本化全部清除和屏蔽联动。环境配置、`0078` migration、会员执行值、专项测试、模拟器/真机与远端联调按“先完成全部开发、后统一配置测试”的顺序后置，当前 capability 继续关闭。
@@ -73,14 +73,15 @@ App 版本：1.0
 - Taxonomy-1 已完成稳定词条 ID、不可变修订与目录快照、合并重定向、legacy 显式待复核映射、人物内容版本关联、发布门禁和公开分类投影的服务端代码，以及 Recommendation/Search 共用的 KMP 通用目录、缓存和 ETag 条件重验证。Nuxt 已交付 `ADM-TAX-01/02/03` 三页工作区，包含词条树、草稿/审核/生命周期/合并、映射治理、快照检查和不可变发布；`ADM-PER-03` 已接通稳定目录词条标注、失效项处理及草稿/线上分类对比。真实目录、环境配置、`0081` 执行、专项测试、模拟器/真机与远端联调继续后置，当前 `taxonomy.catalog=false`。
 - Search-2 已完成组内 OR/组间 AND、父级包含后代的 taxonomy 结构化筛选、高级 entitlement 服务端校验、结果数安全预估、目录重定向/失效诊断、账号私有保存条件 CRUD 及对应 KMP 页面。Nuxt 已交付只读搜索运营核查工作区，用聚合数据展示策略、目录、entitlement、搜索历史到期和保存条件迁移健康，不读取搜索词、条件名称或用户明细，也不允许直接启用能力。保存条件不持久化自由搜索词，创建原子受 `discovery.saved_filter.max` 限制，使用前按完整来源 stable ID 重新 preview；环境配置、`0082` 执行、真实目录/grant 迁移、专项测试、模拟器/真机与远端联调后置，当前 `search.filters=false`、`search.savedFilters=false`。
 - Recommendation-1 已完成统一公开资格、版本化规则、非个性化/个性化隔离、本人显式 taxonomy 偏好、可解释原因、会话级稳定灰度、未来排期、暂停/回滚和固定“平台精选”披露的 API/D1 开发基线，累计 App API v2 为 `1.16.0`；Nuxt 已交付规则列表、规则详情、Dry-run 和精选排期四个后台页面，KMP 已交付版本化推荐、推荐理由/实际模式、分页会话约束和本人“推荐与隐私”页面。OQ-023 未批准前个性化不可启用，会员、金币、消息、精确位置和隐式行为不进入信号；环境配置、`0083` 执行、专项测试与联调后置，当前 `recommendation.feed/preferences/personalization/editorial=false`。
+- Privacy-1 已完成数据权利登记、跟踪与取消控制面，累计 App API v2 为 `1.17.0`：Cloudflare 新增默认关闭的策略、申请、事件、二次验证、申请级状态凭证与幂等命令，Nuxt 新增 `ADM-PRI-01/02` 队列和详情，Operations-1 新增逾期申请检测；KMP 已交付独立响应式数据权利页面、密码二次验证、三项注销确认、申请记录/时间线及注销退出后的申请级安全访问。注销会立即撤销普通会话并阻止新业务写入，但 Privacy-1 不生成导出文件、不签发下载地址、不执行不可逆删除；环境配置、`0094` 执行、专项测试和 Privacy-2 真实处理均后置。
 - Message-1 已实现 `APP-MSG-01` 列表、`APP-MSG-02` 人物详情内二次披露确认、`APP-MSG-03` 仅文本会话核心状态；Message-2 进一步实现人物详情安全区、话题/消息举报、观看者关闭话题、`APP-SET-06/07` 合并式安全中心，以及 `ADM-MSG-01/02` 限时领取工作台和 `ADM-SAF-01/02` 最小安全审核工作台。
 - `ADM-MSG-02` 已进一步接通追加式内部备注、显式转派和内部安全升级：备注与平台回复使用独立 API/视觉区域，只有当前有效租约持有人可读写；转派必须携带当前 assignment version、稳定原因、目标管理员和交接说明，并在服务端重新校验目标状态与容量。安全升级与用户举报分表分队列，固定最小消息证据并强制发起人/审核人隔离，独立审核只允许无需动作、话题只读或关闭。`ADM-MSG-03` 已接通运营组、成员职责与容量、上海时区跨日班次、真人/地区/默认规则、自动分配、补偿分配和人工领取同源门禁。`ADM-MSG-04` 已接通实际操作员事实、无正文抽检队列、确定性抽样、质检职责隔离、限时最小证据、三维评分、改进任务和独立安全转介；`0084/0085/0086/0087` migration 执行、真实配置与专项测试统一后置。
 - Message-2 冻结屏蔽/解除、四类举报目标契约、本人举报时间线、话题关闭、会话 assignment、最小证据、结论处置和全局暂停/容量控制；Safety-2 进一步实现 `APP-SET-08`“举报未发现违规结论的一次独立复核”以及 `ADM-SAF-03/04` 申诉队列和详情。账号限制/金币等其他来源申诉、用户补充媒体证据、撤回、实时通道和跨周期聚合质量看板仍未实现。
 - Audit-1 已完成 `ADM-AUD-01/02/03`：复用唯一 `admin_audit_logs` 事实，为既有与新增事件自动建立稳定 sequence；admin 只看本人、Owner 可跨域；查询与详情读取要求用途并自行留痕；before/after 由服务端字段级脱敏。Owner 可形成不可变 SHA-256 完整性清单，检测 sequence、索引、JSON、敏感字段、Action 登记、相同范围摘要变化，以及会员发放、钱包入账、运营回复和人物发布四类关键业务事实缺少审计，但不自动补写或修复。
 - Audit-2 已完成 `ADM-AUD-04`：申请、复核和下载发票分别重新验证密码；admin 只能申请本人事件，Owner 可申请跨域但必须由不同 Owner 独立复核；复核和发票前重算精确范围，变化即失效。通过后生成逐行水印、字段级脱敏且防公式注入的 CSV，只写私有 R2；原申请人使用五分钟一次性票据经 Worker 代理下载。
 - Audit-3 已完成 `ADM-AUD-03` Owner 治理扩展：从真实审计事实发现未登记/冲突 Action，预览候选版本和历史影响，提交发布、重新激活或退休申请，并由不同 Owner 独立复核。`0093` 引入不可变 retention/quality 治理策略目录与生产 Registry；普通 admin 的审计查询、详情、关联和导出只允许本人范围且 production-ready、`visibleRoles` 明确允许的 Action，Owner 保留治理缺口可见性。批准前和最终 SQL 都重验版本、观察摘要和策略引用，变化即失效。`0090/0091/0092/0093`、真实治理策略/Action、保留/清理配置与专项测试统一后置。
-- 已完成的既有跨仓切片具备对应代码和既有测试；Interaction-2/3、Search-1/2、Taxonomy-1 与 Recommendation-1 已完成 KMP 客户端开发，但新切片专项测试按当前开发顺序统一后置，不能据此推断配置、模拟器/真机或联调已完成。production 的 Auth、会员、消息、安全、搜索、taxonomy、推荐、互动收藏/历史/关注更新、后台和 production-ready 开关及新目录选择保持关闭；既有 dev 联调状态不向这些新切片扩散。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
-- Interaction-2、Interaction-3、Search-1、Taxonomy-1、Search-2、Recommendation-1、Membership-3/4、Message-1、Message-2、Safety-2 与 Audit-1/2/3 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)、[Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)、[Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)、[Membership-3 会员变更独立复核开发基线](./MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md)、[Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md)、[Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md)、[Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md)、[Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md) 和 [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
+- 已完成的既有跨仓切片具备对应代码和既有测试；Interaction-2/3、Search-1/2、Taxonomy-1、Recommendation-1 与 Privacy-1 已完成 KMP 客户端开发，但新切片专项测试按当前开发顺序统一后置，不能据此推断配置、模拟器/真机或联调已完成。production 的 Auth、会员、消息、安全、搜索、taxonomy、推荐、数据权利、互动收藏/历史/关注更新、后台和 production-ready 开关及新目录选择保持关闭；既有 dev 联调状态不向这些新切片扩散。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
+- Interaction-2、Interaction-3、Search-1、Taxonomy-1、Search-2、Recommendation-1、Privacy-1、Membership-3/4、Message-1、Message-2、Safety-2 与 Audit-1/2/3 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)、[Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)、[Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)、[Privacy-1 数据权利控制面跨仓开发基线](./PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md)、[Membership-3 会员变更独立复核开发基线](./MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md)、[Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md)、[Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md)、[Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md)、[Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md) 和 [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
 
 ## 3. 不可违反的业务与安全边界
 
@@ -2501,25 +2502,27 @@ App 版本：1.0
 
 **平台与模块：** 移动端 · 我的与设置　　**优先级：** P1　　**设计路由：** `/me/data-export`
 
-**用户价值：** 说明可导出范围，创建任务并在重新验证后下载。
+**用户价值：** 说明可申请的数据范围，安全登记数据副本请求并持续查看权威进度；Privacy-2 就绪后才提供受保护下载。
 
 **适用角色：** 已登录观看者
 
-**前置条件：** 用户已登录；敏感操作需重新验证；账号限制和数据权利状态以服务端为准。
+**前置条件：** 用户已登录；服务端开放导出申请 capability；当前策略已配置。受限账号仍保留必要数据权利入口，创建和取消均需密码二次验证。
 
 **进入路径：** 我的页面数据权利
 
-**页面结构：** 任务范围、状态、过期时间、重新验证和下载动作依次展示。
+**页面结构：** 当前策略与治理说明、申请能力、创建操作、申请记录、详情状态、用户可见时间线和允许阶段的取消操作；手机单列，宽屏为概览/操作与申请记录双栏。
 
-**详细交互：** 用户从“我的页面数据权利”进入。主要操作为“创建导出任务”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-SET-01「我的」。次要操作包括：下载、重新创建。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“我的页面数据权利”进入统一数据权利工作区。点击“申请个人数据副本”后先阅读范围与当前处理边界，再输入 8–128 位当前密码；客户端按 `data_export_create` purpose 获取一次性 step-up token，并用独立幂等键创建申请。成功后立即刷新记录和详情；点击记录进入状态与用户可见时间线。服务端允许取消时，用户再次输入密码，客户端携带申请版本提交取消。失败时保留当前页面上下文但不保存密码或 step-up token，按验证失败、频控、策略未就绪、版本冲突或网络错误提供安全下一步。
 
-**业务规则：** 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
+**业务规则：** Privacy-1 只登记、跟踪和取消，不生成导出文件、下载地址或“已完成”假状态。处理 capability 关闭时必须明确显示“当前只登记申请”；`ready`、`expired`、真实下载和制品清理均由 Privacy-2 实现。相同账号已有在途申请时由服务端返回既有任务或冲突，不并行生成重复制品。
 
-**数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+**数据与权限：** 普通路径只读取当前账号申请，响应强制 `private, no-store`。密码仅用于当次验证；step-up token 单用途、短时且单次消费，不进入 UI 状态、日志或持久化。申请 ID、类型、策略快照、状态、版本和时间线均以服务端为准。
 
-**页面状态：** 正常、处理中、失败、已过期、需要重新验证
+**页面状态：** 加载、能力未开放、策略未就绪、空记录、申请中、`requested`、`collecting`、`failed`、`cancelled`、详情、分页、版本冲突、需要重新验证；`ready`、`expired` 与下载为 Privacy-2 预留状态。
 
 **Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-09`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
+**当前开发实现：** KMP 使用统一 `DataRightsScreen` 承载 APP-SET-09/10，避免两套申请记录和状态事实；App API v2 `1.17.0` 对接总览、二次验证、导出申请、本人列表/详情和取消。Figma 中下载相关状态保留为未来完整产品设计，不代表 Privacy-1 已开放下载。
 
 **实现追踪：**
 
@@ -2533,8 +2536,9 @@ App 版本：1.0
 **开发验收：**
 
 - 从“我的页面数据权利”能够进入，页面明确显示 APP-SET-09、页面名称、设计路由和返回路径。
-- 主要操作“创建导出任务”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、处理中、失败、已过期、需要重新验证”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 主要操作“申请个人数据副本”具有二次验证、提交中、登记成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 页面覆盖 Privacy-1 当前状态，并将尚未实现的完成、过期和下载明确标注为 Privacy-2，不能显示伪造的下载入口。
+- 申请记录可进入服务端权威详情和用户可见时间线；只有 `availableActions` 允许时才显示取消，并按 `expectedVersion` 处理并发变化。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
 - UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。
@@ -2552,21 +2556,23 @@ App 版本：1.0
 
 **适用角色：** 已登录观看者
 
-**前置条件：** 用户已登录；敏感操作需重新验证；账号限制和数据权利状态以服务端为准。
+**前置条件：** 首次提交时用户已登录、服务端开放注销申请 capability 且策略配置了等待规则；受限账号仍保留入口。注销提交后的普通会话已失效，后续只允许使用绑定该申请的状态凭证查看或取消。
 
 **进入路径：** 我的页面数据权利
 
-**页面结构：** 不可逆影响、阻塞项、重新验证和可取消阶段在危险操作前完整披露。
+**页面结构：** 当前治理边界、三项注销影响确认、密码二次验证、计划时间、申请状态、用户可见时间线、申请级安全访问说明和允许阶段的取消操作。
 
-**详细交互：** 用户从“我的页面数据权利”进入。主要操作为“提交注销申请”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-AUTH-01「启动与会话恢复」。次要操作包括：取消申请、重新验证。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从统一数据权利工作区点击“申请注销账号”，逐项确认会员与金币、消息与依法保留、全设备退出三类影响，再输入 8–128 位当前密码。客户端按 `account_deletion_create` purpose 获取一次性 step-up token，并携带三项确认与独立幂等键提交。提交前把原幂等标识和发起 Access Token 作为单一待确认操作保存到系统安全区，但不持久化密码或 step-up token；若服务端已撤销会话而成功响应丢失，只能据此重放同一创建结果。成功后立即清理普通登录会话和受保护页面，仅保留绑定该申请的状态凭证并进入申请级状态页。允许取消时再次输入密码；客户端先凭状态 token 按 `data_rights_cancel` purpose 验证，再携带 `expectedVersion` 取消。取消成功后状态凭证失效，账号恢复提交前状态但用户必须重新登录。
 
-**业务规则：** 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
+**业务规则：** 创建注销申请后立即停止新增互动、收藏、历史、平台话题、会员申请/发放和钱包调整，并撤销所有普通会话。Privacy-1 只进入 `scheduled` 并支持安全取消；`processing/completed`、删除/匿名化、依法保留隔离和完成证明属于 Privacy-2。未批准地区、保留、Owner 或 SLA 时不得开放真实处理，也不得承诺固定完成时限。
 
-**数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+**数据与权限：** 状态凭证仅绑定单一账号和申请，只允许查询、为取消重新验证及取消，不能作为 Bearer token 访问其他 App API。凭证保存于 Android Keystore / iOS Keychain 支撑的安全存储，密码和 step-up token 不持久化；所有状态、动作和版本由服务端返回。
 
-**页面状态：** 正常、存在阻塞项、处理中、失败
+**页面状态：** 加载、能力未开放、策略/等待规则未就绪、确认未完成、验证失败/频控、提交中、`scheduled`、申请级安全访问、`cancelled`、`failed`、状态凭证失效、版本冲突；`processing/completed` 为 Privacy-2 预留状态。
 
 **Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-10`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
+**当前开发实现：** KMP `DataRightsScreen` 已接入 App API v2 `1.17.0`，覆盖三项确认、普通会话退出、最多 8 条申请级凭证安全保存、丢失响应/重启恢复、详情时间线及允许阶段取消；手机单列，`>=760dp` 使用双栏。不可逆处理仍未实现。
 
 **实现追踪：**
 
@@ -2580,8 +2586,10 @@ App 版本：1.0
 **开发验收：**
 
 - 从“我的页面数据权利”能够进入，页面明确显示 APP-SET-10、页面名称、设计路由和返回路径。
-- 主要操作“提交注销申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、存在阻塞项、处理中、失败”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 主要操作“提交注销申请”在三项确认和二次验证完成前不可执行，并具有提交中、登记成功和失败反馈；重复提交不会产生多个并行注销事实。
+- 注销登记成功后普通会话立即失效，页面只能以申请级状态凭证显示绑定申请，不得继续暴露账号其他功能。
+- 取消必须重新验证并携带当前版本；成功后清除状态凭证并要求重新登录，不自动恢复旧会话。
+- 页面明确区分 Privacy-1 的 `scheduled` 与 Privacy-2 的真实处理/完成，不能把“已提交”呈现为“已删除”。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
 - UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。

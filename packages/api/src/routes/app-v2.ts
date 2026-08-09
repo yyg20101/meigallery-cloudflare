@@ -61,6 +61,7 @@ import {
 import { appApiError, appApiListSuccess, appApiSuccess } from '../utils/app-api-v2'
 import { appAuthRoutes, appAccountError } from './app-auth'
 import {
+  AppAccountAccessError,
   authenticateAppAccessToken,
   getAppAccount,
   getAppAuthRuntimeConfig,
@@ -235,6 +236,28 @@ import {
   getAppRecommendationPreference,
   updateAppRecommendationPreference,
 } from '../services/app-recommendations'
+import {
+  APP_DATA_RIGHTS_POLICY_ID,
+  APP_DATA_RIGHTS_STATUS_HEADER,
+  AppDataRightsError,
+  cancelAppDataRightsRequest,
+  createAppAccountDeletionRequest,
+  createAppDataExportRequest,
+  getAppDataRightsRequest,
+  getAppDataRightsRequestWithStatusToken,
+  getAppDataRightsRuntimeConfig,
+  issueAppDataRightsStepUp,
+  issueAppDataRightsStepUpWithStatusToken,
+  listAppDataRightsRequests,
+  parseAppDataRightsListQuery,
+  recoverAppAccountDeletionRequest,
+  requireAppDataRightsPolicy,
+  resolveAppDataRightsCapabilities,
+  resolveAppDataRightsStatusAccount,
+  type AppDataRightsCancelInput,
+  type AppDataRightsDeletionRequestInput,
+  type AppDataRightsStepUpInput,
+} from '../services/app-data-rights'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -294,6 +317,7 @@ for (const path of ['/discovery/feed', '/discovery/recommendations']) {
       c.set('appAccountEmail', principal.email)
       c.set('appAccountNickname', principal.nickname)
       c.set('appAccountRole', principal.role)
+      c.set('appAccountStatus', principal.accountStatus)
       await next()
     }
     catch (error) {
@@ -335,6 +359,7 @@ for (const path of [
         token,
         new Date(),
         config.documentVersions,
+        { allowRestricted: isDataRightsAccessPath(c.req.path, c.req.method) },
       )
       c.set('appAccountId', principal.accountInternalId)
       c.set('appAccountPublicId', principal.accountId)
@@ -343,9 +368,26 @@ for (const path of [
       c.set('appAccountEmail', principal.email)
       c.set('appAccountNickname', principal.nickname)
       c.set('appAccountRole', principal.role)
+      c.set('appAccountStatus', principal.accountStatus)
       await next()
     }
     catch (error) {
+      if (
+        error instanceof AppAccountAccessError
+        && isDataRightsDeletionCreationPath(c.req.path, c.req.method)
+      ) {
+        try {
+          c.set(
+            'appDataRightsDeletionRecoveryToken',
+            readBearerToken(c.req.header('Authorization')),
+          )
+          await next()
+          return
+        }
+        catch {
+          // 缺少可解析的旧 Access Token 时仍返回原始账号鉴权错误。
+        }
+      }
       return appAccountError(c, error)
     }
   })
@@ -544,6 +586,213 @@ appV2Routes.get('/me', async (c) => {
   }
   catch (error) {
     return appMembershipError(c, error)
+  }
+})
+
+appV2Routes.get('/me/data-rights', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const config = getAppDataRightsRuntimeConfig(c.env)
+    const capabilities = await resolveAppDataRightsCapabilities(c.env.DB, config)
+    if (!capabilities.overview || !capabilities.policy) {
+      throw new AppDataRightsError(
+        config.requested ? 503 : 403,
+        config.requested ? 'DATA_RIGHTS_NOT_CONFIGURED' : 'FEATURE_DISABLED',
+        config.requested ? '数据权利策略尚未完成配置' : '数据权利功能当前未开放',
+        config.requested,
+      )
+    }
+    const recent = await listAppDataRightsRequests(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      { type: null, limit: 5, cursor: null },
+    )
+    return appApiSuccess(c, {
+      policyVersion: capabilities.policy.versionCode,
+      capabilities: {
+        export: capabilities.export,
+        deletion: capabilities.deletion,
+        cancellation: capabilities.cancellationEnabled,
+      },
+      decisions: {
+        retention: capabilities.policy.retentionDecisionStatus,
+        ownerAndSla: capabilities.policy.ownerSlaDecisionStatus,
+        region: capabilities.policy.regionDecisionStatus,
+      },
+      recentRequests: recent.data,
+    })
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.post('/me/data-rights/step-up', async (c) => {
+  try {
+    return appApiSuccess(c, await issueAppDataRightsStepUp(
+      c.env.DB,
+      appPrincipal(c),
+      getAppDataRightsRuntimeConfig(c.env),
+      await c.req.json<AppDataRightsStepUpInput>(),
+      c.get('appRequestId')!,
+    ))
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.get('/me/data-rights/requests', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const config = getAppDataRightsRuntimeConfig(c.env)
+    await requireAppDataRightsPolicy(c.env.DB, config, 'overview')
+    const query = parseAppDataRightsListQuery({
+      type: c.req.query('type'),
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppDataRightsRequests(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      query,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.post('/me/data-rights/export-requests', async (c) => {
+  try {
+    const result = await createAppDataExportRequest(
+      c.env,
+      appPrincipal(c),
+      getAppDataRightsRuntimeConfig(c.env),
+      c.req.header('X-Step-Up-Token'),
+      c.req.header('Idempotency-Key') ?? null,
+    )
+    return appApiSuccess(c, result, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.post('/me/data-rights/deletion-requests', async (c) => {
+  try {
+    const recoveryToken = c.get('appDataRightsDeletionRecoveryToken')
+    if (recoveryToken) {
+      const recovered = await recoverAppAccountDeletionRequest(
+        c.env,
+        recoveryToken,
+        c.req.header('Idempotency-Key') ?? null,
+      )
+      return appApiSuccess(c, recovered)
+    }
+    const result = await createAppAccountDeletionRequest(
+      c.env,
+      appPrincipal(c),
+      getAppDataRightsRuntimeConfig(c.env),
+      c.req.header('X-Step-Up-Token'),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AppDataRightsDeletionRequestInput>(),
+    )
+    return appApiSuccess(c, result, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.get('/me/data-rights/requests/:requestId', async (c) => {
+  try {
+    return appApiSuccess(c, await getAppDataRightsRequest(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('requestId'),
+    ))
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.post('/me/data-rights/requests/:requestId/cancel', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    return appApiSuccess(c, await cancelAppDataRightsRequest(
+      c.env.DB,
+      { accountId: principal.accountInternalId, sessionId: principal.sessionId },
+      c.req.param('requestId'),
+      c.req.header('X-Step-Up-Token'),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AppDataRightsCancelInput>(),
+    ))
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+// 注销申请会撤销普通会话；以下端点只接受请求级状态凭证，不获得任何产品 API 权限。
+appV2Routes.get('/data-rights/requests/:requestId', async (c) => {
+  try {
+    return appApiSuccess(c, await getAppDataRightsRequestWithStatusToken(
+      c.env.DB,
+      c.req.param('requestId'),
+      c.req.header(APP_DATA_RIGHTS_STATUS_HEADER),
+    ))
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.post('/data-rights/requests/:requestId/step-up', async (c) => {
+  try {
+    return appApiSuccess(c, await issueAppDataRightsStepUpWithStatusToken(
+      c.env.DB,
+      c.req.param('requestId'),
+      c.req.header(APP_DATA_RIGHTS_STATUS_HEADER),
+      await c.req.json<AppDataRightsStepUpInput>(),
+      c.get('appRequestId')!,
+    ))
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.post('/data-rights/requests/:requestId/cancel', async (c) => {
+  try {
+    const requestId = c.req.param('requestId')
+    const statusToken = c.req.header(APP_DATA_RIGHTS_STATUS_HEADER)
+    const account = await resolveAppDataRightsStatusAccount(
+      c.env.DB,
+      requestId,
+      statusToken,
+      new Date(),
+      { allowRevokedForReplay: true },
+    )
+    return appApiSuccess(c, await cancelAppDataRightsRequest(
+      c.env.DB,
+      { accountId: account.accountId, sessionId: null, statusToken },
+      requestId,
+      c.req.header('X-Step-Up-Token'),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AppDataRightsCancelInput>(),
+    ))
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
   }
 })
 
@@ -1838,6 +2087,7 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   const personSearch = getAppPersonSearchRuntimeConfig(env)
   const taxonomy = getAppTaxonomyRuntimeConfig(env)
   const recommendation = getAppRecommendationRuntimeConfig(env)
+  const dataRights = getAppDataRightsRuntimeConfig(env)
   const [interactionCollectionCapabilities, followUpdatesCapability, personSearchCapabilities] = auth.enabled
     ? await Promise.all([
         resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections),
@@ -1849,9 +2099,20 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
         false,
         { profiles: false, history: false, filters: false, savedFilters: false, policy: null },
       ]
-  const [taxonomyCatalogCapability, recommendationCapabilities] = await Promise.all([
+  const [taxonomyCatalogCapability, recommendationCapabilities, dataRightsCapabilities] = await Promise.all([
     resolveAppTaxonomyCatalogCapability(env.DB, taxonomy),
     resolveAppRecommendationCapabilities(env.DB, recommendation),
+    auth.enabled
+      ? resolveAppDataRightsCapabilities(env.DB, dataRights)
+      : Promise.resolve({
+          overview: false,
+          export: false,
+          deletion: false,
+          exportProcessing: false,
+          deletionProcessing: false,
+          cancellationEnabled: false,
+          policy: null,
+        }),
   ])
   return {
     product: 'meigallery',
@@ -1894,6 +2155,11 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
         blocks: auth.enabled && safety.enabled,
         conversationClose: auth.enabled && safety.enabled && messaging.enabled,
         appeals: auth.enabled && safety.appealsEnabled,
+      },
+      dataRights: {
+        overview: auth.enabled && dataRightsCapabilities.overview,
+        export: auth.enabled && dataRightsCapabilities.export,
+        deletion: auth.enabled && dataRightsCapabilities.deletion,
       },
       payments: false,
       systemPush: false,
@@ -2019,6 +2285,18 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       reportTargets: APP_SAFETY_REPORT_TARGETS,
       reasons: APP_SAFETY_REASONS,
     },
+    dataRights: {
+      policyVersion: dataRightsCapabilities.policy?.versionCode
+        || dataRights.policyId
+        || APP_DATA_RIGHTS_POLICY_ID,
+      transport: 'http_poll',
+      stepUpTtlSeconds: dataRightsCapabilities.policy?.stepUpTtlSeconds ?? 300,
+      statusAccessHeader: APP_DATA_RIGHTS_STATUS_HEADER,
+      systemPush: false,
+      exportProcessing: auth.enabled && dataRightsCapabilities.exportProcessing,
+      deletionProcessing: auth.enabled && dataRightsCapabilities.deletionProcessing,
+      cancellationEnabled: auth.enabled && dataRightsCapabilities.cancellationEnabled,
+    },
   }
 }
 
@@ -2135,6 +2413,19 @@ function appWalletError(
   throw error
 }
 
+function appDataRightsError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppDataRightsError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  if (error instanceof SyntaxError) {
+    return appApiError(c, 400, 'REQUEST_BODY_INVALID', '请求体必须为有效 JSON')
+  }
+  throw error
+}
+
 function appMembershipError(
   c: Parameters<typeof appApiError>[0],
   error: unknown,
@@ -2202,6 +2493,7 @@ function appPrincipal(c: {
   get(name: 'appAccountEmail'): string | undefined
   get(name: 'appAccountNickname'): string | null | undefined
   get(name: 'appAccountRole'): string | undefined
+  get(name: 'appAccountStatus'): 'active' | 'restricted' | undefined
 }): AppSessionPrincipal {
   return {
     accountInternalId: c.get('appAccountId')!,
@@ -2211,5 +2503,15 @@ function appPrincipal(c: {
     email: c.get('appAccountEmail')!,
     nickname: c.get('appAccountNickname') ?? null,
     role: c.get('appAccountRole')!,
+    accountStatus: c.get('appAccountStatus') ?? 'active',
   }
+}
+
+function isDataRightsAccessPath(path: string, method: string) {
+  if (path === '/api/v2/me' && method === 'GET') return true
+  return path.startsWith('/api/v2/me/data-rights')
+}
+
+function isDataRightsDeletionCreationPath(path: string, method: string) {
+  return path === '/api/v2/me/data-rights/deletion-requests' && method === 'POST'
 }

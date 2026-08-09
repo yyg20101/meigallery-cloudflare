@@ -117,6 +117,10 @@ export type Bindings = {
   APP_RECOMMENDATION_ADMIN_ENABLED?: string
   APP_RECOMMENDATION_POLICY_VERSION?: string
   APP_RECOMMENDATION_PRODUCTION_READY?: string
+  APP_DATA_RIGHTS_ENABLED?: string
+  APP_DATA_RIGHTS_ADMIN_ENABLED?: string
+  APP_DATA_RIGHTS_POLICY_VERSION?: string
+  APP_DATA_RIGHTS_PRODUCTION_READY?: string
 }
 
 /** 应用级变量 */
@@ -131,6 +135,8 @@ export type Variables = {
   appAccountEmail?: string
   appAccountNickname?: string | null
   appAccountRole?: string
+  appAccountStatus?: 'active' | 'restricted'
+  appDataRightsDeletionRecoveryToken?: string
 }
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -172,6 +178,8 @@ app.use('*', cors({
     'X-Contract-Version',
     'X-Request-Id',
     'Idempotency-Key',
+    'X-Step-Up-Token',
+    'X-Data-Rights-Token',
   ],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   maxAge: 86400,

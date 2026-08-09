@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.16.0
+  version: 1.17.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -17,7 +17,8 @@ info:
     独立、默认关闭的账号私有搜索历史；搜索词通过 POST 正文传输，不进入 URL、游标、审计或分析事件。Taxonomy-1 新增稳定词条 ID、
     不可变目录快照和合并重定向的默认关闭公开目录；未知旧标签只能进入管理员待复核映射，不能自动公开。Search-2
     在稳定分类 ID 上新增权益分层的结构化筛选、结果数预估与账号私有保存条件；组内取并集、组间取交集，会员不足时不得返回筛选结果。
-    Recommendation-1 以默认关闭方式新增版本化推荐流、用户可解释原因、显式偏好开关和固定“平台精选”披露；OQ-023 未批准时仅允许非个性化模式，且证据留存保持关闭。
+    Recommendation-1 以默认关闭方式新增版本化推荐流、用户可解释原因、显式偏好开关和固定“平台精选”披露；OQ-023 未批准时仅允许非个性化模式，且证据留存保持关闭。Privacy-1
+    新增密码二次验证、数据导出/账号注销申请、请求级状态凭证、进度查询和可取消窗口；默认关闭且不生成导出包、不执行不可逆删除。
     系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
@@ -40,6 +41,7 @@ tags:
   - name: Notification
   - name: Wallet
   - name: Safety
+  - name: DataRights
 paths:
   /api/v2/app/bootstrap:
     get:
@@ -278,6 +280,279 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v2/me/data-rights:
+    get:
+      tags: [DataRights]
+      operationId: getMyDataRightsOverview
+      summary: 获取本人数据权利能力与最近申请
+      description: 受限账号可读；注销待处理账号需改用请求级状态凭证。
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 当前策略、能力与最近申请
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsOverviewResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/data-rights/step-up:
+    post:
+      tags: [DataRights]
+      operationId: issueMyDataRightsStepUp
+      summary: 使用密码完成数据权利二次验证
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRightsStepUpRequest'
+      responses:
+        '200':
+          description: 返回一次性短期二次验证凭证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsStepUpResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/data-rights/requests:
+    get:
+      tags: [DataRights]
+      operationId: listMyDataRightsRequests
+      summary: 分页获取本人数据权利申请
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/DataRightsRequestType'
+        - $ref: '#/components/parameters/DataRightsListLimit'
+        - $ref: '#/components/parameters/DataRightsListCursor'
+      responses:
+        '200':
+          description: 本人申请列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsRequestListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/data-rights/export-requests:
+    post:
+      tags: [DataRights]
+      operationId: createMyDataExportRequest
+      summary: 创建或合并本人数据导出申请
+      description: Privacy-1 只创建控制面任务，不生成导出包或下载地址。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DataRightsIdempotencyKey'
+        - $ref: '#/components/parameters/DataRightsStepUpToken'
+      responses:
+        '200':
+          description: 返回已有进行中申请或幂等重放
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsMutationResponse'
+        '201':
+          description: 申请已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/data-rights/deletion-requests:
+    post:
+      tags: [DataRights]
+      operationId: createMyAccountDeletionRequest
+      summary: 创建或合并本人账号注销申请
+      description: >-
+        创建成功后立即撤销 App/Web 会话并阻断新增交互；客户端必须安全保存返回的请求级状态凭证。
+        若成功响应丢失，客户端可用原 Idempotency-Key 与发起请求时的旧 Access Token 只读重放已创建结果；
+        该恢复分支不能创建新申请、恢复普通会话或访问其他 API。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DataRightsIdempotencyKey'
+        - $ref: '#/components/parameters/DataRightsDeletionStepUpToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRightsDeletionRequest'
+      responses:
+        '200':
+          description: 返回已有进行中申请或幂等重放
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsMutationResponse'
+        '201':
+          description: 注销申请已创建且会话已撤销
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/data-rights/requests/{requestId}:
+    get:
+      tags: [DataRights]
+      operationId: getMyDataRightsRequest
+      summary: 使用 App 会话获取本人申请详情
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DataRightsRequestId'
+      responses:
+        '200':
+          description: 申请详情与用户可见时间线
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsRequestDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v2/me/data-rights/requests/{requestId}/cancel:
+    post:
+      tags: [DataRights]
+      operationId: cancelMyDataRightsRequest
+      summary: 在可取消窗口内撤回本人申请
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DataRightsRequestId'
+        - $ref: '#/components/parameters/DataRightsIdempotencyKey'
+        - $ref: '#/components/parameters/DataRightsStepUpToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRightsCancelRequest'
+      responses:
+        '200':
+          description: 申请已取消或幂等重放
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v2/data-rights/requests/{requestId}:
+    get:
+      tags: [DataRights]
+      operationId: getDataRightsRequestWithStatusToken
+      summary: 使用请求级凭证查询注销后的申请状态
+      security:
+        - DataRightsStatusAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DataRightsRequestId'
+      responses:
+        '200':
+          description: 申请详情与用户可见时间线
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsRequestDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v2/data-rights/requests/{requestId}/step-up:
+    post:
+      tags: [DataRights]
+      operationId: issueDataRightsStepUpWithStatusToken
+      summary: 使用请求级凭证和密码为撤回操作二次验证
+      security:
+        - DataRightsStatusAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DataRightsRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRightsStepUpRequest'
+      responses:
+        '200':
+          description: 返回绑定请求的一次性短期凭证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsStepUpResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/v2/data-rights/requests/{requestId}/cancel:
+    post:
+      tags: [DataRights]
+      operationId: cancelDataRightsRequestWithStatusToken
+      summary: 使用请求级凭证撤回注销后的申请
+      security:
+        - DataRightsStatusAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DataRightsRequestId'
+        - $ref: '#/components/parameters/DataRightsIdempotencyKey'
+        - $ref: '#/components/parameters/DataRightsStepUpToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRightsCancelRequest'
+      responses:
+        '200':
+          description: 申请已取消或幂等重放
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsMutationResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
@@ -2550,6 +2825,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: opaque
+    DataRightsStatusAuth:
+      type: apiKey
+      in: header
+      name: X-Data-Rights-Token
+      description: 只能访问绑定的数据权利申请，不具备任何账号产品 API 权限。
   headers:
     RequestId:
       description: 服务端生成的请求追踪 ID。
@@ -2559,7 +2839,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.16.0
+        const: 1.17.0
   parameters:
     ProfileId:
       name: profileId
@@ -2629,6 +2909,16 @@ components:
         maxLength: 128
         pattern: '^[A-Za-z0-9._:-]+$'
       description: 会员申请单次逻辑写操作的稳定随机键；相同正文重试必须复用原值，不得跨操作复用。
+    DataRightsIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._:-]+$'
+      description: 数据权利单次逻辑写操作的稳定随机键；相同正文重试必须复用原值，不得跨操作复用。
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -2639,6 +2929,45 @@ components:
         maxLength: 128
         pattern: '^[!-~]+$'
       description: 每次逻辑写操作的稳定随机键；重试必须复用原值，不能跨不同正文复用。
+    DataRightsRequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^drr_[A-Za-z0-9_-]{1,92}$'
+    DataRightsListLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    DataRightsListCursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 1024
+      description: 与账号公开 ID 和申请类型绑定的不透明游标。
+    DataRightsStepUpToken:
+      name: X-Step-Up-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^drup_[A-Za-z0-9_-]{43}$'
+      description: 一次性、短期且与用途/会话/请求绑定的二次验证凭证。
+    DataRightsDeletionStepUpToken:
+      name: X-Step-Up-Token
+      in: header
+      required: false
+      schema:
+        type: string
+        pattern: '^drup_[A-Za-z0-9_-]{43}$'
+      description: 正常创建注销申请时必填；仅在使用原幂等键和已被本次注销撤销的发起 Access Token 重放丢失响应时可省略。
   responses:
     BadRequest:
       description: 查询参数或游标无效
@@ -2719,7 +3048,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.16.0
+          const: 1.17.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -2900,7 +3229,7 @@ components:
           type: string
         status:
           type: string
-          const: active
+          enum: [active, restricted]
     DeviceSummary:
       type: object
       additionalProperties: false
@@ -3030,6 +3359,290 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/MeSummary'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    DataRightsRequestType:
+      type: string
+      enum: [export, deletion]
+    DataRightsRequestStatus:
+      type: string
+      enum:
+        - requested
+        - verification_required
+        - collecting
+        - ready
+        - expired
+        - scheduled
+        - processing
+        - completed
+        - cancelled
+        - failed
+    DataRightsStepUpPurpose:
+      type: string
+      enum: [export_request, deletion_request, export_cancel, deletion_cancel, export_download]
+    DataRightsRequestSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - requestId
+        - type
+        - status
+        - statusMessage
+        - version
+        - policyVersion
+        - requestedAt
+        - updatedAt
+        - deadlineAt
+        - scheduledFor
+        - completedAt
+        - cancelledAt
+        - failureCode
+        - canCancel
+        - requiresStatusToken
+      properties:
+        requestId:
+          type: string
+          pattern: '^drr_[A-Za-z0-9_-]{1,92}$'
+        type:
+          $ref: '#/components/schemas/DataRightsRequestType'
+        status:
+          $ref: '#/components/schemas/DataRightsRequestStatus'
+        statusMessage:
+          type: string
+          minLength: 1
+          maxLength: 300
+        version:
+          type: integer
+          minimum: 1
+        policyVersion:
+          type: string
+          minLength: 3
+          maxLength: 80
+        requestedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deadlineAt:
+          type: [string, 'null']
+          format: date-time
+        scheduledFor:
+          type: [string, 'null']
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+        cancelledAt:
+          type: [string, 'null']
+          format: date-time
+        failureCode:
+          type: [string, 'null']
+          pattern: '^[a-z0-9_]{3,80}$'
+        canCancel:
+          type: boolean
+        requiresStatusToken:
+          type: boolean
+    DataRightsTimelineItem:
+      type: object
+      additionalProperties: false
+      required: [sequence, eventType, status, message, createdAt]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        eventType:
+          type: string
+          pattern: '^[a-z0-9_]{3,80}$'
+        status:
+          $ref: '#/components/schemas/DataRightsRequestStatus'
+        message:
+          type: string
+          minLength: 1
+          maxLength: 300
+        createdAt:
+          type: string
+          format: date-time
+    DataRightsRequestDetail:
+      allOf:
+        - $ref: '#/components/schemas/DataRightsRequestSummary'
+        - type: object
+          required: [timeline]
+          properties:
+            timeline:
+              type: array
+              maxItems: 500
+              items:
+                $ref: '#/components/schemas/DataRightsTimelineItem'
+      unevaluatedProperties: false
+    DataRightsStepUpRequest:
+      type: object
+      additionalProperties: false
+      required: [purpose, password]
+      properties:
+        purpose:
+          $ref: '#/components/schemas/DataRightsStepUpPurpose'
+        requestId:
+          type: string
+          pattern: '^drr_[A-Za-z0-9_-]{1,92}$'
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          writeOnly: true
+    DataRightsStepUpResult:
+      type: object
+      additionalProperties: false
+      required: [purpose, token, expiresAt]
+      properties:
+        purpose:
+          $ref: '#/components/schemas/DataRightsStepUpPurpose'
+        token:
+          type: string
+          pattern: '^drup_[A-Za-z0-9_-]{40,96}$'
+          writeOnly: true
+        expiresAt:
+          type: string
+          format: date-time
+    DataRightsStatusAccess:
+      type: object
+      additionalProperties: false
+      required: [token, expiresAt]
+      properties:
+        token:
+          type: string
+          pattern: '^drat_[A-Za-z0-9_-]{43}$'
+          writeOnly: true
+        expiresAt:
+          type: string
+          format: date-time
+    DataRightsMutationResult:
+      type: object
+      additionalProperties: false
+      required: [request, statusAccess, replayed, sessionRevoked]
+      properties:
+        request:
+          $ref: '#/components/schemas/DataRightsRequestDetail'
+        statusAccess:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/DataRightsStatusAccess'
+        replayed:
+          type: boolean
+        sessionRevoked:
+          type: boolean
+    DataRightsDeletionRequest:
+      type: object
+      additionalProperties: false
+      required: [acknowledgements]
+      properties:
+        acknowledgements:
+          type: object
+          additionalProperties: false
+          required: [membershipAndCoins, messagesAndRetention, sessionRevocation]
+          properties:
+            membershipAndCoins:
+              type: boolean
+              const: true
+            messagesAndRetention:
+              type: boolean
+              const: true
+            sessionRevocation:
+              type: boolean
+              const: true
+    DataRightsCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+    DataRightsOverview:
+      type: object
+      additionalProperties: false
+      required: [policyVersion, capabilities, decisions, recentRequests]
+      properties:
+        policyVersion:
+          type: string
+          minLength: 3
+          maxLength: 80
+        capabilities:
+          type: object
+          additionalProperties: false
+          required: [export, deletion, cancellation]
+          properties:
+            export:
+              type: boolean
+            deletion:
+              type: boolean
+            cancellation:
+              type: boolean
+        decisions:
+          type: object
+          additionalProperties: false
+          required: [retention, ownerAndSla, region]
+          properties:
+            retention:
+              type: string
+              enum: [unresolved, approved]
+            ownerAndSla:
+              type: string
+              enum: [unresolved, approved]
+            region:
+              type: string
+              enum: [unresolved, approved]
+        recentRequests:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/DataRightsRequestSummary'
+    DataRightsOverviewResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/DataRightsOverview'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    DataRightsStepUpResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/DataRightsStepUpResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    DataRightsRequestDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/DataRightsRequestDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    DataRightsRequestListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/DataRightsRequestSummary'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    DataRightsMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/DataRightsMutationResult'
         meta:
           $ref: '#/components/schemas/Meta'
     MembershipEntitlementValue:
@@ -4303,7 +4916,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, recommendation, search, taxonomy, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety]
+      required: [product, appVersion, capabilities, discovery, recommendation, search, taxonomy, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety, dataRights]
       properties:
         product:
           type: string
@@ -4314,7 +4927,7 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, recommendation, search, taxonomy, auth, interactions, membership, messaging, notifications, wallet, safety, payments, systemPush]
+          required: [discovery, recommendation, search, taxonomy, auth, interactions, membership, messaging, notifications, wallet, safety, dataRights, payments, systemPush]
           properties:
             discovery:
               type: boolean
@@ -4398,6 +5011,17 @@ components:
                 conversationClose:
                   type: boolean
                 appeals:
+                  type: boolean
+            dataRights:
+              type: object
+              additionalProperties: false
+              required: [overview, export, deletion]
+              properties:
+                overview:
+                  type: boolean
+                export:
+                  type: boolean
+                deletion:
                   type: boolean
             payments:
               type: boolean
@@ -4823,6 +5447,34 @@ components:
               minItems: 1
               items:
                 $ref: '#/components/schemas/SafetyReason'
+        dataRights:
+          type: object
+          additionalProperties: false
+          required: [policyVersion, transport, stepUpTtlSeconds, statusAccessHeader, systemPush, exportProcessing, deletionProcessing, cancellationEnabled]
+          properties:
+            policyVersion:
+              type: string
+              minLength: 3
+              maxLength: 96
+            transport:
+              type: string
+              const: http_poll
+            stepUpTtlSeconds:
+              type: integer
+              minimum: 60
+              maximum: 900
+            statusAccessHeader:
+              type: string
+              const: X-Data-Rights-Token
+            systemPush:
+              type: boolean
+              const: false
+            exportProcessing:
+              type: boolean
+            deletionProcessing:
+              type: boolean
+            cancellationEnabled:
+              type: boolean
     TaxonomyType:
       type: string
       enum:

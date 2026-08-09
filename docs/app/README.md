@@ -25,6 +25,7 @@ App 版本：1.0
 - [Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)：记录 App API `1.16.0` 统一资格、显式偏好、可解释排序、稳定灰度、计划生效、固定精选披露、后台状态机和默认关闭边界。
 - [Operations-1 运营总览、事件处置与跨域安全控制开发基线](./OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md)：记录 18 项质量化指标、8 类当前检测、事件状态机、7 份 Runbook、五类真实写路径安全控制和统一后置门禁。
 - [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md)：记录真实 Action 发现、版本化治理策略、发布/退休预览、Owner 职责分离、生产 Registry 可见性和统一后置门禁。
+- [Privacy-1 数据权利控制面跨仓开发基线](./PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md)：记录 App API `1.17.0`、默认关闭策略、二次验证、导出/注销申请、请求级状态凭证、后台队列、逾期检测、KMP 页面和 Privacy-2 边界。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终状态和 169 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
 - [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、92 页/349 状态覆盖、2,284 个有效交互动作、排版与 Icon 修正、QA 结果和交付门禁。

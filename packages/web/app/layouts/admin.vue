@@ -57,6 +57,7 @@ const navItems: AdminNavItem[] = [
   },
   { to: '/admin/app/safety', label: 'App 安全审核', icon: 'clipboard' },
   { to: '/admin/app/appeals', label: 'App 申诉复核', icon: 'clipboard' },
+  { to: '/admin/app/data-rights', label: 'App 数据权利', icon: 'clipboard' },
   { to: '/admin/tags', label: '标签管理', icon: 'tag' },
   { to: '/admin/users', label: '会员管理', icon: 'users' },
   { to: '/admin/import', label: '导入任务', icon: 'upload' },
