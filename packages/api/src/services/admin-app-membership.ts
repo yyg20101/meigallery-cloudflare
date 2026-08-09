@@ -1,5 +1,6 @@
 import type { AppMembershipCatalog, AppMembershipSnapshot, AppMembershipTier } from '@meigallery/shared'
 import { AppMembershipError, getAppMembershipCatalog, resolveAppMembershipSnapshot } from './app-membership'
+import { requireAppOperationalControlAvailable } from './app-operational-safety'
 
 export type AppMembershipGrantAction = 'grant' | 'renew'
 export type AppMembershipGrantReason = 'manual_review' | 'customer_support' | 'promotion' | 'compensation'
@@ -185,6 +186,8 @@ export async function grantAdminAppMembership(
     return resolveExistingRequest(db, existing, requestHash, 'grant', input.userId)
   }
 
+  await requireMembershipGrantControl(db)
+
   const preview = await buildGrantPreview(db, catalogVersionId, input, now, requireProductionReady)
   if (preview.review.required) {
     throw new AppMembershipError(
@@ -217,7 +220,12 @@ export async function grantAdminAppMembership(
           id, user_id, catalog_version_id, tier_id, tier_code_snapshot, tier_name_snapshot,
           rank_snapshot, starts_at, expires_at, source_type, reason_code, user_visible_note,
           internal_note, business_reference, granted_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual_admin', ?, ?, ?, ?, ?, ?)
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual_admin', ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM app_operational_safety_controls control
+          WHERE control.control_key = 'membership_grants' AND control.state = 'available'
+        )
       `).bind(
         grantId,
         input.userId,
@@ -238,19 +246,25 @@ export async function grantAdminAppMembership(
       db.prepare(`
         INSERT INTO app_membership_admin_requests (
           id, idempotency_key, operation, request_hash, target_user_id, grant_id, created_by, created_at
-        ) VALUES (?, ?, 'grant', ?, ?, ?, ?, ?)
-      `).bind(requestId, normalizedKey, requestHash, input.userId, grantId, adminId, createdAt),
+        )
+        SELECT ?, ?, 'grant', ?, ?, id, ?, ?
+        FROM app_membership_grants
+        WHERE id = ?
+      `).bind(requestId, normalizedKey, requestHash, input.userId, adminId, createdAt, grantId),
       db.prepare(`
         INSERT INTO admin_audit_logs (
           id, admin_id, action, target_type, target_id, before_value, after_value, created_at
-        ) VALUES (?, ?, 'app_membership_grant', 'app_membership_grant', ?, ?, ?, ?)
+        )
+        SELECT ?, ?, 'app_membership_grant', 'app_membership_grant', id, ?, ?, ?
+        FROM app_membership_grants
+        WHERE id = ?
       `).bind(
         auditId,
         adminId,
-        grantId,
         JSON.stringify({ status: preview.current.status, rank: preview.current.tier?.rank ?? 0 }),
         auditAfter,
         createdAt,
+        grantId,
       ),
     ])
   }
@@ -260,13 +274,28 @@ export async function grantAdminAppMembership(
     if (await findGrantByBusinessReference(db, input.userId, input.businessReference)) {
       throw businessReferenceConflict()
     }
+    await requireMembershipGrantControl(db)
     throw error
   }
 
-  return {
-    ...(await getAdminAppMembershipGrantById(db, grantId)),
-    replayed: false,
+  try {
+    return {
+      ...(await getAdminAppMembershipGrantById(db, grantId)),
+      replayed: false,
+    }
   }
+  catch (error) {
+    await requireMembershipGrantControl(db)
+    throw error
+  }
+}
+
+async function requireMembershipGrantControl(db: D1Database) {
+  return requireAppOperationalControlAvailable(
+    db,
+    'membership_grants',
+    (code, message) => new AppMembershipError(503, code, message, true),
+  )
 }
 
 export async function revokeAdminAppMembershipGrant(

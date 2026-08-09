@@ -2781,6 +2781,8 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面状态：** 正常、数据延迟、质量异常、部分无权限
 
+**当前开发实现（Operations-1）：** `/admin/app` 首期采用 App 全局范围，展示指标快照、数据质量、严重事件和五类安全控制。18 项指标只有 `known` 状态显示数值，未知、延迟、不完整、异常或未配置一律显示 `—`；Owner 可显式确认后生成人工快照和运行检测。页面不显示未来支付、礼物、装扮、系统推送、真人认领或个人级排行。
+
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
@@ -2829,6 +2831,8 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面状态：** 正常、P0/P1、未分配、已缓解
 
+**当前开发实现（Operations-1）：** `/admin/app/incidents` 已实现状态、严重级别、业务域、事件类型与负责人筛选、游标加载及响应式列表。每行进入 `ADM-OV-03`，认领操作留在详情页完成；空态不得把检测未运行解释为零异常。
+
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
@@ -2876,6 +2880,8 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 **模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
 
 **页面状态：** 正常、影响扩大、并发更新、证据不足
+
+**当前开发实现（Operations-1）：** `/admin/app/incidents/{incidentId}` 已实现领取、处置记录、状态机、固定 Runbook 版本、带证据关闭、关闭结论和不可变时间线。安全控制必须先展示阻断与不受影响动作，再由 Owner 提交；暂停只允许未关闭 P0/P1，恢复必须来自原事件并填写验证证据。普通管理员仅能处置本人领取事件，所有写入按事件/控制版本防止并发覆盖。
 
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 

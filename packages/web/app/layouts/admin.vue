@@ -37,6 +37,7 @@ type AdminNavItem = {
 
 const navItems: AdminNavItem[] = [
   { to: '/admin', label: '概览', exact: true, icon: 'grid' },
+  { to: '/admin/app', label: 'App 运营总览', exact: true, activePaths: ['/admin/app/incidents'], icon: 'grid' },
   { to: '/admin/galleries', label: '图库管理', icon: 'image' },
   { to: '/admin/app/persons', label: 'App 人物供给', icon: 'users' },
   { to: '/admin/app/taxonomy', label: 'App 分类目录', icon: 'tag' },
@@ -73,7 +74,10 @@ const navItems: AdminNavItem[] = [
 ]
 
 function isActive(item: AdminNavItem) {
-  if (item.exact) return route.path === item.to
+  if (item.exact) {
+    return route.path === item.to
+      || item.activePaths?.some(path => route.path.startsWith(path)) === true
+  }
   return route.path.startsWith(item.activePrefix || item.to)
     || item.activePaths?.some(path => route.path.startsWith(path)) === true
 }

@@ -2961,6 +2961,8 @@ App 版本：1.0
 
 **页面状态：** 正常、数据延迟、质量异常、部分无权限
 
+**当前开发实现（Operations-1）：** 页面已落地 `/admin/app`，首期固定 `global` 范围，不伪装尚未实现的时间或地区筛选。总览显示快照时间、未知指标数量、P0/P1/未分配事件、五类安全控制和九个专题的 18 项指标；只有 `known` 显示数值，其余显示 `—` 并保留质量与 production-ready 标签。Owner 可在二次确认后生成不可变快照或运行检测，普通管理员只读。未来支付、礼物、装扮、系统推送、真人认领及个人级排行不渲染。
+
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
@@ -3008,6 +3010,8 @@ App 版本：1.0
 
 **页面状态：** 正常、P0/P1、未分配、已缓解
 
+**当前开发实现（Operations-1）：** 页面已落地 `/admin/app/incidents`，支持状态、P0–P3、九个业务域、十一类事件类型和负责人范围筛选，使用服务端稳定游标加载更多。列表显示安全摘要、影响数量、信号次数、负责人、最后信号和事件版本；空态明确说明“尚未运行检测不等于没有异常”。桌面采用结构化行，窄屏自动单列，长标题、稳定 key 和按钮不得超出容器。
+
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **实现追踪：**
@@ -3054,6 +3058,8 @@ App 版本：1.0
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
 **页面状态：** 正常、影响扩大、并发更新、证据不足
+
+**当前开发实现（Operations-1）：** 页面已落地 `/admin/app/incidents/{incidentId}`。普通 admin 必须先领取才可追加处置、关联固定 Runbook 版本或迁移状态，Owner 可跨事件处理；所有写入携带幂等键和当前事件版本。关闭为已解决或误报时强制结论摘要和证据引用。五类安全控制先展示“将被阻断 / 保持可用”影响确认框，只有 Owner 可用未关闭 P0/P1 暂停，且只能从原事件提供验证证据后恢复；时间线只追加并以最新记录优先展示。
 
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 

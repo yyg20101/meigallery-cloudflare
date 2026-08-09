@@ -22,6 +22,7 @@ import {
   type AppRecommendationPolicy,
   type AppRecommendationRuntimeConfig,
 } from './app-recommendation-policy'
+import { requireAppOperationalControlAvailable } from './app-operational-safety'
 import {
   AppTaxonomyError,
   assertAssignableTaxonomyTerms,
@@ -260,6 +261,11 @@ export async function getAppRecommendationPage(
   viewer: null | { accountInternalId: number; accountPublicId: string },
   now = new Date(),
 ): Promise<AppRecommendationPage> {
+  await requireAppOperationalControlAvailable(
+    db,
+    'recommendation_delivery',
+    (code, message, detail) => new AppRecommendationError(503, code, message, true, detail),
+  )
   const policy = await requireAppRecommendationPolicy(db, config, 'feed', now)
   const input = normalizeRecommendationRequest(inputValue, policy)
   const preference = viewer
@@ -404,6 +410,11 @@ export async function getAppRecommendationPage(
     items,
     cursorSigningSecret,
     now,
+  )
+  await requireAppOperationalControlAvailable(
+    db,
+    'recommendation_delivery',
+    (code, message, detail) => new AppRecommendationError(503, code, message, true, detail),
   )
   return {
     sessionId,

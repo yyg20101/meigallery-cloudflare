@@ -17,6 +17,7 @@ import {
   type AppConversationInternalRow,
 } from './app-messaging'
 import { getAppMessagingRuntimeControl } from './app-safety'
+import { requireAppOperationalControlAvailable } from './app-operational-safety'
 import {
   resolveConversationRoutingClaimAccesses,
   shanghaiClock,
@@ -398,6 +399,12 @@ export async function sendAdminAppConversationMessage(
     return { message: mapAppConversationMessage(duplicate, conversation), replayed: true }
   }
 
+  await requireAppOperationalControlAvailable(
+    db,
+    'operator_messaging',
+    (code, message) => new AppMessagingError(503, code, message, true),
+  )
+
   const assignment = await requireAdminConversationAssignment(db, adminId, conversationId, now)
   const runtimeControl = await getAppMessagingRuntimeControl(db)
   if (runtimeControl.operatorSendsPaused) {
@@ -430,6 +437,8 @@ export async function sendAdminAppConversationMessage(
           ON assignment.conversation_id = conversation.id
         JOIN app_messaging_runtime_controls runtime_control
           ON runtime_control.scope = 'global'
+        JOIN app_operational_safety_controls operational_control
+          ON operational_control.control_key = 'operator_messaging'
         WHERE conversation.id = ?
           AND conversation.status = 'active'
           AND assignment.status = 'active'
@@ -437,6 +446,7 @@ export async function sendAdminAppConversationMessage(
           AND assignment.version = ?
           AND datetime(assignment.lease_expires_at) > datetime(?)
           AND runtime_control.operator_sends_paused = 0
+          AND operational_control.state = 'available'
           AND security.status = 'active'
           AND projection.operation_mode = 'platform_managed'
           AND projection.verification_status = 'verified'

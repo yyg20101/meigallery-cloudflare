@@ -3,6 +3,7 @@ import {
   AppTaxonomyError,
   assertAssignableTaxonomyTerms,
 } from './app-taxonomy'
+import { requireAppOperationalControlAvailable } from './app-operational-safety'
 
 export const PERSON_VERIFICATION_ITEMS = [
   'identity_existence',
@@ -778,6 +779,7 @@ export async function submitPersonPublication(
   input: SubmitPublicationInput,
   adminId: number,
 ) {
+  await requirePersonPublicationControl(db)
   const current = await requireProfileRow(db, personId)
   const expectedVersion = expectedLockVersion(input.expectedVersion)
   assertExpectedVersion(current, expectedVersion)
@@ -806,6 +808,10 @@ export async function submitPersonPublication(
           mutation_token = ?, updated_by = ?, updated_at = ?
       WHERE id = ? AND lock_version = ? AND content_version = ?
         AND publication_status <> 'archived'
+        AND EXISTS (
+          SELECT 1 FROM app_operational_safety_controls control
+          WHERE control.control_key = 'person_publication' AND control.state = 'available'
+        )
     `).bind(token, adminId, now, current.profile_id, expectedVersion, current.content_version),
     db.prepare(`
       INSERT INTO person_publication_reviews (
@@ -1088,6 +1094,7 @@ async function publishProjection(
   note: string | null,
   adminId: number,
 ) {
+  await requirePersonPublicationControl(db)
   const [authorization, verification, taxonomy] = await Promise.all([
     getLatestAuthorization(db, current.profile_id, current.content_version),
     getLatestVerification(db, current.profile_id, current.content_version),
@@ -1107,6 +1114,10 @@ async function publishProjection(
       WHERE id = ? AND lock_version = ? AND content_version = ?
         AND publication_status = 'pending_review' AND safety_status = 'clear'
         AND operation_mode = 'platform_managed'
+        AND EXISTS (
+          SELECT 1 FROM app_operational_safety_controls control
+          WHERE control.control_key = 'person_publication' AND control.state = 'available'
+        )
         AND EXISTS (SELECT 1 FROM persons WHERE id = person_profiles.person_id AND lifecycle_status = 'active')
         AND EXISTS (SELECT 1 FROM galleries WHERE id = person_profiles.source_gallery_id AND status = 'published' AND cover_key IS NOT NULL)
         AND EXISTS (
@@ -1262,6 +1273,14 @@ async function publishProjection(
   ])
   assertClaimed(results, current.lock_version, '发布门禁已变化，请刷新后重新复核')
   return getAdminPersonDetail(db, current.person_id)
+}
+
+async function requirePersonPublicationControl(db: D1Database) {
+  return requireAppOperationalControlAvailable(
+    db,
+    'person_publication',
+    (code, message, detail) => new PersonSupplyError(503, code, message, detail),
+  )
 }
 
 function buildPublicationGates(

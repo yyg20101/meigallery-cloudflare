@@ -30,6 +30,7 @@ import { adminAppSearchRoutes } from './app-search'
 import { adminAppConversationGroupRoutes } from './app-conversation-groups'
 import { adminAppConversationQualityRoutes } from './app-conversation-quality'
 import { adminAppAuditRoutes } from './app-audit'
+import { adminAppOperationRoutes } from './app-operations'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -87,4 +88,5 @@ adminRoutes.route('/app/taxonomy', adminAppTaxonomyRoutes)
 adminRoutes.route('/app/recommendations', adminAppRecommendationRoutes)
 adminRoutes.route('/app/search', adminAppSearchRoutes)
 adminRoutes.route('/app/audit', adminAppAuditRoutes)
+adminRoutes.route('/app/operations', adminAppOperationRoutes)
 adminRoutes.route('/', adminMediaRoutes)

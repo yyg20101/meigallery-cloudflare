@@ -208,6 +208,8 @@ Audit-1 当前实现不新建第二套 `audit_events_v2` 事实，而以既有 `
 
 Audit-2 同样不复制审计事实。`0091_app_audit_controlled_exports.sql` 只新增导出工作流表族：不可变范围申请、追加时间线、独立复核决定、强认证 Token 摘要、下载票据摘要和幂等命令。申请保存规范查询、权限指纹、事件数量、首末 sequence 和范围摘要；文件只保存固定私有 R2 key、ETag、SHA-256、大小、行数与有效期，不保存公开 URL。触发器限制请求前向迁移，并只允许强认证凭证和票据从未消费变为已消费一次。`0091` 不创建真实申请或对象，不 seed 保留策略，不执行 R2 清理；migration 执行、正式保留/物理清理和专项测试统一后置。详见 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md)。
 
+Operations-1 使用 `0092_app_operations_and_incidents.sql` 落地上述 `metric_definitions / metric_snapshots / operational_incidents` 规划，但保持 `admin_audit_logs` 为唯一审计事实。指标定义、快照、检测运行/finding、Runbook 版本、事件时间线、安全控制事件和管理员命令均为追加式或受版本 trigger 约束；事件与安全控制当前态允许通过 `version + mutation_token` 条件更新。首批指标全部保留 `retention_decision_status=unresolved`、`production_ready=0`，不会启动物理清理或技术指标采集；五个安全控制初始 `available` 只代表未因事件暂停，不会切换任何现有 capability。`0092` 不创建真实事件或快照，不运行检测、不配置调度。详见 [Operations-1 运营总览、事件处置与跨域安全控制开发基线](./OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md)。
+
 ## 4. Stable ID 与映射
 
 - v2 使用不可枚举字符串 ID；具体 ULID/UUIDv7 在 API 与数据模型冻结前通过独立技术决策确定。

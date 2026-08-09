@@ -75,6 +75,7 @@
 - 已完成 Audit-1 App 审计查询与完整性开发闭环：`0090_app_audit_query_and_integrity.sql` 保留 `admin_audit_logs` 唯一事实源，为全部既有/新增事实自动建立稳定 sequence，增加追加式 request/trace/业务引用、版本化 Action 登记、不可变检查清单，并在 D1 层禁止历史事件、索引、上下文和清单修改或删除。
 - Nuxt 已交付 `ADM-AUD-01/02/03`：31 天受限范围与稳定游标查询、admin 本人/Owner 跨域权限、读取用途审计、字段级脱敏详情、目标/request/trace/业务单关联时间线，以及 Owner 序号/索引/载荷/敏感键/Action/同范围摘要检查；完整性服务还会反向核对会员发放、钱包入账、运营回复和人物发布四类关键业务事实，不自动补写缺失审计。`0090`、正式 Action 口径、保留期、自动运行、配置和专项测试继续后置。完整边界见 `docs/app/AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md`。
 - 已完成 Audit-2 `ADM-AUD-04` 受控导出开发闭环：`0091_app_audit_controlled_exports.sql` 定义不可变申请/复核/时间线、强认证摘要、一次性票据和命令幂等；admin 只能申请本人范围，Owner 可申请跨域但只能由不同 Owner 复核。复核、生成终态和发票前均重算或核对当前角色与 Audit-1 精确范围，变化即失效；CSV 逐行水印、字段级脱敏并防公式注入，只写私有 R2 固定 key，API 不返回对象地址。原申请人重新验证密码后取得五分钟一次性票据，由 Worker 代理 no-store 下载；Web 同源代理已显式放行幂等、强认证和下载票据 header，同时保留 `nosniff`。当前 24 小时逻辑有效期不代表正式保留政策；`0091`、真实对象、配置、物理清理和专项测试统一后置。完整边界见 `docs/app/AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md`。
+- 已完成 Operations-1 `ADM-OV-01/02/03` 运营总览、事件中心与处置详情开发闭环：`0092_app_operations_and_incidents.sql` 定义 18 项版本化指标、不可变快照、7 份 Runbook、检测运行、事件状态机、5 个跨域安全控制和命令幂等；总览坚持未知/延迟/未配置不显示为 0，且不包含未来支付、礼物、装扮、系统推送或真人认领指标。当前 8 类检测器可创建/刷新事件，钱包快照不一致会保护性冻结受影响钱包，另外 3 类检测器显式未接入。人物发布、推荐投放、运营消息、会员发放和金币调整已在服务入口与最终 SQL 两次重验控制；暂停仅限未关闭 P0/P1，恢复必须由原事件提供证据。普通 admin 领取后处置本人事件，Owner 可跨事件并独占快照、检测及控制。`0092`、正式指标/Action/保留政策、Cloudflare 可观测接入、调度、专项测试和恢复演练统一后置。完整边界见 `docs/app/OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md`。
 - 已完成 Message-1 默认关闭的跨仓 HTTP 纵向切片：`0072_app_managed_conversations.sql` 新增会话、消息、日额度消耗和幂等事实表，并建立独立 `development` 目录 `amc_app_1_0_message_1_dev_1`；只有该目录中的 `direct_message.create`、`direct_message.send` 与 `direct_message.new_threads_per_day` 标记为 `available`，其余权益继续保持 `planned`。
 - App API v2 `1.5.0` 已实现话题创建/复用、列表、详情、按 sequence 补拉、观看者文本发送和已读；所有受限操作均重新校验 App 会话、有效 grant、entitlement、人物公开资格和对象归属，创建及发送使用幂等键，上海自然日新话题额度在 D1 事务中原子消耗。
 - Nuxt 后台已新增 `/admin/app/conversations` 平台话题队列与正文工作台。正文读取必须声明受控业务目的并写审计；运营回复固定落盘为 `platform_operator`，审计只记录消息引用、正文 SHA-256 和长度，不复制正文，并拒绝冒充真人或承诺结果的高风险表达。
@@ -115,7 +116,7 @@
 - Figma 最终版本 ID 为 `2381987656588552168`；`40｜Delivery Index` 与 `50｜QA & Handoff` 已完成，最终事实源为 `docs/app/figma-final-delivery-state.json`。
 - 已按客户确认的原始暖粉视觉方向完成同视口对照，并修正文字排版、Icon 对齐、后台头部按钮重叠、会员选中卡对比度、运营总览 KPI 与表格溢出。
 - 客户文档继续保留 92 张默认状态、54 张 P0 关键状态和通知/金币 23 张逐状态导出图，共 169 个 Page ID/状态/图片确定性映射；Figma 的 349 个状态是像素级视觉与交互权威来源。
-- 已同步 `docs/app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`，作为研发、测试与验收的 App 1.0 唯一开发需求基线；文档覆盖当前范围、未来兼容方向、非功能要求、技术基线、92 页逐页规格、349 个 Figma 状态、169 个客户文档图片映射、需求追踪、DoR 与 DoD。
+- 已同步 `docs/app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`，作为研发、测试与验收的 App 1.0 唯一开发需求基线；文档覆盖当前范围、未来兼容方向、非功能要求、技术基线、92 页逐页规格、349 个 Figma 状态、169 个客户文档图片映射、Operations-1 实现状态、需求追踪、DoR 与 DoD。
 - 已生成 `docs/app/APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md`，逐页覆盖角色、前置、入口、结构、交互、业务规则、数据权限、状态和验收。
 - 客户产品需求确认书和逐页交互设计确认册已按 Figma 最终口径重新生成；每个 Page ID 的功能说明、需求追踪和原型图保持同页映射。产品需求确认书内嵌 199 张图，逐页交互设计确认册内嵌 169 张图。
 - 已新增需求冻结准备清单与 15 页客户短版确认单，集中列出 8 项客户决策和 7 组专业门禁，并明确“功能交互冻结”与“像素级视觉冻结”必须分别记录；整体仍是冻结准备中，当前完成的 M0、M1、Auth-1、Interaction-1/2/3、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1/2 均只是 production 默认关闭或未配置的分阶段开发验证，dev 联调或服务端代码存在不等于授权生产发布。

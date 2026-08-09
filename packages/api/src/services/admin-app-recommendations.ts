@@ -15,6 +15,7 @@ import {
   parseRecommendationWeights,
   type RecommendationRuleRow,
 } from './app-recommendations'
+import { requireAppOperationalControlAvailable } from './app-operational-safety'
 
 const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7E]{16,128}$/u
 const VERSION_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/u
@@ -506,6 +507,7 @@ export async function activateAdminRecommendationRule(
   now = new Date(),
 ) {
   requireOwner(actor)
+  await requireRecommendationDeliveryControl(db)
   const ruleVersionId = normalizeRecommendationRuleVersionId(ruleVersionIdValue)
   const input = transitionInput(inputValue)
   const current = await requireRuleState(db, ruleVersionId, input.expectedVersion, ['approved', 'scheduled', 'paused'])
@@ -543,6 +545,10 @@ export async function activateAdminRecommendationRule(
               AND target.state IN ('approved', 'scheduled', 'paused')
               AND target.lock_version = ?
           )
+          AND EXISTS (
+            SELECT 1 FROM app_operational_safety_controls control
+            WHERE control.control_key = 'recommendation_delivery' AND control.state = 'available'
+          )
       `).bind(
         nowIso,
         conflictToken,
@@ -574,6 +580,10 @@ export async function activateAdminRecommendationRule(
           lock_version = lock_version + 1, mutation_token = ?, updated_by = ?, updated_at = ?
       WHERE rule_version_id = ? AND lock_version = ?
         AND state IN ('approved', 'scheduled', 'paused')
+        AND EXISTS (
+          SELECT 1 FROM app_operational_safety_controls control
+          WHERE control.control_key = 'recommendation_delivery' AND control.state = 'available'
+        )
     `).bind(
       targetState,
       actor.adminId,
@@ -962,6 +972,7 @@ export async function activateAdminEditorialPlacement(
   now = new Date(),
 ) {
   requireOwner(actor)
+  await requireRecommendationDeliveryControl(db)
   const placementId = normalizeRecommendationPlacementId(placementIdValue)
   const input = transitionInput(inputValue)
   const current = await requirePlacementState(db, placementId, input.expectedVersion, ['approved', 'scheduled'])
@@ -972,7 +983,10 @@ export async function activateAdminEditorialPlacement(
   }
   await assertNoPlacementConflict(db, current, current.placement_id)
   const nextState = Date.parse(current.starts_at) > now.getTime() ? 'scheduled' : 'active'
-  return transitionPlacement(db, current, nextState, 'activate', input.reason, actor, now, { activated: true })
+  return transitionPlacement(db, current, nextState, 'activate', input.reason, actor, now, {
+    activated: true,
+    requiresDeliveryControl: true,
+  })
 }
 
 export async function pauseAdminEditorialPlacement(
@@ -1251,7 +1265,12 @@ async function transitionPlacement(
   reason: string,
   actor: AdminActor,
   now: Date,
-  flags: { reviewed?: boolean; activated?: boolean; paused?: boolean } = {},
+  flags: {
+    reviewed?: boolean
+    activated?: boolean
+    paused?: boolean
+    requiresDeliveryControl?: boolean
+  } = {},
 ) {
   const token = crypto.randomUUID()
   const nowIso = now.toISOString()
@@ -1264,6 +1283,13 @@ async function transitionPlacement(
           paused_at = CASE WHEN ? = 1 THEN ? ELSE paused_at END,
           version = version + 1, mutation_token = ?, updated_by = ?, updated_at = ?
       WHERE placement_id = ? AND state = ? AND version = ?
+        AND (
+          ? = 0
+          OR EXISTS (
+            SELECT 1 FROM app_operational_safety_controls control
+            WHERE control.control_key = 'recommendation_delivery' AND control.state = 'available'
+          )
+        )
     `).bind(
       targetState,
       flags.reviewed ? 1 : 0,
@@ -1280,6 +1306,7 @@ async function transitionPlacement(
       current.placement_id,
       current.state,
       current.version,
+      flags.requiresDeliveryControl ? 1 : 0,
     ),
     guardedPlacementAudit(db, current.placement_id, token, actor.adminId, `recommendation_placement_${action}`, {
       fromState: current.state,
@@ -1289,6 +1316,14 @@ async function transitionPlacement(
   ])
   if (!await findPlacementByToken(db, current.placement_id, token)) throw placementVersionConflict()
   return getAdminEditorialPlacement(db, current.placement_id)
+}
+
+async function requireRecommendationDeliveryControl(db: D1Database) {
+  return requireAppOperationalControlAvailable(
+    db,
+    'recommendation_delivery',
+    (code, message, detail) => new AppRecommendationError(503, code, message, true, detail),
+  )
 }
 
 async function requirePlacementState(

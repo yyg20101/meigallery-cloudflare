@@ -1,6 +1,6 @@
 # 独立 App 与共享业务平台文档总览
 
-更新时间：2026-08-09
+更新时间：2026-08-10
 
 App 版本：1.0
 
@@ -23,6 +23,7 @@ App 版本：1.0
 - [Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)：记录 App API `1.14.0` 稳定词条、不可变目录快照、合并重定向、legacy 待复核映射、人物内容版本关联及发布投影边界。
 - [Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)：记录 App API `1.15.0` taxonomy 组合语义、会员分层、结果数安全预估、账号私有保存条件和默认关闭边界。
 - [Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)：记录 App API `1.16.0` 统一资格、显式偏好、可解释排序、稳定灰度、计划生效、固定精选披露、后台状态机和默认关闭边界。
+- [Operations-1 运营总览、事件处置与跨域安全控制开发基线](./OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md)：记录 18 项质量化指标、8 类当前检测、事件状态机、7 份 Runbook、五类真实写路径安全控制和统一后置门禁。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终状态和 169 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
 - [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、92 页/349 状态覆盖、2,284 个有效交互动作、排版与 Icon 修正、QA 结果和交付门禁。

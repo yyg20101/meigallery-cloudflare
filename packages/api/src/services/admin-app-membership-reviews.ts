@@ -13,6 +13,7 @@ import {
   type AppMembershipRevokeReason,
 } from './admin-app-membership'
 import { AppMembershipError, resolveAppMembershipSnapshot } from './app-membership'
+import { requireAppOperationalControlAvailable } from './app-operational-safety'
 
 const REQUEST_ID = /^amcr_[A-Za-z0-9_-]{1,91}$/u
 const APPLICATION_ID = /^ama_[A-Za-z0-9_-]{1,76}$/u
@@ -594,6 +595,7 @@ export async function reviewAdminAppMembershipChangeRequest(
       requireProductionReady,
     )
   }
+  if (current.operation === 'grant') await requireMembershipGrantControl(db)
   return approveChangeRequest(
     db,
     current,
@@ -641,6 +643,13 @@ async function approveChangeRequest(
         AND request.status = 'pending_review'
         AND request.version = ?
         AND request.requested_by <> ?
+        AND (
+          request.operation <> 'grant'
+          OR EXISTS (
+            SELECT 1 FROM app_operational_safety_controls control
+            WHERE control.control_key = 'membership_grants' AND control.state = 'available'
+          )
+        )
         AND EXISTS (
           SELECT 1 FROM users reviewer
           WHERE reviewer.id = ? AND reviewer.status = 'active' AND reviewer.role IN ('admin', 'owner')
@@ -943,6 +952,14 @@ async function approveChangeRequest(
     }
   }
   throw new AppMembershipError(409, 'MEMBERSHIP_CHANGE_VERSION_CONFLICT', '会员变更已被其他复核人处理')
+}
+
+async function requireMembershipGrantControl(db: D1Database) {
+  return requireAppOperationalControlAvailable(
+    db,
+    'membership_grants',
+    (code, message) => new AppMembershipError(503, code, message, true),
+  )
 }
 
 async function rejectChangeRequest(

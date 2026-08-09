@@ -14,6 +14,7 @@ import {
   walletReasonLabel,
   type AppWalletRuntimeConfig,
 } from './app-wallet'
+import { requireAppOperationalControlAvailable } from './app-operational-safety'
 
 const ACCOUNT_PUBLIC_ID = /^acc_[A-Za-z0-9_-]{1,76}$/u
 const ENTRY_ID = /^wle_[A-Za-z0-9_-]{1,92}$/u
@@ -260,6 +261,7 @@ export async function createAdminAppWalletAdjustment(
     if (replay.request_hash !== requestHash) throw idempotencyConflict()
     return { adjustment: await requireAdjustment(db, replay.id), replayed: true }
   }
+  await requireWalletAdjustmentControl(db)
   const prepared = await prepareAdjustment(db, input, policy)
   const blockingRisk = prepared.riskCodes.find(code => code !== 'POLICY_UNRESOLVED_ALL_REVIEW')
   if (blockingRisk) throw blockingRiskError(blockingRisk)
@@ -282,7 +284,12 @@ export async function createAdminAppWalletAdjustment(
           user_visible_note, internal_note, business_reference, original_entry_id,
           preview_balance, preview_sequence, projected_balance, status, version,
           request_idempotency_key, request_hash, requested_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', 1, ?, ?, ?, ?, ?)
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', 1, ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM app_operational_safety_controls control
+          WHERE control.control_key = 'wallet_adjustments' AND control.state = 'available'
+        )
       `).bind(
         adjustmentId,
         policy.id,
@@ -307,13 +314,19 @@ export async function createAdminAppWalletAdjustment(
       db.prepare(`
         INSERT INTO app_wallet_adjustment_events (
           id, adjustment_id, sequence, event_type, actor_id, result_code, created_at
-        ) VALUES (?, ?, 1, 'submitted', ?, 'pending_review', ?)
-      `).bind(eventId, adjustmentId, adminId, timestamp),
+        )
+        SELECT ?, id, 1, 'submitted', ?, 'pending_review', ?
+        FROM app_wallet_adjustments
+        WHERE id = ?
+      `).bind(eventId, adminId, timestamp, adjustmentId),
       db.prepare(`
         INSERT INTO admin_audit_logs (
           id, admin_id, action, target_type, target_id, before_value, after_value, created_at
-        ) VALUES (?, ?, 'app.wallet.adjustment.request', 'app_wallet_adjustment', ?, NULL, ?, ?)
-      `).bind(auditId, adminId, adjustmentId, JSON.stringify({
+        )
+        SELECT ?, ?, 'app.wallet.adjustment.request', 'app_wallet_adjustment', id, NULL, ?, ?
+        FROM app_wallet_adjustments
+        WHERE id = ?
+      `).bind(auditId, adminId, JSON.stringify({
         accountId: prepared.account.account_public_id,
         actionType: prepared.actionType,
         direction: prepared.direction,
@@ -322,7 +335,7 @@ export async function createAdminAppWalletAdjustment(
         balanceBefore: prepared.balanceBefore,
         balanceAfter: prepared.balanceAfter,
         status: 'pending_review',
-      }), timestamp),
+      }), timestamp, adjustmentId),
     ])
   }
   catch (error) {
@@ -338,7 +351,13 @@ export async function createAdminAppWalletAdjustment(
     if (raced) throw idempotencyConflict()
     throw error
   }
-  return { adjustment: await requireAdjustment(db, adjustmentId), replayed: false }
+  try {
+    return { adjustment: await requireAdjustment(db, adjustmentId), replayed: false }
+  }
+  catch (error) {
+    await requireWalletAdjustmentControl(db)
+    throw error
+  }
 }
 
 export async function listAdminAppWalletAdjustments(
@@ -397,6 +416,7 @@ export async function reviewAdminAppWalletAdjustment(
   if (decision === 'reject') {
     return rejectAdjustment(db, current, reviewerId, key, requestHash, reviewNote, now)
   }
+  await requireWalletAdjustmentControl(db)
   return approveAdjustment(db, current, reviewerId, key, requestHash, reviewNote, policy, now)
 }
 
@@ -432,6 +452,10 @@ async function approveAdjustment(
         AND status = 'pending_review'
         AND version = ?
         AND requested_by <> ?
+        AND EXISTS (
+          SELECT 1 FROM app_operational_safety_controls control
+          WHERE control.control_key = 'wallet_adjustments' AND control.state = 'available'
+        )
         AND preview_balance = COALESCE((SELECT balance FROM app_wallets WHERE account_id = app_wallet_adjustments.account_id), 0)
         AND preview_sequence = COALESCE((SELECT sequence FROM app_wallets WHERE account_id = app_wallet_adjustments.account_id), 0)
         AND COALESCE((SELECT status FROM app_wallets WHERE account_id = app_wallet_adjustments.account_id), 'active') = 'active'
@@ -622,10 +646,19 @@ async function approveAdjustment(
   if (review?.adjustment_id === current.adjustmentId && review.request_hash === requestHash) {
     return { adjustment: await requireAdjustment(db, current.adjustmentId), replayed: false }
   }
+  await requireWalletAdjustmentControl(db)
   throw new AppWalletError(
     409,
     'WALLET_BALANCE_CHANGED',
     '钱包余额或冲正关系已变化，请拒绝旧申请并重新创建',
+  )
+}
+
+async function requireWalletAdjustmentControl(db: D1Database) {
+  return requireAppOperationalControlAvailable(
+    db,
+    'wallet_adjustments',
+    (code, message) => new AppWalletError(503, code, message, true),
   )
 }
 

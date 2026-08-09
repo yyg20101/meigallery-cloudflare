@@ -1,4 +1,5 @@
 import type { Bindings } from '../index'
+import { getAppOperationalControl } from './app-operational-safety'
 
 export const APP_RECOMMENDATION_POLICY_ID = 'rcp_app_1_0_recommendation_1_dev_1'
 export const APP_RECOMMENDATION_DEFAULT_PAGE_SIZE = 20
@@ -120,6 +121,8 @@ export async function resolveAppRecommendationCapabilities(
 ): Promise<AppRecommendationCapabilities> {
   if (!config.enabled) return closedCapabilities()
   try {
+    const operationalControl = await getAppOperationalControl(db, 'recommendation_delivery')
+    if (operationalControl.state !== 'available') return closedCapabilities()
     const policy = await loadAppRecommendationPolicy(db, config, now)
     if (!policy.feedEnabled) return { ...closedCapabilities(), policy }
     const activeRule = await findActiveRecommendationRule(

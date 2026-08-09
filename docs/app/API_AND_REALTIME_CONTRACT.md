@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-10
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1/2 进入默认关闭或未配置的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1、Audit-1/2 与 Operations-1 进入默认关闭或未配置的保守开发验证
 
 ## 1. 契约原则
 
@@ -67,6 +67,12 @@ Entitlement 校验要求五级显式值、typed 安全默认值和稳定 capabil
 #### Audit-2 管理平面开发补充
 
 Audit-2 只新增 `/api/admin/app/audit/exports*` 管理接口，不扩展 App API v2，也不向 KMP 暴露审计数据。申请、不同 Owner 复核、原申请人发票分别要求密码 step-up；凭证与票据只存 SHA-256 并一次性消费。申请保存 Audit-1 规范范围、权限指纹、事件数量、首末 sequence 和摘要；复核与发票前重新计算，任一变化进入 `scope_changed`，生成完成前也必须确认申请人与复核人角色仍有效。CSV 逐行水印、字段级脱敏并防公式注入，固定写私有 R2；客户端只能用 header 中的短时一次性票据经 Worker 下载，API 不返回 R2 地址。Web 同源代理仅为该流程放行 `Idempotency-Key`、`X-Audit-Step-Up`、`X-Audit-Download-Ticket`，所有审计响应强制 `private, no-store`。`0091`、正式保留/物理清理配置和专项测试统一后置。完整边界见 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md)。
+
+#### Operations-1 管理平面开发补充
+
+Operations-1 只新增 `/api/admin/app/operations/*` 管理接口，不修改 App API v2 和 KMP capability。读取接口提供全局总览、Runbook、事件列表/详情和安全控制影响预览；Owner 写接口生成人工指标快照、运行检测以及暂停/恢复控制；负责人或 Owner 可领取、追加记录、关联 Runbook 和迁移事件状态。所有响应 `private, no-store`，写命令要求 `Idempotency-Key`，事件与控制更新要求服务端乐观版本。
+
+当前指标只返回全局聚合及显式质量状态，不返回个人排行、消息正文、证件、内部备注或未来商业化指标。事件详情读取本身留审计；关闭必须提供结论和证据。五类安全控制同时接入管理预览与真实业务写路径，表缺失或状态非法时 fail-closed；`available` 不会开启底层已关闭 capability。完整路由、状态机和影响矩阵见 [Operations-1 运营总览、事件处置与跨域安全控制开发基线](./OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md)。`0092`、Cloudflare 可观测接入、调度和专项测试统一后置。
 
 ### 1.5 Message-1 局部冻结记录
 

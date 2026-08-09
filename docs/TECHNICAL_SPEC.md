@@ -1169,6 +1169,10 @@ Audit-2 在 `0091_app_audit_controlled_exports.sql` 中新增受控导出工作�
 
 复核通过后，API Worker 最多读取 5,000 行，复用 Audit-1 before/after 脱敏器并为每行写申请、生成、申请人、复核人、用途、案件和范围水印；CSV 全字段引用、转义并阻断公式前缀，最大 25,000,000 字节。Worker 以已知长度 `Uint8Array`、SHA-256 checksum、`no-store` metadata 写入既有私有 R2 固定 key `audit/exports/{requestId}/events.csv`，D1 只保存 key、ETag、SHA、大小、行数和有效期，管理 API 不返回 key/ETag 或对象 URL。原申请人重新验证密码后取得五分钟一次性 HMAC 票据；下载使用 header 提交给 Worker，Worker 核对管理员、申请版本/有效期、文件/范围摘要及 R2 metadata，在 D1 条件消费票据并追加审计后才流式响应。当前文件逻辑有效期 24 小时只是开发安全默认值，正式保留与物理清理、`0091` 执行和专项测试统一后置。完整契约见 `docs/app/AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md`。
 
+Operations-1 在 `0092_app_operations_and_incidents.sql` 中新增指标定义/快照、Runbook、检测运行/finding、事件/时间线、跨域安全控制和管理员幂等命令。指标定义与快照只追加，每项值必须携带 `known / unknown / delayed / partial / invalid / unconfigured`，只有 `known` 可以返回数值；首批 18 项定义的保留决策仍为 `unresolved`、`production_ready=0`，Cloudflare Worker/D1/R2 技术指标未接入时为 `unconfigured`。事件使用稳定 `incident_key` 聚合重复检测，状态通过 D1 trigger 和服务端 `expectedVersion` 双重限制；关闭必须提供结论摘要和证据。检测当前覆盖未授权公开、运营身份事实缺失、重复 grant、钱包不平、调币独立复核缺失、审计完整性/敏感字段和通知积压；钱包不平只保护性冻结，不自动补账或修改分录。
+
+五类安全控制为 `person_publication`、`recommendation_delivery`、`operator_messaging`、`membership_grants` 和 `wallet_adjustments`。每个受控写路径在服务入口 fail-closed 读取控制，并在最终业务 SQL 以 `EXISTS state='available'` 原子重验；暂停不影响下线、撤销、拒绝、回滚、调查或只读对账。只有 Owner 可用未关闭 P0/P1 事件暂停控制，恢复必须来自原事件且有验证证据。管理 API 位于 `/api/admin/app/operations`，所有响应 `private, no-store`；普通 admin 可读/领取并仅处置本人事件，Owner 可跨事件且独占刷新、检测和控制。完整数据表、路由、交互与 Runbook 见 `docs/app/OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md`；`0092` 执行、正式指标/Action/保留政策、Cloudflare 可观测接入、调度、专项测试和恢复演练统一后置。
+
 ### site_settings
 
 ```sql
