@@ -19,6 +19,14 @@ import {
   parseAdminSafetyAppealListQuery,
   type AdminSafetyAppealDecisionInput,
 } from '../../services/admin-app-safety-appeals'
+import {
+  claimAdminConversationSafetyEscalation,
+  decideAdminConversationSafetyEscalation,
+  getAdminConversationSafetyEscalation,
+  listAdminConversationSafetyEscalations,
+  parseAdminConversationSafetyEscalationListQuery,
+  type AdminConversationSafetyEscalationDecisionInput,
+} from '../../services/admin-app-conversation-safety-escalations'
 import { AppMessagingError } from '../../services/app-messaging'
 import {
   AppSafetyError,
@@ -90,6 +98,70 @@ adminAppSafetyRoutes.post('/reports/:reportId/decision', async (c) => {
       await c.req.json<AdminSafetyReportDecisionInput>(),
     )
     return c.json({ message: data.replayed ? '已返回原审核结论' : '审核结论已记录', data })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.get('/escalations', async (c) => {
+  try {
+    enabledConfig(c.env)
+    const query = parseAdminConversationSafetyEscalationListQuery({
+      status: c.req.query('status'),
+      priority: c.req.query('priority'),
+      limit: c.req.query('limit'),
+    })
+    return c.json({ data: await listAdminConversationSafetyEscalations(c.env.DB, c.get('userId')!, query) })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.post('/escalations/:escalationId/claim', async (c) => {
+  try {
+    enabledConfig(c.env)
+    const data = await claimAdminConversationSafetyEscalation(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('escalationId'),
+      c.req.header('Idempotency-Key') ?? null,
+    )
+    return c.json({ message: data.replayed ? '已返回原领取结果' : '内部升级案件已领取', data })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.get('/escalations/:escalationId', async (c) => {
+  try {
+    enabledConfig(c.env)
+    requireEscalationAccessReason(c.req.query('accessReason'))
+    return c.json({ data: await getAdminConversationSafetyEscalation(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('escalationId'),
+      c.get('appRequestId') || crypto.randomUUID(),
+    ) })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.post('/escalations/:escalationId/decision', async (c) => {
+  try {
+    enabledConfig(c.env)
+    const data = await decideAdminConversationSafetyEscalation(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('escalationId'),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminConversationSafetyEscalationDecisionInput>(),
+    )
+    return c.json({ message: data.replayed ? '已返回原审核结论' : '内部升级案件结论已记录', data })
   }
   catch (error) {
     return handleSafetyError(c, error)
@@ -215,6 +287,12 @@ function requireSafetyAccessReason(value: string | undefined) {
 function requireAppealAccessReason(value: string | undefined) {
   if (value !== 'appeal_review') {
     throw new AppSafetyError(400, 'ACCESS_REASON_REQUIRED', '查看申诉说明和证据必须声明 appeal_review')
+  }
+}
+
+function requireEscalationAccessReason(value: string | undefined) {
+  if (value !== 'safety_escalation_review') {
+    throw new AppSafetyError(400, 'ACCESS_REASON_REQUIRED', '查看内部升级说明和证据必须声明 safety_escalation_review')
   }
 }
 

@@ -24,11 +24,19 @@ import {
   type AdminTransferConversationInput,
 } from '../../services/admin-app-conversation-collaboration'
 import {
+  createAdminConversationSafetyEscalation,
+  type AdminCreateConversationSafetyEscalationInput,
+} from '../../services/admin-app-conversation-safety-escalations'
+import {
   AppMessagingError,
   getAppMessagingRuntimeConfig,
   requireAppMessagingAdminEnabled,
 } from '../../services/app-messaging'
-import { AppSafetyError } from '../../services/app-safety'
+import {
+  AppSafetyError,
+  getAppSafetyRuntimeConfig,
+  requireAppSafetyAdminEnabled,
+} from '../../services/app-safety'
 import { errorJson } from '../../utils/api-error'
 
 export const adminAppConversationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -156,6 +164,23 @@ adminAppConversationRoutes.post('/:conversationId/transfer', async (c) => {
   }
 })
 
+adminAppConversationRoutes.post('/:conversationId/safety-escalations', async (c) => {
+  try {
+    enabledSafetyEscalationConfig(c.env)
+    const data = await createAdminConversationSafetyEscalation(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('conversationId'),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminCreateConversationSafetyEscalationInput>(),
+    )
+    return c.json({ message: data.replayed ? '已返回原安全升级案件' : '安全升级案件已创建', data }, data.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return handleAppMessagingError(c, error)
+  }
+})
+
 adminAppConversationRoutes.post('/:conversationId/read', async (c) => {
   try {
     enabledConfig(c.env)
@@ -244,6 +269,13 @@ function enabledConfig(env: Bindings) {
   const config = getAppMessagingRuntimeConfig(env)
   requireAppMessagingAdminEnabled(config)
   return config
+}
+
+function enabledSafetyEscalationConfig(env: Bindings) {
+  enabledConfig(env)
+  const safetyConfig = getAppSafetyRuntimeConfig(env)
+  requireAppSafetyAdminEnabled(safetyConfig)
+  return safetyConfig
 }
 
 function requireAccessReason(value: string | undefined) {

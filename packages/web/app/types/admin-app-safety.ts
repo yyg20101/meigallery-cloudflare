@@ -75,6 +75,69 @@ export interface AdminMessagingRuntimeControl {
   updatedAt: string
 }
 
+export type AdminConversationSafetyEscalationPriority = 'p0' | 'p1' | 'p2' | 'p3'
+export type AdminConversationSafetyEscalationStatus = 'submitted' | 'investigating' | 'actioned' | 'no_action'
+export type AdminConversationSafetyEscalationReason =
+  | 'suspected_impersonation'
+  | 'harassment_threat'
+  | 'fraud_inducement'
+  | 'privacy_exposure'
+  | 'minor_safety'
+  | 'imminent_danger'
+  | 'other'
+
+export interface AdminConversationSafetyEscalationSummary {
+  escalationId: string
+  conversationId: string
+  profileId: string
+  reasonCode: AdminConversationSafetyEscalationReason
+  reasonLabel: string
+  priority: AdminConversationSafetyEscalationPriority
+  status: AdminConversationSafetyEscalationStatus
+  assignment: {
+    status: 'unassigned' | 'mine' | 'other'
+    canClaim: boolean
+    isolationBlocked: boolean
+  }
+  version: number
+  createdAt: string
+  updatedAt: string
+  resolvedAt: string | null
+}
+
+export interface AdminConversationSafetyEscalationDetail extends AdminConversationSafetyEscalationSummary {
+  summaryText: string
+  evidence: {
+    targetMessageId: string | null
+    targetMessageSequence: number | null
+    conversationLastSequence: number
+    evidenceDigest: string
+    capturedAt: string
+    messages: Array<{
+      messageId: string
+      sequence: number
+      role: 'before' | 'target' | 'after'
+      senderType: 'viewer' | 'platform_operator' | 'system'
+      text: string
+      bodySha256: string
+      snapshotIntegrityMatches: boolean | null
+    }>
+  }
+  decision: {
+    actionType: 'none' | 'conversation_restricted' | 'conversation_closed'
+    reasonCode: string
+    summaryText: string
+  } | null
+  timeline: Array<{
+    sequence: number
+    eventType: 'submitted' | 'claimed' | 'actioned' | 'no_action'
+    statusFrom: 'submitted' | 'investigating' | null
+    statusTo: AdminConversationSafetyEscalationStatus
+    reasonCode: string
+    createdAt: string
+  }>
+}
+
 export type AdminSafetyAppealStatus = 'submitted' | 'processing' | 'upheld' | 'changed' | 'closed'
 
 export interface AdminSafetyAppealSummary {

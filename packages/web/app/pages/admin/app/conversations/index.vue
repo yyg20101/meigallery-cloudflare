@@ -12,6 +12,11 @@ import type {
   AdminConversationTransfer,
   AdminConversationTransferReason,
 } from '~/types/admin-app-messaging'
+import type {
+  AdminConversationSafetyEscalationPriority,
+  AdminConversationSafetyEscalationReason,
+  AdminConversationSafetyEscalationSummary,
+} from '~/types/admin-app-safety'
 
 definePageMeta({ layout: 'admin' })
 
@@ -40,6 +45,14 @@ const handoffNote = ref('')
 const collaborationError = ref('')
 const savingNote = ref(false)
 const transferring = ref(false)
+const escalating = ref(false)
+const createdEscalation = ref<AdminConversationSafetyEscalationSummary | null>(null)
+const escalationForm = reactive({
+  priority: 'p2' as AdminConversationSafetyEscalationPriority,
+  reasonCode: 'harassment_threat' as AdminConversationSafetyEscalationReason,
+  targetMessageId: '',
+  summary: '',
+})
 
 const { data, status, refresh } = await useAsyncData('admin-app-conversations', async () => {
   listError.value = ''
@@ -78,6 +91,11 @@ watch(selectedId, async (conversationId) => {
   noteText.value = ''
   targetAdminId.value = ''
   handoffNote.value = ''
+  createdEscalation.value = null
+  escalationForm.priority = 'p2'
+  escalationForm.reasonCode = 'harassment_threat'
+  escalationForm.targetMessageId = ''
+  escalationForm.summary = ''
   if (!conversationId) return
   if (selectedSummary.value?.assignment.status === 'mine') {
     await loadConversation(conversationId)
@@ -316,10 +334,45 @@ async function transferConversation() {
   }
 }
 
+async function createSafetyEscalation() {
+  const conversationId = selectedId.value
+  const summary = escalationForm.summary.trim()
+  if (!conversationId || !summary || escalating.value || !canCollaborate.value) return
+  if (!window.confirm('确认创建内部安全升级案件？案件不会伪装成用户举报，也不会自动限制话题；发起人不能审核本人案件。')) return
+  escalating.value = true
+  collaborationError.value = ''
+  const operationId = crypto.randomUUID().replaceAll('-', '')
+  try {
+    const response = await api<{ data: { escalation: AdminConversationSafetyEscalationSummary; replayed: boolean } }>(
+      `/api/admin/app/conversations/${conversationId}/safety-escalations`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': `operator.escalation.${operationId}` },
+        body: {
+          priority: escalationForm.priority,
+          reasonCode: escalationForm.reasonCode,
+          targetMessageId: escalationForm.targetMessageId || null,
+          summary,
+        },
+      },
+    )
+    createdEscalation.value = response.data.escalation
+    escalationForm.summary = ''
+    escalationForm.targetMessageId = ''
+  }
+  catch (error) {
+    collaborationError.value = apiErrorMessage(error, '安全升级案件创建失败，已保留输入内容。')
+  }
+  finally {
+    escalating.value = false
+  }
+}
+
 const canReply = computed(() => detail.value?.status === 'active' && detail.value.assignment.status === 'mine')
 const canCollaborate = computed(() => detail.value?.assignment.status === 'mine')
 const canTransfer = computed(() => canCollaborate.value && detail.value?.status !== 'closed')
 const availableOperators = computed(() => operators.value.filter(operator => !operator.isCurrentAdmin))
+const escalationTargetMessages = computed(() => messages.value.filter(message => message.senderType !== 'system'))
 
 function assignmentLabel(value: AdminConversationSummary['assignment']['status']) {
   if (value === 'mine') return '由我处理'
@@ -619,6 +672,81 @@ function apiErrorMessage(error: unknown, fallback: string) {
                   >
                     {{ transferring ? '转派中…' : '确认转派' }}
                   </button>
+                </form>
+              </div>
+              <div class="min-w-0 border-t border-gray-200 bg-red-50/40 p-4 lg:col-span-2 sm:p-5">
+                <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div class="min-w-0">
+                    <h3 class="text-sm font-semibold text-red-950">升级安全审核</h3>
+                    <p class="mt-1 max-w-3xl text-xs leading-5 text-red-900/75">
+                      创建独立内部案件并固定当前最小消息证据；不会伪装成用户举报，也不会自动限制话题。发起人不能审核本人案件。
+                    </p>
+                  </div>
+                  <NuxtLink
+                    v-if="createdEscalation"
+                    :to="`/admin/app/safety?tab=escalations&escalationId=${createdEscalation.escalationId}`"
+                    class="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-white px-4 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                  >
+                    查看案件 {{ createdEscalation.escalationId }}
+                  </NuxtLink>
+                </div>
+
+                <form class="mt-4 grid min-w-0 gap-3 lg:grid-cols-2" @submit.prevent="createSafetyEscalation">
+                  <label class="block min-w-0">
+                    <span class="mb-1.5 block text-xs font-medium text-gray-700">优先级</span>
+                    <select v-model="escalationForm.priority" class="min-h-10 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                      <option value="p0">P0 · 现实人身安全紧急风险</option>
+                      <option value="p1">P1 · 高风险，需尽快复核</option>
+                      <option value="p2">P2 · 一般安全问题</option>
+                      <option value="p3">P3 · 低风险信息核查</option>
+                    </select>
+                  </label>
+                  <label class="block min-w-0">
+                    <span class="mb-1.5 block text-xs font-medium text-gray-700">稳定原因</span>
+                    <select v-model="escalationForm.reasonCode" class="min-h-10 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                      <option value="suspected_impersonation">疑似冒名或身份误导</option>
+                      <option value="harassment_threat">骚扰、威胁或不当沟通</option>
+                      <option value="fraud_inducement">诈骗、金钱或站外诱导</option>
+                      <option value="privacy_exposure">隐私或敏感信息暴露</option>
+                      <option value="minor_safety">疑似未成年人安全风险</option>
+                      <option value="imminent_danger">现实人身安全紧急风险</option>
+                      <option value="other">其他需独立安全复核的问题</option>
+                    </select>
+                  </label>
+                  <label class="block min-w-0 lg:col-span-2">
+                    <span class="mb-1.5 block text-xs font-medium text-gray-700">目标消息（可选）</span>
+                    <select v-model="escalationForm.targetMessageId" class="min-h-10 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                      <option value="">整个话题，不指定单条消息</option>
+                      <option v-for="message in escalationTargetMessages" :key="message.messageId" :value="message.messageId">
+                        #{{ message.sequence }} · {{ message.senderLabel }} · {{ message.text.slice(0, 48) }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="block min-w-0 lg:col-span-2">
+                    <span class="mb-1.5 flex items-center justify-between gap-3 text-xs font-medium text-gray-700">
+                      <span>内部升级说明</span>
+                      <span class="font-normal text-gray-500">{{ escalationForm.summary.length }} / 1000</span>
+                    </span>
+                    <textarea
+                      v-model="escalationForm.summary"
+                      :disabled="!canCollaborate || escalating"
+                      maxlength="1000"
+                      rows="3"
+                      required
+                      class="w-full min-w-0 resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm leading-6 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:bg-gray-100"
+                      placeholder="只记录安全审核所需事实、已观察行为和需要复核的问题…"
+                    />
+                  </label>
+                  <div class="flex min-w-0 flex-col gap-2 lg:col-span-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p class="text-xs leading-5 text-gray-600">P0/P1 不会自动处置；现实紧急风险仍需按值班 Runbook 线下升级。</p>
+                    <button
+                      type="submit"
+                      class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg bg-red-700 px-5 py-2 text-sm font-medium text-white hover:bg-red-800 disabled:opacity-40"
+                      :disabled="!canCollaborate || !escalationForm.summary.trim() || escalating"
+                    >
+                      {{ escalating ? '创建中…' : '创建内部安全案件' }}
+                    </button>
+                  </div>
                 </form>
               </div>
               <div v-if="collaborationError" class="border-t border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2 sm:px-5">
