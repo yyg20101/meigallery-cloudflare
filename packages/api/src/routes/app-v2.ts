@@ -31,6 +31,15 @@ import {
   setViewerInteraction,
 } from '../services/app-viewer-interactions'
 import {
+  APP_FOLLOW_UPDATE_MAX_PAGE_SIZE,
+  APP_FOLLOW_UPDATE_POLICY_ID,
+  AppFollowUpdateError,
+  getAppFollowUpdateRuntimeConfig,
+  listAppFollowUpdates,
+  parseAppFollowUpdateListQuery,
+  resolveAppFollowUpdateCapability,
+} from '../services/app-follow-updates'
+import {
   createAppFavoriteFolder,
   deleteAppFavoriteFolder,
   getAppFavoriteState,
@@ -1051,6 +1060,32 @@ for (const [path, interactionType] of [
   })
 }
 
+appV2Routes.get('/me/follow-updates', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const query = parseAppFollowUpdateListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppFollowUpdates(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      c.req.url,
+      getAppFollowUpdateRuntimeConfig(c.env),
+      query,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
 appV2Routes.get('/person-profiles/:profileId/favorite', async (c) => {
   try {
     return appApiSuccess(c, await getAppFavoriteState(
@@ -1338,9 +1373,13 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   const notifications = getAppNotificationRuntimeConfig(env)
   const wallet = getAppWalletRuntimeConfig(env)
   const interactionCollections = getAppInteractionCollectionRuntimeConfig(env)
-  const interactionCollectionCapabilities = auth.enabled
-    ? await resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections)
-    : { favorite: false, history: false }
+  const followUpdates = getAppFollowUpdateRuntimeConfig(env)
+  const [interactionCollectionCapabilities, followUpdatesCapability] = auth.enabled
+    ? await Promise.all([
+        resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections),
+        resolveAppFollowUpdateCapability(env.DB, followUpdates),
+      ])
+    : [{ favorite: false, history: false }, false]
   return {
     product: 'meigallery',
     appVersion: '1.0',
@@ -1350,6 +1389,7 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       interactions: {
         like: auth.enabled,
         follow: auth.enabled,
+        followUpdates: followUpdatesCapability,
         favorite: interactionCollectionCapabilities.favorite,
         history: interactionCollectionCapabilities.history,
       },
@@ -1382,6 +1422,12 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       maxFolderNameLength: APP_FAVORITE_MAX_FOLDER_NAME_LENGTH,
       maxItemsPerFolder: APP_FAVORITE_MAX_ITEMS_PER_FOLDER,
       historyRecordingDefault: false,
+    },
+    followUpdates: {
+      policyVersion: followUpdates.policyId || APP_FOLLOW_UPDATE_POLICY_ID,
+      transport: 'http_pull',
+      maxPageSize: APP_FOLLOW_UPDATE_MAX_PAGE_SIZE,
+      notificationMode: 'in_app_only',
     },
     auth: {
       methods: auth.methods,
@@ -1561,6 +1607,9 @@ function appInteractionError(
     return appApiError(c, error.status, error.code, error.message)
   }
   if (error instanceof AppInteractionCollectionError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  if (error instanceof AppFollowUpdateError) {
     return appApiError(c, error.status, error.code, error.message, error.retryable)
   }
   throw error

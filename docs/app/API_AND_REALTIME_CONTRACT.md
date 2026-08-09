@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-09
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -111,6 +111,18 @@ Interaction-2 以兼容新增方式把累计契约提升为 `1.11.0`，只冻结
 - OQ-014、OQ-020、OQ-023 保持未决；当前不执行 migration、不生成 purge、不接推荐信号、搜索历史或关注更新。KMP 客户端、专项测试和远端联调按开发顺序后置。
 
 完整边界见 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)。
+
+### 1.10 Interaction-3 局部冻结记录
+
+Interaction-3 以兼容新增方式把累计契约提升为 `1.12.0`，只冻结并实现默认关闭的服务端关注更新边界：
+
+- `GET /api/v2/me/follow-updates` 只读取当前账号关注建立后、策略生效后审核通过的 `person_publication_reviews`，不新增第二套发布事件或内容快照。
+- 响应使用账号绑定不透明游标，携带稳定更新 ID、发布/投影版本、发布时间和当前仍满足公开资格的人物卡片；不返回内部审核信息和受保护媒体。
+- bootstrap 增加独立 `interactions.followUpdates` 与 `followUpdates` 配置；能力必须通过 Auth、运行时、版本化策略和 production-ready 门禁，不能由 `follow=true` 推导。
+- Message-3 在 HTTP pull 前按账号惰性投影关注更新 Outbox，以 `(account,event type,publication)` 去重；投递前重验当前关注、屏蔽与公开资格，取消关注或失效后抑制且不补发。
+- 当前不执行 `0079`、不配置环境、不接系统推送，不实现 KMP 页面，不运行专项测试或远端联调；所有现有环境继续返回 `followUpdates=false`。
+
+完整边界见 [Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)。
 
 ## 2. 通用请求
 
@@ -280,7 +292,8 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 | GET/PUT/DELETE | `/api/v2/person-profiles/:profileId/favorite` | Interaction-2：收藏状态、加入默认收藏、取消全部收藏 |
 | POST | `/api/v2/person-profiles/:profileId/view-history` | Interaction-2：详情成功呈现后的版本化有效浏览记录 |
 | GET | `/api/v2/me/likes` | 喜欢列表 |
-| GET | `/api/v2/me/follows` | 关注和更新 |
+| GET | `/api/v2/me/follows` | Interaction-1：本人已关注关系列表 |
+| GET | `/api/v2/me/follow-updates` | Interaction-3：关注建立后的已审核公开发布更新流 |
 | GET | `/api/v2/me/favorites` | Interaction-2：全部收藏去重聚合列表 |
 | GET | `/api/v2/me/favorite-folders` | Interaction-2：收藏夹、条目数与当前额度 |
 | PUT/PATCH/DELETE | `/api/v2/me/favorite-folders/:folderId` | Interaction-2：幂等创建、条件编辑或删除自定义收藏夹 |
@@ -295,7 +308,7 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。搜索历史、关注更新事件和推荐信号仍未冻结；不得用自由文本或现有互动表临时替代。所有互动接口不返回 reciprocal/matched 等字段，不创建会话，也不向目标真人或运营人员发送具体观看者通知。
+Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。搜索历史和推荐信号仍未冻结，不得用自由文本或现有互动表临时替代。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
 
 ## 8. 会员和目录 API
 

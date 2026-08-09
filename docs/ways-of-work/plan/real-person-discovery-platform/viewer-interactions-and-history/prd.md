@@ -6,7 +6,7 @@ Feature ID：F-06
 
 App 版本：1.0
 
-状态：P0 喜欢/关注已进入 Interaction-1 基线；收藏夹与浏览历史服务端已进入 Interaction-2 默认关闭开发基线，客户端、配置和验证后置；推荐信号与保留期仍待门禁关闭
+状态：P0 喜欢/关注已进入 Interaction-1 基线；收藏夹/浏览历史与关注更新服务端已分别进入 Interaction-2/3 默认关闭开发基线，客户端、配置和验证后置；推荐信号与保留期仍待门禁关闭
 
 ## 2. Epic
 
@@ -198,7 +198,7 @@ Interaction-1 只冻结喜欢与关注的账号私有关系，供 App 1.0 开发
 - 取消操作即使资料已不可见也必须可执行，避免用户无法清理自己的关系。
 - 本人列表使用私有响应、稳定游标和服务端权威状态；资料失效时只返回最小不可用占位，不返回封面、标签或其他公开字段。
 - 本阶段不生成目标侧通知、不开放互动者名单、不创建会话、不写聚合热度，也不把互动直接接入推荐信号。
-- 关注页本阶段先提供“已关注”基础列表；发布更新流与去重站内通知须在内容发布事件契约冻结后启用。
+- Interaction-1 只提供“已关注”基础列表；发布更新流与去重站内通知由 Interaction-3 独立契约和 capability 控制，不能随 `follow=true` 自动启用。
 - 收藏、收藏夹、浏览历史、拉黑联动 Workflow 和数据保留任务不属于 Interaction-1；不得用扁平收藏临时表替代未来多文件夹模型。
 
 开发能力随 Auth capability 最小权限启用；生产 Auth 未通过既有上线门禁前，Interaction-1 不得对外开放。
@@ -215,6 +215,19 @@ Interaction-2 在不关闭 OQ-014、OQ-020、OQ-023 的前提下，冻结多文�
 - 当前只完成服务端代码、D1 schema 和 OpenAPI，运行门禁保持关闭；KMP、配置、migration、专项测试、远端联调和自动清理均按开发顺序后置。
 
 详细边界见 `docs/app/INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md`。
+
+### 6.10 Interaction-3 服务端开发基线
+
+Interaction-3 在不接系统推送、不新增第二套发布事实、不向目标真人披露关注者身份的前提下，冻结关注更新与站内提醒：
+
+- 更新事实直接读取 `person_publication_reviews` 已审核 `published` 记录；事件必须晚于当前关注建立时间与版本化策略生效时间。
+- `/api/v2/me/follow-updates` 以账号绑定游标返回稳定更新 ID、资料/投影版本、发布时间和当前仍公开的人物卡片；不返回草稿、内部审核信息或受保护内容。
+- 站内提醒在用户 HTTP pull 时按账号惰性写入 Message-3 Outbox，相同账号与发布事件只保留一项，不在发布事务同步枚举全部关注者。
+- 投递前重验当前关注、屏蔽、认证、发布、授权、有效期、可见性与来源图库；取消关注或失效后的待投递项永久抑制，恢复时不补发旧事件。
+- bootstrap 独立返回 `interactions.followUpdates`；Auth、运行开关、策略版本和 production-ready 任一缺失都安全关闭。
+- 当前只完成服务端代码、D1 schema 和 OpenAPI `1.12.0`；KMP、配置、migration、专项测试和远端联调统一后置。
+
+详细边界见 `docs/app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
 
 ## 7. Acceptance Criteria
 

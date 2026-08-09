@@ -419,6 +419,7 @@ export type {
   AppFavoriteFolderType,
   AppFavoriteListItem,
   AppFavoriteMutationResult,
+  AppFollowUpdateItem,
   AppViewHistoryClearResult,
   AppViewHistoryDeleteResult,
   AppViewHistoryEntitlementStatus,

@@ -12,6 +12,13 @@ import type {
   AppNotificationUnreadCounts,
 } from '@meigallery/shared'
 import type { Bindings } from '../index'
+import {
+  APP_FOLLOW_UPDATE_EVENT_TYPE,
+  enqueueAppFollowUpdateNotifications,
+  getAppFollowUpdateRuntimeConfig,
+  isAppFollowUpdateDeliveryEligible,
+  type AppFollowUpdateRuntimeConfig,
+} from './app-follow-updates'
 
 export const APP_NOTIFICATION_POLICY_ID = 'ntp_app_1_0_message_3_dev_1'
 export const APP_NOTIFICATION_MAX_PAGE_SIZE = 40
@@ -39,6 +46,7 @@ export interface AppNotificationRuntimeConfig {
   adminEnabled: boolean
   policyId: string
   requireProductionReady: boolean
+  followUpdates?: AppFollowUpdateRuntimeConfig
 }
 
 export interface AppNotificationTargetCapabilities {
@@ -98,6 +106,7 @@ type OutboxDeliveryRow = {
   created_at: string
   account_id: number
   event_type: string
+  event_ref: string
   target_type: string
   target_id: string
   attempts: number
@@ -146,6 +155,9 @@ export function getAppNotificationRuntimeConfig(env: Pick<Bindings,
   | 'APP_NOTIFICATIONS_ADMIN_ENABLED'
   | 'APP_NOTIFICATIONS_POLICY_VERSION'
   | 'APP_NOTIFICATIONS_PRODUCTION_READY'
+  | 'APP_FOLLOW_UPDATES_ENABLED'
+  | 'APP_FOLLOW_UPDATES_POLICY_VERSION'
+  | 'APP_FOLLOW_UPDATES_PRODUCTION_READY'
 >): AppNotificationRuntimeConfig {
   const requireProductionReady = env.APP_ENV === 'production'
   const policyId = normalizePolicyId(env.APP_NOTIFICATIONS_POLICY_VERSION)
@@ -163,6 +175,7 @@ export function getAppNotificationRuntimeConfig(env: Pick<Bindings,
       && productionGateSatisfied,
     policyId,
     requireProductionReady,
+    followUpdates: getAppFollowUpdateRuntimeConfig(env),
   }
 }
 
@@ -590,6 +603,23 @@ export async function drainAppNotificationOutbox(
     try {
       const row = await readOutboxDelivery(db, pendingRow.id, config.requireProductionReady)
       if (!row) throw new Error('NOTIFICATION_DEFINITION_UNAVAILABLE')
+      if (
+        row.event_type === APP_FOLLOW_UPDATE_EVENT_TYPE
+        && !await isAppFollowUpdateDeliveryEligible(
+          db,
+          {
+            accountId: row.account_id,
+            eventRef: row.event_ref,
+            profileId: row.target_id,
+          },
+          config.followUpdates,
+          now,
+        )
+      ) {
+        await suppressOutboxDelivery(db, row.outbox_id, nowIso)
+        suppressed += 1
+        continue
+      }
       if (row.necessity === 'optional' && row.preference_key) {
         const enabled = await isOptionalCategoryEnabled(
           db,
@@ -599,11 +629,7 @@ export async function drainAppNotificationOutbox(
           now,
         )
         if (!enabled) {
-          await db.prepare(`
-            UPDATE app_notification_outbox
-            SET status = 'suppressed', processed_at = ?, last_error_code = NULL
-            WHERE id = ? AND status = 'processing'
-          `).bind(nowIso, row.outbox_id).run()
+          await suppressOutboxDelivery(db, row.outbox_id, nowIso)
           suppressed += 1
           continue
         }
@@ -674,8 +700,33 @@ async function prepareViewerNotifications(
   now: Date,
 ) {
   requireAppNotificationsEnabled(config)
-  await requireNotificationPolicy(db, config)
+  const policy = await requireNotificationPolicy(db, config)
+  if (config.followUpdates?.enabled) {
+    await enqueueAppFollowUpdateNotifications(
+      db,
+      accountId,
+      config.followUpdates,
+      {
+        policyId: config.policyId,
+        effectiveAt: policy.effective_at!,
+        requireProductionReady: config.requireProductionReady,
+      },
+      now,
+    )
+  }
   await drainAppNotificationOutbox(db, config, now, { accountId, limit: APP_NOTIFICATION_MAX_PAGE_SIZE })
+}
+
+async function suppressOutboxDelivery(
+  db: D1Database,
+  outboxId: string,
+  processedAt: string,
+) {
+  await db.prepare(`
+    UPDATE app_notification_outbox
+    SET status = 'suppressed', processed_at = ?, last_error_code = NULL
+    WHERE id = ? AND status = 'processing'
+  `).bind(processedAt, outboxId).run()
 }
 
 async function requireNotificationPolicy(
@@ -764,6 +815,7 @@ async function readOutboxDelivery(
 ) {
   return db.prepare(`
     SELECT outbox.id AS outbox_id, outbox.created_at, outbox.account_id, outbox.event_type,
+           outbox.event_ref,
            outbox.target_type, outbox.target_id, outbox.attempts,
            definition.category, definition.necessity, definition.preference_key,
            definition.action, definition.minimum_client_version,

@@ -1,7 +1,7 @@
 /**
  * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
  * Message-2 安全、Safety-2 申诉、Message-3 站内通知、Wallet-1 与
- * Interaction-2 收藏历史契约。
+ * Interaction-2 收藏历史与 Interaction-3 关注更新契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -12,7 +12,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.11.0'
+  contractVersion: '1.12.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -50,6 +50,7 @@ export interface AppBootstrapConfig {
     interactions: {
       like: boolean
       follow: boolean
+      followUpdates: boolean
       favorite: boolean
       history: boolean
     }
@@ -82,6 +83,12 @@ export interface AppBootstrapConfig {
     maxFolderNameLength: number
     maxItemsPerFolder: number
     historyRecordingDefault: false
+  }
+  followUpdates: {
+    policyVersion: string
+    transport: 'http_pull'
+    maxPageSize: number
+    notificationMode: 'in_app_only'
   }
   auth: {
     methods: Array<'email'>
@@ -724,6 +731,16 @@ export interface AppViewerInteractionListItem {
   createdAt: string
   profile: AppPersonProfile | null
   unavailableReason: 'PROFILE_NOT_AVAILABLE' | null
+}
+
+export interface AppFollowUpdateItem {
+  updateId: string
+  updateType: 'profile_published'
+  profileId: string
+  profileVersion: number
+  projectionVersion: number
+  publishedAt: string
+  profile: AppPersonProfile
 }
 
 export type AppFavoriteFolderType = 'default' | 'custom'

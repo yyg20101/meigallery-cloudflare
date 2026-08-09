@@ -46,17 +46,19 @@ Message-3 建立“业务状态变化 → D1 原子 Outbox → 固定安全模�
 | 独立复核 | `safety.appeal_upheld`、`safety.appeal_changed`、`safety.appeal_closed` | `system_security` | 本人申诉 |
 | 账号安全 | `account.session_logged_in`、`account.device_revoked`、`account.refresh_token_reuse_detected` | `system_security` | 本人账号安全记录 |
 | 金币账本 | `wallet.entry_posted` | `membership_coin` | 本人钱包分录 |
+| 关注更新 | `interaction.followed_profile_updated` | `interaction` | 当前人物资料 |
 
 业务表触发器只有在 D1 策略 `generation_enabled=1` 时才写 Outbox，因此默认 migration 不会对已有业务数据或新写入产生通知。会员到期没有原始写事件，由定时恢复任务按策略 `effective_at` 之后的到期记录补建稳定 Outbox；它不会扫描或补发策略生效前的历史。
 
+关注更新由后续 Interaction-3 `0079` 激活并增加固定 development 模板，不在人物发布事务内使用 trigger 全量扇出；用户 HTTP pull 时按当前关注关系惰性写入 Outbox，投递前再次校验关系和人物公开资格。其独立运行策略、API `1.12.0` 和后置边界见 `INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
+
 ### 3.2 已预留但保持 inactive
 
-- `interaction.followed_profile_updated`
 - `data.export_ready`
 - `account.deletion_updated`
 - `marketing.campaign`
 
-这些定义只冻结 category、目标和 action 形状，不开放对应业务能力，不创建模板投影，也不代表金币、数据权利、关注更新或营销已经交付。未来启用前仍需完成各自业务事实、模板审批、权限、保留和验收。
+这些定义只冻结 category、目标和 action 形状，不开放对应业务能力，不创建模板投影，也不代表数据权利或营销已经交付。未来启用前仍需完成各自业务事实、模板审批、权限、保留和验收。
 
 ## 4. D1 权威模型与可靠性
 
@@ -178,5 +180,5 @@ Nuxt 路由：`/admin/app/notifications`。
 
 - dev/production `0076` migration、远程 Worker 部署、真实 HTTP smoke、真机 UI 与多设备验收。
 - OQ-020、生产模板审批、正式告警阈值、值班与数据权利 Runbook。
-- 实时刷新信号、APNs/FCM、关注更新、数据导出/注销和营销事件的业务启用；Wallet-1 仍需独立完成远端 migration 与启用门禁。
+- 实时刷新信号、APNs/FCM、数据导出/注销和营销事件的业务启用；Interaction-3 关注更新的 KMP、配置、migration、专项测试和远端联调，以及 Wallet-1 远端 migration 与启用门禁仍需独立完成。
 - 模板/策略写后台、受控补发/撤回、统计看板和 production 发布。

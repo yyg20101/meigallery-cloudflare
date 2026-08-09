@@ -114,7 +114,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - PUT 通过参数化条件写入在 D1 内重新校验当前资料的认证、发布、授权时间、可见性和来源图库状态；DELETE 不依赖资料仍公开，便于用户清理已失效关系。
 - 本人列表以 `created_at DESC, profile_id ASC` 稳定分页，不透明游标绑定账号公开作用域和关系类型。资料已失效时只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不泄露历史封面、地区、标签或简介。
 - bootstrap 只在 Auth 安全配置整体可用时返回 `interactions.like=true` 和 `interactions.follow=true`；收藏与历史由 Interaction-2 独立门禁控制，不随 Auth 或喜欢/关注自动开启。production 现有 Auth 开关保持关闭；dev 因内部 Safety-2 联调开启 Auth，会同时暴露既有喜欢/关注契约，但不开放注册且不改变生产上线状态。
-- 不提供按目标资料查看互动者的产品 API，不创建匹配、会话、目标侧通知、关注更新事件或推荐信号。收藏/收藏夹与历史使用独立表族，不得写入当前关系表。
+- Interaction-1 本身不提供按目标资料查看互动者的产品 API，也不创建匹配、会话、目标侧通知或推荐信号。关注更新由 Interaction-3 独立读取发布事实；收藏/收藏夹与历史使用 Interaction-2 独立表族，不得写入当前关系表。
 
 完整跨仓边界与验收要求见 `docs/app/INTERACTION_1_CROSS_REPO_INTEGRATION.md`。
 
@@ -131,6 +131,19 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 当前完成范围仅为服务端代码、D1 schema 和 OpenAPI；KMP 客户端、环境配置、migration 执行、专项测试与远端联调按当前开发顺序后置。
 
 完整边界见 `docs/app/INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md`。
+
+### Interaction-3 关注更新流与站内通知 `[服务端开发完成，默认关闭]`
+
+`0079_app_follow_updates.sql` 和 App API v2 `1.12.0` 建立关注对象公开发布更新的服务端开发基线：
+
+- `person_publication_reviews` 是唯一更新事件事实，不新增动态正文、媒体摘要或历史人物快照表。只有 `published` 且晚于当前关注关系和策略 `effective_at` 的记录可进入更新流。
+- `GET /api/v2/me/follow-updates` 按 `reviewed_at DESC, publication_id DESC` 游标分页，游标绑定账号；响应携带事件版本与当前仍公开的人物投影，不返回草稿、内部审核信息或受保护媒体。
+- `app_follow_update_policies` 只保存 feed、站内通知投影、生产门禁和生效下界；bootstrap 的 `interactions.followUpdates` 不从 `follow=true` 推导。
+- 站内通知在用户执行 HTTP pull 时按账号惰性写入既有 Message-3 Outbox，以 `(account_id,event_type,event_ref)` 去重，避免发布事务同步枚举关注者。
+- Outbox 投递前重验关注关系、屏蔽状态、发布、认证、用途授权、有效期、可见性和来源图库。取消关注、功能关闭或资料失效后标记 `suppressed`，恢复时不补发旧事件。
+- 当前未配置 `APP_FOLLOW_UPDATES_*`、未执行 `0079`、未接系统推送、未实现 KMP 页面，也未运行专项测试或远端联调；所有现有环境 capability 保持关闭。
+
+完整边界见 `docs/app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
 
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
@@ -686,7 +699,7 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 
 该表族是可回滚开发基线，不替代未来经 G-01/G-03 冻结后的完整身份、隐私和数据权利模型；没有 production migration、seed 或真实同意数据。
 
-### App 互动、收藏与浏览历史表族 `[服务端开发完成，默认关闭]`
+### App 互动、收藏、历史与关注更新表族 `[服务端开发完成，默认关闭]`
 
 `0070_app_viewer_interactions.sql` 保存 Interaction-1 喜欢/关注；`0078_app_favorites_and_view_history.sql` 另建 Interaction-2 收藏与历史表族。两者均不回填 legacy 数据，且收藏不得降级为 `app_viewer_interactions` 中的第三种关系：
 
@@ -698,8 +711,9 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 | `app_favorite_folder_items` | 文件夹与人物资料关系 | 账号+文件夹+资料唯一；同一人物可属于多个文件夹 |
 | `app_view_history_preferences` | 本人历史记录开关与并发版本 | 默认关闭；mutation token 绑定清除和屏蔽联动 |
 | `app_profile_view_history` | 本人按人物聚合的浏览历史 | 账号+资料唯一；保存最近浏览、次数、最近 view ID 摘要和到期时间 |
+| `app_follow_update_policies` | 关注更新流与通知投影版本化门禁 | 生效时间禁止历史回填；development/production-ready 分离；不复制发布事件 |
 
-Interaction-2 策略只 seed 一条默认关闭的 development 配置，不 seed 收藏夹、收藏条目、偏好或历史。当前没有执行 `0078` migration；保留策略未决时不创建 purge 任务，也不允许 production-ready。
+Interaction-2/3 策略都只 seed 默认关闭的 development 配置，不 seed 收藏夹、收藏条目、偏好、历史、更新或通知。当前没有执行 `0078`/`0079` migration；保留策略未决时不创建 purge 任务，也不允许 production-ready。
 
 ### App 五级会员表族 `[开发验证，默认关闭]`
 
@@ -1314,6 +1328,7 @@ queued → processing → completed
 - **生产域名**：Web 站点 `616618.xyz`，API 服务 `api.616618.xyz`。
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - **Interaction-2 服务端开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 接入、配置、migration、专项测试与远端联调后置。
+- **Interaction-3 服务端开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 接入、配置、migration、专项测试与远端联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
 

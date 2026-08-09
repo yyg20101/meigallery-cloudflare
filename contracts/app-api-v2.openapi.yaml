@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.11.0
+  version: 1.12.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -12,7 +12,8 @@ info:
     Message-3 新增 HTTP pull 站内通知、服务端未读数、已读审计和可选分类偏好；通知只保存审核过的固定文案，
     受控动作打开时必须重新校验权威业务状态。Wallet-1 新增本人金币余额、追加式明细与分录详情；金币只记录管理员独立复核后的单笔调整，
     不开放购买、消费、转赠、兑换、提现或支付。Interaction-2 以默认关闭方式新增多文件夹收藏和本人浏览历史；
-    收藏不等于喜欢或匹配，历史默认不记录且必须携带当前偏好版本写入。搜索历史、关注更新流、推荐信号、
+    收藏不等于喜欢或匹配，历史默认不记录且必须携带当前偏好版本写入。Interaction-3 新增关注对象已审核公开发布更新流，
+    并在用户拉取通知时以同一发布事实惰性生成去重站内提醒；取消关注、拉黑或资料失效后不再投影。搜索历史、推荐信号、
     系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
@@ -747,7 +748,7 @@ paths:
       tags: [Interaction]
       operationId: listAppViewerFollows
       summary: 获取本人的已关注列表
-      description: Interaction-1 只提供关系列表；公开内容更新流与通知尚未启用。
+      description: Interaction-1 只提供关系列表；公开发布更新由独立 follow-updates 接口返回。
       security:
         - BearerAuth: []
       parameters:
@@ -766,6 +767,34 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v2/me/follow-updates:
+    get:
+      tags: [Interaction]
+      operationId: listAppFollowUpdates
+      summary: 获取本人所关注人物的公开发布更新流
+      description: >-
+        只返回关注建立后、策略生效后审核通过并公开的发布事件；每项携带当前仍可见的人物资料，
+        不返回草稿、内部审核信息、受保护媒体或观看者身份。资料下线、授权失效、拉黑或取消关注后停止返回。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 本人的关注公开更新事件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FollowUpdateListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/me/favorites:
     get:
       tags: [Interaction]
@@ -1989,7 +2018,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.11.0
+        const: 1.12.0
   parameters:
     ProfileId:
       name: profileId
@@ -2136,7 +2165,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.11.0
+          const: 1.12.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -3720,7 +3749,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, interactionCollections, auth, membershipApplications, messaging, notifications, wallet, safety]
+      required: [product, appVersion, capabilities, discovery, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety]
       properties:
         product:
           type: string
@@ -3741,11 +3770,13 @@ components:
             interactions:
               type: object
               additionalProperties: false
-              required: [like, follow, favorite, history]
+              required: [like, follow, followUpdates, favorite, history]
               properties:
                 like:
                   type: boolean
                 follow:
+                  type: boolean
+                followUpdates:
                   type: boolean
                 favorite:
                   type: boolean
@@ -3824,6 +3855,23 @@ components:
             historyRecordingDefault:
               type: boolean
               const: false
+        followUpdates:
+          type: object
+          additionalProperties: false
+          required: [policyVersion, transport, maxPageSize, notificationMode]
+          properties:
+            policyVersion:
+              type: string
+              pattern: '^fupol_[A-Za-z0-9_-]{1,90}$'
+            transport:
+              type: string
+              const: http_pull
+            maxPageSize:
+              type: integer
+              const: 40
+            notificationMode:
+              type: string
+              const: in_app_only
         auth:
           type: object
           additionalProperties: false
@@ -4956,6 +5004,43 @@ components:
           maxItems: 40
           items:
             $ref: '#/components/schemas/ViewerInteractionListItem'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    FollowUpdateItem:
+      type: object
+      additionalProperties: false
+      required: [updateId, updateType, profileId, profileVersion, projectionVersion, publishedAt, profile]
+      properties:
+        updateId:
+          type: string
+          pattern: '^fup_[A-Za-z0-9_-]{1,75}$'
+        updateType:
+          type: string
+          const: profile_published
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        profileVersion:
+          type: integer
+          minimum: 1
+        projectionVersion:
+          type: integer
+          minimum: 1
+        publishedAt:
+          type: string
+          format: date-time
+        profile:
+          $ref: '#/components/schemas/PersonProfile'
+    FollowUpdateListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/FollowUpdateItem'
         meta:
           $ref: '#/components/schemas/ListMeta'
     Region:
