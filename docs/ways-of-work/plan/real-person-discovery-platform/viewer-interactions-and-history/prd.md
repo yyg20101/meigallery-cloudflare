@@ -6,7 +6,7 @@ Feature ID：F-06
 
 App 版本：1.0
 
-状态：P0 喜欢/关注已进入 Interaction-1 基线；收藏夹/浏览历史与关注更新服务端已分别进入 Interaction-2/3 默认关闭开发基线，客户端、配置和验证后置；推荐信号与保留期仍待门禁关闭
+状态：P0 喜欢/关注已进入 Interaction-1 基线；收藏夹/浏览历史与关注更新已分别完成 Interaction-2/3 默认关闭的 Cloudflare 与 KMP 开发，配置、migration 和专项验证后置；推荐信号与保留期仍待门禁关闭
 
 ## 2. Epic
 
@@ -212,11 +212,11 @@ Interaction-2 在不关闭 OQ-014、OQ-020、OQ-023 的前提下，冻结多文�
 - 浏览历史默认关闭，只有显式开启、详情成功呈现且携带当前历史版本时才记录；卡片曝光、预取和详情失败不得调用记录接口。
 - 逐条删除和全部清除都会原子提升历史版本，操作前的在途请求不得重新写回；关闭记录保持账号私有、服务端权威。
 - 屏蔽人物同步清理喜欢、关注、收藏和当前可见历史，解除屏蔽不恢复；失效资料仅返回最小不可用占位。
-- 当前只完成服务端代码、D1 schema 和 OpenAPI，运行门禁保持关闭；KMP、配置、migration、专项测试、远端联调和自动清理均按开发顺序后置。
+- Cloudflare 服务端、D1 schema、OpenAPI 与 KMP 收藏夹/浏览记录页面均已完成开发，运行门禁保持关闭；配置、migration、专项测试、模拟器/真机、远端联调和自动清理按开发顺序后置。
 
 详细边界见 `docs/app/INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md`。
 
-### 6.10 Interaction-3 服务端开发基线
+### 6.10 Interaction-3 跨仓开发基线
 
 Interaction-3 在不接系统推送、不新增第二套发布事实、不向目标真人披露关注者身份的前提下，冻结关注更新与站内提醒：
 
@@ -225,7 +225,7 @@ Interaction-3 在不接系统推送、不新增第二套发布事实、不向目
 - 站内提醒在用户 HTTP pull 时按账号惰性写入 Message-3 Outbox，相同账号与发布事件只保留一项，不在发布事务同步枚举全部关注者。
 - 投递前重验当前关注、屏蔽、认证、发布、授权、有效期、可见性与来源图库；取消关注或失效后的待投递项永久抑制，恢复时不补发旧事件。
 - bootstrap 独立返回 `interactions.followUpdates`；Auth、运行开关、策略版本和 production-ready 任一缺失都安全关闭。
-- 当前只完成服务端代码、D1 schema；其接口已包含在当前累计 OpenAPI `1.15.0` 中。KMP、配置、migration、专项测试和远端联调统一后置。
+- Cloudflare 服务端、D1 schema 和 KMP 独立 transport/三段式关注页均已完成开发；接口包含在当前累计 OpenAPI `1.16.0` 中。配置、migration、专项测试、模拟器/真机和远端联调统一后置。
 
 详细边界见 `docs/app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
 

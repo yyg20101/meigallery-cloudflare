@@ -6,7 +6,7 @@ App API：v2 / `1.12.0`
 
 日期：2026-08-09
 
-状态：服务端开发完成；默认关闭；配置、migration、客户端与测试后置
+状态：Cloudflare 与 KMP 开发完成；默认关闭；配置、migration、专项测试与联调后置
 
 ## 1. 本阶段目标
 
@@ -25,7 +25,7 @@ App API：v2 / `1.12.0`
 - 不返回草稿、审核中、已拒绝、暂停记录、内部备注、证据引用或受保护媒体。
 - 不向人物资料、真人本人或平台运营侧生成“谁关注了我”的名单或通知。
 - 不把关注、更新打开或通知点击自动写入热度与推荐信号。
-- 不执行 `0079`，不修改 Wrangler，不启用 development/production capability，不补 KMP 页面和专项测试。
+- 不执行 `0079`，不修改 Wrangler，不启用 development/production capability，不接系统推送，也不在本轮补专项测试、模拟器/真机或远端联调。
 
 ## 3. 唯一事实与数据模型
 
@@ -149,11 +149,17 @@ APP_FOLLOW_UPDATES_PRODUCTION_READY
 - `GET /api/v2/me/follow-updates`；
 - App API/OpenAPI/共享类型累计版本 `1.12.0`；
 - Message-3 惰性 Outbox 投影、事件去重和投递前资格复核；
+- KMP 独立 `FollowUpdateCapability`、领域模型和 `KtorFollowUpdateRepository`；
+- 底部“关注”页的“更新 / 已关注 / 喜欢”三段结构，以及首次无关注、暂无更新、事件列表、分页和失败状态；
+- 更新卡当前资料非历史快照披露、取消关注后的事件回收、人物详情返回刷新，以及 Message-3 互动通知直达当前人物详情；
+- Android Debug APK 与 iOS Simulator Kotlin/Native 编译验证；
 - 产品、技术、契约与项目状态文档同步。
 
 统一后置到“全部开发完成”之后：
 
-1. 在 `meigallery-client` 按当前累计 `1.16.0` 契约接入 DTO、Repository、关注更新页面和站内通知跳转。
-2. 选择隔离环境策略版本并配置运行门禁。
-3. 执行本地/远端 migration、D1 专项用例、契约兼容检查、KMP UI 回归和端到端联调。
+1. 选择隔离环境策略版本并配置运行门禁。
+2. 执行本地/远端 migration、D1 专项用例、契约兼容检查、KMP UI 回归和端到端联调。
+3. 覆盖账号隔离、跨账号游标、取消/重新关注、资料下架、授权/认证到期、通知偏好关闭、重复拉取去重和目标失效回收。
 4. 独立评审 production 策略、模板审批、通知保留期与上线授权；不得由 development 策略直接推导生产启用。
+
+KMP 交付提交为 `meigallery-client@5d3cae7`，客户端详细边界见同级仓库 `docs/INTERACTION_3_DELIVERY.md`。该提交不改变任何环境 capability，也不代表 `0079` 已执行。

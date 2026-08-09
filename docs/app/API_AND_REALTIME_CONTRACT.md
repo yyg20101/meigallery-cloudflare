@@ -114,13 +114,13 @@ Interaction-2 以兼容新增方式把累计契约提升为 `1.11.0`，只冻结
 
 ### 1.10 Interaction-3 局部冻结记录
 
-Interaction-3 以兼容新增方式把累计契约提升为 `1.12.0`，只冻结并实现默认关闭的服务端关注更新边界：
+Interaction-3 以兼容新增方式把累计契约提升为 `1.12.0`，并完成默认关闭的 Cloudflare 与 KMP 关注更新边界：
 
 - `GET /api/v2/me/follow-updates` 只读取当前账号关注建立后、策略生效后审核通过的 `person_publication_reviews`，不新增第二套发布事件或内容快照。
 - 响应使用账号绑定不透明游标，携带稳定更新 ID、发布/投影版本、发布时间和当前仍满足公开资格的人物卡片；不返回内部审核信息和受保护媒体。
 - bootstrap 增加独立 `interactions.followUpdates` 与 `followUpdates` 配置；能力必须通过 Auth、运行时、版本化策略和 production-ready 门禁，不能由 `follow=true` 推导。
 - Message-3 在 HTTP pull 前按账号惰性投影关注更新 Outbox，以 `(account,event type,publication)` 去重；投递前重验当前关注、屏蔽与公开资格，取消关注或失效后抑制且不补发。
-- 当前不执行 `0079`、不配置环境、不接系统推送，不实现 KMP 页面，不运行专项测试或远端联调；所有现有环境继续返回 `followUpdates=false`。
+- KMP 已实现独立 capability/transport、“更新 / 已关注 / 喜欢”三段式关注页、取消关注回收、详情返回刷新和现有 Message-3 通知目标跳转；当前仍不执行 `0079`、不配置环境、不接系统推送，也不运行专项测试、模拟器/真机或远端联调。所有现有环境继续返回 `followUpdates=false`。
 
 完整边界见 [Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)。
 

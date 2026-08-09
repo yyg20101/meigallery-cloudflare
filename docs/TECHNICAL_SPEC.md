@@ -133,7 +133,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整边界见 `docs/app/INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md`。
 
-### Interaction-3 关注更新流与站内通知 `[服务端开发完成，默认关闭]`
+### Interaction-3 关注更新流与站内通知 `[Cloudflare 与 KMP 开发完成，默认关闭]`
 
 `0079_app_follow_updates.sql` 和 App API v2 `1.12.0` 建立关注对象公开发布更新的服务端开发基线：
 
@@ -1431,7 +1431,7 @@ queued → processing → completed
 - **生产域名**：Web 站点 `616618.xyz`，API 服务 `api.616618.xyz`。
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - **Interaction-2 跨仓开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 已完成收藏夹、人物归属、浏览记录与成功详情记录闭环，配置、migration、专项测试、模拟器/真机与远端联调后置。
-- **Interaction-3 服务端开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 接入、配置、migration、专项测试与远端联调后置。
+- **Interaction-3 跨仓开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 已接入严格 transport、“更新 / 已关注 / 喜欢”关注页、取消关注回收与通知目标跳转。配置、migration、专项测试、模拟器/真机与远端联调后置，所有环境继续默认关闭。
 - **Search-1 跨仓开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 已完成严格 transport、搜索分页和账号历史全交互，配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Taxonomy-1 跨仓开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；KMP 已完成 Recommendation/Search 共用目录、缓存和 ETag 重验证，Nuxt 管理页面、真实目录、配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Search-2 跨仓开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP 已完成筛选、预估、权益、保存条件和完整来源重验交互，Nuxt 管理页面、真实目录与 grant 迁移、配置、migration、专项测试、模拟器/真机与远端联调后置。

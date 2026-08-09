@@ -180,5 +180,5 @@ Nuxt 路由：`/admin/app/notifications`。
 
 - dev/production `0076` migration、远程 Worker 部署、真实 HTTP smoke、真机 UI 与多设备验收。
 - OQ-020、生产模板审批、正式告警阈值、值班与数据权利 Runbook。
-- 实时刷新信号、APNs/FCM、数据导出/注销和营销事件的业务启用；Interaction-3 关注更新的 KMP、配置、migration、专项测试和远端联调，以及 Wallet-1 远端 migration 与启用门禁仍需独立完成。
+- 实时刷新信号、APNs/FCM、数据导出/注销和营销事件的业务启用；Interaction-3 关注更新的 KMP 已完成，配置、migration、专项测试、模拟器/真机和远端联调仍后置；Wallet-1 远端 migration 与启用门禁仍需独立完成。
 - 模板/策略写后台、受控补发/撤回、统计看板和 production 发布。

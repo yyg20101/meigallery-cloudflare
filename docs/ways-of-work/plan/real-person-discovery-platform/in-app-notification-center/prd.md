@@ -8,7 +8,7 @@ App 版本：1.0
 
 状态：需求讨论中
 
-当前实现记录（Message-3 + Wallet-1 + Interaction-3，2026-08-09）：已完成 production/dev 默认关闭的保守服务端代码闭环，采用 D1 原子 Outbox、固定安全模板、HTTP pull、服务端未读/已读、五类偏好和受控目标复核；当前代码覆盖平台回复、会员申请与权益、举报/申诉结果、账号安全、Wallet-1 已生效分录，以及关注对象已审核公开发布更新。`0077` 激活金币分录事件；`0079` 激活关注更新事件并增加 development 模板，关注提醒在用户拉取通知时按当前关系惰性投影并投递前复核，不在发布事务同步枚举关注者。通知总策略、Wallet-1、Message-3 与 Interaction-3 运行时开关均关闭，因此 migration 本身不会生成或展示通知。数据权利与营销仍为 inactive 未来事件；实时刷新信号、系统推送、模板写后台、生产策略和自动清理均未实现。`0076`～`0079` 尚未统一执行，OQ-020 尚未关闭，migration 不回填历史、不创建通知或钱包业务 seed，保留天数继续为空且 `purge_enabled=0`。完整边界见 [Message-3 跨仓交付基线](../../../../app/MESSAGE_3_NOTIFICATION_INTEGRATION.md)、[Wallet-1 跨仓交付基线](../../../../app/WALLET_1_LEDGER_INTEGRATION.md) 与 [Interaction-3 关注更新流与站内通知开发基线](../../../../app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)。本记录不改变本文“需求讨论中”状态，也不构成生产发布授权。
+当前实现记录（Message-3 + Wallet-1 + Interaction-3，2026-08-09）：已完成 production/dev 默认关闭的保守 Cloudflare 代码闭环，KMP 已接入五类通知中心、Wallet-1 目标跳转和 Interaction-3 关注更新页/人物目标跳转；服务端采用 D1 原子 Outbox、固定安全模板、HTTP pull、服务端未读/已读、五类偏好和受控目标复核。当前代码覆盖平台回复、会员申请与权益、举报/申诉结果、账号安全、Wallet-1 已生效分录，以及关注对象已审核公开发布更新。`0077` 激活金币分录事件；`0079` 激活关注更新事件并增加 development 模板，关注提醒在用户拉取通知时按当前关系惰性投影并投递前复核，不在发布事务同步枚举关注者。通知总策略、Wallet-1、Message-3 与 Interaction-3 运行时开关均关闭，因此 migration 本身不会生成或展示通知。数据权利与营销仍为 inactive 未来事件；实时刷新信号、系统推送、模板写后台、生产策略和自动清理均未实现。`0076`～`0079` 尚未统一执行，OQ-020 尚未关闭，migration 不回填历史、不创建通知或钱包业务 seed，保留天数继续为空且 `purge_enabled=0`。完整边界见 [Message-3 跨仓交付基线](../../../../app/MESSAGE_3_NOTIFICATION_INTEGRATION.md)、[Wallet-1 跨仓交付基线](../../../../app/WALLET_1_LEDGER_INTEGRATION.md) 与 [Interaction-3 关注更新流与站内通知开发基线](../../../../app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)。本记录不改变本文“需求讨论中”状态，也不构成生产发布授权。
 
 ## 2. Epic
 
