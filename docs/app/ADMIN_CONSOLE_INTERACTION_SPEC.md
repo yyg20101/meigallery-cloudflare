@@ -276,6 +276,8 @@ Recommendation-1 已按上述四个 Page ID 完成 Nuxt 开发基线：规则列
 | `ADM-AUD-03` | `/admin/app/audit/integrity` | 完整性状态 | 运行/查看校验、关联异常 | sequence 缺口、业务无审计 |
 | `ADM-AUD-04` | `/admin/app/audit/exports` | 受控导出 | 申请、复核、短期下载 | 待批准、过期、范围变化 |
 
+Audit-1 已完成 `ADM-AUD-01/02/03` Nuxt 开发闭环：列表必须先选择用途，默认最近 7 天且单次最多 31 天，支持 action、业务域、风险、结果、目标、操作者、request/trace 和业务单号精确筛选；admin 仅看本人，Owner 可跨域。详情页直达时再次要求用途，只展示服务端字段级脱敏 before/after、摘要和非敏感关联时间线，读取本身写新审计。完整性页仅 Owner 可见，可对最多 5,000 个连续 sequence 追加检查清单并查看 finding，包含会员发放、钱包入账、运营回复和人物发布四类“业务事实缺审计”状态；页面明确检查不执行修复、migration、配置或生产授权。`ADM-AUD-04` 受控导出与 `ADM-OV-01/02/03` 总览/异常中心仍是后续开发。
+
 ## 6. 关键工作台结构
 
 ### 6.1 通用列表 + 详情

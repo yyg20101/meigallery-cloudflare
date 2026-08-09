@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-10
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1 进入默认关闭或未配置的保守开发验证
 
 ## 1. 契约原则
 
@@ -57,6 +57,12 @@ Membership-1 以兼容新增方式把契约提升为 `1.4.0`，只冻结并实�
 目录管理接口不依赖当前 App 会员能力开关，以便在功能关闭时准备下一版本，但它不能切换 Wrangler 的目录 ID。当前环境引用、已发布、待复核以及存在 grant、会员申请或后继版本引用的目录都只读。发布决定只把新目录变为不可变 `published`；只有后续独立配置变更和既有 production 双门禁同时通过，App 才可能读取或执行该目录。
 
 Entitlement 校验要求五级显式值、typed 安全默认值和稳定 capability。未登记 capability 可以作为全量 `planned` 保存，但任何 `available` 都会阻断发布；这为未来能力预留 Schema，不允许旧客户端因未知字段扩大权限。完整接口和状态边界见 [Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md)。
+
+#### Audit-1 管理平面开发补充
+
+`/api/admin/app/audit` 新增用途必填的受限审计查询、字段级脱敏详情、非敏感关联时间线和 Owner 完整性检查。该前缀是 Nuxt 管理契约，不修改 App API v2 或 KMP capability。普通 admin 的 SQL 查询固定绑定本人 actor；Owner 才可跨域。每次查询/详情读取都追加新审计事件，审计页面没有业务重放、回滚或修改接口。
+
+完整性检查通过稳定 sequence 和 SHA-256 链式 manifest 检测缺口、索引、载荷、敏感字段、Action 登记和相同范围摘要变化，并反向核对会员发放、钱包入账、运营回复和人物发布四类权威业务事实是否有对应审计；检查只追加清单和摘要 finding，不补写审计。`0090`、正式 Action registry、保留与调度配置、专项测试以及受控导出继续后置。完整边界见 [Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md)。
 
 ### 1.5 Message-1 局部冻结记录
 

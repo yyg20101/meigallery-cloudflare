@@ -208,6 +208,8 @@ Search-1 当前已完成 production 默认关闭的公开字段人物搜索和�
 
 当前开发实现已交付 `ADM-MBR-01/02` 的版本完整复制、五级原子编辑、typed entitlement、安全默认值、客户端 capability、影响分析和独立发布复核。目录发布只形成不可变业务版本，不自动切换环境目录或迁移 grant；真实等级数值、production-ready 决策、配置、migration 执行和测试统一在开发结束后处理。实现边界见 [Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md)。
 
+当前开发实现也已交付 `ADM-AUD-01/02/03` 的用途审计查询、admin 本人/Owner 跨域权限、字段级脱敏详情、稳定关联时间线和 Owner 完整性清单。完整性清单除序号、索引、载荷、Action 和摘要外，还反向核对会员发放、钱包入账、运营回复及人物发布四类关键业务事实是否具有对应审计。该能力只读且不提供自动补审计、业务重放或历史修改；Action 生产口径、保留期、自动检查、受控导出、migration 执行、配置和专项测试继续后置。实现边界见 [Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md)。
+
 ### 5.8 金币与后续虚拟商品
 
 - **PRD-FR-070**：金币不可提现、转账、兑换法币或用于概率商品。

@@ -644,6 +644,11 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/safety/appeals/:appealId/decision` | 使用 expectedVersion 维持原结论或原子重开举报 | admin+ |
 | GET | `/api/admin/app/safety/runtime-control` | 读取全局话题暂停、容量、租约和保留门禁 | admin+ |
 | PATCH | `/api/admin/app/safety/runtime-control` | 幂等更新全局运行控制，要求版本/原因/审计 | owner |
+| GET | `/api/admin/app/audit/events` | 选择用途后按 31 天受限范围、精确引用和稳定 sequence 游标查询；admin 仅本人、owner 跨域 | admin+ |
+| GET | `/api/admin/app/audit/events/:eventId` | 重新校验对象范围并返回字段级脱敏差异与非敏感关联时间线；读取自身写审计 | admin+ |
+| GET | `/api/admin/app/audit/integrity/overview` | 读取事实/索引、Action 登记和最近检查生产阻断摘要 | owner |
+| GET | `/api/admin/app/audit/integrity/checks[/:checkId]` | 读取不可变完整性检查历史和最多前 50 条 finding | owner |
+| POST | `/api/admin/app/audit/integrity/checks` | 幂等追加最多 5,000 sequence 的完整性清单，不修改原事件 | owner |
 | POST | `/api/admin/import-jobs` | 创建导入任务（需 Turnstile） | admin+ |
 | GET | `/api/admin/import-jobs/:id` | 导入任务详情和进度 | admin+ |
 | POST | `/api/admin/import-jobs/:id/process` | 处理导入任务（需 Turnstile） | admin+ |
@@ -1153,6 +1158,12 @@ CREATE INDEX idx_audit_logs_time ON admin_audit_logs(created_at);
 ```
 
 后台写操作必须写入 `admin_audit_logs` 并补测试。普通单步写入可调用 `writeAuditLog`；高风险多语句工作流应把审计 `INSERT` 与状态变更放入同一受控 `db.batch`，并通过条件 `INSERT ... SELECT` 确保未取得并发锁时不会生成假审计。新增 `POST` / `PUT` / `PATCH` / `DELETE` 管理端路由时必须同步添加审计日志断言。
+
+Audit-1 继续把 `admin_audit_logs` 作为唯一事实源。`0090_app_audit_query_and_integrity.sql` 通过 `app_audit_event_index` 自动赋予稳定 sequence，通过可选 `app_audit_event_contexts` 追加 request/trace/业务/审批引用；历史事实、索引、上下文、Action 版本和检查清单均由 trigger 禁止更新或删除。Action registry 使用追加 `(action_key, schema_version)`，最高版本决定当前 active/retired 状态，不允许原地改定义。
+
+审计列表默认 7 天、最大 31 天，游标绑定管理员可见范围与完整筛选指纹。admin 只能查询本人操作，owner 才能跨域；详情读取重新校验对象范围并对消息、备注、证据、凭据、邮箱、电话、精确位置、私有 key、疑似 JWT/私钥/签名 URL 和长文本进行服务端脱敏。查询和详情读取本身追加审计，不提供修改、回滚或重放入口。
+
+Owner 完整性检查默认最近 1,000、单次最多 5,000 个连续 sequence，生成带 `manifest_version` 的 SHA-256 链式 manifest；摘要覆盖原事实、稳定索引和结构化上下文，并只与同范围同算法版本旧清单比较。检查检测序号缺口、源事实缺少索引、非法 JSON、敏感字段、未登记 Action、同范围 manifest 变化，以及会员发放、钱包入账、运营回复、人物发布四类关键业务事实是否缺少对应审计。反向检查只读取既有权威表并保存摘要 finding，不复制业务载荷、不猜测操作者、不自动补写审计。检查结果和 finding 只追加，不修复源事实；正式 Action 口径、保留期、自动调度、告警和专项测试统一后置。完整边界见 `docs/app/AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md`。
 
 ### site_settings
 

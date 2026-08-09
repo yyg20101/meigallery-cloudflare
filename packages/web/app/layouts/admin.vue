@@ -69,7 +69,7 @@ const navItems: AdminNavItem[] = [
   { to: '/admin/invite-codes', label: '邀请码', icon: 'ticket' },
   { to: '/admin/settings', label: '站点设置', icon: 'gear' },
   { to: '/admin/contact-methods', label: '联系方式', icon: 'message' },
-  { to: '/admin/audit-logs', label: '审计日志', icon: 'clipboard' },
+  { to: '/admin/app/audit', label: 'App 审计与完整性', icon: 'clipboard' },
 ]
 
 function isActive(item: AdminNavItem) {

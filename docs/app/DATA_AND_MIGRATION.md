@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-10
 
-状态：需求讨论中；M0 公开投影、M1 空权威表与 Membership-4 目录管理平面已进入开发验证
+状态：需求讨论中；M0 公开投影、M1 空权威表、Membership-4 目录管理平面与 Audit-1 审计完整性平面已进入开发验证
 
 范围说明：目标模型覆盖长期产品，但 App 1.0 只要求会员目录/grant/entitlement、钱包账本和管理员调币。`products`、`orders`、礼物和装扮表在未来商业化 Feature 冻结后再创建 production migration，不能因出现在目标模型中而默认进入 1.0 实现。
 
@@ -203,6 +203,8 @@ Membership-4 当前实现使用 `app_membership_catalog_metadata`、`app_members
 | `metric_snapshots` | 按允许维度聚合的指标结果、新鲜度和质量状态 |
 | `operational_incidents` | 异常级别、Owner、状态、Runbook 和处置时间线 |
 | `migration_jobs` / `migration_items` | 迁移任务、逐项结果、重试和证据 |
+
+Audit-1 当前实现不新建第二套 `audit_events_v2` 事实，而以既有 `admin_audit_logs` 为唯一事实源。`0090_app_audit_query_and_integrity.sql` 新增自动稳定序号索引、可选结构化上下文、追加式版本化 Action registry、完整性检查/finding/幂等命令，并用触发器禁止原审计、索引、上下文和清单更新或删除。检查清单可验证相同范围 SHA-256 摘要变化，并以 `app_membership_grants`、`app_wallet_entries`、`app_conversation_operator_message_facts` 和已发布 `person_publication_reviews` 反向发现关键业务事实缺少审计；只保存摘要 finding，不复制业务载荷或自动修复历史。`0090` 执行、正式 Action/保留策略、调度与专项测试统一后置。
 
 ## 4. Stable ID 与映射
 
