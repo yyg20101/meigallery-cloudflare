@@ -3,11 +3,11 @@
 日期：2026-08-09
 App 版本：1.0
 App API v2 累计契约：`1.16.0`
-状态：开发代码完成；配置、migration、专项测试、客户端接入和生产决策后置
+状态：Cloudflare 与 KMP 开发代码完成；配置、migration、专项测试、远端联调和生产决策后置
 
 ## 1. 结论
 
-Recommendation-1 已形成 Cloudflare 平台内的纵向开发基线：统一公开资格、版本化规则、非个性化/个性化模式隔离、显式偏好、会话级稳定灰度、计划生效、可解释原因、固定“平台精选”披露、Dry-run、职责分离、乐观锁、幂等创建、暂停与回滚。
+Recommendation-1 已形成 Cloudflare 与 KMP 客户端的跨仓纵向开发基线：统一公开资格、版本化规则、非个性化/个性化模式隔离、显式偏好、会话级稳定灰度、计划生效、可解释原因、固定“平台精选”披露、Dry-run、职责分离、乐观锁、幂等创建、暂停与回滚。
 
 本次没有修改 Wrangler，没有执行 `0083` migration，没有创建真实规则、偏好或曝光，没有启用任何 capability，也没有运行专项功能测试。既有 `GET /api/v2/discovery/feed` 保持兼容且行为不变。
 
@@ -209,16 +209,28 @@ active/scheduled → paused
 
 页面统一使用 `min-w-0`、可换行操作区、响应式栅格和横向表格容器，避免窄屏文字、按钮和表格越界。状态均有文字标签，不只依赖颜色。
 
-## 9. 本阶段后置项
+## 9. KMP 推荐与隐私页面
+
+同级 `meigallery-client` 仓库已在提交 `0c308c3` 完成 Recommendation-1：
+
+- transport 累计同步至 App API v2 `1.16.0`，严格解析推荐、偏好和 taxonomy capability；
+- `KtorRecommendationRepository` 覆盖版本化推荐、公开不可变分类目录、本人偏好读取与乐观版本更新；
+- 发现页支持智能/通用推荐、实际执行模式、fallback、逐卡推荐理由和固定“平台精选”披露；
+- 推荐分页要求 session、规则、实际模式和热度版本一致，游标过期后重新开始会话，不跨版本混排；
+- “我的 → 推荐与隐私”按 11 类稳定 taxonomy 展示最多 20 个主动偏好，关闭时提交空目录和空词条；
+- capability 关闭时继续使用既有发现 Feed，不显示偏好入口，不提前创建本地画像。
+
+Android Debug APK 与 iOS Simulator Kotlin/Native 编译已通过。专项 MockEngine/Host Test、Framework 链接、模拟器/真机和远端联调按统一验证阶段后置。
+
+## 10. 本阶段后置项
 
 按当前“先完成所有开发，再统一配置与测试”的顺序，以下内容未执行：
 
 1. Wrangler 开关、策略 ID 与 production-ready 配置。
 2. 本地/dev/production 的 `0083` migration 执行和任何真实数据创建。
 3. API/D1 状态机、资格、游标、灰度、回滚、幂等、并发和 UI 专项测试。
-4. `meigallery-client` Recommendation-1 DTO、Repository、发现页推荐原因和本人偏好设置页面。
-5. OQ-009 热度公式、反刷样本和聚合任务；OQ-020 证据保留期与 purge；OQ-023 个性化法律决策。
-6. 跨会话频控、指标/反指标、自动停止阈值、告警、客户端版本灰度和运营监控看板。
-7. 远端推送、dev 联调和 production 发布。
+4. OQ-009 热度公式、反刷样本和聚合任务；OQ-020 证据保留期与 purge；OQ-023 个性化法律决策。
+5. 跨会话频控、指标/反指标、自动停止阈值、告警、客户端版本灰度和运营监控看板。
+6. 远端推送、dev 联调和 production 发布。
 
 这些后置项不改变当前默认关闭结论，也不能通过直接改数据库状态绕过运行时和 production 双门禁。

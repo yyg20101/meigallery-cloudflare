@@ -191,7 +191,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整边界见 `docs/app/SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
 
-### Recommendation-1 版本化推荐与运营精选 `[服务端与 Nuxt 后台开发完成，默认关闭]`
+### Recommendation-1 版本化推荐与运营精选 `[Cloudflare 与 KMP 开发完成，默认关闭]`
 
 `0083_app_recommendation_rules_and_editorial.sql` 和 App API v2 `1.16.0` 在统一公开人物资格与稳定 taxonomy 基线上建立推荐运营闭环：
 
@@ -205,7 +205,8 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `GET/PUT /api/v2/me/recommendation-preference` 管理本人显式偏好。开启必须引用当前可用的不可变 taxonomy 目录和稳定词条；关闭会清空选择，不能保留暗中画像。
 - OQ-023 未关闭时服务端拒绝启用个性化；OQ-020 未关闭时不写推荐会话/条目证据；OQ-009 未关闭时热度权重保持 `0`，migration 只建立未批准的空热度版本。
 - Nuxt 已实现规则列表、规则编辑、合成 Dry-run、精选排期四个后台页面，并提供提交、复核、启用/排期、暂停和回滚操作。页面按窄屏换行和表格横向容器处理，状态不只依赖颜色。
-- 当前未配置 `APP_RECOMMENDATION_*`、未执行 `0083`、未实现 KMP 推荐页/偏好页，也未运行 migration、专项测试或远端联调；所有现有环境继续 fail closed。
+- KMP 已实现 Recommendation Domain/Repository、严格 `1.16.0` DTO、智能/通用推荐、实际模式与 fallback、推荐理由、固定精选披露、签名游标分页约束，以及本人主动 taxonomy 偏好页面；Android Debug APK 与 iOS Simulator Kotlin/Native 编译通过。
+- 当前未配置 `APP_RECOMMENDATION_*`、未执行 `0083`，也未运行 migration、专项测试、Framework 链接、模拟器/真机或远端联调；所有现有环境继续 fail closed。
 
 完整边界见 `docs/app/RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md`。
 
@@ -1433,7 +1434,7 @@ queued → processing → completed
 - **Search-1 服务端开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 接入、配置、migration、专项测试与远端联调后置。
 - **Taxonomy-1 服务端开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；Nuxt/KMP 接入、真实目录、配置、migration、专项测试与远端联调后置。
 - **Search-2 服务端开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP/Nuxt 接入、真实目录与 grant 迁移、配置、migration、专项测试与远端联调后置。
-- **Recommendation-1 服务端与 Nuxt 后台开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；KMP 接入、配置、migration、专项测试、热度/证据决策与远端联调后置。
+- **Recommendation-1 跨仓开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；KMP 已完成推荐 Feed、推荐解释、精选披露和本人偏好页面，配置、migration、专项测试、热度/证据决策与远端联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
 
