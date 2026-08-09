@@ -199,8 +199,8 @@ APP_TAXONOMY_PRODUCTION_READY
 
 1. 完成细粒度 `taxonomy.edit/review/publish` 权限、敏感词隐私/法务升级和高风险双人复核。
 2. 完成合并/归档影响预览、多语言名称、目录渠道/地区灰度、显式回滚和迁移批次对账。
-3. 完成 Nuxt 管理页面与 KMP 目录缓存/ETag/未知类型降级。
-4. Search-2 已新增 entitlement 定义、结构化筛选、结果数预估和保存条件；后续按其独立文档完成客户端、配置与验证。
+3. KMP 已完成通用目录缓存、ETag 条件重验证和未知类型 fail closed；Nuxt 管理页面仍待开发。
+4. Search-2 已完成 entitlement 定义、结构化筛选、结果数预估、保存条件及 KMP 客户端；后续按其独立文档完成配置与验证。
 5. 全部开发结束后再统一执行 migration、环境配置、专项测试、远端联调和上线验收。
 
 ## 8. 本阶段完成定义
@@ -210,4 +210,5 @@ APP_TAXONOMY_PRODUCTION_READY
 - 管理词条/目录/映射 API 与审计已落地；
 - 人物内容版本关联、发布门禁和公开投影已落地；
 - OpenAPI 累计版本提升到 `1.14.0`；
+- KMP 通用 Taxonomy Repository 已由 Recommendation 与 Search 共用，Android Debug APK 与 iOS Simulator Kotlin/Native 编译通过；
 - 未配置、未执行 migration、未运行专项测试、未部署。

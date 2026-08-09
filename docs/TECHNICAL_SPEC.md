@@ -145,7 +145,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整边界见 `docs/app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
 
-### Search-1 人物搜索与搜索历史 `[服务端开发完成，默认关闭]`
+### Search-1 人物搜索与搜索历史 `[Cloudflare 与 KMP 开发完成，默认关闭]`
 
 `0080_app_person_search_and_history.sql` 和 App API v2 `1.13.0` 建立登录后人物搜索与账号私有搜索历史的服务端开发基线：
 
@@ -156,11 +156,11 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `app_search_history_preferences` 以默认关闭、乐观版本和 mutation token 管理账号选择；`app_person_search_history` 只在客户端成功呈现后显式命令写入，同一规范化搜索词聚合、`searchId` 幂等、容量裁剪并按行到期。
 - 单条删除和全部清除都会原子提升设置版本，使旧在途记录命令失效；列表和删除只使用 Bearer 会话的内部账号 ID，不接受请求体账号 ID。
 - 每日维护任务只在显式策略版本且 `purge_enabled=1` 时分批物理删除到期搜索历史；删除义务不依赖搜索 capability 继续开放，日志只记录数量与固定错误码。
-- 当前未配置 `APP_PERSON_SEARCH_*`、未执行 `0080`、未实现 KMP 页面，也未运行 migration/专项测试/远端联调；高级筛选与保存条件已由 Search-2 独立实现，热门词、联想词和隐式行为推荐信号仍后置。
+- KMP 已实现 POST 正文搜索、三种排序、分页、命中说明、显式历史开关、成功展示后独立记录、逐条删除与版本化清空；搜索词不进入本地持久化、分析或推荐画像。当前未配置 `APP_PERSON_SEARCH_*`、未执行 `0080`，也未运行 migration/专项测试/模拟器或远端联调；热门词、联想词和隐式行为推荐信号仍后置。
 
 完整边界见 `docs/app/SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md`。
 
-### Taxonomy-1 稳定目录与人物关联 `[服务端开发完成，默认关闭]`
+### Taxonomy-1 稳定目录与人物关联 `[Cloudflare 与 KMP 开发完成，默认关闭]`
 
 `0081_app_taxonomy_catalog.sql` 和 App API v2 `1.14.0` 建立 Search-2 依赖的稳定分类事实与公开投影基线：
 
@@ -172,11 +172,11 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `person_profile_taxonomy_assignments` 绑定人物内容版本、目录和词条版本。设置分类与普通资料编辑一样创建新内容版本、重置认证/发布草稿状态并保留线上投影；普通资料编辑会显式继承当前结构化分类。
 - 人物发布新增 `TAXONOMY_ASSIGNMENTS_VALID` 门禁，并在同一 D1 batch 中刷新 `profile_public_projections` 与 `profile_public_taxonomy_terms`；公开 DTO 兼容新增 `taxonomyTerms`，legacy `tags` 只保留迁移期展示兼容。
 - 后台 `/api/admin/app/taxonomy` 提供词条草稿/审核/生命周期/合并、目录快照/发布和旧标签映射 API；`PUT /api/admin/app/persons/:personId/taxonomy` 提供人物结构化标注。所有修改要求管理员认证、独立后台能力开关、乐观版本并写审计。
-- 当前未配置 `APP_TAXONOMY_*`、未执行 `0081`、未导入 legacy 标签、未实现 Nuxt/KMP 页面，也未运行 migration/专项测试/远端联调；细粒度权限、敏感升级审批、影响预览、多语言、灰度/回滚和迁移批次后置。
+- KMP 已实现 Recommendation/Search 共用的通用目录领域、capability 校验、进程内缓存、ETag 条件重验证和稳定 ID/父级/重定向完整性校验。当前未配置 `APP_TAXONOMY_*`、未执行 `0081`、未导入 legacy 标签、未实现 Nuxt 管理页面，也未运行 migration/专项测试/模拟器或远端联调；细粒度权限、敏感升级审批、影响预览、多语言、灰度/回滚和迁移批次后置。
 
 完整边界见 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
 
-### Search-2 结构化筛选、结果预估与保存条件 `[服务端开发完成，默认关闭]`
+### Search-2 结构化筛选、结果预估与保存条件 `[Cloudflare 与 KMP 开发完成，默认关闭]`
 
 `0082_app_search_filters_and_saved_filters.sql` 和 App API v2 `1.15.0` 在 Search-1/Taxonomy-1 基线上建立可执行筛选闭环：
 
@@ -187,7 +187,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `app_saved_person_filters` 只保存账号私有名称、canonical taxonomy stable ID、目录和热门/最新默认排序，不保存自由搜索词。创建使用 SHA-256 幂等标识和条件 INSERT 原子限制 `discovery.saved_filter.max`，修改/删除使用乐观版本。
 - 会员降级保留既有保存条件；列表按当前目录返回 `active/redirected/invalid` 和权限状态。删除保留最小 tombstone 并清空名称语义与词条内容，禁止旧幂等请求复活。
 - `0082` 新增不可变会员开发目录 `amc_app_1_0_search_2_dev_1`，复制五级展示与非搜索权益，只以 canonical `discovery.filter.advanced`、`discovery.saved_filter.max` 提供 Search-2 可执行值；不会自动切换目录或迁移 grant。
-- 当前未配置 Search-2 策略、未执行 `0082`、未切换 taxonomy/会员目录、未实现 KMP/Nuxt 页面，也未运行 migration/专项测试/远端联调；所有现有环境继续返回 `search.filters=false`、`search.savedFilters=false`。
+- KMP 已实现结构化条件、400ms preview 防抖、服务端 entitlement、目录重定向/失效处理、保存条件 CRUD、使用前完整来源条件重验和乐观版本冲突确认。当前未配置 Search-2 策略、未执行 `0082`、未切换 taxonomy/会员目录、未实现 Nuxt 管理页面，也未运行 migration/专项测试/模拟器或远端联调；所有现有环境继续返回 `search.filters=false`、`search.savedFilters=false`。
 
 完整边界见 `docs/app/SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
 
@@ -1431,9 +1431,9 @@ queued → processing → completed
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - **Interaction-2 服务端开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 接入、配置、migration、专项测试与远端联调后置。
 - **Interaction-3 服务端开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 接入、配置、migration、专项测试与远端联调后置。
-- **Search-1 服务端开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 接入、配置、migration、专项测试与远端联调后置。
-- **Taxonomy-1 服务端开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；Nuxt/KMP 接入、真实目录、配置、migration、专项测试与远端联调后置。
-- **Search-2 服务端开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP/Nuxt 接入、真实目录与 grant 迁移、配置、migration、专项测试与远端联调后置。
+- **Search-1 跨仓开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 已完成严格 transport、搜索分页和账号历史全交互，配置、migration、专项测试、模拟器/真机与远端联调后置。
+- **Taxonomy-1 跨仓开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；KMP 已完成 Recommendation/Search 共用目录、缓存和 ETag 重验证，Nuxt 管理页面、真实目录、配置、migration、专项测试、模拟器/真机与远端联调后置。
+- **Search-2 跨仓开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP 已完成筛选、预估、权益、保存条件和完整来源重验交互，Nuxt 管理页面、真实目录与 grant 迁移、配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Recommendation-1 跨仓开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；KMP 已完成推荐 Feed、推荐解释、精选披露和本人偏好页面，配置、migration、专项测试、热度/证据决策与远端联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`

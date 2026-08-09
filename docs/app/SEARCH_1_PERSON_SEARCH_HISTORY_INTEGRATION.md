@@ -6,7 +6,7 @@ App API：v2 / `1.13.0`
 
 日期：2026-08-09
 
-状态：服务端开发完成；默认关闭；高级筛选、配置、migration、客户端与测试后置
+状态：Cloudflare 与 KMP 开发完成；默认关闭；配置、migration、专项测试与联调后置
 
 ## 1. 本阶段目标
 
@@ -26,7 +26,7 @@ App API：v2 / `1.13.0`
 - 不实现热门搜索词、联想词、拼音分词、模糊纠错、同义词和运营置顶。
 - 不把搜索词、点击结果或搜索次数写入分析事件、推荐信号、管理员审计或通用业务日志。
 - 不接入外部搜索服务，也不建立需要第二条同步链路的 FTS 人物事实副本。
-- 不执行 `0080`，不修改 Wrangler，不启用 development/production capability，不补 KMP 页面和专项测试。
+- 不执行 `0080`，不修改 Wrangler，不启用 development/production capability，不执行专项测试、模拟器/真机或远端联调。
 
 上述高级筛选与保存条件由 Search-2 独立冻结；不得在 Search-1 的自由文本参数中临时塞入未版本化筛选语义。
 
@@ -223,11 +223,11 @@ Search-2 不得改变 Search-1 的公开资格、账号屏蔽、默认不记录�
 - 人物搜索与搜索历史六组服务端路由；
 - 与 capability 解耦、受策略门禁的到期历史分批清理任务；
 - Search-1 引入版本为 `1.13.0`；当前 App API/OpenAPI/共享类型累计版本已由 Recommendation-1 兼容提升到 `1.16.0`；
+- `meigallery-client` 已按累计 `1.16.0` 接入严格 DTO/Repository、人物搜索页、排序分页、搜索历史设置/记录/逐条删除/版本化清空和隐私状态；Android Debug APK 与 iOS Simulator Kotlin/Native 编译通过；
 - 产品、技术、契约与项目状态文档同步。
 
 统一后置到“全部开发完成”之后：
 
-1. 在 `meigallery-client` 按当前累计 `1.16.0` 契约接入 DTO、Repository、搜索页、历史设置和清除交互。
-2. 选择隔离环境策略并配置运行门禁。
-3. 执行 migration、D1 专项用例、SQL/契约兼容检查、KMP UI 回归和端到端联调。
-4. 单独完成搜索历史生产保留期、purge、隐私文案和上线审批；development 的 90 天不得直接转为生产承诺。
+1. 选择隔离环境策略并配置运行门禁。
+2. 执行 migration、D1 专项用例、SQL/契约兼容检查、KMP UI 回归和端到端联调。
+3. 单独完成搜索历史生产保留期、purge、隐私文案和上线审批；development 的 90 天不得直接转为生产承诺。
