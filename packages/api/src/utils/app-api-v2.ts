@@ -9,7 +9,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { Bindings, Variables } from '../index'
 
 export const APP_API_VERSION = '2' as const
-export const APP_CONTRACT_VERSION = '1.15.0' as const
+export const APP_CONTRACT_VERSION = '1.16.0' as const
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 

@@ -164,7 +164,7 @@ App 1.0 不包含普通用户桌面客户端。Nuxt 管理后台在桌面端采�
 - **PRD-FR-022**：用户可切换非个性化排序、关闭个性化推荐并清除相关记录。
 - **PRD-FR-023**：推荐返回可解释理由；付费等级不影响真人认证真实性。
 
-Search-1 当前已完成 production 默认关闭的公开字段人物搜索和账号私有搜索历史服务端基线：搜索词通过 POST 正文传输，不进入 URL、游标、审计或分析事件。Taxonomy-1 与 Search-2 已继续完成稳定分类目录、组内 OR/组间 AND、父级包含后代的结构化筛选、高级 entitlement 校验、结果数安全预估和账号私有保存条件；受限或失效条件不会被忽略后扩大结果，保存条件不持久化自由搜索词。三个切片的客户端、配置、migration 与专项验证仍后置，推荐信号继续按独立切片实施。详见 [Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md) 和 [Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)。
+Search-1 当前已完成 production 默认关闭的公开字段人物搜索和账号私有搜索历史服务端基线：搜索词通过 POST 正文传输，不进入 URL、游标、审计或分析事件。Taxonomy-1 与 Search-2 已继续完成稳定分类目录、组内 OR/组间 AND、父级包含后代的结构化筛选、高级 entitlement 校验、结果数安全预估和账号私有保存条件；受限或失效条件不会被忽略后扩大结果，保存条件不持久化自由搜索词。Recommendation-1 已完成版本化非个性化/个性化规则、本人主动 taxonomy 偏好、固定“平台精选”披露、合成 Dry-run、稳定灰度、计划生效、暂停和回滚的服务端及 Nuxt 后台开发基线；会员、金币、消息、搜索、浏览、关注、收藏和精确位置均不进入本切片排序。四个切片的 KMP 接入、环境配置、migration 与专项验证仍后置；隐式行为信号、正式热度公式和曝光证据须在对应决策关闭后另行启用。详见 [Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)、[Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md) 和 [Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)。
 
 ### 5.4 真人详情与媒体
 

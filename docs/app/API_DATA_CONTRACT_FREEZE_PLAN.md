@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-09
 
-状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给、Auth-1 账号访问、Interaction-1/2/3、Search-1/2 与 Taxonomy-1 服务端为保守开发基线
+状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给、Auth-1 账号访问、Interaction-1/2/3、Search-1/2、Taxonomy-1 与 Recommendation-1 为保守开发基线
 
 ## 1. 文档目的
 
@@ -16,13 +16,13 @@ App 版本：1.0
 
 2026-08-02 经项目负责人继续开发确认，允许先实现不依赖未决身份与合规参数的公共发现读链路：
 
-- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式累计更新到 `1.15.0`，API 主版本仍为 `2`。
+- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式累计更新到 `1.16.0`，API 主版本仍为 `2`。
 - 路由：bootstrap、发现 feed、地区目录和公开人物基础详情共四个 GET 路径。
 - D1：`0067_app_public_profile_projection.sql` 仅创建空的可重建公开投影及四个真实查询索引。
 - 安全边界：查询强制验证认证、发布、授权、有效期、可见性和来源图库发布状态；migration 没有 seed、回填或 legacy 自动映射。
 - 客户端：手写 transport model 必须接受未知字段，但未知 enum/capability 安全降级；不得把 transport DTO 直接作为 Domain model。
 
-正式应用 ID、互动推荐信号、媒体访问及各能力的生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，Interaction-1 增加依赖 Auth 的喜欢/关注基线，Interaction-2 增加独立默认关闭的收藏夹与浏览历史服务端契约，Interaction-3 增加复用已审核发布事实的关注更新与站内通知投影，Search-1 增加隐私 POST 人物搜索与默认关闭的账号私有搜索历史，Taxonomy-1 增加稳定词条、不可变目录和人物公开分类投影，Search-2 增加权益分层结构化筛选、结果预估与账号私有保存条件；首发登录政策、年龄/地区、保留期、真实目录、敏感审批和正式法律文档版本仍未冻结。本次实现的公开投影仍是可删除重建的读模型，不替代 Person、Authorization、Verification、Publication Review 和审计权威表。
+正式应用 ID、媒体访问及各能力的生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，Interaction-1 增加依赖 Auth 的喜欢/关注基线，Interaction-2 增加独立默认关闭的收藏夹与浏览历史服务端契约，Interaction-3 增加复用已审核发布事实的关注更新与站内通知投影，Search-1 增加隐私 POST 人物搜索与默认关闭的账号私有搜索历史，Taxonomy-1 增加稳定词条、不可变目录和人物公开分类投影，Search-2 增加权益分层结构化筛选、结果预估与账号私有保存条件，Recommendation-1 增加非个性化规则、显式偏好结构、可解释原因和固定精选披露；首发登录政策、年龄/地区、保留期、真实目录、热度公式、个性化合规、敏感审批和正式法律文档版本仍未冻结。本次实现的公开投影仍是可删除重建的读模型，不替代 Person、Authorization、Verification、Publication Review 和审计权威表。
 
 ### 1.2 M1 保守开发基线
 
@@ -132,6 +132,20 @@ Auth-1 不关闭 G-01/G-03，不冻结法定年龄、首发地区、运营主体
 - 后置：环境配置、`0082` 执行、真实 taxonomy 和 grant 迁移、KMP/Nuxt 页面、migration/专项测试及远端联调统一后置。
 
 完整边界见 `SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
+
+### 1.10 Recommendation-1 版本化推荐与精选开发基线
+
+2026-08-09 按“先完成开发、后统一配置与测试”的顺序，冻结 production 默认关闭的 Recommendation-1 平台契约：
+
+- 公共接口：新增 `POST /api/v2/discovery/recommendations`；推荐请求通过正文传输模式、地区、页大小和不透明游标，现有四个 M0 GET 路径保持兼容。
+- 偏好：新增本人推荐偏好 GET/PUT，只有主动选择的 stable taxonomy 词条可进入当前保守个性化模型；OQ-023 未批准时拒绝开启。
+- 规则：五项登记权重总和必须为 100；非个性化偏好权重为 0；规则版本、理由、多样性、灰度、时间窗和回滚引用服务端校验。
+- 灰度：小于 100% 必须绑定已生效过的同模式安全回退版本，个性化目标/回退目录一致，按推荐会话稳定分桶；短期 HMAC 签名游标绑定实际执行版本，客户端不能改写会话 ID 选择灰度桶，也不跨版本混排。
+- 精选：固定用户披露“平台精选”，提交、批准、启用和每次读取均重新应用统一公开资格。
+- 后台：Nuxt 四页工作台覆盖规则版本、草稿编辑、Dry-run、职责分离复核、计划生效、暂停/回滚和精选排期。
+- 后置：配置、`0083` 执行、KMP、专项测试、热度聚合/反刷、证据保留/purge、跨会话频控、指标反指标与自动停止统一后置。
+
+完整边界见 `RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md`。
 
 ## 2. 契约事实源
 

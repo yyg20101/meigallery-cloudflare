@@ -163,6 +163,19 @@ Search-2 以兼容新增方式把累计契约提升为 `1.15.0`，冻结并实�
 
 完整边界见 [Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)。
 
+### 1.14 Recommendation-1 局部冻结记录
+
+Recommendation-1 以兼容新增方式把累计契约提升为 `1.16.0`，冻结并实现 production 默认关闭的版本化推荐平台边界：
+
+- 新增 `POST /api/v2/discovery/recommendations`，响应绑定推荐会话、实际规则版本、模式、解释原因和精选披露；现有 `GET /discovery/feed` 保持不变。
+- 新增本人显式推荐偏好 GET/PUT。当前只允许 stable taxonomy 主动选择；OQ-023 未批准时个性化规则不能启用。
+- 小于 100% 的灰度必须绑定已生效过的同模式回退版本；个性化目标与回退目录一致，并按服务端生成的会话稳定分桶。推荐游标使用短期 HMAC 签名，客户端不能改写会话 ID 选择灰度桶；未来生效规则不会提前暂停当前 active 版本。
+- 运营精选固定披露“平台精选”，并与规则候选复用统一公开资格和账号屏蔽过滤。
+- 过渡管理路由 `/api/admin/app/recommendations` 和 Nuxt 四页工作台覆盖规则版本、Dry-run、复核、排期、启用、暂停、回滚和精选。
+- 当前不配置环境、不执行 `0083`、不接 KMP、不写推荐证据、不运行专项测试；热度公式、证据保留、跨会话频控和监控自动停止仍未冻结。
+
+完整边界见 [Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -191,7 +204,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.15.0"
+    "contractVersion": "1.16.0"
   }
 }
 ```
@@ -241,6 +254,10 @@ Accept-Language: zh-CN
 | `RATE_LIMITED` | 429 | 频控，返回安全的重试时间 |
 | `PRIVACY_REQUEST_IN_PROGRESS` | 409 | 已有相同数据权利任务在处理 |
 | `TAXONOMY_VERSION_CONFLICT` | 409 | 目录或引用版本已变化 |
+| `RECOMMENDATION_PERSONALIZATION_UNAVAILABLE` | 403 | 当前政策、本人选择或生效规则不允许个性化 |
+| `RECOMMENDATION_PREFERENCE_VERSION_CONFLICT` | 409 | 本人推荐偏好发生并发变化 |
+| `RECOMMENDATION_CURSOR_EXPIRED` | 409 | 推荐签名游标到期、被改写或与当前规则/条件不一致 |
+| `RECOMMENDATION_RULE_NOT_READY` | 503 | 当前模式没有通过运行门禁的安全规则 |
 | `MODERATION_RESTRICTED` | 403 | 账号、内容或会话受安全限制 |
 
 错误文案由客户端本地化或服务端文案键渲染，不能暴露内部表名、策略阈值或操作员隐私。
@@ -248,7 +265,7 @@ Accept-Language: zh-CN
 ## 4. 分页与缓存
 
 - 列表采用游标分页：`cursor`、`limit`，服务端返回 `nextCursor`。
-- 推荐游标绑定排序规则版本，规则切换时返回新会话或 `CURSOR_EXPIRED`。
+- Recommendation-1 游标由服务端短期 HMAC 签名并绑定实际规则、模式、地区和偏好摘要；到期、改写或规则切换时返回 `RECOMMENDATION_CURSOR_EXPIRED`，客户端开启新会话。
 - 公共投影支持 `ETag`；账号、会员、消息、余额和订单响应禁止共享缓存。
 - 时间为 UTC ISO 8601，客户端按地区展示。
 
@@ -363,7 +380,7 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`，已提供稳定分类目录和人物公开分类投影；Search-2 再提升为 `1.15.0`，实现权益分层的结构化筛选、结果预估与账号私有保存条件。推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
+Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`，已提供稳定分类目录和人物公开分类投影；Search-2 再提升为 `1.15.0`，实现权益分层的结构化筛选、结果预估与账号私有保存条件；Recommendation-1 累计提升到 `1.16.0`，当前只把主动 taxonomy 偏好作为受门禁的个性化结构，其他互动推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
 
 ## 8. 会员和目录 API
 
@@ -503,7 +520,7 @@ Wallet-1 当前实现的用户路由只读，余额来自追加式分录/受控�
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
-M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、预览、低风险发放/续期与追加式撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。Wallet-1 暂时使用 `/api/admin/app/wallets` 提供账号确认、单笔预览/申请、独立批准/拒绝和完整冲正，不提供直接改余额、批量或复核绕过。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
+M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、预览、低风险发放/续期与追加式撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。Wallet-1 暂时使用 `/api/admin/app/wallets` 提供账号确认、单笔预览/申请、独立批准/拒绝和完整冲正，不提供直接改余额、批量或复核绕过。Recommendation-1 暂时使用 `/api/admin/app/recommendations` 提供规则、Dry-run、复核、排期、暂停/回滚和固定披露精选。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
 
 | 资源 | 主要能力 |
 |------|----------|

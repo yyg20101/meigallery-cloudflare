@@ -156,7 +156,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `app_search_history_preferences` 以默认关闭、乐观版本和 mutation token 管理账号选择；`app_person_search_history` 只在客户端成功呈现后显式命令写入，同一规范化搜索词聚合、`searchId` 幂等、容量裁剪并按行到期。
 - 单条删除和全部清除都会原子提升设置版本，使旧在途记录命令失效；列表和删除只使用 Bearer 会话的内部账号 ID，不接受请求体账号 ID。
 - 每日维护任务只在显式策略版本且 `purge_enabled=1` 时分批物理删除到期搜索历史；删除义务不依赖搜索 capability 继续开放，日志只记录数量与固定错误码。
-- 当前未配置 `APP_PERSON_SEARCH_*`、未执行 `0080`、未实现 KMP 页面，也未运行 migration/专项测试/远端联调；高级筛选与保存条件已由 Search-2 独立实现，热门词、联想词和推荐信号仍后置。
+- 当前未配置 `APP_PERSON_SEARCH_*`、未执行 `0080`、未实现 KMP 页面，也未运行 migration/专项测试/远端联调；高级筛选与保存条件已由 Search-2 独立实现，热门词、联想词和隐式行为推荐信号仍后置。
 
 完整边界见 `docs/app/SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md`。
 
@@ -190,6 +190,24 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 当前未配置 Search-2 策略、未执行 `0082`、未切换 taxonomy/会员目录、未实现 KMP/Nuxt 页面，也未运行 migration/专项测试/远端联调；所有现有环境继续返回 `search.filters=false`、`search.savedFilters=false`。
 
 完整边界见 `docs/app/SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
+
+### Recommendation-1 版本化推荐与运营精选 `[服务端与 Nuxt 后台开发完成，默认关闭]`
+
+`0083_app_recommendation_rules_and_editorial.sql` 和 App API v2 `1.16.0` 在统一公开人物资格与稳定 taxonomy 基线上建立推荐运营闭环：
+
+- `POST /api/v2/discovery/recommendations` 提供 `auto|non_personalized|personalized` 三种请求模式；匿名只能执行非个性化，登录身份仅用于屏蔽过滤和读取本人已批准的显式偏好。既有 `GET /api/v2/discovery/feed` 保持兼容且不改变排序行为。
+- 推荐候选复用 `app-discovery.ts` 的同一公开资格谓词：只有当前仍满足认证、发布、用途授权、有效期、可见性和来源图库发布要求的投影可返回；运营精选也不能绕过该谓词。
+- 当前运行信号只允许资料质量、批准后的热度版本、时效、请求地区和本人主动选择的稳定 taxonomy。会员、金币、消息、搜索、浏览、关注、收藏、精确位置和内部审核字段不进入 Recommendation-1 排序。
+- `app_recommendation_rule_versions` 保存模式、整数权重、范围、多样性、灰度、计划时间、最低客户端版本和回退引用。创建/复制幂等，草稿和状态流转使用乐观版本；创建人不能复核自己的规则或精选排期。
+- `rolloutPercent=1..99` 必须绑定同入口、同模式、曾安全生效的回退版本；个性化目标/回退目录必须一致。服务端按规则与推荐会话稳定分桶，短期 HMAC 签名游标绑定实际执行规则，客户端不能伪造会话选择灰度桶，单页和跨页不混合两个版本。
+- 未来 `effectiveAt` 进入 `scheduled`，到点后只影响新会话；立即启用、暂停和回滚会重新校验目标与回退版本。同一入口和模式最多一个 active 与一个 scheduled 版本。
+- 运营精选固定返回 `source=editorial`、`disclosure=平台精选`，披露文案不可改为认证、自然热门或未披露推荐；排期提交、批准、启用和每次用户请求均复核人物公开资格。
+- `GET/PUT /api/v2/me/recommendation-preference` 管理本人显式偏好。开启必须引用当前可用的不可变 taxonomy 目录和稳定词条；关闭会清空选择，不能保留暗中画像。
+- OQ-023 未关闭时服务端拒绝启用个性化；OQ-020 未关闭时不写推荐会话/条目证据；OQ-009 未关闭时热度权重保持 `0`，migration 只建立未批准的空热度版本。
+- Nuxt 已实现规则列表、规则编辑、合成 Dry-run、精选排期四个后台页面，并提供提交、复核、启用/排期、暂停和回滚操作。页面按窄屏换行和表格横向容器处理，状态不只依赖颜色。
+- 当前未配置 `APP_RECOMMENDATION_*`、未执行 `0083`、未实现 KMP 推荐页/偏好页，也未运行 migration、专项测试或远端联调；所有现有环境继续 fail closed。
+
+完整边界见 `docs/app/RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md`。
 
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
@@ -1415,6 +1433,7 @@ queued → processing → completed
 - **Search-1 服务端开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 接入、配置、migration、专项测试与远端联调后置。
 - **Taxonomy-1 服务端开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；Nuxt/KMP 接入、真实目录、配置、migration、专项测试与远端联调后置。
 - **Search-2 服务端开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP/Nuxt 接入、真实目录与 grant 迁移、配置、migration、专项测试与远端联调后置。
+- **Recommendation-1 服务端与 Nuxt 后台开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；KMP 接入、配置、migration、专项测试、热度/证据决策与远端联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
 

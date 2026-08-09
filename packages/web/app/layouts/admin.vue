@@ -30,6 +30,7 @@ const navItems = [
   { to: '/admin', label: '概览', exact: true, icon: 'grid' },
   { to: '/admin/galleries', label: '图库管理', icon: 'image' },
   { to: '/admin/app/persons', label: 'App 人物供给', icon: 'users' },
+  { to: '/admin/app/recommendation/rules', label: 'App 推荐运营', icon: 'chart' },
   { to: '/admin/app/conversations', label: 'App 平台话题', icon: 'message' },
   { to: '/admin/app/notifications', label: 'App 站内通知', icon: 'message' },
   { to: '/admin/app/wallets', label: 'App 金币钱包', icon: 'ticket' },

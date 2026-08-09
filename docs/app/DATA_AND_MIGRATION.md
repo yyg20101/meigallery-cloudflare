@@ -104,10 +104,14 @@ erDiagram
 | `view_history` | `account_id`, `profile_id`, `viewed_at`, `expires_at` | 浏览历史 |
 | `search_history` | `account_id`, `query_ref`, `searched_at`, `expires_at` | 本人搜索历史；敏感原文不进入分析 |
 | `profile_blocks` | `account_id`, `profile_id`, `status`, `created_at` | 服务端拉黑与解除状态 |
-| `recommendation_exposures` | `account_id_hash`, `profile_id`, `reason_code`, `rule_version` | 最小化推荐证据 |
-| `recommendation_rule_versions` | `id`, `mode`, `status`, `config_json`, `catalog_version` | 不可变推荐规则版本 |
-| `editorial_placements` | `id`, `profile_id`, `slot`, `starts_at`, `ends_at`, `status` | 明确披露的运营精选 |
-| `heat_snapshots` | `profile_id`, `heat_version`, `bucket`, `calculated_at` | 抗刷、时间衰减后的热度投影 |
+| `app_recommendation_policies` | `policy_id`, capability、生产门禁、隐私决策和容量上限 | Recommendation-1 显式策略版本 |
+| `app_recommendation_rule_versions` | `rule_version_id`, `rule_set_id`, `mode`, `state`, 权重、灰度、排期和回退引用 | 版本化推荐规则；只允许草稿阶段原位编辑 |
+| `app_recommendation_rule_events` | `rule_version_id`, `from_state`, `to_state`, `action`, `actor_id` | 推荐规则追加式状态时间线 |
+| `app_recommendation_preferences` | `account_id`, `personalization_enabled`, `taxonomy_catalog_id`, 稳定词条 | 本人主动选择的推荐偏好 |
+| `app_recommendation_editorial_placements` | `placement_id`, `profile_id`, `priority`, 时间窗、地区和状态 | 固定披露“平台精选”的运营排期 |
+| `app_recommendation_heat_versions` / `app_recommendation_heat_scores` | 不可变公式版本；`profile_id`, 整数分数、样本量和时间窗 | OQ-009 批准后才可发布的热度投影 |
+| `app_recommendation_sessions` / `app_recommendation_session_items` | 摘要账号、规则、上下文、资料、理由和到期时间 | OQ-020 批准并启用 purge 后才写入的最小化证据 |
+| `app_recommendation_admin_requests` | `admin_id`, 幂等键摘要、请求摘要和结果引用 | 规则创建/复制与精选创建幂等事实 |
 | `notification_event_definitions` | `event_type`, `category`, `necessity`, `schema_version`, `status` | 事件、必要性、去重和 action 契约 |
 | `notification_templates` | `id`, `event_type`, `locale`, `version`, `status`, `effective_at` | 不可变站内模板版本 |
 | `notifications` | `id`, `account_id`, `category`, `event_ref`, `template_version`, `target_ref`, `status`, `read_at`, `created_at` | App 1.0 站内通知、目标和未读状态 |
@@ -137,6 +141,18 @@ erDiagram
 - 编辑已经发布的资料只增加草稿内容版本，线上投影继续保留旧审定快照；暂停或撤销立即把投影设为不可见。
 - 当前 API 仅支持管理员单笔创建候选，不从 legacy 图库自动生成人物。未来批量候选导入必须是独立任务、默认草稿、逐项失败和人工复核，不得复用公开投影作为写主。
 - M1 migration 尚未执行 production，且没有任何真实人物、证据、seed 或回填数据。
+
+#### 3.3.3 Recommendation-1 推荐数据实施边界
+
+`0083_app_recommendation_rules_and_editorial.sql` 只建立默认关闭的 development 数据骨架：
+
+- migration seed 一条未发布策略和一条未批准热度草稿；仅当现有 Owner 存在时创建 `rolloutPercent=0` 的非个性化规则草稿，不创建 active/scheduled 规则、偏好、排期或曝光。
+- 推荐运行不复制人物事实，始终读取 `profile_public_projections` 并复用认证、授权、发布、有效期、可见性和来源图库资格；精选引用 `person_profiles`，但返回前仍以公开投影重新校验。
+- 规则通过 `rule_set_id + version_number` 表达版本序列；同一入口/模式最多一个 active 和一个 scheduled。灰度目标必须引用同模式、同入口且曾安全生效的回退版本。
+- `app_recommendation_preferences` 只保存账号主动开启状态、不可变 taxonomy 目录和最多 20 个稳定词条；关闭时原子清空目录和词条，不保留隐式画像。
+- `app_recommendation_sessions` 只预留最小化证据结构。只有策略同时批准证据保留天数并开启 purge 时运行时才允许写入；账号只保存基于服务端密钥、与游标签名分用途隔离的 HMAC 摘要。推荐游标短期有效，不能在证据清理后重建旧会话并延长保留期。
+- 热度公式、样本量和反刷方案未批准前，规则热度权重必须为 `0`；既有公开投影的 legacy 分数不自动升级为正式热度事实。
+- migration 不修改 Wrangler、不切换 capability、不导入真实数据；配置、migration 执行与验证在全部开发完成后的统一阶段处理。
 
 ### 3.4 会话与代运营
 

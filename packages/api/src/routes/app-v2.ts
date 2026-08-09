@@ -221,6 +221,19 @@ import {
   getPublicAppTaxonomyCatalog,
   resolveAppTaxonomyCatalogCapability,
 } from '../services/app-taxonomy'
+import {
+  APP_RECOMMENDATION_DEFAULT_PAGE_SIZE,
+  APP_RECOMMENDATION_MAX_PAGE_SIZE,
+  APP_RECOMMENDATION_POLICY_ID,
+  AppRecommendationError,
+  getAppRecommendationRuntimeConfig,
+  resolveAppRecommendationCapabilities,
+} from '../services/app-recommendation-policy'
+import {
+  getAppRecommendationPage,
+  getAppRecommendationPreference,
+  updateAppRecommendationPreference,
+} from '../services/app-recommendations'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -256,35 +269,37 @@ appV2Routes.get('/taxonomy/catalog', async (c) => {
 
 appV2Routes.route('/auth', appAuthRoutes)
 
-// 发现页保持匿名可用；登录客户端携带 Bearer token 时启用服务端个性化安全过滤。
-appV2Routes.use('/discovery/feed', async (c, next) => {
-  if (!c.req.header('Authorization')) {
-    await next()
-    return
-  }
+// 发现页保持匿名可用；登录客户端携带 Bearer token 时启用服务端屏蔽过滤与显式偏好。
+for (const path of ['/discovery/feed', '/discovery/recommendations']) {
+  appV2Routes.use(path, async (c, next) => {
+    if (!c.req.header('Authorization')) {
+      await next()
+      return
+    }
 
-  try {
-    const config = getAppAuthRuntimeConfig(c.env)
-    requireAppAuthEnabled(config)
-    const principal = await authenticateAppAccessToken(
-      c.env.DB,
-      readBearerToken(c.req.header('Authorization')),
-      new Date(),
-      config.documentVersions,
-    )
-    c.set('appAccountId', principal.accountInternalId)
-    c.set('appAccountPublicId', principal.accountId)
-    c.set('appSessionId', principal.sessionId)
-    c.set('appDeviceId', principal.deviceId)
-    c.set('appAccountEmail', principal.email)
-    c.set('appAccountNickname', principal.nickname)
-    c.set('appAccountRole', principal.role)
-    await next()
-  }
-  catch (error) {
-    return appAccountError(c, error)
-  }
-})
+    try {
+      const config = getAppAuthRuntimeConfig(c.env)
+      requireAppAuthEnabled(config)
+      const principal = await authenticateAppAccessToken(
+        c.env.DB,
+        readBearerToken(c.req.header('Authorization')),
+        new Date(),
+        config.documentVersions,
+      )
+      c.set('appAccountId', principal.accountInternalId)
+      c.set('appAccountPublicId', principal.accountId)
+      c.set('appSessionId', principal.sessionId)
+      c.set('appDeviceId', principal.deviceId)
+      c.set('appAccountEmail', principal.email)
+      c.set('appAccountNickname', principal.nickname)
+      c.set('appAccountRole', principal.role)
+      await next()
+    }
+    catch (error) {
+      return appAccountError(c, error)
+    }
+  })
+}
 
 for (const path of [
   '/me',
@@ -851,6 +866,53 @@ appV2Routes.get('/discovery/feed', async (c) => {
       return appApiError(c, 400, error.code, error.message)
     }
     throw error
+  }
+})
+
+appV2Routes.post('/discovery/recommendations', async (c) => {
+  try {
+    const accountInternalId = c.get('appAccountId') ?? null
+    const accountPublicId = c.get('appAccountPublicId') ?? null
+    const viewer = accountInternalId && accountPublicId
+      ? { accountInternalId, accountPublicId }
+      : null
+    return appApiSuccess(c, await getAppRecommendationPage(
+      c.env.DB,
+      await c.req.json<unknown>(),
+      getAppRecommendationRuntimeConfig(c.env),
+      c.req.url,
+      viewer,
+    ))
+  }
+  catch (error) {
+    return appRecommendationError(c, error)
+  }
+})
+
+appV2Routes.get('/me/recommendation-preference', async (c) => {
+  try {
+    return appApiSuccess(c, await getAppRecommendationPreference(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      getAppRecommendationRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appRecommendationError(c, error)
+  }
+})
+
+appV2Routes.put('/me/recommendation-preference', async (c) => {
+  try {
+    return appApiSuccess(c, await updateAppRecommendationPreference(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      await c.req.json<unknown>(),
+      getAppRecommendationRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appRecommendationError(c, error)
   }
 })
 
@@ -1764,6 +1826,7 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   const followUpdates = getAppFollowUpdateRuntimeConfig(env)
   const personSearch = getAppPersonSearchRuntimeConfig(env)
   const taxonomy = getAppTaxonomyRuntimeConfig(env)
+  const recommendation = getAppRecommendationRuntimeConfig(env)
   const [interactionCollectionCapabilities, followUpdatesCapability, personSearchCapabilities] = auth.enabled
     ? await Promise.all([
         resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections),
@@ -1775,12 +1838,21 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
         false,
         { profiles: false, history: false, filters: false, savedFilters: false, policy: null },
       ]
-  const taxonomyCatalogCapability = await resolveAppTaxonomyCatalogCapability(env.DB, taxonomy)
+  const [taxonomyCatalogCapability, recommendationCapabilities] = await Promise.all([
+    resolveAppTaxonomyCatalogCapability(env.DB, taxonomy),
+    resolveAppRecommendationCapabilities(env.DB, recommendation),
+  ])
   return {
     product: 'meigallery',
     appVersion: '1.0',
     capabilities: {
       discovery: true,
+      recommendation: {
+        feed: recommendationCapabilities.feed,
+        preferences: auth.enabled && recommendationCapabilities.preferences,
+        personalization: auth.enabled && recommendationCapabilities.personalization,
+        editorial: recommendationCapabilities.editorial,
+      },
       search: {
         profiles: personSearchCapabilities.profiles,
         history: personSearchCapabilities.history,
@@ -1820,6 +1892,24 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       allowedSorts: APP_DISCOVERY_SORTS,
       defaultPageSize: APP_DISCOVERY_DEFAULT_PAGE_SIZE,
       maxPageSize: APP_DISCOVERY_MAX_PAGE_SIZE,
+    },
+    recommendation: {
+      policyVersion: recommendation.policyId || APP_RECOMMENDATION_POLICY_ID,
+      transport: 'http_post',
+      defaultMode: 'auto',
+      allowedModes: ['auto', 'non_personalized', 'personalized'],
+      defaultPageSize: recommendationCapabilities.policy?.defaultPageSize
+        ?? APP_RECOMMENDATION_DEFAULT_PAGE_SIZE,
+      maxPageSize: recommendationCapabilities.policy?.maxPageSize
+        ?? APP_RECOMMENDATION_MAX_PAGE_SIZE,
+      personalizationDecisionStatus:
+        recommendationCapabilities.policy?.personalizationDecisionStatus ?? 'unresolved',
+      evidenceRecording: Boolean(
+        recommendationCapabilities.policy?.evidenceRecordingEnabled
+        && recommendationCapabilities.policy.evidenceRetentionDecisionStatus === 'approved'
+        && recommendationCapabilities.policy.purgeEnabled,
+      ),
+      editorialDisclosureLabel: '平台精选',
     },
     search: {
       policyVersion: personSearch.policyId || APP_PERSON_SEARCH_POLICY_ID,
@@ -1924,6 +2014,16 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
 function appTaxonomyError(c: Parameters<typeof appApiError>[0], error: unknown) {
   if (error instanceof AppTaxonomyError) {
     return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  throw error
+}
+
+function appRecommendationError(c: Parameters<typeof appApiError>[0], error: unknown) {
+  if (error instanceof AppRecommendationError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  if (error instanceof SyntaxError) {
+    return appApiError(c, 400, 'REQUEST_BODY_INVALID', '请求体必须为有效 JSON')
   }
   throw error
 }

@@ -2,19 +2,21 @@
  * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
  * Message-2 安全、Safety-2 申诉、Message-3 站内通知、Wallet-1 与
  * Interaction-2 收藏历史、Interaction-3 关注更新、Search-1 搜索、
- * Taxonomy-1 稳定分类目录与 Search-2 结构化筛选契约。
+ * Taxonomy-1 稳定分类目录、Search-2 结构化筛选与 Recommendation-1 契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
 
 export type AppDiscoverySort = 'recommended' | 'popular' | 'latest'
 export type AppPersonSearchSort = 'relevance' | 'popular' | 'latest'
+export type AppRecommendationFeedMode = 'auto' | 'non_personalized' | 'personalized'
+export type AppRecommendationMode = Exclude<AppRecommendationFeedMode, 'auto'>
 
 export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.15.0'
+  contractVersion: '1.16.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -48,6 +50,12 @@ export interface AppBootstrapConfig {
   appVersion: '1.0'
   capabilities: {
     discovery: boolean
+    recommendation: {
+      feed: boolean
+      preferences: boolean
+      personalization: boolean
+      editorial: boolean
+    }
     search: {
       profiles: boolean
       history: boolean
@@ -87,6 +95,17 @@ export interface AppBootstrapConfig {
     allowedSorts: AppDiscoverySort[]
     defaultPageSize: number
     maxPageSize: number
+  }
+  recommendation: {
+    policyVersion: string
+    transport: 'http_post'
+    defaultMode: 'auto'
+    allowedModes: AppRecommendationFeedMode[]
+    defaultPageSize: number
+    maxPageSize: number
+    personalizationDecisionStatus: 'unresolved' | 'approved'
+    evidenceRecording: boolean
+    editorialDisclosureLabel: '平台精选'
   }
   search: {
     policyVersion: string
@@ -786,6 +805,46 @@ export interface AppPersonProfile {
     ruleVersion: string
   }
   publishedAt: string
+}
+
+export type AppRecommendationFallbackReason = 'PERSONALIZATION_NOT_READY'
+
+export interface AppRecommendationReason {
+  code: string
+  label: string
+  source: 'rule' | 'editorial'
+  disclosure: string | null
+  placementId: string | null
+}
+
+export interface AppRecommendationItem {
+  profile: AppPersonProfile
+  reason: AppRecommendationReason
+  score: number | null
+}
+
+export interface AppRecommendationPage {
+  sessionId: string
+  mode: AppRecommendationMode
+  personalizedApplied: boolean
+  fallbackReason: AppRecommendationFallbackReason | null
+  ruleVersionId: string
+  heatVersionId: string | null
+  evidenceRecorded: boolean
+  items: AppRecommendationItem[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+
+export interface AppRecommendationPreference {
+  requestedPersonalizationEnabled: boolean
+  effectivePersonalizationEnabled: boolean
+  catalogVersionId: string | null
+  preferredTermIds: string[]
+  version: number
+  policyVersion: string
+  policyDecisionStatus: 'unresolved' | 'approved'
+  updatedAt: string | null
 }
 
 export type AppPersonSearchMatchField = 'display_name' | 'region' | 'tag' | 'filter'

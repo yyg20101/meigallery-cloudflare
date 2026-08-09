@@ -15,6 +15,45 @@ const DISCOVERY_RULE_VERSION = 'discovery_v1'
 const REGION_CODE_PATTERN = /^[a-z0-9-]{2,32}$/
 const PROFILE_ID_PATTERN = /^pp_[A-Za-z0-9_-]{1,77}$/
 
+/**
+ * 所有公开发现、搜索、推荐和运营精选必须复用这一资格表达式。
+ * 调用方依次绑定三个相同的 UTC now 参数，且必须继续 JOIN 已发布图库。
+ */
+export const PUBLIC_PROFILE_ELIGIBILITY_SQL = `
+  p.verification_status = 'verified'
+  AND p.publication_status = 'published'
+  AND p.authorization_status = 'active'
+  AND p.visibility_status = 'visible'
+  AND (
+    p.authorization_valid_from IS NULL
+    OR (
+      datetime(p.authorization_valid_from) IS NOT NULL
+      AND datetime(p.authorization_valid_from) <= datetime(?)
+    )
+  )
+  AND (
+    p.authorization_valid_until IS NULL
+    OR (
+      datetime(p.authorization_valid_until) IS NOT NULL
+      AND datetime(p.authorization_valid_until) > datetime(?)
+    )
+  )
+  AND (
+    p.verification_valid_until IS NULL
+    OR (
+      datetime(p.verification_valid_until) IS NOT NULL
+      AND datetime(p.verification_valid_until) > datetime(?)
+    )
+  )
+  AND datetime(p.published_at) IS NOT NULL
+  AND g.status = 'published'
+`
+
+export function publicProfileEligibilityParams(now: Date): [string, string, string] {
+  const value = now.toISOString()
+  return [value, value, value]
+}
+
 export type PublicProjectionRow = {
   profile_id: string
   person_id: string
@@ -95,36 +134,8 @@ export async function listPublicPersonProfiles(
   now = new Date(),
   viewerAccountInternalId: number | null = null,
 ): Promise<{ data: AppPersonProfile[]; nextCursor: string | null; hasMore: boolean }> {
-  const conditions = [
-    "p.verification_status = 'verified'",
-    "p.publication_status = 'published'",
-    "p.authorization_status = 'active'",
-    "p.visibility_status = 'visible'",
-    `(
-      p.authorization_valid_from IS NULL
-      OR (
-        datetime(p.authorization_valid_from) IS NOT NULL
-        AND datetime(p.authorization_valid_from) <= datetime(?)
-      )
-    )`,
-    `(
-      p.authorization_valid_until IS NULL
-      OR (
-        datetime(p.authorization_valid_until) IS NOT NULL
-        AND datetime(p.authorization_valid_until) > datetime(?)
-      )
-    )`,
-    `(
-      p.verification_valid_until IS NULL
-      OR (
-        datetime(p.verification_valid_until) IS NOT NULL
-        AND datetime(p.verification_valid_until) > datetime(?)
-      )
-    )`,
-    'datetime(p.published_at) IS NOT NULL',
-    "g.status = 'published'",
-  ]
-  const params: unknown[] = [now.toISOString(), now.toISOString(), now.toISOString()]
+  const conditions = [`(${PUBLIC_PROFILE_ELIGIBILITY_SQL})`]
+  const params: unknown[] = publicProfileEligibilityParams(now)
 
   if (viewerAccountInternalId !== null) {
     conditions.push(`NOT EXISTS (
@@ -233,40 +244,14 @@ export async function listPublicDiscoveryRegions(
       SELECT p.region_code, p.region_label, COUNT(*) AS profile_count
       FROM profile_public_projections p
       JOIN galleries g ON g.id = p.source_gallery_id
-      WHERE p.verification_status = 'verified'
-        AND p.publication_status = 'published'
-        AND p.authorization_status = 'active'
-        AND p.visibility_status = 'visible'
-        AND (
-          p.authorization_valid_from IS NULL
-          OR (
-            datetime(p.authorization_valid_from) IS NOT NULL
-            AND datetime(p.authorization_valid_from) <= datetime(?)
-          )
-        )
-        AND (
-          p.authorization_valid_until IS NULL
-          OR (
-            datetime(p.authorization_valid_until) IS NOT NULL
-            AND datetime(p.authorization_valid_until) > datetime(?)
-          )
-        )
-        AND (
-          p.verification_valid_until IS NULL
-          OR (
-            datetime(p.verification_valid_until) IS NOT NULL
-            AND datetime(p.verification_valid_until) > datetime(?)
-          )
-        )
-        AND datetime(p.published_at) IS NOT NULL
-        AND g.status = 'published'
+      WHERE ${PUBLIC_PROFILE_ELIGIBILITY_SQL}
         AND p.region_code IS NOT NULL
         AND p.region_label IS NOT NULL
       GROUP BY p.region_code, p.region_label
       ORDER BY profile_count DESC, p.region_code ASC
       LIMIT 100
     `)
-    .bind(now.toISOString(), now.toISOString(), now.toISOString())
+    .bind(...publicProfileEligibilityParams(now))
     .all<{ region_code: string; region_label: string; profile_count: number }>()
 
   return result.results.map(row => ({
@@ -308,36 +293,10 @@ export async function getPublicPersonProfile(
       FROM profile_public_projections p
       JOIN galleries g ON g.id = p.source_gallery_id
       WHERE p.profile_id = ?
-        AND p.verification_status = 'verified'
-        AND p.publication_status = 'published'
-        AND p.authorization_status = 'active'
-        AND p.visibility_status = 'visible'
-        AND (
-          p.authorization_valid_from IS NULL
-          OR (
-            datetime(p.authorization_valid_from) IS NOT NULL
-            AND datetime(p.authorization_valid_from) <= datetime(?)
-          )
-        )
-        AND (
-          p.authorization_valid_until IS NULL
-          OR (
-            datetime(p.authorization_valid_until) IS NOT NULL
-            AND datetime(p.authorization_valid_until) > datetime(?)
-          )
-        )
-        AND (
-          p.verification_valid_until IS NULL
-          OR (
-            datetime(p.verification_valid_until) IS NOT NULL
-            AND datetime(p.verification_valid_until) > datetime(?)
-          )
-        )
-        AND datetime(p.published_at) IS NOT NULL
-        AND g.status = 'published'
+        AND ${PUBLIC_PROFILE_ELIGIBILITY_SQL}
       LIMIT 1
     `)
-    .bind(profileId, now.toISOString(), now.toISOString(), now.toISOString())
+    .bind(profileId, ...publicProfileEligibilityParams(now))
     .first<PublicProjectionRow>()
 
   return row ? mapPublicProfile(row, apiUrl) : null
@@ -348,10 +307,25 @@ export async function getPublicPersonProfilesByIds(
   profileIds: string[],
   apiUrl: string,
   now = new Date(),
+  viewerAccountInternalId: number | null = null,
 ): Promise<Map<string, AppPersonProfile>> {
   const ids = [...new Set(profileIds.filter(profileId => PROFILE_ID_PATTERN.test(profileId)))].slice(0, 40)
   if (ids.length === 0) return new Map()
   const placeholders = ids.map(() => '?').join(', ')
+  const conditions = [
+    `p.profile_id IN (${placeholders})`,
+    `(${PUBLIC_PROFILE_ELIGIBILITY_SQL})`,
+  ]
+  const params: unknown[] = [...ids, ...publicProfileEligibilityParams(now)]
+  if (viewerAccountInternalId !== null) {
+    conditions.push(`NOT EXISTS (
+      SELECT 1 FROM app_profile_blocks block
+      WHERE block.account_id = ?
+        AND block.profile_id = p.profile_id
+        AND block.state = 'blocked'
+    )`)
+    params.push(viewerAccountInternalId)
+  }
   const result = await db.prepare(`
     SELECT
       p.profile_id,
@@ -374,35 +348,8 @@ export async function getPublicPersonProfilesByIds(
       ${PUBLIC_TAXONOMY_SELECT} AS taxonomy_json
     FROM profile_public_projections p
     JOIN galleries g ON g.id = p.source_gallery_id
-    WHERE p.profile_id IN (${placeholders})
-      AND p.verification_status = 'verified'
-      AND p.publication_status = 'published'
-      AND p.authorization_status = 'active'
-      AND p.visibility_status = 'visible'
-      AND (
-        p.authorization_valid_from IS NULL
-        OR (
-          datetime(p.authorization_valid_from) IS NOT NULL
-          AND datetime(p.authorization_valid_from) <= datetime(?)
-        )
-      )
-      AND (
-        p.authorization_valid_until IS NULL
-        OR (
-          datetime(p.authorization_valid_until) IS NOT NULL
-          AND datetime(p.authorization_valid_until) > datetime(?)
-        )
-      )
-      AND (
-        p.verification_valid_until IS NULL
-        OR (
-          datetime(p.verification_valid_until) IS NOT NULL
-          AND datetime(p.verification_valid_until) > datetime(?)
-        )
-      )
-      AND datetime(p.published_at) IS NOT NULL
-      AND g.status = 'published'
-  `).bind(...ids, now.toISOString(), now.toISOString(), now.toISOString())
+    WHERE ${conditions.join('\n      AND ')}
+  `).bind(...params)
     .all<PublicProjectionRow>()
 
   return new Map(result.results.map(row => [row.profile_id, mapPublicProfile(row, apiUrl)]))

@@ -8,6 +8,8 @@ App 版本：1.0
 
 状态：需求已细化，热度公式与个性化合规待决策门禁关闭
 
+开发状态（2026-08-09）：Recommendation-1 Cloudflare 平台基线已实现，累计 App API v2 为 `1.16.0`。已覆盖统一公开资格、版本化非个性化规则、显式 taxonomy 偏好结构、可解释原因、会话级稳定灰度、计划生效、暂停/回滚、固定“平台精选”、Dry-run、职责分离和 Nuxt 四页运营工作台；现有 `/discovery/feed` 不变。当前所有推荐开关保持关闭，`0083` 未执行，KMP 未接入，专项测试后置。OQ-023 未关闭前个性化规则只能创建草稿和运行合成 Dry-run，服务端拒绝启用；OQ-020 未关闭前不写推荐证据、不执行跨会话频控。完整实现边界见 [Recommendation-1 版本化推荐与运营精选开发基线](../../../../app/RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)。
+
 ## 2. Epic
 
 - Epic：[真人发现与互动平台产品蓝图](../product-blueprint/prd.md)
