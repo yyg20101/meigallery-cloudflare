@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-09
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -124,6 +124,19 @@ Interaction-3 以兼容新增方式把累计契约提升为 `1.12.0`，只冻结
 
 完整边界见 [Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)。
 
+### 1.11 Search-1 局部冻结记录
+
+Search-1 以兼容新增方式把累计契约提升为 `1.13.0`，冻结并实现默认关闭的服务端人物搜索与搜索历史边界：
+
+- `POST /api/v2/person-profiles/search` 只搜索审核展示昵称、公开地区和公开标签；使用 POST 正文避免自由搜索词进入 URL 与访问日志。
+- 搜索结果重用公开人物资格并排除本人已屏蔽人物；支持 `relevance / popular / latest`，游标绑定账号、搜索词哈希与排序，不包含原始搜索词。
+- 搜索读取不隐式记录历史。搜索历史必须由用户独立开启，并在成功呈现后提交 `searchId + query + expectedHistoryVersion` 的幂等写命令。
+- 搜索历史与浏览历史分表、分开关、分版本；支持本人分页、逐条删除和版本化全部清除，清除可同时关闭未来记录。
+- bootstrap 增加 `capabilities.search.profiles|history` 与 `search` 配置。production 可单独开放人物搜索；历史还必须通过保留期审批、purge 与独立生产门禁。
+- 当前不执行 `0080`、不配置环境、不实现 KMP 页面，不运行专项测试；高级筛选、保存条件、热门词、联想词和推荐信号进入 Search-2。
+
+完整边界见 [Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -152,7 +165,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.7.0"
+    "contractVersion": "1.13.0"
   }
 }
 ```
@@ -251,7 +264,7 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 | GET | `/api/v2/discovery/popular` | 后续兼容别名；M0 使用 `feed?sort=popular` |
 | GET | `/api/v2/discovery/latest` | 后续兼容别名；M0 使用 `feed?sort=latest` |
 | GET | `/api/v2/discovery/categories` | 待标签目录冻结后实现 |
-| GET | `/api/v2/person-profiles` | 待搜索与筛选契约冻结后实现 |
+| POST | `/api/v2/person-profiles/search` | Search-1：登录后按公开昵称、地区、标签搜索，正文传词并使用账号绑定游标 |
 | GET | `/api/v2/person-profiles/:profileId` | M0 已实现：公开基础详情投影 |
 | POST | `/api/v2/person-profiles/:profileId/media-access` | 待媒体授权契约冻结后实现 |
 
@@ -303,12 +316,14 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 | GET | `/api/v2/me/view-history` | Interaction-2：未到期历史分页 |
 | POST | `/api/v2/me/view-history/clear` | Interaction-2：版本化全部清除，可同时关闭记录 |
 | DELETE | `/api/v2/me/view-history/:profileId` | Interaction-2：幂等删除单条历史并返回新设置版本 |
-| GET/DELETE | `/api/v2/me/search-history` | 搜索历史查询/全部清除 |
-| DELETE | `/api/v2/me/search-history/:historyId` | 删除单条搜索历史 |
+| GET/PUT | `/api/v2/me/search-history/settings` | Search-1：默认关闭的独立记录开关与乐观版本 |
+| GET/POST | `/api/v2/me/search-history` | Search-1：本人未到期历史分页/显式幂等记录 |
+| POST | `/api/v2/me/search-history/clear` | Search-1：版本化全部清除，可同时关闭记录 |
+| DELETE | `/api/v2/me/search-history/:historyId` | Search-1：幂等删除单条并提升设置版本 |
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。搜索历史和推荐信号仍未冻结，不得用自由文本或现有互动表临时替代。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
+Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史；高级筛选、保存条件与推荐信号仍未冻结。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
 
 ## 8. 会员和目录 API
 

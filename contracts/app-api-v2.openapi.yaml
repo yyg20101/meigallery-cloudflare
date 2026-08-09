@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.12.0
+  version: 1.13.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -13,7 +13,8 @@ info:
     受控动作打开时必须重新校验权威业务状态。Wallet-1 新增本人金币余额、追加式明细与分录详情；金币只记录管理员独立复核后的单笔调整，
     不开放购买、消费、转赠、兑换、提现或支付。Interaction-2 以默认关闭方式新增多文件夹收藏和本人浏览历史；
     收藏不等于喜欢或匹配，历史默认不记录且必须携带当前偏好版本写入。Interaction-3 新增关注对象已审核公开发布更新流，
-    并在用户拉取通知时以同一发布事实惰性生成去重站内提醒；取消关注、拉黑或资料失效后不再投影。搜索历史、推荐信号、
+    并在用户拉取通知时以同一发布事实惰性生成去重站内提醒；取消关注、拉黑或资料失效后不再投影。Search-1 新增登录后人物搜索与
+    独立、默认关闭的账号私有搜索历史；搜索词通过 POST 正文传输，不进入 URL、游标、审计或分析事件。高级筛选、保存条件、推荐信号、
     系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
@@ -26,6 +27,7 @@ tags:
   - name: Auth
   - name: Account
   - name: Discovery
+  - name: Search
   - name: PersonProfile
   - name: Interaction
   - name: Membership
@@ -1156,6 +1158,175 @@ paths:
           $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/search-history/settings:
+    get:
+      tags: [Search]
+      operationId: getAppSearchHistorySettings
+      summary: 获取本人搜索历史开关和版本
+      description: 首次读取返回虚拟 version=1、recordingEnabled=false，不因读取创建数据库记录。
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 搜索历史记录开关、保留天数和容量上限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchHistorySettingsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Search]
+      operationId: updateAppSearchHistorySettings
+      summary: 使用 expectedVersion 开启或关闭本人搜索历史
+      description: 关闭只停止后续写入，不自动删除已有记录；用户可另行执行全部清除。
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchHistorySettingsUpdateRequest'
+      responses:
+        '200':
+          description: 更新后的权威设置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchHistorySettingsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/search-history:
+    get:
+      tags: [Search]
+      operationId: listAppSearchHistory
+      summary: 分页获取本人未到期搜索历史
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 仅当前账号可见的规范化搜索词与时间
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchHistoryListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [Search]
+      operationId: recordAppSearchHistory
+      summary: 在一次搜索成功呈现后显式记录本人搜索词
+      description: >-
+        只有 recordingEnabled=true 且 expectedHistoryVersion 仍有效时写入；searchId 用于幂等重试。
+        相同规范化搜索词合并为一条，写入后按策略容量删除最旧记录。该命令不写分析事件或管理员审计日志。
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchHistoryRecordRequest'
+      responses:
+        '200':
+          description: 记录成功或同一 searchId 的幂等重放
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchHistoryRecordResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/search-history/clear:
+    post:
+      tags: [Search]
+      operationId: clearAppSearchHistory
+      summary: 原子清空本人搜索历史并使旧写请求失效
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchHistoryClearRequest'
+      responses:
+        '200':
+          description: 清除数量、新开关状态和设置版本
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchHistoryClearResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/search-history/{historyId}:
+    delete:
+      tags: [Search]
+      operationId: deleteAppSearchHistoryItem
+      summary: 幂等删除本人单条搜索历史并使旧版本写请求失效
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: historyId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^sh_[0-9a-f]{64}$'
+      responses:
+        '200':
+          description: 删除结果；不存在时 deleted=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchHistoryDeleteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/me/blocks:
     get:
       tags: [Safety]
@@ -1439,6 +1610,38 @@ paths:
                 $ref: '#/components/schemas/RegionListResponse'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v2/person-profiles/search:
+    post:
+      tags: [Search]
+      operationId: searchAppPersonProfiles
+      summary: 搜索当前可见的审核公开人物资料
+      description: >-
+        必须登录；只搜索 displayName、公开地区和公开标签，并排除当前账号已屏蔽人物。
+        搜索词放在 JSON 正文中，不写 URL、游标、审计日志或分析事件；本读取接口不会隐式写入搜索历史。
+        游标与账号、搜索词哈希和排序绑定，条件变化后必须从第一页重新请求。
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonSearchRequest'
+      responses:
+        '200':
+          description: 符合当前公开资格和搜索条件的人物列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonSearchListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/person-profiles/{profileId}:
     get:
       tags: [PersonProfile]
@@ -2018,7 +2221,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.12.0
+        const: 1.13.0
   parameters:
     ProfileId:
       name: profileId
@@ -2150,6 +2353,9 @@ components:
     DiscoverySort:
       type: string
       enum: [recommended, popular, latest]
+    PersonSearchSort:
+      type: string
+      enum: [relevance, popular, latest]
     Meta:
       type: object
       additionalProperties: false
@@ -2165,7 +2371,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.12.0
+          const: 1.13.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -3749,7 +3955,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety]
+      required: [product, appVersion, capabilities, discovery, search, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety]
       properties:
         product:
           type: string
@@ -3760,11 +3966,20 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, auth, interactions, membership, messaging, notifications, wallet, safety, payments, systemPush]
+          required: [discovery, search, auth, interactions, membership, messaging, notifications, wallet, safety, payments, systemPush]
           properties:
             discovery:
               type: boolean
               const: true
+            search:
+              type: object
+              additionalProperties: false
+              required: [profiles, history]
+              properties:
+                profiles:
+                  type: boolean
+                history:
+                  type: boolean
             auth:
               type: boolean
             interactions:
@@ -3835,6 +4050,43 @@ components:
             maxPageSize:
               type: integer
               const: 40
+        search:
+          type: object
+          additionalProperties: false
+          required: [policyVersion, transport, defaultSort, allowedSorts, defaultPageSize, maxPageSize, maxQueryLength, historyRecordingDefault, maxHistoryItems]
+          properties:
+            policyVersion:
+              type: string
+              pattern: '^sqp_[A-Za-z0-9_-]{1,92}$'
+            transport:
+              type: string
+              const: http_post
+            defaultSort:
+              $ref: '#/components/schemas/PersonSearchSort'
+            allowedSorts:
+              type: array
+              minItems: 3
+              maxItems: 3
+              uniqueItems: true
+              items:
+                $ref: '#/components/schemas/PersonSearchSort'
+            defaultPageSize:
+              type: integer
+              const: 20
+            maxPageSize:
+              type: integer
+              const: 40
+            maxQueryLength:
+              type: integer
+              minimum: 1
+              maximum: 50
+            historyRecordingDefault:
+              type: boolean
+              const: false
+            maxHistoryItems:
+              type: integer
+              minimum: 1
+              maximum: 50
         interactionCollections:
           type: object
           additionalProperties: false
@@ -4945,6 +5197,188 @@ components:
           $ref: '#/components/schemas/ViewHistoryClearResult'
         meta:
           $ref: '#/components/schemas/Meta'
+    SearchHistorySettings:
+      type: object
+      additionalProperties: false
+      required: [recordingEnabled, version, retentionDays, maxItems, updatedAt]
+      properties:
+        recordingEnabled:
+          type: boolean
+          default: false
+        version:
+          type: integer
+          minimum: 1
+        retentionDays:
+          type: integer
+          minimum: 1
+          maximum: 3650
+        maxItems:
+          type: integer
+          minimum: 1
+          maximum: 50
+        updatedAt:
+          type: [string, 'null']
+          format: date-time
+    SearchHistorySettingsResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SearchHistorySettings'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SearchHistorySettingsUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, recordingEnabled]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        recordingEnabled:
+          type: boolean
+    SearchHistoryRecordRequest:
+      type: object
+      additionalProperties: false
+      required: [searchId, query, expectedHistoryVersion]
+      properties:
+        searchId:
+          type: string
+          pattern: '^srch_[A-Za-z0-9_-]{8,91}$'
+        query:
+          type: string
+          minLength: 1
+          maxLength: 50
+        expectedHistoryVersion:
+          type: integer
+          minimum: 1
+    SearchHistoryRecordResult:
+      type: object
+      additionalProperties: false
+      required: [historyId, recorded, duplicate, settingsVersion, lastSearchedAt, expiresAt]
+      properties:
+        historyId:
+          type: string
+          pattern: '^sh_[0-9a-f]{64}$'
+        recorded:
+          type: boolean
+        duplicate:
+          type: boolean
+        settingsVersion:
+          type: integer
+          minimum: 1
+        lastSearchedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    SearchHistoryRecordResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SearchHistoryRecordResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SearchHistoryItem:
+      type: object
+      additionalProperties: false
+      required: [historyId, query, firstSearchedAt, lastSearchedAt, searchCount, expiresAt]
+      properties:
+        historyId:
+          type: string
+          pattern: '^sh_[0-9a-f]{64}$'
+        query:
+          type: string
+          minLength: 1
+          maxLength: 50
+        firstSearchedAt:
+          type: string
+          format: date-time
+        lastSearchedAt:
+          type: string
+          format: date-time
+        searchCount:
+          type: integer
+          minimum: 1
+        expiresAt:
+          type: string
+          format: date-time
+    SearchHistoryListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/SearchHistoryItem'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    SearchHistoryDeleteResult:
+      type: object
+      additionalProperties: false
+      required: [historyId, deleted, settingsVersion, updatedAt]
+      properties:
+        historyId:
+          type: string
+          pattern: '^sh_[0-9a-f]{64}$'
+        deleted:
+          type: boolean
+        settingsVersion:
+          type: integer
+          minimum: 2
+        updatedAt:
+          type: string
+          format: date-time
+    SearchHistoryDeleteResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SearchHistoryDeleteResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    SearchHistoryClearRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, disableRecording]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        disableRecording:
+          type: boolean
+    SearchHistoryClearResult:
+      type: object
+      additionalProperties: false
+      required: [clearedCount, recordingEnabled, settingsVersion, updatedAt]
+      properties:
+        clearedCount:
+          type: integer
+          minimum: 0
+        recordingEnabled:
+          type: boolean
+        settingsVersion:
+          type: integer
+          minimum: 2
+        updatedAt:
+          type: string
+          format: date-time
+    SearchHistoryClearResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SearchHistoryClearResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
     ViewerInteractionType:
       type: string
       enum: [like, follow]
@@ -5152,6 +5586,61 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PersonProfile'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    PersonSearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: 服务端执行 NFKC、首尾去空白和连续空白折叠；禁止控制字符与方向控制字符。
+        sort:
+          $ref: '#/components/schemas/PersonSearchSort'
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 40
+          default: 20
+        cursor:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 2048
+          description: 只包含账号范围、搜索词哈希、排序和分页键，不包含原始搜索词。
+    PersonSearchMatch:
+      type: object
+      additionalProperties: false
+      required: [field, label]
+      properties:
+        field:
+          type: string
+          enum: [display_name, region, tag]
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+    PersonSearchItem:
+      type: object
+      additionalProperties: false
+      required: [profile, match]
+      properties:
+        profile:
+          $ref: '#/components/schemas/PersonProfile'
+        match:
+          $ref: '#/components/schemas/PersonSearchMatch'
+    PersonSearchListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/PersonSearchItem'
         meta:
           $ref: '#/components/schemas/ListMeta'
     DiscoveryRegion:

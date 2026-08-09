@@ -4,11 +4,11 @@ App 版本：1.0
 
 日期：2026-08-09
 
-状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给、Auth-1 账号访问与 Interaction-1/2/3 服务端为保守开发基线
+状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给、Auth-1 账号访问、Interaction-1/2/3 与 Search-1 服务端为保守开发基线
 
 ## 1. 文档目的
 
-本文定义从需求讨论进入实现前，如何冻结 HTTP API、实时事件、Kotlin/TypeScript DTO、D1 表、状态机、错误码和迁移契约。M0 公共只读契约已局部冻结；M1/Auth-1/Interaction-1/2/3 仅形成可回滚的分阶段开发基线，不表示完整 schema、身份政策、认证政策、互动保留或个性化政策已冻结，也不授权部署生产、执行 production migration 或导入真实数据。
+本文定义从需求讨论进入实现前，如何冻结 HTTP API、实时事件、Kotlin/TypeScript DTO、D1 表、状态机、错误码和迁移契约。M0 公共只读契约已局部冻结；M1/Auth-1/Interaction-1/2/3/Search-1 仅形成可回滚的分阶段开发基线，不表示完整 schema、身份政策、认证政策、互动/搜索保留或个性化政策已冻结，也不授权部署生产、执行 production migration 或导入真实数据。
 
 冻结的目标不是让所有字段永远不变，而是建立事实源、兼容规则、评审顺序和可验证产物，使 Android、iOS、Nuxt、Hono、D1、DO 和迁移任务不会各自解释产品规则。
 
@@ -16,13 +16,13 @@ App 版本：1.0
 
 2026-08-02 经项目负责人继续开发确认，允许先实现不依赖未决身份与合规参数的公共发现读链路：
 
-- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式累计更新到 `1.12.0`，API 主版本仍为 `2`。
+- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式累计更新到 `1.13.0`，API 主版本仍为 `2`。
 - 路由：bootstrap、发现 feed、地区目录和公开人物基础详情共四个 GET 路径。
 - D1：`0067_app_public_profile_projection.sql` 仅创建空的可重建公开投影及四个真实查询索引。
 - 安全边界：查询强制验证认证、发布、授权、有效期、可见性和来源图库发布状态；migration 没有 seed、回填或 legacy 自动映射。
 - 客户端：手写 transport model 必须接受未知字段，但未知 enum/capability 安全降级；不得把 transport DTO 直接作为 Domain model。
 
-正式应用 ID、互动推荐信号、媒体访问及各能力的生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，Interaction-1 增加依赖 Auth 的喜欢/关注基线，Interaction-2 增加独立默认关闭的收藏夹与浏览历史服务端契约，Interaction-3 增加复用已审核发布事实的关注更新与站内通知投影；首发登录政策、年龄/地区、保留期和正式法律文档版本仍未冻结。本次实现的公开投影仍是可删除重建的读模型，不替代 Person、Authorization、Verification、Publication Review 和审计权威表。
+正式应用 ID、互动推荐信号、媒体访问及各能力的生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，Interaction-1 增加依赖 Auth 的喜欢/关注基线，Interaction-2 增加独立默认关闭的收藏夹与浏览历史服务端契约，Interaction-3 增加复用已审核发布事实的关注更新与站内通知投影，Search-1 增加隐私 POST 人物搜索与默认关闭的账号私有搜索历史；首发登录政策、年龄/地区、保留期和正式法律文档版本仍未冻结。本次实现的公开投影仍是可删除重建的读模型，不替代 Person、Authorization、Verification、Publication Review 和审计权威表。
 
 ### 1.2 M1 保守开发基线
 
@@ -90,6 +90,20 @@ Auth-1 不关闭 G-01/G-03，不冻结法定年龄、首发地区、运营主体
 - 后置：KMP 页面、环境配置、`0079` 执行、专项测试、通知端到端验证和远端联调统一放到开发完成后。
 
 本切片不关闭通知保留期和互动推荐信号开放问题，不接系统推送，也不向目标真人或运营端披露关注者身份。
+
+### 1.7 Search-1 人物搜索与搜索历史服务端开发基线
+
+2026-08-09 按“先完成开发、后统一配置与测试”的顺序，冻结 production 默认关闭的 Search-1 服务端契约：
+
+- 读取：`POST /api/v2/person-profiles/search` 仅搜索公开昵称、地区和标签，复用公开资格并排除本人已屏蔽人物；POST 正文避免搜索词进入 URL 与访问日志。
+- 排序：支持相关度、热门、最新；不透明游标绑定账号、搜索词 SHA-256 和排序，不含原始搜索词。
+- 历史：搜索读取无隐式写入；用户主动开启后才显式提交幂等记录。搜索历史与浏览历史分表、分开关、分版本。
+- 清理：单条删除和全部清除提升版本，阻止操作前的在途写请求重新写回；列表只显示本人未到期记录。
+- 数据：`0080_app_person_search_and_history.sql` 只创建 development 策略、空偏好/历史表和查询索引，不回填旧站搜索数据。
+- 能力：Auth、`APP_PERSON_SEARCH_ENABLED`、策略版本和 production-ready 控制基础搜索；production 历史另需保留期批准、purge 和历史生产门禁。
+- 后置：KMP 页面、环境配置、`0080` 执行、专项测试、远端联调、高级筛选与保存条件统一后置。
+
+本切片不关闭 OQ-020/OQ-023，不把 development 90 天保留期作为生产承诺，也不把搜索词写入审计、分析或推荐信号。完整边界见 `SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md`。
 
 ## 2. 契约事实源
 

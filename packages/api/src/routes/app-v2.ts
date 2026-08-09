@@ -11,6 +11,34 @@ import {
   listPublicPersonProfiles,
   parseAppDiscoveryQuery,
 } from '../services/app-discovery'
+import {
+  APP_PERSON_SEARCH_SORTS,
+  parseAppPersonSearchInput,
+  searchPublicPersonProfiles,
+} from '../services/app-person-search'
+import {
+  APP_PERSON_SEARCH_DEFAULT_PAGE_SIZE,
+  APP_PERSON_SEARCH_MAX_HISTORY_ITEMS,
+  APP_PERSON_SEARCH_MAX_PAGE_SIZE,
+  APP_PERSON_SEARCH_MAX_QUERY_LENGTH,
+  APP_PERSON_SEARCH_POLICY_ID,
+  AppPersonSearchError,
+  getAppPersonSearchRuntimeConfig,
+  requireAppPersonSearchPolicy,
+  resolveAppPersonSearchCapabilities,
+} from '../services/app-person-search-policy'
+import {
+  clearAppSearchHistory,
+  deleteAppSearchHistoryItem,
+  getAppSearchHistorySettings,
+  listAppSearchHistory,
+  parseAppSearchHistoryListQuery,
+  recordAppSearchHistory,
+  updateAppSearchHistorySettings,
+  type ClearAppSearchHistoryInput,
+  type RecordAppSearchHistoryInput,
+  type UpdateAppSearchHistorySettingsInput,
+} from '../services/app-search-history'
 import { appApiError, appApiListSuccess, appApiSuccess } from '../utils/app-api-v2'
 import { appAuthRoutes, appAccountError } from './app-auth'
 import {
@@ -213,6 +241,7 @@ appV2Routes.use('/discovery/feed', async (c, next) => {
 for (const path of [
   '/me',
   '/me/*',
+  '/person-profiles/search',
   '/person-profiles/:profileId/interactions',
   '/person-profiles/:profileId/like',
   '/person-profiles/:profileId/follow',
@@ -779,6 +808,33 @@ appV2Routes.get('/discovery/feed', async (c) => {
 appV2Routes.get('/discovery/regions', async (c) => {
   const regions = await listPublicDiscoveryRegions(c.env.DB)
   return appApiSuccess(c, regions)
+})
+
+appV2Routes.post('/person-profiles/search', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const config = getAppPersonSearchRuntimeConfig(c.env)
+    const policy = await requireAppPersonSearchPolicy(c.env.DB, config, 'profiles')
+    const query = await parseAppPersonSearchInput(
+      await c.req.json<unknown>(),
+      principal.accountId,
+      policy,
+    )
+    const result = await searchPublicPersonProfiles(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      query,
+      c.req.url,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
 })
 
 appV2Routes.get('/person-profiles/:profileId', async (c) => {
@@ -1365,6 +1421,100 @@ appV2Routes.delete('/me/view-history/:profileId', async (c) => {
   }
 })
 
+appV2Routes.get('/me/search-history/settings', async (c) => {
+  try {
+    return appApiSuccess(c, await getAppSearchHistorySettings(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      getAppPersonSearchRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.put('/me/search-history/settings', async (c) => {
+  try {
+    return appApiSuccess(c, await updateAppSearchHistorySettings(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      await c.req.json<UpdateAppSearchHistorySettingsInput>(),
+      getAppPersonSearchRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.post('/me/search-history', async (c) => {
+  try {
+    return appApiSuccess(c, await recordAppSearchHistory(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      await c.req.json<RecordAppSearchHistoryInput>(),
+      getAppPersonSearchRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.get('/me/search-history', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const query = parseAppSearchHistoryListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppSearchHistory(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      getAppPersonSearchRuntimeConfig(c.env),
+      query,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.post('/me/search-history/clear', async (c) => {
+  try {
+    return appApiSuccess(c, await clearAppSearchHistory(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      await c.req.json<ClearAppSearchHistoryInput>(),
+      getAppPersonSearchRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
+appV2Routes.delete('/me/search-history/:historyId', async (c) => {
+  try {
+    return appApiSuccess(c, await deleteAppSearchHistoryItem(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('historyId'),
+      getAppPersonSearchRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonSearchError(c, error)
+  }
+})
+
 async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   const auth = getAppAuthRuntimeConfig(env)
   const membership = getAppMembershipRuntimeConfig(env)
@@ -1374,17 +1524,27 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   const wallet = getAppWalletRuntimeConfig(env)
   const interactionCollections = getAppInteractionCollectionRuntimeConfig(env)
   const followUpdates = getAppFollowUpdateRuntimeConfig(env)
-  const [interactionCollectionCapabilities, followUpdatesCapability] = auth.enabled
+  const personSearch = getAppPersonSearchRuntimeConfig(env)
+  const [interactionCollectionCapabilities, followUpdatesCapability, personSearchCapabilities] = auth.enabled
     ? await Promise.all([
         resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections),
         resolveAppFollowUpdateCapability(env.DB, followUpdates),
+        resolveAppPersonSearchCapabilities(env.DB, personSearch),
       ])
-    : [{ favorite: false, history: false }, false]
+    : [
+        { favorite: false, history: false },
+        false,
+        { profiles: false, history: false, policy: null },
+      ]
   return {
     product: 'meigallery',
     appVersion: '1.0',
     capabilities: {
       discovery: true,
+      search: {
+        profiles: personSearchCapabilities.profiles,
+        history: personSearchCapabilities.history,
+      },
       auth: auth.enabled,
       interactions: {
         like: auth.enabled,
@@ -1415,6 +1575,19 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       allowedSorts: APP_DISCOVERY_SORTS,
       defaultPageSize: APP_DISCOVERY_DEFAULT_PAGE_SIZE,
       maxPageSize: APP_DISCOVERY_MAX_PAGE_SIZE,
+    },
+    search: {
+      policyVersion: personSearch.policyId || APP_PERSON_SEARCH_POLICY_ID,
+      transport: 'http_post',
+      defaultSort: 'relevance',
+      allowedSorts: APP_PERSON_SEARCH_SORTS,
+      defaultPageSize: APP_PERSON_SEARCH_DEFAULT_PAGE_SIZE,
+      maxPageSize: APP_PERSON_SEARCH_MAX_PAGE_SIZE,
+      maxQueryLength: personSearchCapabilities.policy?.maxQueryLength
+        ?? APP_PERSON_SEARCH_MAX_QUERY_LENGTH,
+      historyRecordingDefault: false,
+      maxHistoryItems: personSearchCapabilities.policy?.maxHistoryItems
+        ?? APP_PERSON_SEARCH_MAX_HISTORY_ITEMS,
     },
     interactionCollections: {
       policyVersion: interactionCollections.policyId || APP_INTERACTION_COLLECTION_POLICY_ID,
@@ -1611,6 +1784,19 @@ function appInteractionError(
   }
   if (error instanceof AppFollowUpdateError) {
     return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  throw error
+}
+
+function appPersonSearchError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppPersonSearchError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  if (error instanceof SyntaxError) {
+    return appApiError(c, 400, 'REQUEST_BODY_INVALID', '请求体必须为有效 JSON')
   }
   throw error
 }

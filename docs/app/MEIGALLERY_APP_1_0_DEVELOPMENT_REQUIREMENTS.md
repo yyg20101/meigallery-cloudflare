@@ -64,13 +64,14 @@ App 版本：1.0
 
 需求范围仍按本文完整追踪，代码按可回滚纵向切片逐步落地；“已实现开发切片”不等于客户需求已整体冻结或获准生产发布。
 
-- M0、M1、Auth-1、Interaction-1/2/3、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 已形成生产默认关闭的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
+- M0、M1、Auth-1、Interaction-1/2/3、Search-1、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 已形成生产默认关闭的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
 - Interaction-2 已完成多文件夹收藏与默认关闭浏览历史的服务端代码、D1 schema 和 App API v2 `1.11.0` 契约，覆盖默认收藏、文件夹管理、全部收藏、历史显式开关、有效浏览记录、逐条删除、版本化全部清除和屏蔽联动。KMP 页面、环境配置、migration、专项测试与远端联调按“先完成全部开发、后统一配置测试”的顺序后置，当前 capability 继续关闭。
 - Interaction-3 已完成关注后已审核公开发布更新流、独立 capability、Message-3 惰性去重站内通知和投递前资格复核的服务端代码、D1 schema 与 App API v2 `1.12.0` 契约。它不复制发布内容、不接系统推送、不向目标真人或运营端披露关注者；KMP 页面、环境配置、migration、专项测试与远端联调继续后置，当前 `followUpdates=false`。
+- Search-1 已完成人物公开字段搜索、相关度/热度/最新稳定分页、账号屏蔽过滤，以及默认关闭、显式记录、版本化清除的私有搜索历史服务端代码、D1 schema 与 App API v2 `1.13.0` 契约。搜索词使用 POST 正文，不进入 URL、游标、审计或分析事件；KMP 页面、环境配置、migration、专项测试与远端联调继续后置，当前 `search.profiles=false`、`search.history=false`。高级筛选和保存条件仍属于 Search-2。
 - Message-1 已实现 `APP-MSG-01` 列表、`APP-MSG-02` 人物详情内二次披露确认、`APP-MSG-03` 仅文本会话核心状态；Message-2 进一步实现人物详情安全区、话题/消息举报、观看者关闭话题、`APP-SET-06/07` 合并式安全中心，以及 `ADM-MSG-01/02` 限时领取工作台和 `ADM-SAF-01/02` 最小安全审核工作台。
 - Message-2 冻结屏蔽/解除、四类举报目标契约、本人举报时间线、话题关闭、会话 assignment、最小证据、结论处置和全局暂停/容量控制；Safety-2 进一步实现 `APP-SET-08`“举报未发现违规结论的一次独立复核”以及 `ADM-SAF-03/04` 申诉队列和详情。账号限制/金币等其他来源申诉、用户补充媒体证据、内部备注/转派、通知、撤回、实时通道和质量看板仍未实现。
-- 已完成的既有跨仓切片具备对应代码和测试；Interaction-2/3 当前仅完成服务端开发代码，不能据此推断客户端、配置或验证已完成。production 的 Auth、会员、消息、安全、互动收藏/历史/关注更新、后台和 production-ready 开关及新目录选择保持关闭；既有 dev 联调状态不向 Interaction-2/3 扩散。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
-- Interaction-2、Interaction-3、Message-1、Message-2 与 Safety-2 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md) 和 [Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
+- 已完成的既有跨仓切片具备对应代码和测试；Interaction-2/3 与 Search-1 当前仅完成服务端开发代码，不能据此推断客户端、配置或验证已完成。production 的 Auth、会员、消息、安全、搜索、互动收藏/历史/关注更新、后台和 production-ready 开关及新目录选择保持关闭；既有 dev 联调状态不向这些新切片扩散。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
+- Interaction-2、Interaction-3、Search-1、Message-1、Message-2 与 Safety-2 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md) 和 [Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
 
 ## 3. 不可违反的业务与安全边界
 
@@ -720,9 +721,9 @@ App 版本：1.0
 
 **页面结构：** 搜索输入、历史、建议、结果和无结果解释围绕同一搜索任务组织。
 
-**详细交互：** 用户从“推荐页搜索框”进入。主要操作为“提交搜索”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-07「真人详情」。次要操作包括：清除历史、打开筛选。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“推荐页搜索框”进入。主要操作为“提交搜索”，客户端通过 `POST /api/v2/person-profiles/search` 在正文中发送搜索词，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-07「真人详情」。搜索读取本身不写历史；只有用户已开启独立搜索历史且结果成功呈现，客户端才提交带当前设置版本的显式记录命令。次要操作包括：逐条/全部清除历史、打开筛选。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
 
-**业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
+**业务规则：** Search-1 只检索审核展示昵称、公开地区和公开标签，只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料；搜索历史默认关闭并与浏览历史完全独立。高级筛选与保存条件由 Search-2 后续冻结。
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
@@ -742,10 +743,12 @@ App 版本：1.0
 **开发验收：**
 
 - 从“推荐页搜索框”能够进入，页面明确显示 APP-DSC-04、页面名称、设计路由和返回路径。
-- 主要操作“提交搜索”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 主要操作“提交搜索”具有处理中、成功和失败反馈；读取无隐式写入，历史记录使用稳定 `searchId` 幂等提交。
 - 页面覆盖“初始、输入中、有结果、无结果、历史关闭”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
+- 搜索词不得进入 URL、分页游标、审计日志或分析事件；切换搜索词或排序后必须丢弃旧游标。
+- 历史关闭时不提交记录；逐条删除和全部清除后旧设置版本的在途写入必须被服务端拒绝。
 - UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。
 - 加载、空、错误、离线、无权限、对象失效和服务端状态变化必须按本页状态集合安全收敛。
 

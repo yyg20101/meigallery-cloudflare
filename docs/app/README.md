@@ -19,6 +19,7 @@ App 版本：1.0
 - [Wallet-1 一次性 Smoke 局部决策包](./WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md)：收敛仅限合成验收的调币内控、30 天聚合证据、APAC 位置提示和两步授权文本，不关闭 production 全局决策。
 - [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)：记录 App API `1.11.0` 多文件夹收藏、显式浏览历史、拉黑联动、默认关闭门禁，以及配置和专项测试后置边界。
 - [Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)：记录 App API `1.12.0` 发布事实复用、账号私有更新流、惰性去重通知、投递前资格复核和默认关闭门禁。
+- [Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)：记录 App API `1.13.0` 隐私 POST 搜索、公开字段边界、账号绑定游标、默认关闭的私有搜索历史和 Search-2 前向兼容点。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终状态和 169 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
 - [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、92 页/349 状态覆盖、2,284 个有效交互动作、排版与 Icon 修正、QA 结果和交付门禁。

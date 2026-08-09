@@ -145,6 +145,21 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整边界见 `docs/app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
 
+### Search-1 人物搜索与搜索历史 `[服务端开发完成，默认关闭]`
+
+`0080_app_person_search_and_history.sql` 和 App API v2 `1.13.0` 建立登录后人物搜索与账号私有搜索历史的服务端开发基线：
+
+- `POST /api/v2/person-profiles/search` 使用 JSON 正文接收搜索词，避免自由文本进入 URL 和访问日志；应用层不记录请求正文，也不把搜索词写入审计或分析事件。
+- 搜索只读取 `profile_public_projections` 的审核展示昵称、公开地区和前 8 个公开标签，复用发现页认证、发布、用途授权、有效期、可见性和来源图库资格，并排除当前账号已屏蔽人物。
+- 相关度排序使用确定性的昵称精确/前缀/包含、地区和标签层级；热门与最新复用公开投影分数和发布时间。游标绑定账号、搜索词 SHA-256 和排序，不保存原始搜索词。
+- `app_person_search_policies` 把搜索与历史 capability 分开。production 可单独打开人物搜索；搜索历史还要求保留期审批、purge 和 `history_production_ready`，避免未决历史策略阻塞基础搜索。
+- `app_search_history_preferences` 以默认关闭、乐观版本和 mutation token 管理账号选择；`app_person_search_history` 只在客户端成功呈现后显式命令写入，同一规范化搜索词聚合、`searchId` 幂等、容量裁剪并按行到期。
+- 单条删除和全部清除都会原子提升设置版本，使旧在途记录命令失效；列表和删除只使用 Bearer 会话的内部账号 ID，不接受请求体账号 ID。
+- 每日维护任务只在显式策略版本且 `purge_enabled=1` 时分批物理删除到期搜索历史；删除义务不依赖搜索 capability 继续开放，日志只记录数量与固定错误码。
+- 当前未配置 `APP_PERSON_SEARCH_*`、未执行 `0080`、未实现 KMP 页面，也未运行 migration/专项测试/远端联调；高级筛选、taxonomy 稳定 ID、保存条件、热门词、联想词和推荐信号由 Search-2 后续冻结。
+
+完整边界见 `docs/app/SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md`。
+
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
 `0071_app_membership_catalog_and_grants.sql` 和 App API v2 `1.4.0` 建立 Membership-1 最小闭环：
@@ -397,6 +412,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/v2/discovery/feed` | 只读公开人物投影；推荐/热门/最新、地区筛选和不透明游标 |
 | GET | `/api/v2/discovery/regions` | 只统计当前仍具公开资格的人物地区 |
 | GET | `/api/v2/person-profiles/:profileId` | 按稳定公开资料 ID 重新校验并返回基础详情 |
+| POST | `/api/v2/person-profiles/search` | 默认关闭：正文传输搜索词，按公开昵称/地区/标签搜索并使用账号绑定游标 |
 | POST | `/api/v2/auth/email-challenges` | 默认关闭：申请注册邮箱验证码，统一响应不披露账号存在性 |
 | POST | `/api/v2/auth/register` | 默认关闭：创建观看者账号、当前同意、设备和 App 会话 |
 | POST | `/api/v2/auth/login` | 默认关闭：邮箱密码登录与当前同意校验 |
@@ -416,6 +432,10 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/v2/me/view-history` | 默认关闭：本人未到期浏览历史分页 |
 | POST | `/api/v2/me/view-history/clear` | 默认关闭：原子清空历史并使旧版本写请求失效 |
 | DELETE | `/api/v2/me/view-history/:profileId` | 默认关闭：幂等删除本人单条浏览历史 |
+| GET/PUT | `/api/v2/me/search-history/settings` | 默认关闭：本人搜索历史独立开关与乐观版本 |
+| GET/POST | `/api/v2/me/search-history` | 默认关闭：本人未到期搜索历史分页/显式幂等记录 |
+| POST | `/api/v2/me/search-history/clear` | 默认关闭：原子清空搜索历史并使旧版本写请求失效 |
+| DELETE | `/api/v2/me/search-history/:historyId` | 默认关闭：幂等删除本人单条搜索历史 |
 | GET | `/api/v2/membership/catalog` | 默认关闭：Membership-1 五级开发目录与 typed entitlement |
 | GET | `/api/v2/me/entitlements` | 默认关闭：当前 App 账号的权威会员权益快照 |
 | GET | `/api/v2/me/membership-applications` | 默认关闭：本人最近会员申请与用户可见时间线 |
@@ -1329,6 +1349,7 @@ queued → processing → completed
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
 - **Interaction-2 服务端开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 接入、配置、migration、专项测试与远端联调后置。
 - **Interaction-3 服务端开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 接入、配置、migration、专项测试与远端联调后置。
+- **Search-1 服务端开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 接入、高级筛选、配置、migration、专项测试与远端联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
 

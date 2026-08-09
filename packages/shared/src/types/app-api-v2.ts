@@ -1,18 +1,19 @@
 /**
  * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
  * Message-2 安全、Safety-2 申诉、Message-3 站内通知、Wallet-1 与
- * Interaction-2 收藏历史与 Interaction-3 关注更新契约。
+ * Interaction-2 收藏历史、Interaction-3 关注更新与 Search-1 搜索契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
 
 export type AppDiscoverySort = 'recommended' | 'popular' | 'latest'
+export type AppPersonSearchSort = 'relevance' | 'popular' | 'latest'
 
 export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.12.0'
+  contractVersion: '1.13.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -46,6 +47,10 @@ export interface AppBootstrapConfig {
   appVersion: '1.0'
   capabilities: {
     discovery: boolean
+    search: {
+      profiles: boolean
+      history: boolean
+    }
     auth: boolean
     interactions: {
       like: boolean
@@ -76,6 +81,17 @@ export interface AppBootstrapConfig {
     allowedSorts: AppDiscoverySort[]
     defaultPageSize: number
     maxPageSize: number
+  }
+  search: {
+    policyVersion: string
+    transport: 'http_post'
+    defaultSort: AppPersonSearchSort
+    allowedSorts: AppPersonSearchSort[]
+    defaultPageSize: number
+    maxPageSize: number
+    maxQueryLength: number
+    historyRecordingDefault: false
+    maxHistoryItems: number
   }
   interactionCollections: {
     policyVersion: string
@@ -707,6 +723,56 @@ export interface AppPersonProfile {
     ruleVersion: string
   }
   publishedAt: string
+}
+
+export type AppPersonSearchMatchField = 'display_name' | 'region' | 'tag'
+
+export interface AppPersonSearchItem {
+  profile: AppPersonProfile
+  match: {
+    field: AppPersonSearchMatchField
+    label: string
+  }
+}
+
+export interface AppSearchHistorySettings {
+  recordingEnabled: boolean
+  version: number
+  retentionDays: number
+  maxItems: number
+  updatedAt: string | null
+}
+
+export interface AppSearchHistoryItem {
+  historyId: string
+  query: string
+  firstSearchedAt: string
+  lastSearchedAt: string
+  searchCount: number
+  expiresAt: string
+}
+
+export interface AppSearchHistoryRecordResult {
+  historyId: string
+  recorded: boolean
+  duplicate: boolean
+  settingsVersion: number
+  lastSearchedAt: string
+  expiresAt: string
+}
+
+export interface AppSearchHistoryDeleteResult {
+  historyId: string
+  deleted: boolean
+  settingsVersion: number
+  updatedAt: string
+}
+
+export interface AppSearchHistoryClearResult {
+  clearedCount: number
+  recordingEnabled: boolean
+  settingsVersion: number
+  updatedAt: string
 }
 
 export interface AppDiscoveryRegion {

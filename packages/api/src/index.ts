@@ -38,6 +38,8 @@ import { recoverAttributionOutbox } from './services/ad-platform/recovery'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
 import { reconcileGoogleDeliveryDiagnostics } from './services/ad-platform/google-diagnostics-service'
 import { recoverAppNotifications } from './services/app-notifications'
+import { getAppPersonSearchRuntimeConfig } from './services/app-person-search-policy'
+import { purgeExpiredAppSearchHistory } from './services/app-search-history'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -104,6 +106,9 @@ export type Bindings = {
   APP_FOLLOW_UPDATES_ENABLED?: string
   APP_FOLLOW_UPDATES_POLICY_VERSION?: string
   APP_FOLLOW_UPDATES_PRODUCTION_READY?: string
+  APP_PERSON_SEARCH_ENABLED?: string
+  APP_PERSON_SEARCH_POLICY_VERSION?: string
+  APP_PERSON_SEARCH_PRODUCTION_READY?: string
 }
 
 /** 应用级变量 */
@@ -468,6 +473,22 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
     console.log('[cron] 数据分析保留期清理完成:', cleanup.changes)
   } catch (e) {
     console.error('[cron] 数据分析聚合任务失败:', e)
+  }
+
+  // 4. 搜索历史物理清理只由独立策略允许；功能关闭后仍可继续履行已批准的删除义务。
+  try {
+    const purge = await purgeExpiredAppSearchHistory(
+      db,
+      getAppPersonSearchRuntimeConfig(env),
+      new Date(event.scheduledTime),
+      1000,
+    )
+    if (!purge.skipped) console.log('[cron] App 搜索历史到期清理完成:', purge.deletedCount)
+  }
+  catch {
+    console.error('[cron] App 搜索历史到期清理失败:', {
+      errorCode: 'app_search_history_purge_failed',
+    })
   }
 
 }
