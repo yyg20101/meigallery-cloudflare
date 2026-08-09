@@ -65,7 +65,7 @@ App 版本：1.0
 需求范围仍按本文完整追踪，代码按可回滚纵向切片逐步落地；“已实现开发切片”不等于客户需求已整体冻结或获准生产发布。
 
 - M0、M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 已形成生产默认关闭的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
-- Interaction-2 已完成多文件夹收藏与默认关闭浏览历史的服务端代码、D1 schema 和 App API v2 `1.11.0` 契约，覆盖默认收藏、文件夹管理、全部收藏、历史显式开关、有效浏览记录、逐条删除、版本化全部清除和屏蔽联动。KMP 页面、环境配置、migration、专项测试与远端联调按“先完成全部开发、后统一配置测试”的顺序后置，当前 capability 继续关闭。
+- Interaction-2 已完成多文件夹收藏与默认关闭浏览历史的 Cloudflare/KMP 跨仓开发，覆盖默认收藏、文件夹管理、全部收藏、人物归属、历史显式开关、详情成功后稳定事件记录、逐条删除、版本化全部清除和屏蔽联动。环境配置、`0078` migration、会员执行值、专项测试、模拟器/真机与远端联调按“先完成全部开发、后统一配置测试”的顺序后置，当前 capability 继续关闭。
 - Interaction-3 已完成关注后已审核公开发布更新流、独立 capability、Message-3 惰性去重站内通知和投递前资格复核的服务端代码、D1 schema 与 App API v2 `1.12.0` 契约。它不复制发布内容、不接系统推送、不向目标真人或运营端披露关注者；KMP 页面、环境配置、migration、专项测试与远端联调继续后置，当前 `followUpdates=false`。
 - Search-1 已完成人物公开字段搜索、相关度/热度/最新稳定分页、账号屏蔽过滤，以及默认关闭、显式记录、版本化清除的私有搜索历史 Cloudflare 与 KMP 开发。搜索词使用 POST 正文，不进入 URL、游标、本地持久化、审计、分析或推荐画像；环境配置、`0080` 执行、专项测试、模拟器/真机与远端联调后置，当前 `search.profiles=false`、`search.history=false`。
 - Taxonomy-1 已完成稳定词条 ID、不可变修订与目录快照、合并重定向、legacy 显式待复核映射、人物内容版本关联、发布门禁和公开分类投影的服务端代码，以及 Recommendation/Search 共用的 KMP 通用目录、缓存和 ETag 条件重验证。真实目录、Nuxt 管理页面、环境配置、`0081` 执行、专项测试、模拟器/真机与远端联调继续后置，当前 `taxonomy.catalog=false`。
@@ -73,7 +73,7 @@ App 版本：1.0
 - Recommendation-1 已完成统一公开资格、版本化规则、非个性化/个性化隔离、本人显式 taxonomy 偏好、可解释原因、会话级稳定灰度、未来排期、暂停/回滚和固定“平台精选”披露的 API/D1 开发基线，累计 App API v2 为 `1.16.0`；Nuxt 已交付规则列表、规则详情、Dry-run 和精选排期四个后台页面，KMP 已交付版本化推荐、推荐理由/实际模式、分页会话约束和本人“推荐与隐私”页面。OQ-023 未批准前个性化不可启用，会员、金币、消息、精确位置和隐式行为不进入信号；环境配置、`0083` 执行、专项测试与联调后置，当前 `recommendation.feed/preferences/personalization/editorial=false`。
 - Message-1 已实现 `APP-MSG-01` 列表、`APP-MSG-02` 人物详情内二次披露确认、`APP-MSG-03` 仅文本会话核心状态；Message-2 进一步实现人物详情安全区、话题/消息举报、观看者关闭话题、`APP-SET-06/07` 合并式安全中心，以及 `ADM-MSG-01/02` 限时领取工作台和 `ADM-SAF-01/02` 最小安全审核工作台。
 - Message-2 冻结屏蔽/解除、四类举报目标契约、本人举报时间线、话题关闭、会话 assignment、最小证据、结论处置和全局暂停/容量控制；Safety-2 进一步实现 `APP-SET-08`“举报未发现违规结论的一次独立复核”以及 `ADM-SAF-03/04` 申诉队列和详情。账号限制/金币等其他来源申诉、用户补充媒体证据、内部备注/转派、通知、撤回、实时通道和质量看板仍未实现。
-- 已完成的既有跨仓切片具备对应代码和测试；Interaction-2/3 当前仍只完成服务端开发，Search-1/2、Taxonomy-1 与 Recommendation-1 已完成 KMP 客户端开发，但不能据此推断配置、专项测试、模拟器/真机或联调已完成。production 的 Auth、会员、消息、安全、搜索、taxonomy、推荐、互动收藏/历史/关注更新、后台和 production-ready 开关及新目录选择保持关闭；既有 dev 联调状态不向这些新切片扩散。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
+- 已完成的既有跨仓切片具备对应代码和测试；Interaction-2、Search-1/2、Taxonomy-1 与 Recommendation-1 已完成 KMP 客户端开发，Interaction-3 当前仍只完成服务端开发，但不能据此推断配置、专项测试、模拟器/真机或联调已完成。production 的 Auth、会员、消息、安全、搜索、taxonomy、推荐、互动收藏/历史/关注更新、后台和 production-ready 开关及新目录选择保持关闭；既有 dev 联调状态不向这些新切片扩散。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
 - Interaction-2、Interaction-3、Search-1、Taxonomy-1、Search-2、Recommendation-1、Message-1、Message-2 与 Safety-2 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)、[Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)、[Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md) 和 [Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
 
 ## 3. 不可违反的业务与安全边界

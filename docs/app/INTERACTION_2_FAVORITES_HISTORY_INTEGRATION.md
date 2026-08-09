@@ -4,7 +4,7 @@ App 版本：1.0
 
 App API：v2 / `1.11.0`
 
-状态：服务端开发代码完成；客户端、配置、专项测试与远端联调后置
+状态：Cloudflare 与 KMP 开发代码完成；配置、migration、专项测试与远端联调后置
 
 需求追踪：`PRD-FR-040`～`PRD-FR-042`、`SCP-FR-003`、`VIR-FR-030`～`VIR-FR-063`、`APP-INT-03`～`APP-INT-05`
 
@@ -24,7 +24,7 @@ App API：v2 / `1.11.0`
 
 - 不修改 `packages/api/wrangler.toml`，不设置 `APP_INTERACTION_COLLECTIONS_*` 环境值。
 - 不执行本地或远端 `0078` migration，不创建 Cloudflare 资源，不部署 Worker。
-- 不新增或运行 Interaction-2 专项测试、D1 功能 smoke、KMP UI 回归或远端联调。
+- 不新增或运行 Interaction-2 专项测试、D1 功能 smoke、KMP UI 回归、模拟器/真机或远端联调。
 - 不把开发目录中的 planned entitlement 改成 available，不切换当前会员目录。
 - 不生成自动清理任务；OQ-020 未关闭时 `purge_enabled=0`。
 - 不把收藏或浏览历史接入推荐、热度、关注更新、目标侧通知或分析明细。
@@ -94,11 +94,18 @@ App API：v2 / `1.11.0`
 
 当前没有写入 Wrangler 配置，因此所有现有环境都继续返回 `favorite=false`、`history=false`。代码、migration 和 OpenAPI 的存在不构成启用授权。
 
-## 7. 后续开发顺序
+## 7. KMP 客户端交付
 
-1. 在 `meigallery-client` 按当前累计 `1.16.0` 契约接入 Interaction-2 DTO、Repository、状态与 `APP-INT-03/04/05` Compose 页面。
-2. Interaction-3 服务端关注更新与必要通知投影已完成；后续在客户端统一接入 `1.12.0` 更新流与通知跳转，仍不接系统推送。
-3. 继续完成 App 1.0 剩余开发模块。
-4. 全部开发完成后统一补齐环境配置、目录 available 值、migration、专项测试、KMP 回归、隔离联调和上线门禁。
+- `meigallery-client` 提交 `9ea4d1d` 已按累计 `1.16.0` 契约接入 Interaction-2 Domain、严格 DTO/Repository、Bootstrap capability 和 `APP-INT-03/04/05` Compose 页面。
+- 人物详情收藏与文件夹归属保持独立于喜欢/关注；收藏夹总览/详情覆盖额度、幂等创建、失败保稿、删除确认、下架占位和分页。
+- 浏览记录只在详情成功展示后写入；逻辑打开期间保持稳定 `vhv_*`，网络不确定时使用同一 ID 重试，版本冲突后刷新设置但不重放旧事件。
+- 逐条删除/清空返回的新版本会同步到当前账号绑定缓存；切换账号不会复用上一账号设置。会员 `required/not_ready` 时不读取列表，降级后的开启状态仍可由用户关闭。
+- Android Debug APK 与 iOS Simulator Kotlin/Native 编译通过；按当前顺序未新增或执行专项测试、Framework 链接、模拟器/真机、migration、配置或远端联调。
+
+## 8. 后续开发顺序
+
+1. Interaction-3 服务端关注更新与必要通知投影已完成；下一步在客户端统一接入 `1.12.0` 更新流与通知跳转，仍不接系统推送。
+2. 继续完成 App 1.0 剩余开发模块。
+3. 全部开发完成后统一补齐环境配置、目录 available 值、migration、专项测试、KMP 回归、隔离联调和上线门禁。
 
 搜索历史必须随 Discovery 搜索契约独立开发，不能由客户端直接上传自由文本到当前浏览历史接口。推荐信号、Interaction-3 关注更新通知和自动清理保持独立策略与门禁，不能从本阶段表结构自动推断为已启用。

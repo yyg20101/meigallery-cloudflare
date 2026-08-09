@@ -118,7 +118,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整跨仓边界与验收要求见 `docs/app/INTERACTION_1_CROSS_REPO_INTEGRATION.md`。
 
-### Interaction-2 收藏夹与浏览历史 `[服务端开发完成，默认关闭]`
+### Interaction-2 收藏夹与浏览历史 `[跨仓开发完成，默认关闭]`
 
 `0078_app_favorites_and_view_history.sql` 和 App API v2 `1.11.0` 建立收藏夹与浏览历史服务端开发基线：
 
@@ -128,7 +128,8 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 逐条删除与清空历史都会原子提升偏好版本并删除记录，使删除前的在途写请求失效；支持全部清除时同步关闭。列表同时检查行到期时间和当前可执行保留窗口，会员升级不会复活已过期记录。
 - 人物被屏蔽时，在既有 Safety 条件批次中清理喜欢、关注、收藏和当前可见历史，并提升历史版本；解除屏蔽不恢复任何旧关系。
 - `APP_INTERACTION_COLLECTIONS_ENABLED`、策略版本和 production-ready 是独立运行门禁；当前未加入 Wrangler 配置，全部现有环境继续返回 `favorite=false`、`history=false`。OQ-014、OQ-020 与 OQ-023 未关闭，不生成自动清理、不接推荐信号，也不把技术上限当作会员销售承诺。
-- 当前完成范围仅为服务端代码、D1 schema 和 OpenAPI；KMP 客户端、环境配置、migration 执行、专项测试与远端联调按当前开发顺序后置。
+- KMP 已实现严格 bootstrap/DTO Mapper、收藏状态与多文件夹 transport、全部收藏和文件夹页面、详情收藏/归属调整，以及浏览记录显式设置、成功详情展示后稳定事件 ID 写入、分页、逐条删除和版本化清空。账号绑定设置缓存、降级保留和旧版本不重放均由客户端显式处理。
+- 当前仍未修改环境配置、执行 `0078` migration、切换会员 entitlement、运行专项测试、Framework 链接、模拟器/真机或远端联调；所有现有环境保持 capability 关闭。
 
 完整边界见 `docs/app/INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md`。
 
@@ -1429,7 +1430,7 @@ queued → processing → completed
 - **Ops Hub 自动导入对接**：MeiGallery 只接收 Ops Hub 已解析好的 JSON payload；caption 触发、slug 缺省生成、图片排序和类型选择由 Ops Hub 保证，平台侧通过 Import Token、`sourceBotKey`、payload 校验和幂等约束兜底。
 - **生产域名**：Web 站点 `616618.xyz`，API 服务 `api.616618.xyz`。
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
-- **Interaction-2 服务端开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 接入、配置、migration、专项测试与远端联调后置。
+- **Interaction-2 跨仓开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 已完成收藏夹、人物归属、浏览记录与成功详情记录闭环，配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Interaction-3 服务端开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 接入、配置、migration、专项测试与远端联调后置。
 - **Search-1 跨仓开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 已完成严格 transport、搜索分页和账号历史全交互，配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Taxonomy-1 跨仓开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；KMP 已完成 Recommendation/Search 共用目录、缓存和 ETag 重验证，Nuxt 管理页面、真实目录、配置、migration、专项测试、模拟器/真机与远端联调后置。
