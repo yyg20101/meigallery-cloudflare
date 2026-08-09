@@ -4,8 +4,13 @@ import type {
   AdminConversationAssignmentResult,
   AdminConversationMessage,
   AdminConversationMessagePage,
+  AdminConversationInternalNote,
+  AdminConversationInternalNoteType,
+  AdminConversationOperator,
   AdminConversationQueueStatus,
   AdminConversationSummary,
+  AdminConversationTransfer,
+  AdminConversationTransferReason,
 } from '~/types/admin-app-messaging'
 
 definePageMeta({ layout: 'admin' })
@@ -25,6 +30,16 @@ const claiming = ref(false)
 const releasing = ref(false)
 const closing = ref(false)
 const operationError = ref('')
+const internalNotes = ref<AdminConversationInternalNote[]>([])
+const operators = ref<AdminConversationOperator[]>([])
+const noteType = ref<AdminConversationInternalNoteType>('operation')
+const noteText = ref('')
+const targetAdminId = ref<number | ''>('')
+const transferReason = ref<AdminConversationTransferReason>('shift_handoff')
+const handoffNote = ref('')
+const collaborationError = ref('')
+const savingNote = ref(false)
+const transferring = ref(false)
 
 const { data, status, refresh } = await useAsyncData('admin-app-conversations', async () => {
   listError.value = ''
@@ -56,7 +71,13 @@ watch(selectedId, async (conversationId) => {
   detailError.value = ''
   sendError.value = ''
   operationError.value = ''
+  collaborationError.value = ''
   replyText.value = ''
+  internalNotes.value = []
+  operators.value = []
+  noteText.value = ''
+  targetAdminId.value = ''
+  handoffNote.value = ''
   if (!conversationId) return
   if (selectedSummary.value?.assignment.status === 'mine') {
     await loadConversation(conversationId)
@@ -68,17 +89,23 @@ async function loadConversation(conversationId = selectedId.value) {
   detailLoading.value = true
   detailError.value = ''
   try {
-    const [detailResponse, messageResponse] = await Promise.all([
+    const [detailResponse, messageResponse, noteResponse, operatorResponse] = await Promise.all([
       api<{ data: AdminConversationDetail }>(`/api/admin/app/conversations/${conversationId}`, {
         query: { accessReason: 'service_operation' },
       }),
       api<{ data: AdminConversationMessagePage }>(`/api/admin/app/conversations/${conversationId}/messages`, {
         query: { accessReason: 'service_operation', afterSequence: 0, limit: 100 },
       }),
+      api<{ data: { items: AdminConversationInternalNote[] } }>(`/api/admin/app/conversations/${conversationId}/internal-notes`, {
+        query: { accessReason: 'service_operation', limit: 50 },
+      }),
+      api<{ data: AdminConversationOperator[] }>('/api/admin/app/conversations/operators'),
     ])
     if (selectedId.value !== conversationId) return
     detail.value = detailResponse.data
     messages.value = messageResponse.data.items
+    internalNotes.value = noteResponse.data.items
+    operators.value = operatorResponse.data
     const lastSequence = messageResponse.data.items.at(-1)?.sequence ?? detailResponse.data.lastSequence
     if (lastSequence > detailResponse.data.operatorReadSequence) {
       await api(`/api/admin/app/conversations/${conversationId}/read`, {
@@ -213,7 +240,86 @@ async function sendReply() {
   }
 }
 
+async function saveInternalNote() {
+  const conversationId = selectedId.value
+  const text = noteText.value.trim()
+  if (!conversationId || !text || savingNote.value || !canCollaborate.value) return
+  savingNote.value = true
+  collaborationError.value = ''
+  const operationId = crypto.randomUUID().replaceAll('-', '')
+  try {
+    const response = await api<{ data: { note: AdminConversationInternalNote; replayed: boolean } }>(
+      `/api/admin/app/conversations/${conversationId}/internal-notes`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': `operator.note.${operationId}` },
+        body: { noteType: noteType.value, text },
+      },
+    )
+    if (!internalNotes.value.some(note => note.noteId === response.data.note.noteId)) {
+      internalNotes.value = [response.data.note, ...internalNotes.value]
+    }
+    noteText.value = ''
+  }
+  catch (error) {
+    collaborationError.value = apiErrorMessage(error, '内部备注保存失败，已保留输入内容。')
+  }
+  finally {
+    savingNote.value = false
+  }
+}
+
+async function transferConversation() {
+  const conversationId = selectedId.value
+  const targetId = Number(targetAdminId.value)
+  const target = operators.value.find(operator => operator.adminId === targetId)
+  const note = handoffNote.value.trim()
+  if (
+    !conversationId
+    || !target
+    || !target.canReceiveTransfer
+    || !note
+    || transferring.value
+    || !canTransfer.value
+    || !detail.value
+  ) return
+  if (!window.confirm(`确认把该话题转派给“${target.displayName}”？转派成功后你将立即失去正文和写权限。`)) return
+  transferring.value = true
+  collaborationError.value = ''
+  const operationId = crypto.randomUUID().replaceAll('-', '')
+  try {
+    await api<{ data: { transfer: AdminConversationTransfer; replayed: boolean } }>(
+      `/api/admin/app/conversations/${conversationId}/transfer`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': `operator.transfer.${operationId}` },
+        body: {
+          targetAdminId: target.adminId,
+          expectedAssignmentVersion: detail.value.assignment.version,
+          reasonCode: transferReason.value,
+          handoffNote: note,
+        },
+      },
+    )
+    detail.value = null
+    messages.value = []
+    internalNotes.value = []
+    targetAdminId.value = ''
+    handoffNote.value = ''
+    await refresh()
+  }
+  catch (error) {
+    collaborationError.value = apiErrorMessage(error, '话题转派失败，已保留交接说明。')
+  }
+  finally {
+    transferring.value = false
+  }
+}
+
 const canReply = computed(() => detail.value?.status === 'active' && detail.value.assignment.status === 'mine')
+const canCollaborate = computed(() => detail.value?.assignment.status === 'mine')
+const canTransfer = computed(() => canCollaborate.value && detail.value?.status !== 'closed')
+const availableOperators = computed(() => operators.value.filter(operator => !operator.isCurrentAdmin))
 
 function assignmentLabel(value: AdminConversationSummary['assignment']['status']) {
   if (value === 'mine') return '由我处理'
@@ -231,6 +337,12 @@ function statusLabel(value: AdminConversationDetail['status']) {
   if (value === 'restricted') return '已受限'
   if (value === 'closed') return '已关闭'
   return '进行中'
+}
+
+function noteTypeLabel(value: AdminConversationInternalNoteType) {
+  if (value === 'handoff') return '交接记录'
+  if (value === 'quality') return '质量备注'
+  return '运营备注'
 }
 
 function formatDate(value: string) {
@@ -259,7 +371,10 @@ function apiErrorMessage(error: unknown, fallback: string) {
   <div class="min-w-0 space-y-5">
     <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
       <div class="min-w-0">
-        <h1 class="text-xl font-bold text-gray-950">App 平台话题</h1>
+        <div class="flex min-w-0 flex-wrap items-center gap-2">
+          <h1 class="text-xl font-bold text-gray-950">App 平台话题</h1>
+          <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">ADM-MSG-01 / 02</span>
+        </div>
         <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">
           处理由观看者发起的平台话题。所有回复固定显示为“平台运营”，不得冒充真人本人或承诺见面、回复时效与关系结果。
         </p>
@@ -407,6 +522,109 @@ function apiErrorMessage(error: unknown, fallback: string) {
             <div class="border-b border-rose-100 bg-rose-50 px-4 py-3 text-xs leading-5 text-rose-900 sm:px-5">
               话题由平台运营接收与处理，不代表真人本人已入驻或回复；平台不保证固定回复时间、线下见面或关系结果。
             </div>
+            <section class="grid min-w-0 border-b border-gray-200 bg-white lg:grid-cols-2">
+              <div class="min-w-0 border-b border-gray-200 p-4 lg:border-b-0 lg:border-r sm:p-5">
+                <div class="flex min-w-0 items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <h3 class="text-sm font-semibold text-gray-950">内部备注</h3>
+                    <p class="mt-1 text-xs leading-5 text-gray-500">仅当前受权运营可见；审计只保存摘要，不复制正文。</p>
+                  </div>
+                  <span class="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200">内部可见</span>
+                </div>
+
+                <form class="mt-4 space-y-3" @submit.prevent="saveInternalNote">
+                  <select v-model="noteType" class="min-h-10 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                    <option value="operation">运营备注</option>
+                    <option value="quality">质量备注</option>
+                  </select>
+                  <textarea
+                    v-model="noteText"
+                    :disabled="!canCollaborate || savingNote"
+                    maxlength="1000"
+                    rows="3"
+                    class="w-full min-w-0 resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm leading-6 outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 disabled:bg-gray-100"
+                    placeholder="记录后续处理所需的最小必要信息…"
+                  />
+                  <div class="flex min-w-0 items-center justify-between gap-3">
+                    <span class="text-xs text-gray-400">{{ noteText.length }} / 1000</span>
+                    <button
+                      type="submit"
+                      class="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      :disabled="!canCollaborate || !noteText.trim() || savingNote"
+                    >
+                      {{ savingNote ? '保存中…' : '保存备注' }}
+                    </button>
+                  </div>
+                </form>
+
+                <div class="mt-4 max-h-48 space-y-2 overflow-y-auto pr-1">
+                  <article v-for="note in internalNotes" :key="note.noteId" class="min-w-0 rounded-lg bg-gray-50 p-3 ring-1 ring-inset ring-gray-200">
+                    <div class="flex min-w-0 items-center justify-between gap-3 text-[11px] text-gray-500">
+                      <span class="min-w-0 truncate font-medium text-gray-700">{{ noteTypeLabel(note.noteType) }} · {{ note.author.displayName }}</span>
+                      <time class="shrink-0">{{ formatDate(note.createdAt) }}</time>
+                    </div>
+                    <p class="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-gray-700">{{ note.text }}</p>
+                  </article>
+                  <p v-if="!internalNotes.length" class="py-4 text-center text-xs text-gray-400">暂无内部备注。</p>
+                </div>
+              </div>
+
+              <div class="min-w-0 p-4 sm:p-5">
+                <h3 class="text-sm font-semibold text-gray-950">转派话题</h3>
+                <p class="mt-1 text-xs leading-5 text-gray-500">服务端会重新校验目标状态和容量；成功后原租约立即失效。</p>
+
+                <form class="mt-4 space-y-3" @submit.prevent="transferConversation">
+                  <label class="block min-w-0">
+                    <span class="mb-1.5 block text-xs font-medium text-gray-600">目标运营人员</span>
+                    <select v-model="targetAdminId" class="min-h-10 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                      <option value="">请选择目标人员</option>
+                      <option
+                        v-for="operator in availableOperators"
+                        :key="operator.adminId"
+                        :value="operator.adminId"
+                        :disabled="!operator.canReceiveTransfer"
+                      >
+                        {{ operator.displayName }} · {{ operator.activeAssignmentCount }}/{{ operator.capacityLimit }}{{ operator.canReceiveTransfer ? '' : '（已满）' }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="block min-w-0">
+                    <span class="mb-1.5 block text-xs font-medium text-gray-600">转派原因</span>
+                    <select v-model="transferReason" class="min-h-10 w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                      <option value="shift_handoff">班次交接</option>
+                      <option value="workload_balance">工作量平衡</option>
+                      <option value="expertise_required">需要专项能力</option>
+                      <option value="supervisor_review">主管复核</option>
+                      <option value="other">其他原因</option>
+                    </select>
+                  </label>
+                  <label class="block min-w-0">
+                    <span class="mb-1.5 flex items-center justify-between gap-3 text-xs font-medium text-gray-600">
+                      <span>交接说明</span>
+                      <span class="font-normal text-gray-400">{{ handoffNote.length }} / 500</span>
+                    </span>
+                    <textarea
+                      v-model="handoffNote"
+                      :disabled="!canTransfer || transferring"
+                      maxlength="500"
+                      rows="3"
+                      class="w-full min-w-0 resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm leading-6 outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 disabled:bg-gray-100"
+                      placeholder="说明已处理事项、待办和风险，不填写无关敏感信息…"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    class="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40"
+                    :disabled="!canTransfer || !targetAdminId || !handoffNote.trim() || transferring"
+                  >
+                    {{ transferring ? '转派中…' : '确认转派' }}
+                  </button>
+                </form>
+              </div>
+              <div v-if="collaborationError" class="border-t border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2 sm:px-5">
+                {{ collaborationError }}
+              </div>
+            </section>
             <div class="flex-1 space-y-4 overflow-y-auto bg-gray-50/70 px-3 py-5 sm:px-5">
               <div v-for="message in messages" :key="message.messageId" class="min-w-0">
                 <div v-if="message.senderType === 'system'" class="mx-auto max-w-xl rounded-lg bg-white px-4 py-3 text-center text-xs leading-5 text-gray-600 ring-1 ring-gray-200">

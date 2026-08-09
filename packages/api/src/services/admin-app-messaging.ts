@@ -63,6 +63,7 @@ export interface AdminAppConversationSummary {
   receiverLabel: string
   assignment: {
     status: 'unassigned' | 'mine' | 'other'
+    version: number
     leaseExpiresAt: string | null
     canClaim: boolean
   }
@@ -123,7 +124,7 @@ type AdminConversationRow = {
   lease_expires_at: string | null
 }
 
-type ConversationAssignmentRow = {
+export type ConversationAssignmentRow = {
   assigned_admin_id: number | null
   status: string
   version: number
@@ -1155,6 +1156,7 @@ function mapAdminConversationSummary(
     receiverLabel: row.receiver_label,
     assignment: {
       status: assignmentStatus,
+      version: Number(row.assignment_version ?? 0),
       leaseExpiresAt: assignmentActive ? row.lease_expires_at : null,
       canClaim: row.status !== 'closed' && assignmentStatus !== 'other',
     },

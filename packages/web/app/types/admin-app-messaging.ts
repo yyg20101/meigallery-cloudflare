@@ -17,6 +17,7 @@ export interface AdminConversationSummary {
   receiverLabel: string
   assignment: {
     status: 'unassigned' | 'mine' | 'other'
+    version: number
     leaseExpiresAt: string | null
     canClaim: boolean
   }
@@ -61,4 +62,52 @@ export interface AdminConversationAssignmentResult {
     leaseExpiresAt: string | null
   }
   replayed: boolean
+}
+
+export type AdminConversationInternalNoteType = 'operation' | 'handoff' | 'quality'
+export type AdminConversationTransferReason =
+  | 'workload_balance'
+  | 'expertise_required'
+  | 'shift_handoff'
+  | 'supervisor_review'
+  | 'other'
+
+export interface AdminConversationInternalNote {
+  noteId: string
+  conversationId: string
+  noteType: AdminConversationInternalNoteType
+  text: string
+  author: {
+    adminId: number
+    displayName: string
+  }
+  createdAt: string
+}
+
+export interface AdminConversationOperator {
+  adminId: number
+  displayName: string
+  role: 'admin' | 'owner'
+  isCurrentAdmin: boolean
+  activeAssignmentCount: number
+  capacityLimit: number
+  canReceiveTransfer: boolean
+}
+
+export interface AdminConversationTransfer {
+  transferId: string
+  conversationId: string
+  assignmentVersion: number
+  fromOperator: {
+    adminId: number
+    displayName: string
+  }
+  toOperator: {
+    adminId: number
+    displayName: string
+  }
+  reasonCode: AdminConversationTransferReason
+  hasHandoffNote: boolean
+  leaseExpiresAt: string
+  createdAt: string
 }

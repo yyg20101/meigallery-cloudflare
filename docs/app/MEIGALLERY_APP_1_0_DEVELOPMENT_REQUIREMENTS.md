@@ -73,7 +73,8 @@ App 版本：1.0
 - Search-2 已完成组内 OR/组间 AND、父级包含后代的 taxonomy 结构化筛选、高级 entitlement 服务端校验、结果数安全预估、目录重定向/失效诊断、账号私有保存条件 CRUD 及对应 KMP 页面。Nuxt 已交付只读搜索运营核查工作区，用聚合数据展示策略、目录、entitlement、搜索历史到期和保存条件迁移健康，不读取搜索词、条件名称或用户明细，也不允许直接启用能力。保存条件不持久化自由搜索词，创建原子受 `discovery.saved_filter.max` 限制，使用前按完整来源 stable ID 重新 preview；环境配置、`0082` 执行、真实目录/grant 迁移、专项测试、模拟器/真机与远端联调后置，当前 `search.filters=false`、`search.savedFilters=false`。
 - Recommendation-1 已完成统一公开资格、版本化规则、非个性化/个性化隔离、本人显式 taxonomy 偏好、可解释原因、会话级稳定灰度、未来排期、暂停/回滚和固定“平台精选”披露的 API/D1 开发基线，累计 App API v2 为 `1.16.0`；Nuxt 已交付规则列表、规则详情、Dry-run 和精选排期四个后台页面，KMP 已交付版本化推荐、推荐理由/实际模式、分页会话约束和本人“推荐与隐私”页面。OQ-023 未批准前个性化不可启用，会员、金币、消息、精确位置和隐式行为不进入信号；环境配置、`0083` 执行、专项测试与联调后置，当前 `recommendation.feed/preferences/personalization/editorial=false`。
 - Message-1 已实现 `APP-MSG-01` 列表、`APP-MSG-02` 人物详情内二次披露确认、`APP-MSG-03` 仅文本会话核心状态；Message-2 进一步实现人物详情安全区、话题/消息举报、观看者关闭话题、`APP-SET-06/07` 合并式安全中心，以及 `ADM-MSG-01/02` 限时领取工作台和 `ADM-SAF-01/02` 最小安全审核工作台。
-- Message-2 冻结屏蔽/解除、四类举报目标契约、本人举报时间线、话题关闭、会话 assignment、最小证据、结论处置和全局暂停/容量控制；Safety-2 进一步实现 `APP-SET-08`“举报未发现违规结论的一次独立复核”以及 `ADM-SAF-03/04` 申诉队列和详情。账号限制/金币等其他来源申诉、用户补充媒体证据、内部备注/转派、通知、撤回、实时通道和质量看板仍未实现。
+- `ADM-MSG-02` 已进一步接通追加式内部备注和显式转派：备注与平台回复使用独立 API/视觉区域，只有当前有效租约持有人可读写；转派必须携带当前 assignment version、稳定原因、目标管理员和交接说明，并在服务端重新校验目标状态与容量。`0084` migration 执行与专项测试统一后置；安全升级案件、`ADM-MSG-03` 运营组/班次/自动分配和 `ADM-MSG-04` 质量抽检仍未实现，页面不生成伪操作入口。
+- Message-2 冻结屏蔽/解除、四类举报目标契约、本人举报时间线、话题关闭、会话 assignment、最小证据、结论处置和全局暂停/容量控制；Safety-2 进一步实现 `APP-SET-08`“举报未发现违规结论的一次独立复核”以及 `ADM-SAF-03/04` 申诉队列和详情。账号限制/金币等其他来源申诉、用户补充媒体证据、撤回、实时通道和质量看板仍未实现。
 - 已完成的既有跨仓切片具备对应代码和既有测试；Interaction-2/3、Search-1/2、Taxonomy-1 与 Recommendation-1 已完成 KMP 客户端开发，但新切片专项测试按当前开发顺序统一后置，不能据此推断配置、模拟器/真机或联调已完成。production 的 Auth、会员、消息、安全、搜索、taxonomy、推荐、互动收藏/历史/关注更新、后台和 production-ready 开关及新目录选择保持关闭；既有 dev 联调状态不向这些新切片扩散。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
 - Interaction-2、Interaction-3、Search-1、Taxonomy-1、Search-2、Recommendation-1、Message-1、Message-2 与 Safety-2 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)、[Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)、[Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md) 和 [Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
 
@@ -3816,6 +3817,8 @@ App 版本：1.0
 - 管理员只能以固定平台运营身份发送，正文读取按租约和对象范围控制。
 - UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。
 - 加载、空、错误、离线、无权限、对象失效和服务端状态变化必须按本页状态集合安全收敛。
+
+**当前开发实现（2026-08-09）：** `/admin/app/conversations` 以内嵌详情工作区承载 `ADM-MSG-01/02`，已覆盖限时领取、正文访问、平台身份回复、运营/质量内部备注、稳定原因转派、目标容量显示、租约版本冲突和转派后立即失权。安全升级、独立详情路由、分组班次和质量抽检继续按对应 Page ID 独立开发，不以占位按钮代替。
 
 ![ADM-MSG-02 会话工作台默认状态“正常”原型](./assets/page-prototypes/admin/adm-msg-02__default.png)
 

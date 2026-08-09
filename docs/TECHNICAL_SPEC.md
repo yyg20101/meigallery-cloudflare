@@ -263,6 +263,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 屏蔽在同一 D1 条件批次中写状态/事件、清理喜欢与关注、关闭关联话题并记录幂等结果；登录发现页在服务端排除当前仍为 `blocked` 的人物。解除屏蔽不恢复旧关系或旧话题。
 - 观看者可以幂等关闭本人话题；关闭、受限或安全暂停后历史仍可读，但每次写请求重新检查当前状态、屏蔽、会员、人物资格和全局运行控制。
 - 会话正文要求操作员先取得限时 assignment；领取、续租、释放、正文访问、回复和关闭均由服务端重验租约并写审计。容量上限和新建/双方发送暂停由 D1 全局控制。
+- `0084_app_conversation_collaboration.sql` 在 assignment 上增加追加式内部备注和显式转派：内部备注正文只在受控业务表和有效租约响应中出现，审计仅保存 SHA-256、长度和引用；转派要求当前 `expectedAssignmentVersion`、有效目标管理员和剩余容量，并在同一 D1 批次中更新租约归属、写交接备注、转派事实、幂等结果与审计。成功后原操作员立即失权。
 - 举报队列默认只读取未结案案件；审核员领取后才可按 `safety_review` 读取举报说明及“目标消息前一条 + 目标 + 后一条”的最小证据窗口。结论和关联安全动作使用 `expectedVersion + mutation_token`，旧请求不能留下部分处置。
 - 保留策略初始为 `unresolved`，消息/举报/证据天数为 `NULL` 且 `purge_enabled=0`。OQ-020、运营值班、合规和真机回归未完成前，不得把 safety 目录或运行开关设为 production-ready。
 
@@ -589,6 +590,10 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/conversations/:conversationId/claim` | 领取或续租限时话题 assignment | admin+ |
 | POST | `/api/admin/app/conversations/:conversationId/release` | 释放本人持有的话题 assignment | admin+ |
 | POST | `/api/admin/app/conversations/:conversationId/close` | 在有效 assignment 内关闭话题并审计 | admin+ |
+| GET | `/api/admin/app/conversations/operators` | 可接收转派的有效管理员及聚合容量，不返回邮箱 | admin+ |
+| GET | `/api/admin/app/conversations/:conversationId/internal-notes` | 有效 assignment 内读取内部备注并记录访问审计 | admin+ |
+| POST | `/api/admin/app/conversations/:conversationId/internal-notes` | 幂等追加内部备注，通用审计不复制正文 | admin+ |
+| POST | `/api/admin/app/conversations/:conversationId/transfer` | 使用 assignment 版本、稳定原因和交接说明原子转派 | admin+ |
 | GET | `/api/admin/app/safety/reports` | 不含说明/正文的待处理举报队列及筛选 | admin+ |
 | POST | `/api/admin/app/safety/reports/:reportId/claim` | 幂等领取举报案件 | admin+ |
 | GET | `/api/admin/app/safety/reports/:reportId` | 领取后按 `safety_review` 读取最小证据并审计 | admin+ |
@@ -876,6 +881,18 @@ Search-2 新会员目录是独立不可变快照；在配置切换前没有账�
 | `app_messaging_runtime_controls` | 全局暂停、容量、租约和保留引用 | 单例 scope、版本条件写；只有 owner 可修改且必须审计 |
 
 所有安全联动在 D1 条件批次中通过同一 mutation token 或前置消息事实串联。SQL 执行成功但条件未命中时，调用方必须检查幂等结果并返回冲突，不能把“零行变更”当作成功。
+
+### App 话题内部协作表族 `[开发完成，migration 待执行]`
+
+`0084_app_conversation_collaboration.sql` 不创建管理员、话题、备注或转派业务 seed，也不启用任何运行时开关：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_conversation_internal_notes` | 追加式运营、交接和质量备注 | 正文限 1000 字；作者不可为空；通用审计只保存哈希、长度与引用 |
+| `app_conversation_transfer_events` | 显式转派不可变事实 | 会话+assignment version 唯一；来源与目标不同；绑定交接备注和新租约到期时间 |
+| `app_conversation_admin_idempotency` | 内部备注与转派幂等结果 | 管理员+操作+key 唯一；绑定规范化请求哈希、会话和结果版本 |
+
+转派不会伪造 `released + claimed` 两次独立成功，而以单次 assignment 版本跃迁作为权威事实；原租约持有人在批次成功后不能再读取正文、备注或执行写操作。运营组、班次、自动分配、安全升级案件和质量抽检不属于 `0084`。
 
 ### App Safety-2 申诉表族 `[dev 受控联调，production 默认关闭]`
 
