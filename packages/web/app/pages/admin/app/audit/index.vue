@@ -160,6 +160,13 @@ function payloadStateLabel(value: 'empty' | 'valid' | 'invalid') {
       </div>
       <div class="flex flex-wrap gap-2">
         <NuxtLink
+          v-if="isOwner"
+          to="/admin/app/audit/registry"
+          class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Action 口径
+        </NuxtLink>
+        <NuxtLink
           to="/admin/app/audit/exports"
           class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >

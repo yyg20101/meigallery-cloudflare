@@ -1515,6 +1515,7 @@ async function snapshotPreparedScope(db: D1Database, prepared: AdminAppAuditPrep
     FROM app_audit_event_index audit_index
     JOIN admin_audit_logs audit ON audit.id = audit_index.audit_event_id
     LEFT JOIN app_audit_event_contexts context ON context.audit_event_id = audit.id
+    LEFT JOIN app_audit_production_action_registry registry ON registry.action_key = audit.action
     WHERE ${prepared.filters.conditions.join(' AND ')}
     ORDER BY audit_index.sequence ASC
     LIMIT ?
@@ -1562,7 +1563,7 @@ async function loadExportCsvRows(db: D1Database, prepared: AdminAppAuditPrepared
     FROM app_audit_event_index audit_index
     JOIN admin_audit_logs audit ON audit.id = audit_index.audit_event_id
     LEFT JOIN app_audit_event_contexts context ON context.audit_event_id = audit.id
-    LEFT JOIN app_audit_current_action_registry registry ON registry.action_key = audit.action
+    LEFT JOIN app_audit_production_action_registry registry ON registry.action_key = audit.action
     WHERE ${prepared.filters.conditions.join(' AND ')}
     ORDER BY audit_index.sequence ASC
     LIMIT ?

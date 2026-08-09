@@ -439,6 +439,13 @@ export async function listAdminAppAuditEvents(
   const prepared = await prepareAdminAppAuditQuery(db, adminId, input, now)
   const { actor, query, filters, fingerprint } = prepared
   const visibilityCondition = prepared.ownerId === null ? null : 'audit.admin_id = ?'
+  const registryVisibilityCondition = prepared.ownerId === null
+    ? null
+    : `registry.action_key IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM json_each(registry.visible_roles_json) visible_role
+         WHERE visible_role.value = 'admin'
+       )`
   const cursorSequence = query.cursor ? decodeCursor(query.cursor, fingerprint) : null
   const pageConditions = [...filters.conditions]
   const pageParams = [...filters.params]
@@ -464,7 +471,7 @@ export async function listAdminAppAuditEvents(
       FROM app_audit_event_index audit_index
       JOIN admin_audit_logs audit ON audit.id = audit_index.audit_event_id
       LEFT JOIN app_audit_event_contexts context ON context.audit_event_id = audit.id
-      LEFT JOIN app_audit_current_action_registry registry
+      LEFT JOIN app_audit_production_action_registry registry
         ON registry.action_key = audit.action
       WHERE ${filters.conditions.join(' AND ')}
     `).bind(...filters.params).first<{ total: number; critical: number; high: number; unregistered: number }>(),
@@ -473,10 +480,11 @@ export async function listAdminAppAuditEvents(
              COALESCE(registry.display_name, audit.action) AS display_name
       FROM app_audit_event_index audit_index
       JOIN admin_audit_logs audit ON audit.id = audit_index.audit_event_id
-      LEFT JOIN app_audit_current_action_registry registry
+      LEFT JOIN app_audit_production_action_registry registry
         ON registry.action_key = audit.action
       WHERE audit_index.occurred_at >= ? AND audit_index.occurred_at <= ?
         ${visibilityCondition ? `AND ${visibilityCondition}` : ''}
+        ${registryVisibilityCondition ? `AND ${registryVisibilityCondition}` : ''}
       GROUP BY audit.action, registry.display_name
       ORDER BY audit.action ASC
       LIMIT 200
@@ -485,8 +493,11 @@ export async function listAdminAppAuditEvents(
       SELECT DISTINCT audit_index.action_domain
       FROM app_audit_event_index audit_index
       JOIN admin_audit_logs audit ON audit.id = audit_index.audit_event_id
+      LEFT JOIN app_audit_production_action_registry registry
+        ON registry.action_key = audit.action
       WHERE audit_index.occurred_at >= ? AND audit_index.occurred_at <= ?
         ${visibilityCondition ? `AND ${visibilityCondition}` : ''}
+        ${registryVisibilityCondition ? `AND ${registryVisibilityCondition}` : ''}
       ORDER BY audit_index.action_domain ASC
       LIMIT 100
     `).bind(query.from, query.to, ...(visibilityCondition ? [actor.id] : [])).all<{ action_domain: string }>(),
@@ -531,7 +542,14 @@ export async function getAdminAppAuditEvent(
   const actor = await requireActiveAdmin(db, adminId)
   const id = normalizeEventId(eventId)
   const purpose = normalizePurpose(purposeInput)
-  const ownership = actor.role === 'owner' ? '' : 'AND audit.admin_id = ?'
+  const ownership = actor.role === 'owner'
+    ? ''
+    : `AND audit.admin_id = ?
+       AND registry.action_key IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM json_each(registry.visible_roles_json) visible_role
+         WHERE visible_role.value = 'admin'
+       )`
   const row = await db.prepare(`
     ${auditEventSelect()}
     WHERE audit.id = ? ${ownership}
@@ -572,7 +590,7 @@ export async function getAdminAppAuditIntegrityOverview(
   adminId: number,
 ): Promise<AdminAppAuditIntegrityOverview> {
   await requireActiveOwner(db, adminId)
-  const [source, indexed, missing, registry, actions, latest] = await Promise.all([
+  const [source, indexed, missing, registry, actions, latest, registryGovernance] = await Promise.all([
     db.prepare('SELECT COUNT(*) AS count FROM admin_audit_logs').first<{ count: number }>(),
     db.prepare(`
       SELECT COUNT(*) AS count, MIN(sequence) AS minimum_sequence, MAX(sequence) AS maximum_sequence
@@ -584,20 +602,33 @@ export async function getAdminAppAuditIntegrityOverview(
       LEFT JOIN app_audit_event_index audit_index ON audit_index.audit_event_id = audit.id
       WHERE audit_index.audit_event_id IS NULL
     `).first<{ count: number }>(),
-    db.prepare('SELECT COUNT(*) AS count FROM app_audit_current_action_registry').first<{ count: number }>(),
+    db.prepare('SELECT COUNT(*) AS count FROM app_audit_production_action_registry').first<{ count: number }>(),
     db.prepare('SELECT COUNT(DISTINCT action) AS count FROM admin_audit_logs').first<{ count: number }>(),
     loadLatestIntegrityCheck(db),
+    db.prepare(`
+      SELECT
+        (SELECT COUNT(*)
+         FROM app_audit_registry_change_requests
+         WHERE status = 'pending_review') AS pending_count,
+        (SELECT COUNT(*)
+         FROM app_audit_current_action_registry registry
+         LEFT JOIN app_audit_production_action_registry production
+           ON production.action_key = registry.action_key
+         WHERE production.action_key IS NULL) AS incomplete_count
+    `).first<{ pending_count: number; incomplete_count: number }>(),
   ])
   const unregistered = await db.prepare(`
     SELECT COUNT(DISTINCT audit.action) AS count
     FROM admin_audit_logs audit
-    LEFT JOIN app_audit_current_action_registry registry
+    LEFT JOIN app_audit_production_action_registry registry
       ON registry.action_key = audit.action
     WHERE registry.action_key IS NULL
   `).first<{ count: number }>()
   const blockers: string[] = []
   if (Number(missing?.count ?? 0) > 0) blockers.push('存在未建立稳定序号的审计事实')
   if (Number(unregistered?.count ?? 0) > 0) blockers.push('存在未登记生产口径的 action')
+  if (Number(registryGovernance?.pending_count ?? 0) > 0) blockers.push('存在待独立复核的 Action 口径申请')
+  if (Number(registryGovernance?.incomplete_count ?? 0) > 0) blockers.push('存在缺少保留、质量或 Owner 可见引用的 Action 口径')
   if (!latest) blockers.push('尚未形成完整性检查清单')
   if (latest?.status === 'findings') blockers.push('最近一次完整性检查存在 finding')
   return {
@@ -819,7 +850,14 @@ async function loadRelatedEvents(
     params.push(row.business_reference)
   }
   if (references.length === 0) return [mapAuditEventSummary(row)]
-  const ownership = actor.role === 'owner' ? '' : 'AND audit.admin_id = ?'
+  const ownership = actor.role === 'owner'
+    ? ''
+    : `AND audit.admin_id = ?
+       AND registry.action_key IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM json_each(registry.visible_roles_json) visible_role
+         WHERE visible_role.value = 'admin'
+       )`
   const result = await db.prepare(`
     ${auditEventSelect()}
     WHERE (${references.join(' OR ')}) ${ownership}
@@ -872,6 +910,11 @@ function buildAuditFilters(query: NormalizedAuditQuery, ownerId: number | null) 
   if (ownerId !== null) {
     conditions.push('audit.admin_id = ?')
     params.push(ownerId)
+    conditions.push('registry.action_key IS NOT NULL')
+    conditions.push(`EXISTS (
+      SELECT 1 FROM json_each(registry.visible_roles_json) visible_role
+      WHERE visible_role.value = 'admin'
+    )`)
   }
   appendFilter(conditions, params, 'audit.action = ?', query.action)
   appendFilter(conditions, params, 'audit_index.action_domain = ?', query.domain)
@@ -930,7 +973,7 @@ function auditEventSelect() {
     JOIN admin_audit_logs audit ON audit.id = audit_index.audit_event_id
     LEFT JOIN users actor ON actor.id = audit.admin_id
     LEFT JOIN app_audit_event_contexts context ON context.audit_event_id = audit.id
-    LEFT JOIN app_audit_current_action_registry registry
+    LEFT JOIN app_audit_production_action_registry registry
       ON registry.action_key = audit.action
   `
 }
@@ -1128,7 +1171,7 @@ async function loadIntegrityCandidates(db: D1Database, start: number, end: numbe
     FROM app_audit_event_index audit_index
     JOIN admin_audit_logs audit ON audit.id = audit_index.audit_event_id
     LEFT JOIN app_audit_event_contexts context ON context.audit_event_id = audit.id
-    LEFT JOIN app_audit_current_action_registry registry
+    LEFT JOIN app_audit_production_action_registry registry
       ON registry.action_key = audit.action
     WHERE audit_index.sequence BETWEEN ? AND ?
     ORDER BY audit_index.sequence ASC

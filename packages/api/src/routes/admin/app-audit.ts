@@ -25,12 +25,123 @@ import {
   type AdminAppAuditExportReviewInput,
   type AdminAppAuditExportStepUpInput,
 } from '../../services/admin-app-audit-exports'
+import {
+  AdminAppAuditRegistryError,
+  createAdminAppAuditRegistryRequest,
+  getAdminAppAuditRegistryOverview,
+  getAdminAppAuditRegistryRequest,
+  listAdminAppAuditRegistryActions,
+  listAdminAppAuditRegistryRequests,
+  previewAdminAppAuditRegistryProposal,
+  reviewAdminAppAuditRegistryRequest,
+  type AdminAppAuditRegistryProposalInput,
+  type AdminAppAuditRegistryReviewInput,
+} from '../../services/admin-app-audit-registry'
 
 export const adminAppAuditRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 adminAppAuditRoutes.use('*', async (c, next) => {
   await next()
   c.res.headers.set('Cache-Control', 'private, no-store, max-age=0')
+})
+
+adminAppAuditRoutes.get('/registry/overview', async (c) => {
+  try {
+    return c.json({ data: await getAdminAppAuditRegistryOverview(c.env.DB, c.get('userId')!) })
+  }
+  catch (error) {
+    return handleAuditError(c, error)
+  }
+})
+
+adminAppAuditRoutes.get('/registry/actions', async (c) => {
+  try {
+    return c.json({
+      data: await listAdminAppAuditRegistryActions(c.env.DB, c.get('userId')!, {
+        state: c.req.query('state'),
+        domain: c.req.query('domain'),
+        q: c.req.query('q'),
+      }),
+    })
+  }
+  catch (error) {
+    return handleAuditError(c, error)
+  }
+})
+
+adminAppAuditRoutes.post('/registry/preview', async (c) => {
+  try {
+    const body = await c.req.json<AdminAppAuditRegistryProposalInput>().catch(() => ({}))
+    return c.json({ data: await previewAdminAppAuditRegistryProposal(c.env.DB, c.get('userId')!, body) })
+  }
+  catch (error) {
+    return handleAuditError(c, error)
+  }
+})
+
+adminAppAuditRoutes.get('/registry/requests', async (c) => {
+  try {
+    return c.json({
+      data: await listAdminAppAuditRegistryRequests(c.env.DB, c.get('userId')!, {
+        status: c.req.query('status'),
+        operation: c.req.query('operation'),
+        limit: c.req.query('limit'),
+      }),
+    })
+  }
+  catch (error) {
+    return handleAuditError(c, error)
+  }
+})
+
+adminAppAuditRoutes.post('/registry/requests', async (c) => {
+  try {
+    const body = await c.req.json<AdminAppAuditRegistryProposalInput>().catch(() => ({}))
+    const result = await createAdminAppAuditRegistryRequest(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      body,
+      requestContext(c),
+    )
+    return c.json({ data: result.request, replayed: result.replayed }, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return handleAuditError(c, error)
+  }
+})
+
+adminAppAuditRoutes.get('/registry/requests/:requestId', async (c) => {
+  try {
+    return c.json({
+      data: await getAdminAppAuditRegistryRequest(
+        c.env.DB,
+        c.get('userId')!,
+        c.req.param('requestId'),
+      ),
+    })
+  }
+  catch (error) {
+    return handleAuditError(c, error)
+  }
+})
+
+adminAppAuditRoutes.post('/registry/requests/:requestId/review', async (c) => {
+  try {
+    const body = await c.req.json<AdminAppAuditRegistryReviewInput>().catch(() => ({}))
+    const result = await reviewAdminAppAuditRegistryRequest(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('requestId'),
+      c.req.header('Idempotency-Key') ?? null,
+      body,
+      requestContext(c),
+    )
+    return c.json({ data: result.request, replayed: result.replayed })
+  }
+  catch (error) {
+    return handleAuditError(c, error)
+  }
 })
 
 adminAppAuditRoutes.get('/exports', async (c) => {
@@ -251,6 +362,9 @@ function requestContext(c: Parameters<typeof errorJson>[0]) {
 }
 
 function handleAuditError(c: Parameters<typeof errorJson>[0], error: unknown) {
+  if (error instanceof AdminAppAuditRegistryError) {
+    return errorJson(c, error.status, error.message, { code: error.code })
+  }
   if (error instanceof AdminAppAuditExportError) {
     return errorJson(c, error.status, error.message, { code: error.code })
   }

@@ -155,7 +155,7 @@ Worker 先生成确定长度的 `Uint8Array`，计算 SHA-256，再以 `sha256` 
 
 所有写操作和下载都追加 `admin_audit_logs` 与 `app_audit_event_contexts`，同时追加导出域时间线。API 响应只返回文件摘要、大小、行数和有效期，不返回 `r2_key`、`r2_etag`、密码摘要、Token 摘要或内部 generation token。
 
-Audit-1 的未执行 `0090` migration 已同步把 `app.audit.export.*` 归为 `critical` 风险，避免受控导出在稳定索引中退化为普通高风险事件；正式 Action 名称、展示文案、owner 与保留引用仍必须经后续 registry 发布流程确认。
+Audit-1 的未执行 `0090` migration 已同步把 `app.audit.export.*` 归为 `critical` 风险，避免受控导出在稳定索引中退化为普通高风险事件；Audit-3 已实现正式 Action 名称、展示文案、owner、可见角色与治理引用的受控发布流程，但真实口径仍须在统一配置阶段逐项确认和双人发布。
 
 ## 10. D1 数据模型
 
@@ -190,12 +190,12 @@ Audit-1 的未执行 `0090` migration 已同步把 `app.audit.export.*` 归为 `
 - 未创建真实申请、真实 CSV 或真实 R2 对象。
 - 未修改 Wrangler、R2 bucket、WAF、速率限制或保留策略配置。
 - 当前 24 小时逻辑有效期不是已批准的正式保留政策；物理过期对象清理、恢复演练和合规处置需在全部开发结束后统一配置。
-- 正式 Action registry 仍未发布，因此 Audit-2 新 action 会按 Audit-1 规则显示为未登记，不得据此宣称审计生产就绪。
+- Audit-3 Registry 治理代码已完成，但正式治理策略和 Action 均未配置；Audit-2 新 Action 会保持未登记或非 production-ready，不得据此宣称审计生产就绪。
 - API TypeScript 检查和 Nuxt production build 已通过；受限网络下字体元数据 provider 告警未阻断产物。
 - 待统一执行：全新 D1 migration 链、状态/触发器/并发/幂等定向测试、密码失败限流、5,000 行脱敏与 CSV 注入、R2 checksum/metadata/失败补偿、票据重放、权限矩阵、浏览器下载和响应式 UI 验收。
 
 ## 13. 后续阶段
 
 - Operations-1：`ADM-OV-01/02/03` 聚合总览、异常状态机、Runbook 和受控安全开关。
-- Audit registry：Action 口径预览、独立发布、保留策略引用与未登记 action 治理。
-- 全部开发结束后统一执行 `0090/0091`、配置、正式保留/清理策略和专项测试；通过前不启用 production 入口。
+- Audit-3 已完成：Action 口径预览、独立发布/退休、retention/quality 引用与未登记 Action 治理；边界见 [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md)。
+- 全部开发结束后统一执行 `0090/0091/0092/0093`、配置、正式 Action/保留/清理策略和专项测试；通过前不启用 production 入口。

@@ -277,8 +277,8 @@ resolved / false_positive → open（新检测信号重新打开）
 
 当前明确后置，不在本阶段执行：
 
-- 在目标环境执行 `0092_app_operations_and_incidents.sql`，并核对 `0090/0091/0092` 顺序。
-- 由 Owner 批准正式指标、Action registry、可见角色、保留和物理清理政策。
+- 在目标环境执行 `0092_app_operations_and_incidents.sql` 与 Audit-3 `0093_app_audit_action_registry_governance.sql`，并核对 `0090/0091/0092/0093` 顺序。
+- 通过 Audit-3 受控工作区由不同 Owner 逐项批准正式 Action；另行批准治理策略、指标、可见角色、保留和物理清理政策，不做自动批量发布。
 - 接入 Cloudflare Workers、D1、R2 可观测数据，并消除对应 `unconfigured`。
 - 为快照、检测和恢复验证配置受控调度；运行期事件不得成为紧急修复部署门禁。
 - 设计钱包解冻、会员到期、数据权利逾期和平台健康检测器。

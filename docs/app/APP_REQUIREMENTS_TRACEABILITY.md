@@ -204,7 +204,7 @@ App 版本：1.0
 | ADM-NTF-03 | 通知生成结果 | P2 | PRD-FR-080、PRD-FR-081、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-009、SCP-FR-012 | [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*） |
 | ADM-AUD-01 | 审计查询 | P0 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
 | ADM-AUD-02 | 审计详情 | P0 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
-| ADM-AUD-03 | 审计完整性状态 | P2 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
+| ADM-AUD-03 | 审计完整性状态（含 Owner Action 口径治理子流程） | P2 | PRD-FR-090、PRD-FR-091、PRD-FR-092、PRD-FR-093、PRD-FR-094 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-001–048） |
 | ADM-AUD-04 | 受控导出 | P2 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
 
 ## 6. 逐页同步验收
@@ -216,5 +216,6 @@ App 版本：1.0
 - `APP-MSG-05`、`APP-MSG-06`、`APP-WAL-01`、`APP-WAL-02`、`APP-WAL-03` 另外保留 23 张逐状态本地导出图；每张图都具备唯一 Frame ID、触发条件、关键交互、预期结果和权威边界。
 - Page ID、页面名称、优先级、默认状态、关键状态、图片文件名和需求追踪键由同一清单生成并自动校验。
 - `ADM-AUD-03` 的完整可视化页面属于 P2；审计完整性的最小自动校验与告警属于 P0 后端门禁，两者不得混为同一页面优先级。
+- Audit-3 的 `/admin/app/audit/registry` 与申请详情沿用 `ADM-AUD-03` Owner 治理职责，不新增 Page ID 或改写既有 Figma 349 状态计数；若未来升级为独立客户页面，必须先新增 Page ID、原型状态和追踪关系。
 - 客户意见、设计修改、研发任务和测试用例必须引用 Page ID；涉及业务规则变化时还必须引用对应 PRD/SCP 需求编号。
 - 最终开发入口为 `MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`；其 Page ID、需求追踪和原型引用必须与本矩阵及 `manifest.json` 完全一致。

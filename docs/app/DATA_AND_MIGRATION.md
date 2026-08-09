@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-10
 
-状态：需求讨论中；M0 公开投影、M1 空权威表、Membership-4 目录管理平面与 Audit-1/2 审计管理平面已进入开发验证
+状态：需求讨论中；M0 公开投影、M1 空权威表、Membership-4 目录管理平面与 Audit-1/2/3 审计管理平面已进入开发验证
 
 范围说明：目标模型覆盖长期产品，但 App 1.0 只要求会员目录/grant/entitlement、钱包账本和管理员调币。`products`、`orders`、礼物和装扮表在未来商业化 Feature 冻结后再创建 production migration，不能因出现在目标模型中而默认进入 1.0 实现。
 
@@ -209,6 +209,8 @@ Audit-1 当前实现不新建第二套 `audit_events_v2` 事实，而以既有 `
 Audit-2 同样不复制审计事实。`0091_app_audit_controlled_exports.sql` 只新增导出工作流表族：不可变范围申请、追加时间线、独立复核决定、强认证 Token 摘要、下载票据摘要和幂等命令。申请保存规范查询、权限指纹、事件数量、首末 sequence 和范围摘要；文件只保存固定私有 R2 key、ETag、SHA-256、大小、行数与有效期，不保存公开 URL。触发器限制请求前向迁移，并只允许强认证凭证和票据从未消费变为已消费一次。`0091` 不创建真实申请或对象，不 seed 保留策略，不执行 R2 清理；migration 执行、正式保留/物理清理和专项测试统一后置。详见 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md)。
 
 Operations-1 使用 `0092_app_operations_and_incidents.sql` 落地上述 `metric_definitions / metric_snapshots / operational_incidents` 规划，但保持 `admin_audit_logs` 为唯一审计事实。指标定义、快照、检测运行/finding、Runbook 版本、事件时间线、安全控制事件和管理员命令均为追加式或受版本 trigger 约束；事件与安全控制当前态允许通过 `version + mutation_token` 条件更新。首批指标全部保留 `retention_decision_status=unresolved`、`production_ready=0`，不会启动物理清理或技术指标采集；五个安全控制初始 `available` 只代表未因事件暂停，不会切换任何现有 capability。`0092` 不创建真实事件或快照，不运行检测、不配置调度。详见 [Operations-1 运营总览、事件处置与跨域安全控制开发基线](./OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md)。
+
+Audit-3 使用 `0093_app_audit_action_registry_governance.sql` 补齐 Action 口径治理，但不改变 `admin_audit_logs` 唯一事实源。`app_audit_governance_policy_registry` 保存不可变 retention/quality 策略版本；`app_audit_current_governance_policies` 只选择每个稳定引用的最高 active 版本；`app_audit_production_action_registry` 仅暴露当前 active、两类策略均已批准且 production-ready、并包含 Owner 可见角色的 Action。发布/退休申请保存候选定义、最新版本基线、观察业务域/风险/缺索引摘要、申请原因和独立复核终态；事件和命令只追加，单 Action 同时最多一项待复核申请。`0093` 不 seed 策略、不创建真实申请、不自动发布 Action，也不设置保留天数或清理任务；migration 执行、正式策略/Action 和专项测试统一后置。详见 [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md)。
 
 ## 4. Stable ID 与映射
 

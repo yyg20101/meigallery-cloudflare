@@ -119,6 +119,7 @@ function findingClass(value: AdminAppAuditIntegrityFinding['severity']) {
         </div>
         <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">检查稳定序号、事实索引、JSON 载荷、敏感字段、Action 登记、关键业务事实反向审计覆盖和同范围 SHA-256 清单。检查只追加结果，不自动修补或重写历史。</p>
       </div>
+      <NuxtLink to="/admin/app/audit/registry" class="inline-flex min-h-10 max-w-full shrink-0 items-center justify-center whitespace-normal rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">治理 Action 口径</NuxtLink>
     </header>
 
     <p v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ errorMessage }}</p>
@@ -138,7 +139,7 @@ function findingClass(value: AdminAppAuditIntegrityFinding['severity']) {
         <ul class="mt-2 space-y-1 text-sm leading-6 text-amber-900">
           <li v-for="item in overview.blockers" :key="item">• {{ item }}</li>
         </ul>
-        <p class="mt-3 text-xs leading-5 text-amber-800">本开发阶段不会写入正式 Action 口径、保留期或自动运行配置，因此“尚未就绪”是预期安全状态。</p>
+        <p class="mt-3 text-xs leading-5 text-amber-800">系统不会自动登记 Action 或批准治理策略；正式口径必须进入 Owner 双人复核，保留期与自动运行配置仍在统一配置阶段处理，因此“尚未就绪”是预期安全状态。</p>
       </section>
 
       <section class="rounded-xl border border-gray-200 bg-white p-5">

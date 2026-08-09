@@ -24,6 +24,7 @@ App 版本：1.0
 - [Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)：记录 App API `1.15.0` taxonomy 组合语义、会员分层、结果数安全预估、账号私有保存条件和默认关闭边界。
 - [Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)：记录 App API `1.16.0` 统一资格、显式偏好、可解释排序、稳定灰度、计划生效、固定精选披露、后台状态机和默认关闭边界。
 - [Operations-1 运营总览、事件处置与跨域安全控制开发基线](./OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md)：记录 18 项质量化指标、8 类当前检测、事件状态机、7 份 Runbook、五类真实写路径安全控制和统一后置门禁。
+- [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md)：记录真实 Action 发现、版本化治理策略、发布/退休预览、Owner 职责分离、生产 Registry 可见性和统一后置门禁。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终状态和 169 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
 - [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、92 页/349 状态覆盖、2,284 个有效交互动作、排版与 Icon 修正、QA 结果和交付门禁。
@@ -124,6 +125,7 @@ App 版本：1.0
 | [Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md) | 目录完整复制、五级与 typed entitlement 编辑、影响分析、内容哈希、独立发布复核和环境切换隔离 |
 | [Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md) | 唯一审计事实、稳定 sequence、用途与对象范围、字段级脱敏、关联时间线、关键业务反向覆盖和不可变完整性清单 |
 | [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md) | 三段强认证、独立复核、范围再校验、逐行水印脱敏 CSV、私有 R2 与短时一次性下载 |
+| [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md) | 真实 Action 发现、retention/quality 治理引用、候选影响预览、Owner 独立复核、追加式版本与生产可见 Registry |
 | [Wallet-1 一次性功能验收 Runbook](./WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md) | 合成数据隔离环境、短期授权、完整 HTTP/D1 验收、自动销毁、聚合证据和失败恢复 |
 | [Wallet-1 一次性 Smoke 局部决策包](./WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md) | 合成验收专用 OQ-018/020/024 局部结论、APAC 推荐、证据保留期和确认/执行分离 |
 | [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md) | 多文件夹收藏、历史显式记录、版本化清除、拉黑联动和默认关闭门禁 |

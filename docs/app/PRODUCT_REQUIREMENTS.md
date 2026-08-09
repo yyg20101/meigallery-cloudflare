@@ -210,7 +210,9 @@ Search-1 当前已完成 production 默认关闭的公开字段人物搜索和�
 
 当前开发实现也已交付 `ADM-AUD-01/02/03` 的用途审计查询、admin 本人/Owner 跨域权限、字段级脱敏详情、稳定关联时间线和 Owner 完整性清单。完整性清单除序号、索引、载荷、Action 和摘要外，还反向核对会员发放、钱包入账、运营回复及人物发布四类关键业务事实是否具有对应审计。该能力只读且不提供自动补审计、业务重放或历史修改；实现边界见 [Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md)。
 
-`ADM-AUD-04` 受控导出也已形成开发闭环：admin 仅申请本人范围，Owner 可申请跨域但须由不同 Owner 复核；申请、复核和下载分别重新验证密码。复核与发票前重算冻结事件集合，变化即失效；通过后生成逐行水印、字段级脱敏且防公式注入的 CSV，只存私有 R2。原申请人通过五分钟一次性票据经 Worker 代理下载，Owner 的跨域复核权不产生他人文件下载权。Action 生产口径、正式保留与物理清理、`0090/0091` 执行、配置和专项测试继续后置。实现边界见 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md)。
+`ADM-AUD-04` 受控导出也已形成开发闭环：admin 仅申请本人范围，Owner 可申请跨域但须由不同 Owner 复核；申请、复核和下载分别重新验证密码。复核与发票前重算冻结事件集合，变化即失效；通过后生成逐行水印、字段级脱敏且防公式注入的 CSV，只存私有 R2。原申请人通过五分钟一次性票据经 Worker 代理下载，Owner 的跨域复核权不产生他人文件下载权。实现边界见 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md)。
+
+Audit-3 已进一步交付 `ADM-AUD-03` 的 Owner Action 口径治理扩展：从真实审计事实发现未登记/冲突 Action，预览候选版本与历史影响，提交发布、重新激活或退休申请，并由不同 Owner 独立复核。生产 Registry 只接受当前 active 且 retention/quality 治理引用均获批准、production-ready 的定义；普通 admin 的查询、详情、关联和导出还必须同时满足本人归属与 `visibleRoles` 允许 `admin`。申请人与复核人分离，版本、观察摘要或策略状态变化会使旧申请失效。`0090/0091/0092/0093` 执行、真实治理策略/Action、正式保留与物理清理、配置和专项测试继续后置；实现边界见 [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md)。
 
 ### 5.8 金币与后续虚拟商品
 
@@ -233,9 +235,11 @@ Search-1 当前已完成 production 默认关闭的公开字段人物搜索和�
 
 ### 5.10 后台
 
-- **PRD-FR-090**：App 1.0 后台包括真人导入、认证发布、标签地区、推荐位、平台话题运营、举报审核、会员发放、调币复核和审计；商品、订单退款和认领模块按后续阶段启用。
+- **PRD-FR-090**：App 1.0 后台包括真人导入、认证发布、标签地区、推荐位、平台话题运营、举报审核、会员发放、调币复核、审计与 Action 口径治理；商品、订单退款和认领模块按后续阶段启用。
 - **PRD-FR-091**：认证、发布、代运营、财务、复核和审计使用独立角色，所有写操作记录原因和前后状态。
 - **PRD-FR-092**：批量任务逐项幂等，单项失败不得重复处理已成功项目。
+- **PRD-FR-093**：审计 Action 定义必须版本化并引用已批准的保留与质量策略；发布、重新激活和退休均需影响预览与不同 Owner 独立复核，不允许自动登记或单人直接生效。
+- **PRD-FR-094**：普通管理员的审计查询、详情、关联和导出必须由服务端同时校验本人范围、生产就绪 Action 与可见角色；Owner 的治理可见性不授权其修改历史事实。
 
 后台 taxonomy、推荐运营、安全审核、代运营、会员发放、调币和审计分别以 [A-04 PRD](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)、[A-05 PRD](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)、[A-07 PRD](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)、[A-06 PRD](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)、[A-08 PRD](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)、[A-10 PRD](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md) 和 [A-13 PRD](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md) 为详细验收依据。
 

@@ -649,6 +649,10 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | GET | `/api/admin/app/audit/integrity/overview` | 读取事实/索引、Action 登记和最近检查生产阻断摘要 | owner |
 | GET | `/api/admin/app/audit/integrity/checks[/:checkId]` | 读取不可变完整性检查历史和最多前 50 条 finding | owner |
 | POST | `/api/admin/app/audit/integrity/checks` | 幂等追加最多 5,000 sequence 的完整性清单，不修改原事件 | owner |
+| GET/POST | `/api/admin/app/audit/exports[...]` | 受控导出申请、强认证、独立复核、一次性票据与 Worker 代理下载 | admin+ / 独立 owner 复核 |
+| GET | `/api/admin/app/audit/registry/overview`、`/actions` | 发现真实 Action、治理状态、观察冲突和生产阻断 | owner |
+| POST | `/api/admin/app/audit/registry/preview` | 只读规范化候选并核对历史影响与治理策略引用 | owner |
+| GET/POST | `/api/admin/app/audit/registry/requests[...]` | 幂等提交发布/退休申请、读取详情并由不同 Owner 独立复核 | owner |
 | POST | `/api/admin/import-jobs` | 创建导入任务（需 Turnstile） | admin+ |
 | GET | `/api/admin/import-jobs/:id` | 导入任务详情和进度 | admin+ |
 | POST | `/api/admin/import-jobs/:id/process` | 处理导入任务（需 Turnstile） | admin+ |
@@ -1163,7 +1167,7 @@ Audit-1 继续把 `admin_audit_logs` 作为唯一事实源。`0090_app_audit_que
 
 审计列表默认 7 天、最大 31 天，游标绑定管理员可见范围与完整筛选指纹。admin 只能查询本人操作，owner 才能跨域；详情读取重新校验对象范围并对消息、备注、证据、凭据、邮箱、电话、精确位置、私有 key、疑似 JWT/私钥/签名 URL 和长文本进行服务端脱敏。查询和详情读取本身追加审计，不提供修改、回滚或重放入口。
 
-Owner 完整性检查默认最近 1,000、单次最多 5,000 个连续 sequence，生成带 `manifest_version` 的 SHA-256 链式 manifest；摘要覆盖原事实、稳定索引和结构化上下文，并只与同范围同算法版本旧清单比较。检查检测序号缺口、源事实缺少索引、非法 JSON、敏感字段、未登记 Action、同范围 manifest 变化，以及会员发放、钱包入账、运营回复、人物发布四类关键业务事实是否缺少对应审计。反向检查只读取既有权威表并保存摘要 finding，不复制业务载荷、不猜测操作者、不自动补写审计。检查结果和 finding 只追加，不修复源事实；正式 Action 口径、保留期、自动调度、告警和专项测试统一后置。完整边界见 `docs/app/AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md`。
+Owner 完整性检查默认最近 1,000、单次最多 5,000 个连续 sequence，生成带 `manifest_version` 的 SHA-256 链式 manifest；摘要覆盖原事实、稳定索引和结构化上下文，并只与同范围同算法版本旧清单比较。检查检测序号缺口、源事实缺少索引、非法 JSON、敏感字段、未登记生产 Action、同范围 manifest 变化，以及会员发放、钱包入账、运营回复、人物发布四类关键业务事实是否缺少对应审计。反向检查只读取既有权威表并保存摘要 finding，不复制业务载荷、不猜测操作者、不自动补写审计。检查结果和 finding 只追加，不修复源事实；正式 Action/治理策略配置、保留期、自动调度、告警和专项测试统一后置。完整边界见 `docs/app/AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md`。
 
 Audit-2 在 `0091_app_audit_controlled_exports.sql` 中新增受控导出工作流，不复制 `admin_audit_logs`。核心请求保存不可变 Audit-1 查询 JSON、绑定当前角色的权限指纹、事件数量、首末 sequence 和范围 SHA-256；admin 只能冻结本人事件，Owner 可冻结跨域事件，但复核人必须是不同的有效 Owner。申请、复核和下载票据签发分别要求密码 step-up，凭证仅存 SHA-256、绑定单一动作并只能消费一次。复核和发票前以申请人的当前角色重算同一范围，指纹或事件集合变化会把申请推进到 `scope_changed`，不会生成或读取文件。
 
@@ -1172,6 +1176,10 @@ Audit-2 在 `0091_app_audit_controlled_exports.sql` 中新增受控导出工作�
 Operations-1 在 `0092_app_operations_and_incidents.sql` 中新增指标定义/快照、Runbook、检测运行/finding、事件/时间线、跨域安全控制和管理员幂等命令。指标定义与快照只追加，每项值必须携带 `known / unknown / delayed / partial / invalid / unconfigured`，只有 `known` 可以返回数值；首批 18 项定义的保留决策仍为 `unresolved`、`production_ready=0`，Cloudflare Worker/D1/R2 技术指标未接入时为 `unconfigured`。事件使用稳定 `incident_key` 聚合重复检测，状态通过 D1 trigger 和服务端 `expectedVersion` 双重限制；关闭必须提供结论摘要和证据。检测当前覆盖未授权公开、运营身份事实缺失、重复 grant、钱包不平、调币独立复核缺失、审计完整性/敏感字段和通知积压；钱包不平只保护性冻结，不自动补账或修改分录。
 
 五类安全控制为 `person_publication`、`recommendation_delivery`、`operator_messaging`、`membership_grants` 和 `wallet_adjustments`。每个受控写路径在服务入口 fail-closed 读取控制，并在最终业务 SQL 以 `EXISTS state='available'` 原子重验；暂停不影响下线、撤销、拒绝、回滚、调查或只读对账。只有 Owner 可用未关闭 P0/P1 事件暂停控制，恢复必须来自原事件且有验证证据。管理 API 位于 `/api/admin/app/operations`，所有响应 `private, no-store`；普通 admin 可读/领取并仅处置本人事件，Owner 可跨事件且独占刷新、检测和控制。完整数据表、路由、交互与 Runbook 见 `docs/app/OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md`；`0092` 执行、正式指标/Action/保留政策、Cloudflare 可观测接入、调度、专项测试和恢复演练统一后置。
+
+Audit-3 在 `0093_app_audit_action_registry_governance.sql` 中补齐受控 Action Registry：`app_audit_governance_policy_registry` 以不可变版本登记 retention/quality 稳定引用，`app_audit_production_action_registry` 只暴露当前 active、两类引用均已批准且 production-ready、并包含 Owner 可见角色的 Action。当前 migration 不 seed 策略；任意引用字符串都不会被隐式视为已批准。
+
+Owner-only `/api/admin/app/audit/registry` 工作区合并真实 `admin_audit_logs.action` 与前置登记 Action，预览观察业务域、风险、缺索引和历史影响，再提交发布或退休申请。申请人与复核人分离；批准在服务预览和最终 `INSERT ... SELECT` 两处重验当前 Action 版本、观察摘要以及两类治理引用，变化时只把申请推进到 `stale`。普通 admin 的审计列表、筛选项、详情、关联时间线和受控导出统一使用生产 Registry，并继续要求本人归属与 `visibleRoles` 包含 `admin`；Owner 保留未登记事实的治理可见性。完整契约见 `docs/app/AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md`；`0093`、真实策略/Action、配置和专项测试统一后置。
 
 ### site_settings
 
