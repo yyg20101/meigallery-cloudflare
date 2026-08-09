@@ -100,12 +100,12 @@ Owner 可调用：
 - `0090_app_audit_query_and_integrity.sql` 尚未执行。
 - Action registry 不 seed 任何真实口径，因此 `productionReady=false` 是预期状态。
 - 未配置保留期、自动调度、告警渠道或备份恢复演练。
-- 未创建审计导出、R2 文件、下载凭证或长期链接。
+- Audit-1 自身不创建审计导出、R2 文件或下载凭证；后续 Audit-2 已独立实现受控导出代码，但 `0091`、真实文件和配置仍未执行。
 - 本阶段 API TypeScript 检查和 Nuxt production build 已通过；受限网络下字体元数据 provider 告警未阻断产物。专项 D1/API/UI/安全测试统一后置。
 
 ## 8. 后续开发
 
-- Audit-2：`ADM-AUD-04` 受控导出申请、独立复核、水印、私有 R2、短期一次性下载和下载审计。
+- Audit-2 已完成：`ADM-AUD-04` 受控导出申请、独立复核、水印、私有 R2、短期一次性下载和下载审计；边界见 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md)。
 - Operations-1：`ADM-OV-01/02/03` 聚合总览、异常状态机、Runbook 与受控安全开关。
 - Registry 管理：Action 口径预览、Owner 独立发布和保留策略引用；未完成前不得把当前 registry 判为生产就绪。
-- 全部功能开发结束后，再统一执行 `0090`、Action/保留/调度配置和专项测试。
+- 全部功能开发结束后，再统一执行 `0090/0091`、Action/保留/清理/调度配置和专项测试。

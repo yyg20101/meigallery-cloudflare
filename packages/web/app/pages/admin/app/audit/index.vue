@@ -158,13 +158,21 @@ function payloadStateLabel(value: 'empty' | 'valid' | 'invalid') {
         </div>
         <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">按稳定序号还原管理员责任事实。列表不展示消息正文、证据、Token 或受保护地址；每次查询和详情读取都会产生新的追加式审计事件。</p>
       </div>
-      <NuxtLink
-        v-if="isOwner"
-        to="/admin/app/audit/integrity"
-        class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-      >
-        完整性状态
-      </NuxtLink>
+      <div class="flex flex-wrap gap-2">
+        <NuxtLink
+          to="/admin/app/audit/exports"
+          class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          受控导出
+        </NuxtLink>
+        <NuxtLink
+          v-if="isOwner"
+          to="/admin/app/audit/integrity"
+          class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          完整性状态
+        </NuxtLink>
+      </div>
     </header>
 
     <section class="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">

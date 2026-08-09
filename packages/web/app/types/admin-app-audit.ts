@@ -141,6 +141,131 @@ export interface AdminAppAuditIntegrityOverview {
   blockers: string[]
 }
 
+export type AdminAppAuditExportStatus =
+  | 'pending_review'
+  | 'rejected'
+  | 'scope_changed'
+  | 'generating'
+  | 'ready'
+  | 'failed'
+  | 'expired'
+  | 'revoked'
+
+export type AdminAppAuditExportActionScope = 'request' | 'review' | 'download_ticket'
+
+export interface AdminAppAuditExportRequest {
+  requestId: string
+  version: number
+  status: AdminAppAuditExportStatus
+  storedStatus: AdminAppAuditExportStatus
+  purpose: AdminAppAuditPurpose
+  caseReference: string
+  requestExplanation: string
+  range: { from: string; to: string }
+  scope: {
+    query: {
+      purpose: AdminAppAuditPurpose
+      from: string
+      to: string
+      action: string | null
+      domain: string | null
+      riskLevel: AdminAppAuditRiskLevel | null
+      result: AdminAppAuditResult | null
+      targetType: string | null
+      targetId: string | null
+      actorId: number | null
+      requestId: string | null
+      traceId: string | null
+      businessReference: string | null
+    }
+    fingerprint: string
+    digest: string
+    eventCount: number
+    firstSequence: number
+    lastSequence: number
+  }
+  requester: AdminAppAuditActor
+  requestedAt: string
+  review: null | {
+    decision: 'approve' | 'reject'
+    reasonCode: string
+    note: string
+    reviewer: AdminAppAuditActor
+    reviewedAt: string
+  }
+  file: null | {
+    available: boolean
+    sha256: string
+    size: number
+    rowCount: number
+    generatedAt: string
+    expiresAt: string
+  }
+  failureCode: string | null
+  canReview: boolean
+  canDownload: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminAppAuditExportTimelineEvent {
+  eventId: string
+  sequence: number
+  eventType: string
+  actor: AdminAppAuditActor | null
+  resultCode: string
+  summary: Record<string, unknown>
+  createdAt: string
+}
+
+export interface AdminAppAuditExportDetail {
+  request: AdminAppAuditExportRequest
+  timeline: AdminAppAuditExportTimelineEvent[]
+}
+
+export function adminAuditExportStatusLabel(value: AdminAppAuditExportStatus) {
+  return {
+    pending_review: '待独立复核',
+    rejected: '已驳回',
+    scope_changed: '范围已变化',
+    generating: '正在生成',
+    ready: '可下载',
+    failed: '生成失败',
+    expired: '已过期',
+    revoked: '已撤销',
+  }[value]
+}
+
+export function adminAuditExportStatusClass(value: AdminAppAuditExportStatus) {
+  if (value === 'ready') return 'bg-emerald-100 text-emerald-800 ring-emerald-200'
+  if (value === 'pending_review' || value === 'generating') return 'bg-blue-100 text-blue-800 ring-blue-200'
+  if (value === 'rejected' || value === 'scope_changed') return 'bg-amber-100 text-amber-900 ring-amber-200'
+  if (value === 'failed' || value === 'revoked') return 'bg-red-100 text-red-800 ring-red-200'
+  return 'bg-gray-100 text-gray-700 ring-gray-200'
+}
+
+export function adminAuditExportEventLabel(value: string) {
+  return {
+    requested: '已提交申请',
+    review_rejected: '复核驳回',
+    scope_changed: '范围变化并失效',
+    generation_started: '复核通过，开始生成',
+    ready: '脱敏文件已就绪',
+    generation_failed: '生成或完整性校验失败',
+    download_ticket_issued: '已签发一次性下载票据',
+    downloaded: '一次性票据已消费',
+    expired: '文件已过期',
+    revoked: '文件已撤销',
+  }[value] ?? value
+}
+
+export function formatAdminAuditFileSize(value: number) {
+  if (!Number.isFinite(value) || value < 0) return '—'
+  if (value < 1_024) return `${value} B`
+  if (value < 1_048_576) return `${(value / 1_024).toFixed(1)} KB`
+  return `${(value / 1_048_576).toFixed(1)} MB`
+}
+
 export function adminAuditRiskLabel(value: AdminAppAuditRiskLevel) {
   return { low: '低', medium: '中', high: '高', critical: '关键' }[value]
 }

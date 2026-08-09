@@ -157,7 +157,50 @@ export function useApi() {
     return $fetch<T>(fullPath, fetchOptions as any)
   }
 
-  return { api, baseURL: '' }
+  /**
+   * 浏览器端读取原始 Response，供受控文件下载等非 JSON 响应使用。
+   * 仍复用同源代理、认证 Cookie、DEV 写操作确认和统一错误结构。
+   */
+  async function apiResponse(
+    path: string,
+    options?: {
+      method?: string
+      body?: unknown
+      query?: Record<string, string | number | undefined>
+      keepalive?: boolean
+      headers?: Record<string, string>
+    },
+  ): Promise<Response> {
+    if (import.meta.server) throw new Error('apiResponse 仅允许在浏览器交互中调用')
+    const method = options?.method || 'GET'
+    confirmDevAdminWrite(path, method)
+    const fullPath = buildFullPath(path, options?.query)
+    const headers: Record<string, string> = { ...(options?.headers || {}) }
+    const init: RequestInit = {
+      method,
+      credentials: 'include',
+      keepalive: options?.keepalive,
+      headers,
+    }
+    if (isFormDataBody(options?.body)) {
+      init.body = options.body
+    } else if (options?.body) {
+      headers['Content-Type'] = 'application/json'
+      init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
+    }
+    const response = await fetch(fullPath, init)
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '')
+      const error = new Error(`[${method}] "${fullPath}": ${response.status} ${response.statusText}`)
+      ;(error as any).statusCode = response.status
+      ;(error as any).statusMessage = response.statusText
+      ;(error as any).data = errorBody
+      throw error
+    }
+    return response
+  }
+
+  return { api, apiResponse, baseURL: '' }
 }
 
 function forwardSsrResponseCookies(event: ReturnType<typeof useRequestEvent>, response: Response) {

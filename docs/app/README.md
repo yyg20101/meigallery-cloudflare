@@ -122,6 +122,7 @@ App 版本：1.0
 | [Wallet-1 金币账本跨仓交付基线](./WALLET_1_LEDGER_INTEGRATION.md) | 本人余额/明细、追加式分录、管理员单笔调币、独立复核、完整冲正、KMP 页面和启用门禁 |
 | [Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md) | 目录完整复制、五级与 typed entitlement 编辑、影响分析、内容哈希、独立发布复核和环境切换隔离 |
 | [Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md) | 唯一审计事实、稳定 sequence、用途与对象范围、字段级脱敏、关联时间线、关键业务反向覆盖和不可变完整性清单 |
+| [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md) | 三段强认证、独立复核、范围再校验、逐行水印脱敏 CSV、私有 R2 与短时一次性下载 |
 | [Wallet-1 一次性功能验收 Runbook](./WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md) | 合成数据隔离环境、短期授权、完整 HTTP/D1 验收、自动销毁、聚合证据和失败恢复 |
 | [Wallet-1 一次性 Smoke 局部决策包](./WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md) | 合成验收专用 OQ-018/020/024 局部结论、APAC 推荐、证据保留期和确认/执行分离 |
 | [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md) | 多文件夹收藏、历史显式记录、版本化清除、拉黑联动和默认关闭门禁 |

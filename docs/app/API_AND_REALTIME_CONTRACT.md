@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-10
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1 进入默认关闭或未配置的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1/2 进入默认关闭或未配置的保守开发验证
 
 ## 1. 契约原则
 
@@ -62,7 +62,11 @@ Entitlement 校验要求五级显式值、typed 安全默认值和稳定 capabil
 
 `/api/admin/app/audit` 新增用途必填的受限审计查询、字段级脱敏详情、非敏感关联时间线和 Owner 完整性检查。该前缀是 Nuxt 管理契约，不修改 App API v2 或 KMP capability。普通 admin 的 SQL 查询固定绑定本人 actor；Owner 才可跨域。每次查询/详情读取都追加新审计事件，审计页面没有业务重放、回滚或修改接口。
 
-完整性检查通过稳定 sequence 和 SHA-256 链式 manifest 检测缺口、索引、载荷、敏感字段、Action 登记和相同范围摘要变化，并反向核对会员发放、钱包入账、运营回复和人物发布四类权威业务事实是否有对应审计；检查只追加清单和摘要 finding，不补写审计。`0090`、正式 Action registry、保留与调度配置、专项测试以及受控导出继续后置。完整边界见 [Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md)。
+完整性检查通过稳定 sequence 和 SHA-256 链式 manifest 检测缺口、索引、载荷、敏感字段、Action 登记和相同范围摘要变化，并反向核对会员发放、钱包入账、运营回复和人物发布四类权威业务事实是否有对应审计；检查只追加清单和摘要 finding，不补写审计。`0090`、正式 Action registry、保留与调度配置和专项测试继续后置。完整边界见 [Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md)。
+
+#### Audit-2 管理平面开发补充
+
+Audit-2 只新增 `/api/admin/app/audit/exports*` 管理接口，不扩展 App API v2，也不向 KMP 暴露审计数据。申请、不同 Owner 复核、原申请人发票分别要求密码 step-up；凭证与票据只存 SHA-256 并一次性消费。申请保存 Audit-1 规范范围、权限指纹、事件数量、首末 sequence 和摘要；复核与发票前重新计算，任一变化进入 `scope_changed`，生成完成前也必须确认申请人与复核人角色仍有效。CSV 逐行水印、字段级脱敏并防公式注入，固定写私有 R2；客户端只能用 header 中的短时一次性票据经 Worker 下载，API 不返回 R2 地址。Web 同源代理仅为该流程放行 `Idempotency-Key`、`X-Audit-Step-Up`、`X-Audit-Download-Ticket`，所有审计响应强制 `private, no-store`。`0091`、正式保留/物理清理配置和专项测试统一后置。完整边界见 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md)。
 
 ### 1.5 Message-1 局部冻结记录
 

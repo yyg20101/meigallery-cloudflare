@@ -5,8 +5,11 @@ const ALLOWED_API_PROXY_REQUEST_HEADERS = new Set([
   'cf-ipcountry',
   'content-type',
   'cookie',
+  'idempotency-key',
   'sec-gpc',
   'user-agent',
+  'x-audit-download-ticket',
+  'x-audit-step-up',
   'x-forwarded-for',
   'x-real-ip',
 ])
@@ -19,6 +22,7 @@ const ALLOWED_API_PROXY_RESPONSE_HEADERS = new Set([
   'location',
   'retry-after',
   'set-cookie',
+  'x-content-type-options',
   'x-ratelimit-limit',
   'x-ratelimit-remaining',
 ])

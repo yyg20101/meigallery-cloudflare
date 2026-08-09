@@ -1165,6 +1165,10 @@ Audit-1 继续把 `admin_audit_logs` 作为唯一事实源。`0090_app_audit_que
 
 Owner 完整性检查默认最近 1,000、单次最多 5,000 个连续 sequence，生成带 `manifest_version` 的 SHA-256 链式 manifest；摘要覆盖原事实、稳定索引和结构化上下文，并只与同范围同算法版本旧清单比较。检查检测序号缺口、源事实缺少索引、非法 JSON、敏感字段、未登记 Action、同范围 manifest 变化，以及会员发放、钱包入账、运营回复、人物发布四类关键业务事实是否缺少对应审计。反向检查只读取既有权威表并保存摘要 finding，不复制业务载荷、不猜测操作者、不自动补写审计。检查结果和 finding 只追加，不修复源事实；正式 Action 口径、保留期、自动调度、告警和专项测试统一后置。完整边界见 `docs/app/AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md`。
 
+Audit-2 在 `0091_app_audit_controlled_exports.sql` 中新增受控导出工作流，不复制 `admin_audit_logs`。核心请求保存不可变 Audit-1 查询 JSON、绑定当前角色的权限指纹、事件数量、首末 sequence 和范围 SHA-256；admin 只能冻结本人事件，Owner 可冻结跨域事件，但复核人必须是不同的有效 Owner。申请、复核和下载票据签发分别要求密码 step-up，凭证仅存 SHA-256、绑定单一动作并只能消费一次。复核和发票前以申请人的当前角色重算同一范围，指纹或事件集合变化会把申请推进到 `scope_changed`，不会生成或读取文件。
+
+复核通过后，API Worker 最多读取 5,000 行，复用 Audit-1 before/after 脱敏器并为每行写申请、生成、申请人、复核人、用途、案件和范围水印；CSV 全字段引用、转义并阻断公式前缀，最大 25,000,000 字节。Worker 以已知长度 `Uint8Array`、SHA-256 checksum、`no-store` metadata 写入既有私有 R2 固定 key `audit/exports/{requestId}/events.csv`，D1 只保存 key、ETag、SHA、大小、行数和有效期，管理 API 不返回 key/ETag 或对象 URL。原申请人重新验证密码后取得五分钟一次性 HMAC 票据；下载使用 header 提交给 Worker，Worker 核对管理员、申请版本/有效期、文件/范围摘要及 R2 metadata，在 D1 条件消费票据并追加审计后才流式响应。当前文件逻辑有效期 24 小时只是开发安全默认值，正式保留与物理清理、`0091` 执行和专项测试统一后置。完整契约见 `docs/app/AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md`。
+
 ### site_settings
 
 ```sql

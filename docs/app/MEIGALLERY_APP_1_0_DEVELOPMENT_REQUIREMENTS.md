@@ -64,7 +64,7 @@ App 版本：1.0
 
 需求范围仍按本文完整追踪，代码按可回滚纵向切片逐步落地；“已实现开发切片”不等于客户需求已整体冻结或获准生产发布。
 
-- M0、M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1 已形成生产默认关闭或未配置的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
+- M0、M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1/2 已形成生产默认关闭或未配置的分阶段开发基线；dev 只按已批准阶段受控开启联调所需能力。
 - Membership-1/2/3 Nuxt 已补齐 `ADM-MBR-03/04/05` 单账号闭环：账号搜索确认、五级 tier、立即/预约发放、同级续期、追加式撤销、会员申请、策略预览、独立复核队列和逐单批准/拒绝。发起人不能自审，批准时服务端重新核对当前 grant 与申请锁，并原子写入会员事实、复核结果、用户申请终态和审计；未发布正式风险阈值时全部变更保守复核。`0088` migration、真实策略、配置和专项测试统一后置；批量与旧会员迁移仍未实现。
 - Membership-4 Nuxt 已补齐 `ADM-MBR-01/02` 目录管理闭环：基线完整复制、目录设置、完整五级原子编辑、typed entitlement、五级显式值、安全默认值、客户端 capability、基线比较、影响分析和 Owner 独立发布复核。当前环境引用、已发布、待复核以及被 grant、申请或后继目录引用的版本只读；发布不切换 Wrangler 目录、不迁移 grant，也不开放 capability。`0089`、真实数值、生产决策、配置和专项测试统一后置。
 - Interaction-2 已完成多文件夹收藏与默认关闭浏览历史的 Cloudflare/KMP 跨仓开发，覆盖默认收藏、文件夹管理、全部收藏、人物归属、历史显式开关、详情成功后稳定事件记录、逐条删除、版本化全部清除和屏蔽联动。环境配置、`0078` migration、会员执行值、专项测试、模拟器/真机与远端联调按“先完成全部开发、后统一配置测试”的顺序后置，当前 capability 继续关闭。
@@ -76,9 +76,10 @@ App 版本：1.0
 - Message-1 已实现 `APP-MSG-01` 列表、`APP-MSG-02` 人物详情内二次披露确认、`APP-MSG-03` 仅文本会话核心状态；Message-2 进一步实现人物详情安全区、话题/消息举报、观看者关闭话题、`APP-SET-06/07` 合并式安全中心，以及 `ADM-MSG-01/02` 限时领取工作台和 `ADM-SAF-01/02` 最小安全审核工作台。
 - `ADM-MSG-02` 已进一步接通追加式内部备注、显式转派和内部安全升级：备注与平台回复使用独立 API/视觉区域，只有当前有效租约持有人可读写；转派必须携带当前 assignment version、稳定原因、目标管理员和交接说明，并在服务端重新校验目标状态与容量。安全升级与用户举报分表分队列，固定最小消息证据并强制发起人/审核人隔离，独立审核只允许无需动作、话题只读或关闭。`ADM-MSG-03` 已接通运营组、成员职责与容量、上海时区跨日班次、真人/地区/默认规则、自动分配、补偿分配和人工领取同源门禁。`ADM-MSG-04` 已接通实际操作员事实、无正文抽检队列、确定性抽样、质检职责隔离、限时最小证据、三维评分、改进任务和独立安全转介；`0084/0085/0086/0087` migration 执行、真实配置与专项测试统一后置。
 - Message-2 冻结屏蔽/解除、四类举报目标契约、本人举报时间线、话题关闭、会话 assignment、最小证据、结论处置和全局暂停/容量控制；Safety-2 进一步实现 `APP-SET-08`“举报未发现违规结论的一次独立复核”以及 `ADM-SAF-03/04` 申诉队列和详情。账号限制/金币等其他来源申诉、用户补充媒体证据、撤回、实时通道和跨周期聚合质量看板仍未实现。
-- Audit-1 已完成 `ADM-AUD-01/02/03`：复用唯一 `admin_audit_logs` 事实，为既有与新增事件自动建立稳定 sequence；admin 只看本人、Owner 可跨域；查询与详情读取要求用途并自行留痕；before/after 由服务端字段级脱敏。Owner 可形成不可变 SHA-256 完整性清单，检测 sequence、索引、JSON、敏感字段、Action 登记、相同范围摘要变化，以及会员发放、钱包入账、运营回复和人物发布四类关键业务事实缺少审计，但不自动补写或修复。`0090`、正式 Action/保留/调度配置与专项测试统一后置；受控导出和异常中心仍未实现。
+- Audit-1 已完成 `ADM-AUD-01/02/03`：复用唯一 `admin_audit_logs` 事实，为既有与新增事件自动建立稳定 sequence；admin 只看本人、Owner 可跨域；查询与详情读取要求用途并自行留痕；before/after 由服务端字段级脱敏。Owner 可形成不可变 SHA-256 完整性清单，检测 sequence、索引、JSON、敏感字段、Action 登记、相同范围摘要变化，以及会员发放、钱包入账、运营回复和人物发布四类关键业务事实缺少审计，但不自动补写或修复。
+- Audit-2 已完成 `ADM-AUD-04`：申请、复核和下载发票分别重新验证密码；admin 只能申请本人事件，Owner 可申请跨域但必须由不同 Owner 独立复核；复核和发票前重算精确范围，变化即失效。通过后生成逐行水印、字段级脱敏且防公式注入的 CSV，只写私有 R2；原申请人使用五分钟一次性票据经 Worker 代理下载。`0090/0091`、正式 Action/保留/清理配置与专项测试统一后置；异常中心仍未实现。
 - 已完成的既有跨仓切片具备对应代码和既有测试；Interaction-2/3、Search-1/2、Taxonomy-1 与 Recommendation-1 已完成 KMP 客户端开发，但新切片专项测试按当前开发顺序统一后置，不能据此推断配置、模拟器/真机或联调已完成。production 的 Auth、会员、消息、安全、搜索、taxonomy、推荐、互动收藏/历史/关注更新、后台和 production-ready 开关及新目录选择保持关闭；既有 dev 联调状态不向这些新切片扩散。保留策略仍为 `unresolved`，不导入真实数据、不执行自动清理，也不代表生产发布授权。
-- Interaction-2、Interaction-3、Search-1、Taxonomy-1、Search-2、Recommendation-1、Membership-3/4、Message-1、Message-2、Safety-2 与 Audit-1 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)、[Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)、[Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)、[Membership-3 会员变更独立复核开发基线](./MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md)、[Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md)、[Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md) 和 [Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
+- Interaction-2、Interaction-3、Search-1、Taxonomy-1、Search-2、Recommendation-1、Membership-3/4、Message-1、Message-2、Safety-2 与 Audit-1/2 的实现边界分别以 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)、[Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)、[Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)、[Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)、[Search-2 结构化筛选、结果预估与保存条件开发基线](./SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md)、[Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)、[Membership-3 会员变更独立复核开发基线](./MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md)、[Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md)、[Message-1 跨仓集成边界](./MESSAGE_1_CROSS_REPO_INTEGRATION.md)、[Message-2 跨仓集成边界](./MESSAGE_2_CROSS_REPO_INTEGRATION.md)、[Safety-2 申诉跨端集成边界](./SAFETY_2_APPEAL_INTEGRATION.md)、[Audit-1 App 审计查询与完整性开发基线](./AUDIT_1_QUERY_AND_INTEGRITY_INTEGRATION.md) 和 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md) 为准，不能仅凭页面或服务端路由存在判断功能可上线。
 
 ## 3. 不可违反的业务与安全边界
 
@@ -5058,13 +5059,13 @@ App 版本：1.0
 
 **页面结构：** 范围、目的、独立复核、短期凭证和过期状态形成受控导出闭环。
 
-**详细交互：** 用户从“审计查询”进入。主要操作为“提交导出申请”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 ADM-AUD-01「审计查询」。次要操作包括：查看申请、下载已批准文件。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“审计查询”进入，先填写用途、案件号、必要性说明、时间与 Audit-1 精确筛选。提交前弹出当前账户密码验证；成功后冻结事件数量、首末 sequence、权限指纹和 SHA-256 范围摘要，进入待独立复核。不同 Owner 选择通过/驳回、结构化原因和说明，并再次验证密码；通过时服务端以申请人的当前权限重算范围，完全一致才生成文件，否则进入“范围已变化”。原申请人只在文件就绪且未过期时看到下载入口，再次验证密码后取得五分钟一次性票据并由 Worker 代理下载。密码失败保留业务表单但清空密码；生成、R2 完整性、版本冲突、过期和票据消费失败均展示权威终态与安全下一步。
 
-**业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
+**业务规则：** 单次最多 31 天、5,000 个事件和 25 MB；申请、复核、发票三个强认证凭证互不复用且只能消费一次；申请人不得自审，Owner 可跨域查看和复核但不能下载他人申请；每行 CSV 含申请/生成/申请人/复核人/用途/案件/范围水印，before/after 服务端脱敏并防表格公式注入；文件只写私有 R2 固定 key，不返回公开或长期 URL；范围、授权、申请版本、文件 SHA/大小/ETag/metadata 任一变化即拒绝下载。后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
-**数据与权限：** 仅允许具备审计 capability 的管理员按授权范围读取脱敏事件；导出必须申请、复核、短期授权并记录审计。
+**数据与权限：** 仅允许有效 admin/Owner 按 Audit-1 授权范围申请；admin 列表只看本人申请，Owner 列表可跨域；只有不同 Owner 可以复核，只有原申请人可以发票和下载。API 只返回文件摘要、大小、行数和有效期，不返回 R2 key/ETag、密码或 Token 摘要。导出申请、决定、时间线、强认证消费、下载票据消费和通用审计均为服务端事实。
 
-**页面状态：** 正常、待批准、已过期、范围变化
+**页面状态：** 正常、待批准、生成中、可下载、已驳回、生成失败、已过期、范围变化、已撤销
 
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-04`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
@@ -5082,6 +5083,9 @@ App 版本：1.0
 - 从“审计查询”能够进入，页面明确显示 ADM-AUD-04、页面名称、设计路由和返回路径。
 - 主要操作“提交导出申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、待批准、已过期、范围变化”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 页面和 API 已覆盖强认证失败/限流、申请人自审、版本冲突、范围变化、生成失败、文件就绪、过期、对象完整性不符和票据重放；不把客户端按钮状态作为授权依据。
+- 受控文件只能经同源 Worker 使用 header 中的一次性票据下载；票据、对象 key 和长期地址不得进入 URL、页面时间线或通用审计载荷。
+- 实现边界以 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md) 为准；`0091`、真实文件、正式保留/清理配置和专项测试未完成前不得启用 production。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 - UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。

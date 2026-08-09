@@ -7,15 +7,18 @@ import {
 } from './apiProxyHeaders'
 
 describe('Web API 代理头部白名单', () => {
-  it('仅转发 API 认证、内容协商和限流识别需要的请求头', () => {
+  it('仅转发 API 认证、受控命令、内容协商和限流识别需要的请求头', () => {
     expect(filterApiProxyRequestHeaders({
       Cookie: ' mei_session=abc ',
       'Content-Type': ' application/json ',
       Accept: ' application/json ',
       Authorization: ' Bearer import-token ',
+      'Idempotency-Key': ' audit.request.0123456789abcdef ',
       'CF-Connecting-IP': '203.0.113.10',
       'CF-IPCountry': 'GB',
       'Sec-GPC': '1',
+      'X-Audit-Step-Up': ' step-up-secret ',
+      'X-Audit-Download-Ticket': ' download-secret ',
       'X-Forwarded-For': '203.0.113.10, 198.51.100.2',
       'X-Real-IP': '203.0.113.10',
       'User-Agent': 'Mozilla/5.0',
@@ -26,8 +29,11 @@ describe('Web API 代理头部白名单', () => {
       'cf-ipcountry': 'GB',
       'content-type': 'application/json',
       cookie: 'mei_session=abc',
+      'idempotency-key': 'audit.request.0123456789abcdef',
       'sec-gpc': '1',
       'user-agent': 'Mozilla/5.0',
+      'x-audit-download-ticket': 'download-secret',
+      'x-audit-step-up': 'step-up-secret',
       'x-forwarded-for': '203.0.113.10, 198.51.100.2',
       'x-real-ip': '203.0.113.10',
     })
@@ -80,6 +86,7 @@ describe('Web API 代理头部白名单', () => {
       'X-RateLimit-Limit',
       'X-RateLimit-Remaining',
       'Content-Disposition',
+      'X-Content-Type-Options',
     ]) {
       expect(shouldForwardApiProxyResponseHeader(name)).toBe(true)
     }

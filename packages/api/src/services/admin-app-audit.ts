@@ -285,7 +285,7 @@ type AuditEventRow = {
   registry_status: AdminAppAuditRegistryEntry['status'] | null
 }
 
-type ActorRow = {
+export type ActorRow = {
   id: number
   role: string
   status: string
@@ -330,7 +330,7 @@ type IntegrityCommandRow = {
   check_id: string
 }
 
-type NormalizedAuditQuery = {
+export type NormalizedAuditQuery = {
   purpose: AdminAppAuditPurpose
   from: string
   to: string
@@ -401,6 +401,34 @@ export class AdminAppAuditError extends Error {
   }
 }
 
+export interface AdminAppAuditPreparedQuery {
+  actor: ActorRow
+  query: NormalizedAuditQuery
+  filters: { conditions: string[]; params: unknown[] }
+  fingerprint: string
+  visibility: 'all' | 'self'
+  ownerId: number | null
+}
+
+export async function prepareAdminAppAuditQuery(
+  db: D1Database,
+  adminId: number,
+  input: AdminAppAuditListInput,
+  now = new Date(),
+): Promise<AdminAppAuditPreparedQuery> {
+  const actor = await requireActiveAdmin(db, adminId)
+  const query = await normalizeAuditQuery(input, actor, now)
+  const ownerId = actor.role === 'owner' ? null : actor.id
+  return {
+    actor,
+    query,
+    filters: buildAuditFilters(query, ownerId),
+    fingerprint: await queryFingerprint(query, actor),
+    visibility: actor.role === 'owner' ? 'all' : 'self',
+    ownerId,
+  }
+}
+
 export async function listAdminAppAuditEvents(
   db: D1Database,
   adminId: number,
@@ -408,11 +436,9 @@ export async function listAdminAppAuditEvents(
   requestContext: AdminAppAuditRequestContext,
   now = new Date(),
 ): Promise<AdminAppAuditEventList> {
-  const actor = await requireActiveAdmin(db, adminId)
-  const query = await normalizeAuditQuery(input, actor, now)
-  const visibilityCondition = actor.role === 'owner' ? null : 'audit.admin_id = ?'
-  const filters = buildAuditFilters(query, visibilityCondition ? actor.id : null)
-  const fingerprint = await queryFingerprint(query, actor)
+  const prepared = await prepareAdminAppAuditQuery(db, adminId, input, now)
+  const { actor, query, filters, fingerprint } = prepared
+  const visibilityCondition = prepared.ownerId === null ? null : 'audit.admin_id = ?'
   const cursorSequence = query.cursor ? decodeCursor(query.cursor, fingerprint) : null
   const pageConditions = [...filters.conditions]
   const pageParams = [...filters.params]
@@ -512,8 +538,8 @@ export async function getAdminAppAuditEvent(
     LIMIT 1
   `).bind(id, ...(actor.role === 'owner' ? [] : [actor.id])).first<AuditEventRow>()
   if (!row) throw new AdminAppAuditError(404, 'APP_AUDIT_EVENT_NOT_FOUND', '审计事件不存在或不在当前授权范围')
-  const before = await redactPayload(row.before_value)
-  const after = await redactPayload(row.after_value)
+  const before = await redactAdminAppAuditPayload(row.before_value)
+  const after = await redactAdminAppAuditPayload(row.after_value)
   const related = await loadRelatedEvents(db, row, actor)
   await writeAuditReadEvent(db, actor, 'app.audit.read_detail', 'admin_audit_log', id, requestContext, {
     purpose,
@@ -937,17 +963,17 @@ function mapAuditEventSummary(row: AuditEventRow): AdminAppAuditEventSummary {
     result: row.result,
     target: { type: row.target_type, id: row.target_id },
     context: {
-      requestId: safeContextValue(row.request_id),
-      traceId: safeContextValue(row.trace_id),
-      reasonCode: safeContextValue(row.reason_code),
-      businessReference: safeContextValue(row.business_reference),
-      targetVersion: safeContextValue(row.target_version),
-      approvalRequestId: safeContextValue(row.approval_request_id),
-      approvalStepId: safeContextValue(row.approval_step_id),
-      policyVersion: safeContextValue(row.policy_version),
-      capability: safeContextValue(row.capability),
-      scopeSummary: safeContextValue(row.scope_summary, 1_000, true),
-      errorCode: safeContextValue(row.error_code),
+      requestId: safeAdminAppAuditContextValue(row.request_id),
+      traceId: safeAdminAppAuditContextValue(row.trace_id),
+      reasonCode: safeAdminAppAuditContextValue(row.reason_code),
+      businessReference: safeAdminAppAuditContextValue(row.business_reference),
+      targetVersion: safeAdminAppAuditContextValue(row.target_version),
+      approvalRequestId: safeAdminAppAuditContextValue(row.approval_request_id),
+      approvalStepId: safeAdminAppAuditContextValue(row.approval_step_id),
+      policyVersion: safeAdminAppAuditContextValue(row.policy_version),
+      capability: safeAdminAppAuditContextValue(row.capability),
+      scopeSummary: safeAdminAppAuditContextValue(row.scope_summary, 1_000, true),
+      errorCode: safeAdminAppAuditContextValue(row.error_code),
     },
     registry,
     payloadState: {
@@ -957,7 +983,7 @@ function mapAuditEventSummary(row: AuditEventRow): AdminAppAuditEventSummary {
   }
 }
 
-async function redactPayload(raw: string | null): Promise<AdminAppAuditRedactedPayload> {
+export async function redactAdminAppAuditPayload(raw: string | null): Promise<AdminAppAuditRedactedPayload> {
   if (raw === null || raw === '') {
     return { state: 'empty', digest: null, value: null, redactedFieldCount: 0 }
   }
@@ -1029,7 +1055,7 @@ function payloadState(raw: string | null): 'empty' | 'valid' | 'invalid' {
   }
 }
 
-function safeContextValue(value: string | null, maximum = 192, inspectJson = false) {
+export function safeAdminAppAuditContextValue(value: string | null, maximum = 192, inspectJson = false) {
   if (!value) return null
   const length = Array.from(value).length
   if (length > maximum) return `[过长上下文已隐藏，长度 ${length}]`
