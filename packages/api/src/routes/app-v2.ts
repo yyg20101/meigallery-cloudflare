@@ -58,7 +58,12 @@ import {
   listAppSavedFilters,
   updateAppSavedFilter,
 } from '../services/app-saved-filters'
-import { appApiError, appApiListSuccess, appApiSuccess } from '../utils/app-api-v2'
+import {
+  appApiError,
+  appApiListSuccess,
+  appApiSuccess,
+  applyAppApiResponseHeaders,
+} from '../utils/app-api-v2'
 import { appAuthRoutes, appAccountError } from './app-auth'
 import {
   AppAccountAccessError,
@@ -258,8 +263,28 @@ import {
   type AppDataRightsDeletionRequestInput,
   type AppDataRightsStepUpInput,
 } from '../services/app-data-rights'
+import {
+  APP_PERSON_MEDIA_ACCESS_HEADER,
+  APP_PERSON_MEDIA_ACCESS_TOKEN_TTL_SECONDS,
+  APP_PERSON_MEDIA_DEFAULT_PAGE_SIZE,
+  APP_PERSON_MEDIA_MAX_IMAGE_BYTES,
+  APP_PERSON_MEDIA_MAX_PAGE_SIZE,
+  AppPersonMediaError,
+  authorizePersonMediaContent,
+  getAppPersonMediaRuntimeConfig,
+  getPublicPersonVerification,
+  issueProtectedPersonMediaAccess,
+  listPublicPersonMedia,
+  parseAppPersonMediaListQuery,
+} from '../services/app-person-media'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+const APP_PERSON_MEDIA_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+])
 
 appV2Routes.use('*', async (c, next) => {
   await next()
@@ -338,6 +363,7 @@ for (const path of [
   '/person-profiles/:profileId/view-history',
   '/person-profiles/:profileId/safety',
   '/person-profiles/:profileId/block',
+  '/person-profiles/:profileId/media/:mediaId/access',
   '/reports',
   '/reports/*',
   '/appeals',
@@ -1276,6 +1302,94 @@ appV2Routes.get('/person-profiles/:profileId', async (c) => {
   return appApiSuccess(c, profile)
 })
 
+appV2Routes.get('/person-profiles/:profileId/media', async (c) => {
+  try {
+    const result = await listPublicPersonMedia(
+      c.env.DB,
+      c.req.param('profileId'),
+      getAppPersonMediaRuntimeConfig(c.env),
+      parseAppPersonMediaListQuery({
+        limit: c.req.query('limit'),
+        cursor: c.req.query('cursor'),
+      }),
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appPersonMediaError(c, error)
+  }
+})
+
+appV2Routes.get('/person-profiles/:profileId/verification', async (c) => {
+  try {
+    return appApiSuccess(c, await getPublicPersonVerification(
+      c.env.DB,
+      c.req.param('profileId'),
+    ))
+  }
+  catch (error) {
+    return appPersonMediaError(c, error)
+  }
+})
+
+appV2Routes.post('/person-profiles/:profileId/media/:mediaId/access', async (c) => {
+  try {
+    return appApiSuccess(c, await issueProtectedPersonMediaAccess(
+      c.env,
+      appPrincipal(c),
+      c.req.param('profileId'),
+      c.req.param('mediaId'),
+      getAppPersonMediaRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appPersonMediaError(c, error)
+  }
+})
+
+appV2Routes.get('/person-profiles/:profileId/media/:mediaId/content', async (c) => {
+  try {
+    const asset = await authorizePersonMediaContent(
+      c.env,
+      c.req.param('profileId'),
+      c.req.param('mediaId'),
+      c.req.header(APP_PERSON_MEDIA_ACCESS_HEADER),
+      getAppPersonMediaRuntimeConfig(c.env),
+    )
+    const object = await c.env.R2.get(asset.r2Key)
+    if (!object) {
+      throw new AppPersonMediaError(404, 'MEDIA_NOT_FOUND', '图片不存在或已停止公开')
+    }
+    if (object.size <= 0) {
+      await object.body.cancel().catch(() => undefined)
+      throw new AppPersonMediaError(404, 'MEDIA_NOT_FOUND', '图片不存在或已停止公开')
+    }
+    if (object.size > APP_PERSON_MEDIA_MAX_IMAGE_BYTES) {
+      await object.body.cancel().catch(() => undefined)
+      throw new AppPersonMediaError(413, 'MEDIA_TOO_LARGE', '图片文件超过 App 可安全加载的大小')
+    }
+    const contentType = object.httpMetadata?.contentType?.split(';', 1)[0]?.trim().toLowerCase()
+    if (!contentType || !APP_PERSON_MEDIA_IMAGE_TYPES.has(contentType)) {
+      await object.body.cancel().catch(() => undefined)
+      throw new AppPersonMediaError(404, 'MEDIA_NOT_FOUND', '图片不存在或已停止公开')
+    }
+    applyAppApiResponseHeaders(c)
+    c.header('Content-Type', contentType)
+    c.header('Content-Length', String(object.size))
+    c.header('ETag', object.httpEtag)
+    c.header('Content-Security-Policy', "default-src 'none'")
+    c.header('X-Content-Type-Options', 'nosniff')
+    c.header('Cache-Control', 'no-store')
+    return c.body(object.body)
+  }
+  catch (error) {
+    return appPersonMediaError(c, error)
+  }
+})
+
 appV2Routes.get('/person-profiles/:profileId/interactions', async (c) => {
   try {
     return appApiSuccess(c, await getViewerInteractionState(
@@ -2088,6 +2202,7 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   const taxonomy = getAppTaxonomyRuntimeConfig(env)
   const recommendation = getAppRecommendationRuntimeConfig(env)
   const dataRights = getAppDataRightsRuntimeConfig(env)
+  const media = getAppPersonMediaRuntimeConfig(env)
   const [interactionCollectionCapabilities, followUpdatesCapability, personSearchCapabilities] = auth.enabled
     ? await Promise.all([
         resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections),
@@ -2147,6 +2262,14 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
         entitlements: membership.enabled && auth.enabled,
         applications: membership.applicationsEnabled && auth.enabled,
       },
+      media: {
+        gallery: media.enabled,
+        protectedImages: media.enabled
+          && media.protectedEnabled
+          && auth.enabled
+          && membership.enabled,
+        video: false,
+      },
       messaging: auth.enabled && messaging.enabled,
       notifications: auth.enabled && notifications.enabled,
       wallet: auth.enabled && wallet.enabled,
@@ -2169,6 +2292,15 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       allowedSorts: APP_DISCOVERY_SORTS,
       defaultPageSize: APP_DISCOVERY_DEFAULT_PAGE_SIZE,
       maxPageSize: APP_DISCOVERY_MAX_PAGE_SIZE,
+    },
+    media: {
+      transport: 'http_get',
+      defaultPageSize: APP_PERSON_MEDIA_DEFAULT_PAGE_SIZE,
+      maxPageSize: APP_PERSON_MEDIA_MAX_PAGE_SIZE,
+      accessTokenHeader: APP_PERSON_MEDIA_ACCESS_HEADER,
+      accessTokenTtlSeconds: APP_PERSON_MEDIA_ACCESS_TOKEN_TTL_SECONDS,
+      protectedImageCache: 'memory_only',
+      video: false,
     },
     recommendation: {
       policyVersion: recommendation.policyId || APP_RECOMMENDATION_POLICY_ID,
@@ -2463,6 +2595,16 @@ function appPersonSearchError(
     return appApiError(c, 400, 'REQUEST_BODY_INVALID', '请求体必须为有效 JSON')
   }
   throw error
+}
+
+function appPersonMediaError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppPersonMediaError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  return appMembershipError(c, error)
 }
 
 function interactionCollectionConfig(env: Bindings) {

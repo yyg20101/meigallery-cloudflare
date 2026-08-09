@@ -9,7 +9,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { Bindings, Variables } from '../index'
 
 export const APP_API_VERSION = '2' as const
-export const APP_CONTRACT_VERSION = '1.17.0' as const
+export const APP_CONTRACT_VERSION = '1.18.0' as const
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
 
@@ -24,6 +24,11 @@ function responseMeta(c: AppContext): AppApiMeta {
     apiVersion: APP_API_VERSION,
     contractVersion: APP_CONTRACT_VERSION,
   }
+}
+
+/** 为二进制 App API 响应写入与 JSON 契约一致的版本及请求追踪响应头。 */
+export function applyAppApiResponseHeaders(c: AppContext) {
+  responseMeta(c)
 }
 
 export function appApiSuccess<T>(

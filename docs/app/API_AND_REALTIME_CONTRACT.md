@@ -4,7 +4,7 @@ App 版本：1.0
 
 日期：2026-08-10
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Privacy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1、Audit-1/2/3 与 Operations-1 进入默认关闭或未配置的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Privacy-1、Media-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1、Audit-1/2/3 与 Operations-1 进入默认关闭或未配置的保守开发验证
 
 ## 1. 契约原则
 
@@ -219,6 +219,19 @@ Privacy-1 以兼容新增方式把累计契约提升为 `1.17.0`，冻结并实�
 
 完整边界见 [Privacy-1 数据权利控制面跨仓开发基线](./PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md)。
 
+### 1.16 Media-1 局部冻结记录
+
+Media-1 以兼容新增方式把累计契约提升为 `1.18.0`，冻结并实现 production 默认关闭的人物图片与认证说明边界：
+
+- 图片清单复用当前人物来源图库，游标绑定人物公开投影版本；只返回相对访问路径和要求的会员 rank，不返回 R2 key。
+- 公开图与会员图取图前都重新验证人物认证、发布、授权、有效期、可见性和来源图库状态。
+- 会员图短期凭证绑定账号、当前 App session、人物和单图，固定 5 分钟；实际取图再次检查会话与当前会员 rank。
+- 图片由 Worker 代理且 `no-store`，只允许 JPEG/PNG/WebP/AVIF 和 24 MiB 以内对象；KMP token 只存在于网络局部变量，受保护字节只保留内存。
+- 认证说明固定为四项公开范围，不披露证件、证据引用、审核人或内部备注；运营主体继续明确平台代运营或本人运营。
+- `APP_MEDIA_ENABLED`、`APP_PROTECTED_MEDIA_ENABLED` 与 production-ready 门禁当前均未配置；视频继续为 `false`。
+
+完整边界见 [Media-1 人物图片与认证说明跨仓开发基线](./MEDIA_1_PERSON_MEDIA_AND_VERIFICATION_INTEGRATION.md)。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -247,7 +260,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.17.0"
+    "contractVersion": "1.18.0"
   }
 }
 ```
@@ -340,6 +353,10 @@ Accept-Language: zh-CN
 | GET/PUT | `/api/v2/me/preferences` | 地区、偏好、推荐和隐私设置 |
 | GET | `/api/v2/me/blocks` | 本人拉黑名单 |
 | GET | `/api/v2/me/data-rights` | Privacy-1：本人策略、治理决策、能力和最近申请 |
+| GET | `/api/v2/person-profiles/:profileId/media` | Media-1：当前公开人物图片清单与版本绑定游标 |
+| GET | `/api/v2/person-profiles/:profileId/verification` | Media-1：最小公开认证范围与运营主体说明 |
+| POST | `/api/v2/person-profiles/:profileId/media/:mediaId/access` | Media-1：签发 5 分钟会话/人物/单图绑定会员凭证 |
+| GET | `/api/v2/person-profiles/:profileId/media/:mediaId/content` | Media-1：逐次资格核验后代理 R2 图片字节 |
 | POST | `/api/v2/me/data-rights/step-up` | Privacy-1：按固定 purpose 进行密码二次验证 |
 | GET | `/api/v2/me/data-rights/requests` | Privacy-1：本人申请游标列表 |
 | POST | `/api/v2/me/data-rights/export-requests` | Privacy-1：二次验证后幂等创建导出申请 |
@@ -445,7 +462,7 @@ Privacy-1 的账号路径和申请级路径均强制 `Cache-Control: private, no
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`，已提供稳定分类目录和人物公开分类投影；Search-2 再提升为 `1.15.0`，实现权益分层的结构化筛选、结果预估与账号私有保存条件；Recommendation-1 累计提升到 `1.16.0`，当前只把主动 taxonomy 偏好作为受门禁的个性化结构；Privacy-1 再累计提升到 `1.17.0`，实现数据权利登记、跟踪和取消控制面，但不执行真实导出或不可逆删除。其他互动推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
+Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`；Search-2 提升为 `1.15.0`；Recommendation-1 提升到 `1.16.0`；Privacy-1 提升到 `1.17.0`；Media-1 再提升到 `1.18.0`，复用现有图库并提供逐次资格核验的图片和最小认证说明。其他互动推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
 
 ## 8. 会员和目录 API
 

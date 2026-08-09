@@ -229,6 +229,19 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整边界见 `docs/app/PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md`。
 
+### Media-1 人物图片与认证说明 `[Cloudflare 与 KMP 开发完成，默认关闭]`
+
+App API v2 `1.18.0` 复用现有 `galleries`、`media_assets` 和 `profile_public_projections`，不新增 migration 或第二套媒体事实：
+
+- `GET /api/v2/person-profiles/:profileId/media` 只列出来源图库中上传完成的 R2 图片，游标绑定公开投影版本；不返回 R2 key。
+- `POST .../media/:mediaId/access` 以 HMAC 签发 5 分钟、绑定账号公开 ID、当前 App session、人物和单图的凭证；签发和取图两次检查当前会员 rank。
+- `GET .../media/:mediaId/content` 每次重新执行统一人物公开资格谓词并由 Worker 代理 R2；只允许 JPEG/PNG/WebP/AVIF、最大 24 MiB、`no-store` 和 `nosniff`。
+- `GET .../verification` 只返回四项认证范围、政策/时间/版本和运营主体，不返回 evidence、reviewer 或内部说明。
+- KMP 媒体 token 仅在 Repository 局部变量存在；UI 只接收字节。会员图片授权到期、账号变化或退出页面后清空内存并重新请求。手机为全屏主图与底部条，`>=760dp` 为主图与侧栏。
+- `APP_MEDIA_ENABLED`、`APP_PROTECTED_MEDIA_ENABLED`、production 的 `APP_MEDIA_PRODUCTION_READY` 均未配置；视频固定关闭，专项测试、Gradle、模拟器/真机和联调后置。
+
+完整边界见 `docs/app/MEDIA_1_PERSON_MEDIA_AND_VERIFICATION_INTEGRATION.md`。
+
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
 `0071_app_membership_catalog_and_grants.sql` 和 App API v2 `1.4.0` 建立 Membership-1 最小闭环：
@@ -1597,6 +1610,7 @@ queued → processing → completed
 - **Search-2 跨仓开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP 已完成筛选、预估、权益、保存条件和完整来源重验交互；Nuxt 已完成只读搜索运营核查、跨目录引用诊断和 entitlement 矩阵。真实目录与 grant 迁移、配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Recommendation-1 跨仓开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；KMP 已完成推荐 Feed、推荐解释、精选披露和本人偏好页面，配置、migration、专项测试、热度/证据决策与远端联调后置。
 - **Privacy-1 跨仓开发基线**：App API v2 `1.17.0` 已完成二次验证、数据副本/注销申请、请求级状态访问和取消；D1 已建立默认关闭策略、不可变事件、幂等与注销待处理写入阻断；Nuxt 已完成 `ADM-PRI-01/02` 队列和详情，KMP 已完成系统安全凭证与响应式页面。真实制品、不可逆删除、配置、migration、专项测试与联调后置。
+- **Media-1 跨仓开发基线**：App API v2 `1.18.0` 复用现有图库和公开人物投影，完成图片清单、公开/会员取图、5 分钟会话绑定凭证和四项认证说明；KMP 已完成严格二进制校验、仅内存受保护图片、自适应媒体页、认证页和媒体举报。无新增 migration，视频、配置、专项测试、Gradle 与联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
 

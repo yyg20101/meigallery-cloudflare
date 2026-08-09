@@ -121,6 +121,9 @@ export type Bindings = {
   APP_DATA_RIGHTS_ADMIN_ENABLED?: string
   APP_DATA_RIGHTS_POLICY_VERSION?: string
   APP_DATA_RIGHTS_PRODUCTION_READY?: string
+  APP_MEDIA_ENABLED?: string
+  APP_PROTECTED_MEDIA_ENABLED?: string
+  APP_MEDIA_PRODUCTION_READY?: string
 }
 
 /** 应用级变量 */
@@ -180,6 +183,7 @@ app.use('*', cors({
     'Idempotency-Key',
     'X-Step-Up-Token',
     'X-Data-Rights-Token',
+    'X-Media-Access-Token',
   ],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   maxAge: 86400,

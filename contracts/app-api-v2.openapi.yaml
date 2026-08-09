@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.17.0
+  version: 1.18.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -18,8 +18,9 @@ info:
     不可变目录快照和合并重定向的默认关闭公开目录；未知旧标签只能进入管理员待复核映射，不能自动公开。Search-2
     在稳定分类 ID 上新增权益分层的结构化筛选、结果数预估与账号私有保存条件；组内取并集、组间取交集，会员不足时不得返回筛选结果。
     Recommendation-1 以默认关闭方式新增版本化推荐流、用户可解释原因、显式偏好开关和固定“平台精选”披露；OQ-023 未批准时仅允许非个性化模式，且证据留存保持关闭。Privacy-1
-    新增密码二次验证、数据导出/账号注销申请、请求级状态凭证、进度查询和可取消窗口；默认关闭且不生成导出包、不执行不可逆删除。
-    系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
+    新增密码二次验证、数据导出/账号注销申请、请求级状态凭证、进度查询和可取消窗口；默认关闭且不生成导出包、不执行不可逆删除。Media-1
+    新增复用既有图库素材的人物图片列表、短期会员访问凭证和公开认证范围说明；每次取图都重新核验公开资格，受保护图片不允许持久缓存，视频继续关闭。
+    系统推送、实时通道、媒体消息、账号/金币申诉和视频播放仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -35,6 +36,7 @@ tags:
   - name: Search
   - name: Taxonomy
   - name: PersonProfile
+  - name: Media
   - name: Interaction
   - name: Membership
   - name: Messaging
@@ -2278,6 +2280,129 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v2/person-profiles/{profileId}/media:
+    get:
+      tags: [Media]
+      operationId: listPublicPersonMedia
+      summary: 获取人物公开图片清单
+      description: >-
+        默认关闭。复用人物当前来源图库中已完成上传的 content/preview 图片；返回相对访问路径，
+        不返回 R2 key。分页游标与人物公开投影版本绑定，资料发生变化后旧游标失效。
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 当前人物仍可公开的图片清单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonMediaListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/person-profiles/{profileId}/verification:
+    get:
+      tags: [PersonProfile]
+      operationId: getPublicPersonVerification
+      summary: 获取人物公开认证说明
+      description: >-
+        只披露认证范围、政策版本、审核时间、有效期和当前运营主体说明；不返回证件、授权文件、
+        审核人、内部备注或任何证据引用。认证不等于本人已入驻或平台背书。
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 当前公开投影对应的认证说明
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonVerificationResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/person-profiles/{profileId}/media/{mediaId}/access:
+    post:
+      tags: [Media]
+      operationId: issueProtectedPersonMediaAccess
+      summary: 签发单张会员图片短期访问凭证
+      description: >-
+        默认关闭。凭证仅绑定当前账号、当前 App 会话、人物和单张图片，有效期固定 5 分钟；
+        签发前和实际取图时均重新核验当前会员 rank，不接受客户端自行判断。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+        - $ref: '#/components/parameters/MediaId'
+      responses:
+        '200':
+          description: 短期、仅内存持有的图片访问凭证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonMediaAccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/person-profiles/{profileId}/media/{mediaId}/content:
+    get:
+      tags: [Media]
+      operationId: getPersonMediaContent
+      summary: 读取单张人物图片内容
+      description: >-
+        每次读取都重新核验人物发布、授权、认证和来源图库状态。公开图片无需凭证；会员图片必须使用
+        X-Media-Access-Token，服务端再次检查会话和当前会员 rank。响应禁止缓存，最大 24 MiB。
+      security:
+        - MediaAccessAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+        - $ref: '#/components/parameters/MediaId'
+      responses:
+        '200':
+          description: JPEG、PNG、WebP 或 AVIF 图片字节
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            X-Contract-Version:
+              $ref: '#/components/headers/ContractVersion'
+            ETag:
+              description: R2 对象实体标识，仅用于完整性观察；响应仍为 no-store。
+              schema:
+                type: string
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+            image/avif:
+              schema: { type: string, format: binary }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/person-profiles/{profileId}/safety:
     get:
       tags: [Safety]
@@ -2830,6 +2955,11 @@ components:
       in: header
       name: X-Data-Rights-Token
       description: 只能访问绑定的数据权利申请，不具备任何账号产品 API 权限。
+    MediaAccessAuth:
+      type: apiKey
+      in: header
+      name: X-Media-Access-Token
+      description: 只允许读取绑定人物的单张会员图片，不具备任何账号或其他媒体访问权限。
   headers:
     RequestId:
       description: 服务端生成的请求追踪 ID。
@@ -2839,7 +2969,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.17.0
+        const: 1.18.0
   parameters:
     ProfileId:
       name: profileId
@@ -2848,6 +2978,13 @@ components:
       schema:
         type: string
         pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+    MediaId:
+      name: mediaId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9_-]{1,96}$'
     FavoriteFolderId:
       name: folderId
       in: path
@@ -3017,6 +3154,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: 媒体文件超过 App 可安全加载的上限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     InternalError:
       description: 服务暂时不可用
       content:
@@ -3048,7 +3191,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.17.0
+          const: 1.18.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -4916,7 +5059,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, recommendation, search, taxonomy, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety, dataRights]
+      required: [product, appVersion, capabilities, discovery, media, recommendation, search, taxonomy, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety, dataRights]
       properties:
         product:
           type: string
@@ -4927,7 +5070,7 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, recommendation, search, taxonomy, auth, interactions, membership, messaging, notifications, wallet, safety, dataRights, payments, systemPush]
+          required: [discovery, recommendation, search, taxonomy, auth, interactions, membership, media, messaging, notifications, wallet, safety, dataRights, payments, systemPush]
           properties:
             discovery:
               type: boolean
@@ -4993,6 +5136,18 @@ components:
                   type: boolean
                 applications:
                   type: boolean
+            media:
+              type: object
+              additionalProperties: false
+              required: [gallery, protectedImages, video]
+              properties:
+                gallery:
+                  type: boolean
+                protectedImages:
+                  type: boolean
+                video:
+                  type: boolean
+                  const: false
             messaging:
               type: boolean
             notifications:
@@ -5046,6 +5201,32 @@ components:
             maxPageSize:
               type: integer
               const: 40
+        media:
+          type: object
+          additionalProperties: false
+          required: [transport, defaultPageSize, maxPageSize, accessTokenHeader, accessTokenTtlSeconds, protectedImageCache, video]
+          properties:
+            transport:
+              type: string
+              const: http_get
+            defaultPageSize:
+              type: integer
+              const: 20
+            maxPageSize:
+              type: integer
+              const: 40
+            accessTokenHeader:
+              type: string
+              const: X-Media-Access-Token
+            accessTokenTtlSeconds:
+              type: integer
+              const: 300
+            protectedImageCache:
+              type: string
+              const: memory_only
+            video:
+              type: boolean
+              const: false
         recommendation:
           type: object
           additionalProperties: false
@@ -6955,6 +7136,173 @@ components:
         publishedAt:
           type: string
           format: date-time
+    PersonMediaAccess:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [mode, contentPath, accessPath]
+          properties:
+            mode:
+              type: string
+              const: public
+            contentPath:
+              type: string
+              pattern: '^/api/v2/person-profiles/pp_[A-Za-z0-9_-]+/media/[A-Za-z0-9_-]+/content$'
+            accessPath:
+              type: 'null'
+        - type: object
+          additionalProperties: false
+          required: [mode, contentPath, accessPath]
+          properties:
+            mode:
+              type: string
+              const: membership
+            contentPath:
+              type: 'null'
+            accessPath:
+              type: string
+              pattern: '^/api/v2/person-profiles/pp_[A-Za-z0-9_-]+/media/[A-Za-z0-9_-]+/access$'
+    PersonMediaItem:
+      type: object
+      additionalProperties: false
+      required: [mediaId, type, role, sortOrder, requiredRank, altText, access]
+      properties:
+        mediaId:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,96}$'
+        type:
+          type: string
+          const: image
+        role:
+          type: string
+          enum: [content, preview]
+        sortOrder:
+          type: integer
+          minimum: 0
+        requiredRank:
+          type: integer
+          minimum: 0
+        altText:
+          type: string
+          minLength: 1
+          maxLength: 160
+        access:
+          $ref: '#/components/schemas/PersonMediaAccess'
+    PersonMediaAccessGrant:
+      type: object
+      additionalProperties: false
+      required: [mediaId, type, accessToken, expiresAt, expiresInSeconds, contentPath, tokenHeader, cachePolicy]
+      properties:
+        mediaId:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,96}$'
+        type:
+          type: string
+          const: image
+        accessToken:
+          type: string
+          pattern: '^mat_[A-Za-z0-9_-]{16,768}\.[A-Za-z0-9_-]{43}$'
+          writeOnly: true
+        expiresAt:
+          type: string
+          format: date-time
+        expiresInSeconds:
+          type: integer
+          const: 300
+        contentPath:
+          type: string
+          pattern: '^/api/v2/person-profiles/pp_[A-Za-z0-9_-]+/media/[A-Za-z0-9_-]+/content$'
+        tokenHeader:
+          type: string
+          const: X-Media-Access-Token
+        cachePolicy:
+          type: string
+          const: memory_only
+    PersonVerificationScope:
+      type: object
+      additionalProperties: false
+      required: [code, label]
+      properties:
+        code:
+          type: string
+          enum: [identity_existence, authorization_agency, profile_consistency, media_rights]
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+    PersonVerificationDetail:
+      type: object
+      additionalProperties: false
+      required: [profileId, status, label, policyVersion, reviewedAt, validUntil, profileVersion, operation, scopes, platformNotice, changesRequireReverification]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        status:
+          type: string
+          const: verified
+        label:
+          type: string
+          const: 真人资料已认证
+        policyVersion:
+          type: string
+          minLength: 1
+          maxLength: 80
+        reviewedAt:
+          type: string
+          format: date-time
+        validUntil:
+          type: [string, 'null']
+          format: date-time
+        profileVersion:
+          type: integer
+          minimum: 1
+        operation:
+          $ref: '#/components/schemas/Operation'
+        scopes:
+          type: array
+          minItems: 4
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/PersonVerificationScope'
+        platformNotice:
+          type: string
+          minLength: 1
+          maxLength: 500
+        changesRequireReverification:
+          type: boolean
+          const: true
+    PersonMediaListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/PersonMediaItem'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    PersonMediaAccessResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/PersonMediaAccessGrant'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    PersonVerificationResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/PersonVerificationDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
     ProfileResponse:
       type: object
       additionalProperties: false

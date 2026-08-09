@@ -231,9 +231,9 @@ MVP 不需要 AI。
 ### 独立 App 兼容开发基线 `[部分实现 / 后续规划]`
 
 - 独立 KMP App 复用当前项目的账号、人物、会员、金币、平台话题、安全和数据权利事实；兼容迁移统一通过 App API v2 与共享稳定 ID，不在客户端复制业务事实或硬编码会员名称。
-- 当前 App API v2 累计契约为 `1.17.0`。Privacy-1 已完成默认关闭的数据权利登记、进度、二次验证、注销后申请级安全访问、取消、Nuxt 管理队列和逾期检测开发基线。
+- 当前 App API v2 累计契约为 `1.18.0`。Media-1 已在 Privacy-1 基线上新增默认关闭的人物图片列表、短期会员图片授权、公开认证说明和 KMP 自适应浏览交互；复用现有图库与人物公开投影，不新增媒体副本或 schema。
 - 注销申请创建后立即撤销普通会话并阻止新增受保护业务事实；Privacy-1 不生成导出文件、不签发下载地址、不执行不可逆删除。真实导出、保留隔离与删除/匿名化属于 Privacy-2，必须先关闭地区、保留期、Owner、SLA 和恢复门禁。
-- 详细产品、API 与跨仓实现边界分别见 [App 1.0 开发需求](./app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)、[App API 与实时通信契约](./app/API_AND_REALTIME_CONTRACT.md) 和 [Privacy-1 数据权利控制面跨仓开发基线](./app/PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md)。
+- 详细产品、API 与跨仓实现边界分别见 [App 1.0 开发需求](./app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)、[App API 与实时通信契约](./app/API_AND_REALTIME_CONTRACT.md)、[Privacy-1 数据权利控制面跨仓开发基线](./app/PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md) 和 [Media-1 人物图片与认证说明跨仓开发基线](./app/MEDIA_1_PERSON_MEDIA_AND_VERIFICATION_INTEGRATION.md)。
 
 ### 数据模型摘要 `[当前实现 / 规划字段]`
 

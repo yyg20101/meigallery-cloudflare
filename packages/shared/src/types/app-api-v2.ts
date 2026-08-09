@@ -2,7 +2,8 @@
  * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
  * Message-2 安全、Safety-2 申诉、Message-3 站内通知、Wallet-1 与
  * Interaction-2 收藏历史、Interaction-3 关注更新、Search-1 搜索、
- * Taxonomy-1 稳定分类目录、Search-2 结构化筛选与 Recommendation-1 契约。
+ * Taxonomy-1 稳定分类目录、Search-2 结构化筛选、Recommendation-1 与
+ * Media-1 人物媒体浏览及认证详情契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -16,7 +17,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.17.0'
+  contractVersion: '1.18.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -78,6 +79,11 @@ export interface AppBootstrapConfig {
       entitlements: boolean
       applications: boolean
     }
+    media: {
+      gallery: boolean
+      protectedImages: boolean
+      video: false
+    }
     messaging: boolean
     notifications: boolean
     wallet: boolean
@@ -100,6 +106,15 @@ export interface AppBootstrapConfig {
     allowedSorts: AppDiscoverySort[]
     defaultPageSize: number
     maxPageSize: number
+  }
+  media: {
+    transport: 'http_get'
+    defaultPageSize: number
+    maxPageSize: number
+    accessTokenHeader: 'X-Media-Access-Token'
+    accessTokenTtlSeconds: number
+    protectedImageCache: 'memory_only'
+    video: false
   }
   recommendation: {
     policyVersion: string
@@ -889,6 +904,67 @@ export interface AppPersonProfile {
     ruleVersion: string
   }
   publishedAt: string
+}
+
+export type AppPersonMediaRole = 'content' | 'preview'
+
+export type AppPersonMediaAccess =
+  | {
+      mode: 'public'
+      contentPath: string
+      accessPath: null
+    }
+  | {
+      mode: 'membership'
+      contentPath: null
+      accessPath: string
+    }
+
+export interface AppPersonMediaItem {
+  mediaId: string
+  type: 'image'
+  role: AppPersonMediaRole
+  sortOrder: number
+  requiredRank: number
+  altText: string
+  access: AppPersonMediaAccess
+}
+
+export interface AppPersonMediaAccessGrant {
+  mediaId: string
+  type: 'image'
+  accessToken: string
+  expiresAt: string
+  expiresInSeconds: number
+  contentPath: string
+  tokenHeader: 'X-Media-Access-Token'
+  cachePolicy: 'memory_only'
+}
+
+export interface AppPersonVerificationScope {
+  code:
+    | 'identity_existence'
+    | 'authorization_agency'
+    | 'profile_consistency'
+    | 'media_rights'
+  label: string
+}
+
+export interface AppPersonVerificationDetail {
+  profileId: string
+  status: 'verified'
+  label: string
+  policyVersion: string
+  reviewedAt: string
+  validUntil: string | null
+  profileVersion: number
+  operation: {
+    mode: 'platform_managed' | 'self_managed'
+    label: string
+  }
+  scopes: AppPersonVerificationScope[]
+  platformNotice: string
+  changesRequireReverification: true
 }
 
 export type AppRecommendationFallbackReason = 'PERSONALIZATION_NOT_READY'
