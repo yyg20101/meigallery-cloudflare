@@ -1,16 +1,19 @@
 import assert from 'node:assert/strict'
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, it } from 'node:test'
 import {
   WALLET1_DISPOSABLE_CONFIRMATION,
+  WALLET1_DISPOSABLE_EVIDENCE_PRUNE_CONFIRMATION,
   WALLET1_DISPOSABLE_RUN_KIND,
   cleanupDisposableResources,
   createDisposableResourceIdentity,
   createTemporaryWorkerConfig,
+  destroyDisposableWallet1Resources,
   parseD1DatabaseInfo,
   parseTemporaryWorkerUrl,
+  pruneDisposableWallet1Evidence,
   runDisposableWallet1Smoke,
   validateDisposableResourceIdentity,
   validateDisposableSmokeGate,
@@ -52,6 +55,14 @@ describe('Wallet-1 一次性 D1 + Worker 冒烟门禁', () => {
     const unsafe = approvedGate()
     unsafe.resourcePolicy.allowNegativeBalance = true
     assert.throws(() => validateDisposableSmokeGate(unsafe, NOW), /RESOURCE_POLICY_INVALID/u)
+
+    const excessiveRetention = approvedGate()
+    excessiveRetention.resourcePolicy.evidenceRetentionDays = 31
+    assert.throws(() => validateDisposableSmokeGate(excessiveRetention, NOW), /RESOURCE_POLICY_INVALID/u)
+
+    const shortenedRetention = approvedGate()
+    shortenedRetention.resourcePolicy.evidenceRetentionDays = 29
+    assert.throws(() => validateDisposableSmokeGate(shortenedRetention, NOW), /RESOURCE_POLICY_INVALID/u)
   })
 })
 
@@ -146,6 +157,10 @@ describe('Wallet-1 一次性资源生命周期', () => {
       assert.equal(evidence.result.status, 'passed')
       assert.equal(evidence.cleanup.worker, 'deleted')
       assert.equal(evidence.cleanup.database, 'deleted')
+      assert.deepEqual(evidence.retention, {
+        days: 30,
+        deleteAfter: '2026-09-07T06:30:00.000Z',
+      })
       assert.equal(Object.hasOwn(evidence, 'resources'), false)
       await assert.rejects(access(path.join(stateRoot, 'runs', identity.runId)))
     }
@@ -211,6 +226,67 @@ describe('Wallet-1 一次性资源生命周期', () => {
       /DATABASE_NAME_INVALID/u,
     )
   })
+
+  it('恢复销毁成功后收口 manifest，并生成同样受保留期约束的聚合证据', async () => {
+    const stateRoot = await mkdtemp(path.join(tmpdir(), 'wallet1-disposable-state-'))
+    const identity = createDisposableResourceIdentity(NOW, SUFFIX)
+    const runDir = path.join(stateRoot, 'runs', identity.runId)
+    const manifestPath = path.join(runDir, 'manifest.json')
+    try {
+      await mkdir(runDir, { recursive: true })
+      await writeFile(manifestPath, `${JSON.stringify(validManifest(identity))}\n`, { mode: 0o600 })
+      const result = await destroyDisposableWallet1Resources({
+        manifestPath,
+        confirmDestroy: identity.runId,
+        now: () => new Date(NOW),
+        runCommand: async () => passed('ok'),
+      })
+      assert.equal(result.status, 'passed')
+      const evidence = JSON.parse(await readFile(result.evidencePath, 'utf8'))
+      assert.equal(evidence.runId, identity.runId)
+      assert.equal(evidence.retention.deleteAfter, '2026-09-07T06:30:00.000Z')
+      await assert.rejects(access(runDir))
+    }
+    finally {
+      await rm(stateRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('Wallet-1 聚合证据保留期', () => {
+  it('只在显式确认后删除到期证据，并保留未到期证据', async () => {
+    const stateRoot = await mkdtemp(path.join(tmpdir(), 'wallet1-disposable-state-'))
+    const evidenceDir = path.join(stateRoot, 'evidence')
+    const expiredRunId = 'wallet1-smoke-20260701t000000000z-111111111111'
+    const retainedRunId = 'wallet1-smoke-20260808t000000000z-222222222222'
+    try {
+      await mkdir(evidenceDir, { recursive: true })
+      await writeFile(
+        path.join(evidenceDir, `${expiredRunId}.json`),
+        `${JSON.stringify(evidenceFixture(expiredRunId, '2026-08-01T00:00:00.000Z'))}\n`,
+      )
+      await writeFile(
+        path.join(evidenceDir, `${retainedRunId}.json`),
+        `${JSON.stringify(evidenceFixture(retainedRunId, '2026-09-01T00:00:00.000Z'))}\n`,
+      )
+
+      await assert.rejects(
+        pruneDisposableWallet1Evidence({ stateRoot, confirmPrune: 'wrong-confirmation' }),
+        /EVIDENCE_PRUNE_CONFIRMATION_REQUIRED/u,
+      )
+      const result = await pruneDisposableWallet1Evidence({
+        stateRoot,
+        confirmPrune: WALLET1_DISPOSABLE_EVIDENCE_PRUNE_CONFIRMATION,
+        now: () => new Date(NOW),
+      })
+      assert.deepEqual(result, { inspected: 2, deleted: 1, retained: 1 })
+      await assert.rejects(access(path.join(evidenceDir, `${expiredRunId}.json`)))
+      await access(path.join(evidenceDir, `${retainedRunId}.json`))
+    }
+    finally {
+      await rm(stateRoot, { recursive: true, force: true })
+    }
+  })
 })
 
 function approvedGate() {
@@ -230,6 +306,7 @@ function approvedGate() {
     resourcePolicy: {
       syntheticDataOnly: true,
       evidenceMode: 'aggregate_only',
+      evidenceRetentionDays: 30,
       maximumLifetimeMinutes: 30,
       requireIndependentReview: true,
       allowNegativeBalance: false,
@@ -265,6 +342,15 @@ function validManifest(identity) {
     schemaVersion: 1,
     kind: WALLET1_DISPOSABLE_RUN_KIND,
     runId: identity.runId,
+    createdAt: NOW.toISOString(),
+    deadlineAt: '2026-08-08T07:00:00.000Z',
+    gateSha256: 'f'.repeat(64),
+    git: { branch: 'dev', commit: COMMIT, originDevCommit: COMMIT },
+    placement: { mode: 'location', value: 'apac' },
+    syntheticDataOnly: true,
+    evidenceMode: 'aggregate_only',
+    evidenceRetentionDays: 30,
+    result: { status: 'failed', errorCode: 'TEST_FAILURE', aggregate: null, checks: null },
     resources: {
       database: { name: identity.databaseName, id: DATABASE_ID, state: 'created' },
       worker: {
@@ -274,6 +360,16 @@ function validManifest(identity) {
       },
     },
     cleanup: { status: 'pending' },
+  }
+}
+
+function evidenceFixture(runId, deleteAfter) {
+  return {
+    schemaVersion: 1,
+    kind: 'wallet1-disposable-smoke-evidence',
+    runId,
+    finishedAt: '2026-07-01T00:00:00.000Z',
+    retention: { days: 30, deleteAfter },
   }
 }
 

@@ -4,9 +4,9 @@ App 版本：1.0
 
 App API：v2 / `1.10.0`
 
-日期：2026-08-08
+日期：2026-08-09
 
-状态：代码闭环、本地验证、dev 迁移门禁、一次性 D1 + 临时 Worker 功能 smoke 与失败恢复工具完成；production/dev 默认关闭；所有远程 gate 未授权，未执行 migration、创建隔离资源、真实余额导入、远程联调或生产发布
+状态：代码闭环、本地验证、dev 迁移门禁、一次性 D1 + 临时 Worker 功能 smoke、失败恢复、30 天聚合证据清理与局部决策包完成；production/dev 默认关闭；局部决策待 Owner 确认，所有远程 gate 未授权，未执行 migration、创建隔离资源、真实余额导入、远程联调或生产发布
 
 ## 1. 本阶段目标
 
@@ -155,11 +155,11 @@ Nuxt 页面 `/admin/app/wallets` 提供账号确认、余额摘要、分录、�
 
 启用前必须完成：
 
-1. 关闭 OQ-018，书面确认调币角色、双人复核、数量/频率阈值、负余额、异常处置、对账责任和紧急操作。
-2. 关闭 OQ-020，明确钱包、申请、分录、复核、审计、通知和备份的保留、删除与数据权利边界。
-3. 关闭 OQ-024，确认 Cloudflare D1/R2 相关数据位置和生产适用性。
-4. 新建 published 且 production-ready 的策略版本，不原地提升 development 记录。
-5. 按 `WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md` 先完成短期授权、合成数据全流程验收和 Worker → D1 自动销毁；通过不自动授权共享 dev 或 production。
+1. 明确确认 `WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md` 的局部结论和当次远程执行，按 `WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md` 完成合成数据全流程验收和 Worker → D1 自动销毁；通过不自动授权共享 dev 或 production。
+2. 共享 dev 或 production 前关闭全局 OQ-018，书面确认调币角色、双人复核、数量/频率阈值、负余额、异常处置、对账责任和紧急操作。
+3. 共享 dev 或 production 前关闭全局 OQ-020，明确钱包、申请、分录、复核、审计、通知和备份的保留、删除与数据权利边界。
+4. 共享 dev 或 production 前关闭全局 OQ-024，确认 Cloudflare D1/R2 相关数据位置和生产适用性。
+5. 新建 published 且 production-ready 的策略版本，不原地提升 development 记录。
 6. 隔离 smoke 通过并再次获批后，按 `WALLET_1_DEV_VALIDATION_RUNBOOK.md` 在共享 dev 完成仓库外备份、短期 manifest、默认关闭的 schema 安装和只读验收；共享 dev 不能依赖 `DELETE` 清理不可变账本。
 7. 完成 Android/iOS 真机、多设备、断网、恢复、大字体、屏幕阅读器、窄屏和长中文验收。
 8. 先开启管理员只读观察，再按书面变更单开启单笔写入和用户读取；production 需独立审批，不能从 dev 自动复制。
@@ -176,16 +176,17 @@ Nuxt 页面 `/admin/app/wallets` 提供账号确认、余额摘要、分录、�
 - 一次完整冲正、原分录/冲正关系、钱包 sequence、分录/申请事件/复核记录不可变。
 - 账号与游标隔离、用户响应最小化、钱包必要通知目标归属和固定安全文案。
 - App API 路由/OpenAPI、Nuxt 管理页面、KMP 三条授权请求、capability 关闭零请求和非法响应安全拒绝。
-- 当前阶段 API 125 个测试文件/989 项与脚本 62 项全量通过；既有 Web 60 个测试文件/301 项保持通过记录。ESLint、API TypeScript 和 Nuxt production build 重新通过，Wrangler 本地 D1 已从空库连续应用 `0001`～`0077`。
+- 当前阶段 API 125 个测试文件/989 项与脚本 64 项全量通过；既有 Web 60 个测试文件/301 项保持通过记录。ESLint、API TypeScript 和 Nuxt production build 重新通过，Wrangler 本地 D1 已从空库连续应用 `0001`～`0077`。
 - KMP Android Host Test、Debug APK 与 iOS Simulator Kotlin/Native 编译通过；本机 Framework 链接仅因未接受 Xcode 许可导致 `xcrun` 69 失败，正式结果由 macOS CI 门禁确认。
 - `prepare-dev-wallet1.mjs` 已实现 dev 目标、资源隔离、关闭开关、migration 顺序、仓库外 SQL、SHA-256、Time Travel bookmark、commit 和 30 分钟 manifest 复验；`deploy.sh` 在 `0077` 待执行时对 production 硬阻断，dev 必须显式放行并提供有效 manifest。
 - `verify-dev-wallet1-schema.mjs` 已实现迁移后只读验收：校验部署 commit、`1.10.0` 契约、关闭 capability、完整 schema/trigger、development 安全策略、空业务账本和零钱包通知 Outbox。
 - `run-wallet1-disposable-smoke.mjs` 与 `verify-wallet1-disposable-flow.mjs` 已实现默认关闭 gate、仓库外 manifest、只绑定一次性 D1 的 Worker 配置、16 类 HTTP/D1 功能断言、凭证不落盘、成功/失败自动销毁和严格恢复命令；当前只完成本地模拟与 fail-closed 验证，未运行远程资源阶段。
+- 聚合证据固定写入 30 天 `deleteAfter`；恢复销毁成功后也会生成最小证据并删除运行目录，`cleanup:wallet1:evidence` 仅在显式确认后删除到期证据。`WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md` 已把合成 smoke 的内控、保留和 APAC 推荐与全局 production 决策分离。
 
 尚未完成：
 
 - dev/production `0077` migration、实际远程一次性 smoke、共享 dev Worker 部署、真机 UI 和双管理员实际账号验收；一次性 D1 + 临时 Worker 方案及自动化已完成，但机器 gate 仍未授权。
-- OQ-018、OQ-020、OQ-024、正式财务权限、告警阈值、对账/事件处置/恢复 Runbook。
+- Wallet-1 合成 smoke 局部决策的 Owner 明确确认与当次执行授权；全局 OQ-018、OQ-020、OQ-024、正式财务权限、告警阈值、对账/事件处置/恢复 Runbook 仍未关闭。
 - 真实余额导入、旧系统迁移、批量调币、部分冲正、用户申诉、客服工单、自动对账与导出。
 - 充值、支付、消费、礼物、装扮购买、转赠、兑换、转账、提现和任何 production 商业化能力。
 

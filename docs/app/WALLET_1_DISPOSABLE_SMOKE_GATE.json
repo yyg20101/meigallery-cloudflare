@@ -22,7 +22,7 @@
       "scope": "wallet1_disposable_synthetic_smoke",
       "approvedAt": null,
       "approvedBy": [],
-      "requiredConclusion": "确认运行数据随一次性 D1 销毁，只在仓库外保留聚合证据，不保留凭证、SQL 或逐笔业务数据。"
+      "requiredConclusion": "确认运行数据随一次性 D1 销毁，只在仓库外保留 30 天聚合证据，不保留凭证、SQL 或逐笔业务数据。"
     },
     "OQ-024": {
       "status": "unresolved",
@@ -39,6 +39,7 @@
   "resourcePolicy": {
     "syntheticDataOnly": true,
     "evidenceMode": "aggregate_only",
+    "evidenceRetentionDays": 30,
     "maximumLifetimeMinutes": 30,
     "requireIndependentReview": true,
     "allowNegativeBalance": false,

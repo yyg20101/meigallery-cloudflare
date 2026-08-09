@@ -6,6 +6,7 @@ import {
   chmod,
   lstat,
   mkdir,
+  readdir,
   readFile,
   realpath,
   rename,
@@ -13,7 +14,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import path, { dirname, join, resolve } from 'node:path'
+import path, { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { parsePendingMigrations } from './prepare-dev-wallet1.mjs'
@@ -32,6 +33,7 @@ const API_MAIN = join(ROOT_DIR, 'packages', 'api', 'src', 'index.ts')
 const MIGRATIONS_DIR = join(ROOT_DIR, 'packages', 'api', 'migrations')
 
 export const WALLET1_DISPOSABLE_CONFIRMATION = 'wallet1-isolated-smoke'
+export const WALLET1_DISPOSABLE_EVIDENCE_PRUNE_CONFIRMATION = 'wallet1-expired-evidence'
 export const WALLET1_DISPOSABLE_GATE_KIND = 'wallet1-disposable-smoke-gate'
 export const WALLET1_DISPOSABLE_RUN_KIND = 'wallet1-disposable-smoke-run'
 export const WALLET1_DISPOSABLE_EVIDENCE_KIND = 'wallet1-disposable-smoke-evidence'
@@ -41,8 +43,10 @@ export const WALLET1_DISPOSABLE_DEFAULT_STATE_ROOT = join(homedir(), '.meigaller
 const ALLOWED_LOCATIONS = new Set(['weur', 'eeur', 'apac', 'oc', 'wnam', 'enam'])
 const ALLOWED_JURISDICTIONS = new Set(['eu', 'fedramp'])
 const REQUIRED_DECISIONS = ['OQ-018', 'OQ-020', 'OQ-024']
-const AUTHORIZATION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const AUTHORIZATION_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const MAX_RESOURCE_LIFETIME_MINUTES = 30
+const MAX_EVIDENCE_RETENTION_DAYS = 30
+const REQUIRED_EVIDENCE_RETENTION_DAYS = 30
 const KNOWN_NON_DISPOSABLE_RESOURCE_NAMES = [
   'meigallery-api',
   'meigallery-api-dev',
@@ -90,6 +94,7 @@ export async function runDisposableWallet1Smoke(options = {}) {
     },
     placement: validatedGate.placement,
     evidenceMode: 'aggregate_only',
+    evidenceRetentionDays: validatedGate.resourcePolicy.evidenceRetentionDays,
     syntheticDataOnly: true,
     paths: { configPath },
     resources: {
@@ -271,6 +276,7 @@ export async function destroyDisposableWallet1Resources(options = {}) {
   assertOutsideRepository(physicalManifestPath)
   const manifest = JSON.parse(await readFile(physicalManifestPath, 'utf8'))
   validateRunManifestForCleanup(manifest)
+  const recoveryPaths = resolveRecoveryPaths(physicalManifestPath, manifest.runId)
   if (options.confirmDestroy !== manifest.runId) {
     throw new Error('WALLET1_SMOKE_DESTROY_CONFIRMATION_REQUIRED')
   }
@@ -279,7 +285,49 @@ export async function destroyDisposableWallet1Resources(options = {}) {
     manifestPath: physicalManifestPath,
   })
   await writeManifest(physicalManifestPath, manifest)
-  return { status: cleanup.status, runId: manifest.runId, manifestPath: physicalManifestPath }
+  await mkdir(recoveryPaths.evidenceDir, { recursive: true, mode: 0o700 })
+  const finishedAt = (options.now || (() => new Date()))()
+  const evidencePath = await persistAggregateEvidence(recoveryPaths.evidenceDir, manifest, finishedAt)
+  await rm(recoveryPaths.runDir, { recursive: true, force: true })
+  return { status: cleanup.status, runId: manifest.runId, evidencePath }
+}
+
+export async function pruneDisposableWallet1Evidence(options = {}) {
+  if (options.confirmPrune !== WALLET1_DISPOSABLE_EVIDENCE_PRUNE_CONFIRMATION) {
+    throw new Error('WALLET1_SMOKE_EVIDENCE_PRUNE_CONFIRMATION_REQUIRED')
+  }
+  const now = options.now || (() => new Date())
+  const stateRoot = await prepareStateRoot(options.stateRoot || WALLET1_DISPOSABLE_DEFAULT_STATE_ROOT)
+  const evidenceDir = join(stateRoot, 'evidence')
+  await mkdir(evidenceDir, { recursive: true, mode: 0o700 })
+  const entries = await readdir(evidenceDir, { withFileTypes: true })
+  const result = { inspected: 0, deleted: 0, retained: 0 }
+
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.name.endsWith('.json')) continue
+    const evidencePath = join(evidenceDir, entry.name)
+    const stats = await lstat(evidencePath)
+    if (stats.isSymbolicLink() || !stats.isFile()) {
+      throw new Error('WALLET1_SMOKE_EVIDENCE_FILE_INVALID')
+    }
+    let evidence
+    try {
+      evidence = JSON.parse(await readFile(evidencePath, 'utf8'))
+    }
+    catch {
+      throw new Error('WALLET1_SMOKE_EVIDENCE_JSON_INVALID')
+    }
+    validateEvidenceForPrune(evidence, entry.name)
+    result.inspected += 1
+    if (Date.parse(evidence.retention.deleteAfter) <= now().getTime()) {
+      await rm(evidencePath)
+      result.deleted += 1
+    }
+    else {
+      result.retained += 1
+    }
+  }
+  return result
 }
 
 export function validateDisposableSmokeGate(gate, now = new Date()) {
@@ -320,6 +368,7 @@ export function validateDisposableSmokeGate(gate, now = new Date()) {
     || resourcePolicy?.requireIndependentReview !== true
     || resourcePolicy?.allowNegativeBalance !== false
     || resourcePolicy?.batchAdjustmentsEnabled !== false
+    || resourcePolicy?.evidenceRetentionDays !== REQUIRED_EVIDENCE_RETENTION_DAYS
     || !Number.isSafeInteger(resourcePolicy?.maximumLifetimeMinutes)
     || resourcePolicy.maximumLifetimeMinutes < 5
     || resourcePolicy.maximumLifetimeMinutes > MAX_RESOURCE_LIFETIME_MINUTES) {
@@ -583,8 +632,16 @@ export async function main(options = {}) {
         manifestPath: readArgument(argv, '--manifest'),
         confirmDestroy: readArgument(argv, '--confirm-destroy'),
       })
-      stdout.write(`WALLET1_DISPOSABLE_SMOKE_DESTROYED run=${result.runId} manifest=${result.manifestPath}\n`)
+      stdout.write(`WALLET1_DISPOSABLE_SMOKE_DESTROYED run=${result.runId} evidence=${result.evidencePath}\n`)
       return result.status === 'passed' ? 0 : 1
+    }
+    if (action === 'prune-evidence') {
+      const result = await pruneDisposableWallet1Evidence({
+        ...options,
+        confirmPrune: readArgument(argv, '--confirm-prune'),
+      })
+      stdout.write(`WALLET1_DISPOSABLE_EVIDENCE_PRUNED inspected=${result.inspected} deleted=${result.deleted} retained=${result.retained}\n`)
+      return 0
     }
     throw new Error('WALLET1_SMOKE_ACTION_REQUIRED')
   }
@@ -640,6 +697,20 @@ function validateRunManifestForCleanup(manifest) {
   if (manifest?.schemaVersion !== 1 || manifest?.kind !== WALLET1_DISPOSABLE_RUN_KIND) {
     throw new Error('WALLET1_SMOKE_DESTROY_MANIFEST_INVALID')
   }
+  const placementValid = (manifest.placement?.mode === 'location' && ALLOWED_LOCATIONS.has(manifest.placement.value))
+    || (manifest.placement?.mode === 'jurisdiction' && ALLOWED_JURISDICTIONS.has(manifest.placement.value))
+  if (!validDate(manifest.createdAt)
+    || !validDate(manifest.deadlineAt)
+    || Date.parse(manifest.deadlineAt) <= Date.parse(manifest.createdAt)
+    || !/^[0-9a-f]{64}$/u.test(manifest.gateSha256 || '')
+    || manifest.git?.branch !== 'dev'
+    || !/^[0-9a-f]{40}$/u.test(manifest.git?.commit || '')
+    || manifest.git.commit !== manifest.git?.originDevCommit
+    || manifest.syntheticDataOnly !== true
+    || manifest.evidenceMode !== 'aggregate_only'
+    || !placementValid) {
+    throw new Error('WALLET1_SMOKE_DESTROY_PROVENANCE_INVALID')
+  }
   validateDisposableResourceIdentity({
     runId: manifest.runId,
     suffix: manifest.resources?.database?.name?.split('-').at(-1),
@@ -655,6 +726,11 @@ function validateRunManifestForCleanup(manifest) {
   if (manifest.resources.database.id !== null
     && !/^[0-9a-f]{8}-[0-9a-f-]{27}$/u.test(manifest.resources.database.id)) {
     throw new Error('WALLET1_SMOKE_DESTROY_DATABASE_ID_INVALID')
+  }
+  if (!Number.isSafeInteger(manifest.evidenceRetentionDays)
+    || manifest.evidenceRetentionDays < 1
+    || manifest.evidenceRetentionDays > MAX_EVIDENCE_RETENTION_DAYS) {
+    throw new Error('WALLET1_SMOKE_DESTROY_EVIDENCE_RETENTION_INVALID')
   }
   return true
 }
@@ -709,7 +785,14 @@ async function prepareStateRoot(value) {
 }
 
 async function persistAggregateEvidence(evidenceDir, manifest, finishedAt) {
+  const retentionDays = manifest.evidenceRetentionDays
+  if (!Number.isSafeInteger(retentionDays)
+    || retentionDays < 1
+    || retentionDays > MAX_EVIDENCE_RETENTION_DAYS) {
+    throw new Error('WALLET1_SMOKE_EVIDENCE_RETENTION_INVALID')
+  }
   const evidencePath = join(evidenceDir, `${manifest.runId}.json`)
+  const deleteAfter = new Date(finishedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000)
   const evidence = {
     schemaVersion: 1,
     kind: WALLET1_DISPOSABLE_EVIDENCE_KIND,
@@ -721,6 +804,10 @@ async function persistAggregateEvidence(evidenceDir, manifest, finishedAt) {
     placement: manifest.placement,
     syntheticDataOnly: true,
     evidenceMode: 'aggregate_only',
+    retention: {
+      days: retentionDays,
+      deleteAfter: deleteAfter.toISOString(),
+    },
     resourceIdentitySha256: createHash('sha256')
       .update(`${manifest.resources.database.name}:${manifest.resources.worker.name}`)
       .digest('hex'),
@@ -729,6 +816,35 @@ async function persistAggregateEvidence(evidenceDir, manifest, finishedAt) {
   }
   await writePrivateJson(evidencePath, evidence)
   return evidencePath
+}
+
+function resolveRecoveryPaths(manifestPath, runId) {
+  const runDir = dirname(manifestPath)
+  const runsDir = dirname(runDir)
+  if (basename(manifestPath) !== 'manifest.json'
+    || basename(runDir) !== runId
+    || basename(runsDir) !== 'runs') {
+    throw new Error('WALLET1_SMOKE_DESTROY_MANIFEST_PATH_INVALID')
+  }
+  const stateRoot = dirname(runsDir)
+  assertOutsideRepository(stateRoot)
+  return { runDir, evidenceDir: join(stateRoot, 'evidence') }
+}
+
+function validateEvidenceForPrune(evidence, fileName) {
+  if (evidence?.schemaVersion !== 1
+    || evidence?.kind !== WALLET1_DISPOSABLE_EVIDENCE_KIND
+    || `${evidence?.runId}.json` !== fileName
+    || !/^wallet1-smoke-\d{8}t\d{9}z-[a-f0-9]{12}$/u.test(evidence?.runId || '')
+    || !validDate(evidence?.finishedAt)
+    || !Number.isSafeInteger(evidence?.retention?.days)
+    || evidence.retention.days < 1
+    || evidence.retention.days > MAX_EVIDENCE_RETENTION_DAYS
+    || !validDate(evidence?.retention?.deleteAfter)
+    || Date.parse(evidence.retention.deleteAfter) <= Date.parse(evidence.finishedAt)) {
+    throw new Error('WALLET1_SMOKE_EVIDENCE_CONTENT_INVALID')
+  }
+  return true
 }
 
 async function writeManifest(manifestPath, manifest) {

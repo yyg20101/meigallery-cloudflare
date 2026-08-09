@@ -1,10 +1,10 @@
 # Wallet-1 一次性 D1 + 临时 Worker 功能验收 Runbook
 
-日期：2026-08-08
+日期：2026-08-09
 
 适用范围：Wallet-1 合成数据功能验收，不适用于共享 dev、production 或真实账号
 
-当前状态：工具、自动销毁、恢复命令和本地测试已完成；`WALLET_1_DISPOSABLE_SMOKE_GATE.json` 保持 `remoteSmokeAuthorized=false`，尚未创建任何远程 D1、Worker 或账本数据
+当前状态：工具、自动销毁、恢复收口、30 天聚合证据到期清理和局部决策包已完成；`WALLET_1_DISPOSABLE_SMOKE_GATE.json` 保持 `remoteSmokeAuthorized=false`，尚未创建任何远程 D1、Worker 或账本数据
 
 ## 1. 目的
 
@@ -50,12 +50,12 @@ Wallet-1 的分录、申请事件和复核请求由 D1 trigger 保证不可修�
 
 ### 3.1 书面决策与短期授权
 
-机器可读门禁为 `docs/app/WALLET_1_DISPOSABLE_SMOKE_GATE.json`，当前故意保持关闭。正式批准时必须由责任人基于书面结论同步：
+机器可读门禁为 `docs/app/WALLET_1_DISPOSABLE_SMOKE_GATE.json`，当前故意保持关闭。局部推荐、适用范围和两步确认文本见 `WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md`。正式批准时必须由责任人基于书面结论同步：
 
 - OQ-018：仅合成数据验收仍强制另一管理员复核、禁止负余额、禁止批量调币，并明确异常处置人；
-- OQ-020：运行数据随 D1 销毁，仓库外只保留聚合证据，不保留 Token、fixture SQL、内部备注或逐笔业务数据；
+- OQ-020：运行数据随 D1 销毁，仓库外只保留 30 天聚合证据，不保留 Token、fixture SQL、内部备注或逐笔业务数据；
 - OQ-024：明确一次性 D1 的 `location` 或 `jurisdiction`，脚本不猜测位置；
-- `authorization`：scope 必须为 `wallet1_disposable_synthetic_smoke`，包含审批人、批准时间和不超过 7 天的失效时间；
+- `authorization`：scope 必须为 `wallet1_disposable_synthetic_smoke`，包含审批人、批准时间和不超过 24 小时的失效时间；
 - `resourcePolicy.maximumLifetimeMinutes`：5～30 分钟。
 
 门禁 JSON 是执行输入，不是决策依据。不得仅为了运行脚本自行把 `unresolved` 改为 `approved`；必须先在开放问题记录中保存对应书面结论和责任人。
@@ -97,7 +97,7 @@ corepack pnpm smoke:wallet1:disposable -- \
 9. 部署临时 API Worker，并只接受与当次 Worker 名完全匹配的 `workers.dev` URL。
 10. 等待 `/api/health` 返回同一 commit 后执行第 5 节功能验收。
 11. 无论通过或失败，都先删除 Worker，再删除 D1。
-12. 两项销毁成功后删除运行目录，只保留第 6 节聚合证据。
+12. 两项销毁成功后删除运行目录，只保留带 30 天 `deleteAfter` 的第 6 节聚合证据。
 
 30 分钟是操作门禁和脚本阶段检查，不是 Cloudflare 自动 TTL。如果进程被强制结束、电脑断电或网络在销毁时中断，操作人必须使用第 7 节恢复命令；不得假设资源会自动消失。
 
@@ -133,13 +133,22 @@ corepack pnpm smoke:wallet1:disposable -- \
 - 不创建真实邮箱、真实账号、真实金额、真实业务单或真实内部备注；
 - 成功或业务失败且资源已清理时，运行目录整体删除。
 
-长期证据位于 `~/.meigallery/wallet1-disposable-smoke/evidence/<runId>.json`，只包含：
+短期证据位于 `~/.meigallery/wallet1-disposable-smoke/evidence/<runId>.json`，固定保留 30 天，只包含：
 
 - gate SHA-256、commit、批准的数据位置；
 - 测试项布尔结果；
 - 钱包余额、sequence、分录/申请/审计/通知数量；
 - Worker/D1 是否已删除；
 - 资源名组合的 SHA-256，不保存资源名或 UUID。
+
+每份证据都包含 `retention.days=30` 和确定的 `retention.deleteAfter`。到期后执行：
+
+```bash
+corepack pnpm cleanup:wallet1:evidence -- \
+  --confirm-prune=wallet1-expired-evidence
+```
+
+清理器只删除严格匹配且已经到期的 evidence JSON；未知、损坏、被改名或符号链接文件会阻断本次清理。该命令不读取、修改或删除仍用于残留资源恢复的运行 manifest。
 
 证据不构成 production 决策，也不能代替 OQ-018、OQ-020 或 OQ-024 的最终结论。
 
@@ -153,7 +162,7 @@ corepack pnpm cleanup:wallet1:disposable -- \
   --confirm-destroy=<runId>
 ```
 
-恢复销毁具有以下保护：
+恢复销毁成功后会生成同样受 30 天期限约束的聚合证据并删除运行目录。恢复流程具有以下保护：
 
 - 不依赖已过期或后来重新关闭的执行 gate，避免“失去授权后反而不能清理资源”；
 - manifest 必须在仓库外且不能是符号链接；
@@ -195,6 +204,6 @@ corepack pnpm cleanup:wallet1:disposable -- \
 - fixture 与证据不包含明文凭证；
 - 脚本测试、API 测试、类型检查和 Web 构建通过。
 
-远程验收不属于本阶段完成条件。只有 OQ-018、OQ-020、OQ-024 形成书面结论、gate 获得短期批准、CI 通过且用户再次批准 Cloudflare 远程变更后，才能进入实际运行阶段。
+远程验收不属于本阶段完成条件。只有 `WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md` 的局部结论获明确确认、gate 获得最长 24 小时批准、CI 通过且用户再次批准 Cloudflare 远程变更后，才能进入实际运行阶段。全局 OQ-018、OQ-020、OQ-024 仍可保持未决，但不得把局部批准外推到共享 dev 或 production。
 
 Cloudflare 命令和位置选项以当前官方文档为准：[D1 Wrangler commands](https://developers.cloudflare.com/d1/wrangler-commands/)、[Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/)、[Workers commands](https://developers.cloudflare.com/workers/wrangler/commands/workers/)、[D1 data location](https://developers.cloudflare.com/d1/configuration/data-location/)。

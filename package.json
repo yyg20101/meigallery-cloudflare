@@ -20,6 +20,7 @@
     "verify:wallet1:schema:dev": "node scripts/verify-dev-wallet1-schema.mjs --confirm-dev=meigallery-db-dev",
     "smoke:wallet1:disposable": "node scripts/run-wallet1-disposable-smoke.mjs run",
     "cleanup:wallet1:disposable": "node scripts/run-wallet1-disposable-smoke.mjs destroy",
+    "cleanup:wallet1:evidence": "node scripts/run-wallet1-disposable-smoke.mjs prune-evidence",
     "backup:production": "node scripts/export-production-d1-backup.mjs",
     "verify:seo:production": "node scripts/verify-production-seo.mjs",
     "test:scripts": "node --test scripts/*.test.mjs packages/api/migrations/*.test.mjs",

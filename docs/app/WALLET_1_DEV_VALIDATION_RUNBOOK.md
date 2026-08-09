@@ -4,7 +4,7 @@
 
 适用范围：独立 `dev` D1 `meigallery-db-dev`、API Worker `meigallery-api-dev`
 
-状态：共享 dev 迁移门禁、一次性 D1 + 临时 Worker 功能 smoke 工具与失败恢复均已就绪；所有远程执行 gate 仍关闭，尚未执行 migration、创建隔离资源、写入合成账务数据或开启任何钱包能力
+状态：共享 dev 迁移门禁、一次性 D1 + 临时 Worker 功能 smoke、失败恢复和 30 天聚合证据清理均已就绪；局部决策包待 Owner 确认，所有远程执行 gate 仍关闭，尚未执行 migration、创建隔离资源、写入合成账务数据或开启任何钱包能力
 
 ## 1. 目标与非目标
 
@@ -126,7 +126,7 @@ corepack pnpm smoke:wallet1:disposable -- \
   --confirm-disposable=wallet1-isolated-smoke
 ```
 
-当前机器 gate 保持 `remoteSmokeAuthorized=false`，所以该命令只会 fail closed，不会创建远程资源。未来获得 OQ-018、OQ-020、OQ-024 书面结论、短期授权和当次用户批准后，工具才会：
+当前机器 gate 保持 `remoteSmokeAuthorized=false`，所以该命令只会 fail closed，不会创建远程资源。未来先明确确认 `WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md` 的局部结论，再获得最长 24 小时短期 Gate 和当次用户执行批准后，工具才会：
 
 - 从同一 `origin/dev` commit 创建一次性 D1 并应用完整 migration；
 - 部署只绑定该 D1、没有 route/R2/Queue/Email/secret 的临时 Worker；
@@ -134,7 +134,7 @@ corepack pnpm smoke:wallet1:disposable -- \
 - 通过真实 HTTP API 产生账本事实，D1 直连只做策略切换、不可变验证和聚合取证；
 - 无论通过或失败都先删除 Worker、再删除 D1；销毁成功后只保留仓库外聚合证据。
 
-完整 16 项验收矩阵、资源命名、30 分钟边界、证据最小化和恢复命令见 `WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md`。测试不会保存访问 Token、fixture SQL、内部备注正文、资源名或 D1 UUID；只有销毁失败时才暂存严格受限的恢复 manifest。
+完整 16 项验收矩阵、资源命名、30 分钟边界、证据最小化和恢复命令见 `WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md`；局部推荐与确认文本见 `WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md`。测试不会保存访问 Token、fixture SQL、内部备注正文、资源名或 D1 UUID；只有销毁失败时才暂存严格受限的恢复 manifest，聚合证据固定 30 天到期。
 
 ## 9. 失败处理
 

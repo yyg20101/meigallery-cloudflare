@@ -18,3 +18,4 @@
 - `docs/app/README.md`：独立真人发现与互动 App 1.0 的需求、共享平台迁移、KMP/CMP 客户端、UI、安全、商业化和实施路线图；当前已按默认关闭的纵向切片推进到 Safety-2 独立复核，仍未获准生产开放。
 - `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`：Wallet-1 共享 dev 迁移备份、硬门禁与空账本只读验收。
 - `docs/app/WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md`：一次性 D1 + 临时 Worker 的合成数据功能验收、自动销毁、聚合证据与失败恢复。
+- `docs/app/WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md`：一次性合成 smoke 的局部内控、30 天证据、APAC 推荐与两步授权边界。

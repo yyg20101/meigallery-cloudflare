@@ -67,7 +67,7 @@ dev 使用独立 Worker、D1 和 R2，不绑定真实广告 Queue，不执行 Cr
 
 ### Wallet-1 dev migration
 
-`0077_app_wallet_ledger.sql` 尚未获准远端执行。一次性 D1 + 临时 Worker 的完整功能 smoke、失败自动销毁和恢复工具已经完成，但机器 gate 当前保持关闭，尚未创建任何远程资源。未来关闭 OQ-018、OQ-020、OQ-024 后，应先按 `docs/app/WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md` 获得短期授权并完成隔离 smoke；通过不自动放行共享 dev。随后再次获得明确批准，才生成仓库外短期备份清单：
+`0077_app_wallet_ledger.sql` 尚未获准远端执行。一次性 D1 + 临时 Worker 的完整功能 smoke、失败自动销毁、30 天证据清理和局部决策包已经完成，但机器 gate 当前保持关闭，尚未创建任何远程资源。先按 `docs/app/WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md` 明确确认仅限合成 smoke 的局部结论和当次执行，再按 `docs/app/WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md` 完成隔离 smoke；通过不自动关闭全局 OQ，也不自动放行共享 dev。共享 dev 前仍须关闭全局 OQ-018、OQ-020、OQ-024 并再次获得明确批准，才生成仓库外短期备份清单：
 
 ```bash
 corepack pnpm prepare:wallet1:dev
