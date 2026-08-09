@@ -266,6 +266,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `0084_app_conversation_collaboration.sql` 在 assignment 上增加追加式内部备注和显式转派：内部备注正文只在受控业务表和有效租约响应中出现，审计仅保存 SHA-256、长度和引用；转派要求当前 `expectedAssignmentVersion`、有效目标管理员和剩余容量，并在同一 D1 批次中更新租约归属、写交接备注、转派事实、幂等结果与审计。成功后原操作员立即失权。
 - `0085_app_conversation_safety_escalations.sql` 增加独立于用户举报的运营安全升级案件：当前话题租约持有人只能创建案件和固定整个话题或目标消息前后一条的最小证据；发起人与审核人强制隔离。审核员领取后按 `safety_escalation_review` 读取内部说明，可形成无需动作、话题只读或关闭结论；内部说明和结论不进入用户响应，实际话题动作只通过固定系统消息对用户说明。
 - `0086_app_conversation_routing_and_shifts.sql` 增加运营组、成员职责/容量、上海时区跨日班次、真人/地区/默认规则和路由分配事实。自动分配在观看者新消息提交成功后异步尝试，按“真人 > 地区 > 默认、最低负载、最久未分配、稳定管理员 ID”确定候选；规则、班次、个人/组容量、服务日首次响应额度和 assignment 版本在条件写入时再次校验。失败只保留未分配状态，不回滚用户消息、不产生虚假回复。
+- `0087_app_conversation_quality_reviews.sql` 增加平台回复的实际操作员事实、确定性抽样批次、无正文样本队列、固定最小证据、限时质检租约、三维结论、改进任务和独立幂等结果。运营回复和操作员事实必须在同一 D1 批次中收敛；抽检人与实际回复人强制隔离，领取前不得读取正文，完成后立即关闭正文授权。安全结论只原子创建独立安全升级案件，不直接执行处罚。
 - 举报队列默认只读取未结案案件；审核员领取后才可按 `safety_review` 读取举报说明及“目标消息前一条 + 目标 + 后一条”的最小证据窗口。结论和关联安全动作使用 `expectedVersion + mutation_token`，旧请求不能留下部分处置。
 - 保留策略初始为 `unresolved`，消息/举报/证据天数为 `NULL` 且 `purge_enabled=0`。OQ-020、运营值班、合规和真机回归未完成前，不得把 safety 目录或运行开关设为 production-ready。
 
@@ -604,6 +605,13 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | PUT | `/api/admin/app/conversation-groups/policy` | 创建或乐观版本更新全局人工/自动分配策略 | owner |
 | POST/PATCH | `/api/admin/app/conversation-groups/rules`、`/rules/:ruleId` | 创建或乐观版本更新真人、地区或默认规则 | owner |
 | POST | `/api/admin/app/conversation-groups/dispatch` | 按策略上限补偿分配当前未领取队列并返回无正文结果 | owner |
+| GET | `/api/admin/app/conversation-quality` | 无正文抽检队列、抽样批次、改进任务与范围诊断 | owner / group lead / quality |
+| POST | `/api/admin/app/conversation-quality/selection-runs` | 按实际操作员轮转和最早未抽样回复创建确定性批次 | owner / scoped group lead / quality |
+| POST | `/api/admin/app/conversation-quality/samples/:sampleId/claim` | 领取 60 分钟质检租约；实际回复人不得领取 | owner / scoped group lead / quality |
+| GET | `/api/admin/app/conversation-quality/samples/:sampleId` | 仅当前质检租约内按 `quality_review` 读取固定最小正文证据 | current reviewer |
+| POST | `/api/admin/app/conversation-quality/samples/:sampleId/decision` | 原子记录评分，并按结论创建改进任务或独立安全案件 | current reviewer |
+| POST | `/api/admin/app/conversation-quality/samples/:sampleId/void` | 对范围错误或服务端确认的证据异常作废并留痕 | owner / scoped reviewer |
+| PATCH | `/api/admin/app/conversation-quality/tasks/:taskId` | 乐观版本推进改进任务并写不可变事件 | assignee / owner / scoped group lead / quality |
 | GET | `/api/admin/app/safety/reports` | 不含说明/正文的待处理举报队列及筛选 | admin+ |
 | POST | `/api/admin/app/safety/reports/:reportId/claim` | 幂等领取举报案件 | admin+ |
 | GET | `/api/admin/app/safety/reports/:reportId` | 领取后按 `safety_review` 读取最小证据并审计 | admin+ |
@@ -936,6 +944,23 @@ Search-2 新会员目录是独立不可变快照；在配置切换前没有账�
 | `app_conversation_routing_idempotency` | 后台配置和补偿分配幂等 | 管理员+操作+key 唯一；绑定规范请求哈希、结果 ID/version |
 
 自动分配由观看者消息成功响应后的 Worker `waitUntil` 尝试；它是消息写入之后的可恢复运营副作用，失败不得改变消息成功事实。Owner 可在工作台按 `max_dispatch_batch` 对积压执行补偿分配。人工领取在尚未创建策略时保持旧行为；策略一旦存在，就必须命中当前最具体规则、属于目标组且处于有效班次，条件写入还会重新检查成员/规则版本、个人和组容量以及服务日首次响应额度。所有路径都复用 `app_conversation_assignment_state` 作为唯一租约权威，不创建第二套 assignment 状态。
+
+### App 话题质量抽检表族 `[开发完成，migration 待执行]`
+
+`0087_app_conversation_quality_reviews.sql` 只创建空表，不回填历史运营回复、不创建抽样批次或质检配置，也不启用运行时开关：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_conversation_operator_message_facts` | 运营回复的实际操作员与发送时上下文事实 | 与消息同批写入；固定 assignment version、组、披露版本、正文哈希，不复制正文 |
+| `app_conversation_quality_selection_runs` | 确定性抽样批次 | 单次 1–50 条、窗口不超过 31 天；按实际操作员轮转后选择最早未抽样回复 |
+| `app_conversation_quality_samples` | 样本状态、限时领取和最终评分 | 消息唯一；实际回复人与质检人隔离；乐观 version；完成后不再授权正文 |
+| `app_conversation_quality_sample_evidence` | 创建时固定的最小证据引用 | 目标消息、前后一条与披露卡；仅保存 ID、哈希和整体 digest，不复制正文 |
+| `app_conversation_quality_sample_events` | 样本追加式时间线 | 样本内 sequence 唯一；选择、领取、结论、作废和任务创建均留痕 |
+| `app_conversation_quality_improvement_tasks` | 可执行改进任务 | 负责人必须是有效操作员/组长；指导正文只在受控任务响应中返回；乐观 version |
+| `app_conversation_quality_improvement_task_events` | 改进任务追加式时间线 | 开始、完成、取消均保留稳定原因和 actor 引用 |
+| `app_conversation_quality_idempotency` | 抽样、领取、结论、作废和任务更新幂等结果 | 管理员+操作+key 唯一；绑定规范化请求哈希和结果版本 |
+
+队列、批次和通用审计不得返回消息正文、用户账号信息或内部结论正文。质检员领取样本时服务端重新校验有效 `lead|quality` 范围并签发 60 分钟租约；敏感详情仅向当前租约持有人开放且记录 `quality_review` 访问审计。提交结论时再次校验证据哈希、范围、版本和职责；披露缺失或不一致不能判定通过。`coaching_required` 必须与改进任务同批创建，`safety_referral` 必须与独立内部安全案件同批创建，但不得替代安全审核或直接处罚。
 
 ### App Safety-2 申诉表族 `[dev 受控联调，production 默认关闭]`
 

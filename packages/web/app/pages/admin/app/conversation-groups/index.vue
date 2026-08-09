@@ -392,6 +392,9 @@ function minuteLabel(value: number) {
           </p>
         </div>
         <div class="flex shrink-0 flex-wrap gap-2">
+          <NuxtLink to="/admin/app/conversation-quality" class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            质量与抽检
+          </NuxtLink>
           <NuxtLink to="/admin/app/conversations" class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             返回会话队列
           </NuxtLink>

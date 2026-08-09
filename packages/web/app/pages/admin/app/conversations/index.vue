@@ -443,6 +443,9 @@ function apiErrorMessage(error: unknown, fallback: string) {
         </p>
       </div>
       <div class="flex shrink-0 flex-wrap gap-2">
+        <NuxtLink to="/admin/app/conversation-quality" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          质量与抽检
+        </NuxtLink>
         <NuxtLink to="/admin/app/conversation-groups" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
           运营组与班次
         </NuxtLink>

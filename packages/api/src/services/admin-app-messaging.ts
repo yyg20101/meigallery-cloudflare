@@ -398,7 +398,7 @@ export async function sendAdminAppConversationMessage(
     return { message: mapAppConversationMessage(duplicate, conversation), replayed: true }
   }
 
-  await requireAdminConversationAssignment(db, adminId, conversationId, now)
+  const assignment = await requireAdminConversationAssignment(db, adminId, conversationId, now)
   const runtimeControl = await getAppMessagingRuntimeControl(db)
   if (runtimeControl.operatorSendsPaused) {
     throw new AppMessagingError(503, 'MESSAGING_PAUSED', runtimeControl.userVisibleMessage, true)
@@ -434,6 +434,7 @@ export async function sendAdminAppConversationMessage(
           AND conversation.status = 'active'
           AND assignment.status = 'active'
           AND assignment.assigned_admin_id = ?
+          AND assignment.version = ?
           AND datetime(assignment.lease_expires_at) > datetime(?)
           AND runtime_control.operator_sends_paused = 0
           AND security.status = 'active'
@@ -462,12 +463,69 @@ export async function sendAdminAppConversationMessage(
         nowIso,
         conversationId,
         adminId,
+        assignment.version,
         nowIso,
         nowIso,
         nowIso,
         nowIso,
         recentBoundary,
         OPERATOR_MESSAGES_PER_MINUTE,
+      ),
+      db.prepare(`
+        INSERT INTO app_conversation_operator_message_facts (
+          message_id, conversation_id, profile_id, group_id,
+          assignment_version, disclosure_version, actual_operator_admin_id,
+          approved_script_version_id, message_body_sha256, created_at
+        )
+        SELECT message.id, conversation.id, conversation.profile_id,
+               COALESCE(
+                 (
+                   SELECT routing_event.group_id
+                   FROM app_conversation_routing_assignment_events routing_event
+                   WHERE routing_event.conversation_id = conversation.id
+                     AND routing_event.assignment_version = ?
+                     AND routing_event.admin_id = ?
+                   LIMIT 1
+                 ),
+                 (
+                   SELECT rule.group_id
+                   FROM app_conversation_routing_rules rule
+                   JOIN app_conversation_groups operation_group
+                     ON operation_group.id = rule.group_id AND operation_group.status = 'active'
+                   JOIN app_conversation_group_members member
+                     ON member.group_id = rule.group_id
+                    AND member.admin_id = ?
+                    AND member.status = 'active'
+                    AND member.member_role IN ('operator', 'lead')
+                   LEFT JOIN person_profiles profile ON profile.id = conversation.profile_id
+                   WHERE rule.status = 'active'
+                     AND (
+                       (rule.match_type = 'profile' AND rule.match_value = conversation.profile_id)
+                       OR (rule.match_type = 'region' AND rule.match_value = profile.region_code)
+                       OR (rule.match_type = 'default' AND rule.match_value = '*')
+                     )
+                   ORDER BY
+                     CASE rule.match_type WHEN 'profile' THEN 0 WHEN 'region' THEN 1 ELSE 2 END,
+                     rule.priority ASC,
+                     rule.id ASC
+                   LIMIT 1
+                 )
+               ),
+               ?, conversation.disclosure_version, ?, NULL,
+               message.body_sha256, message.created_at
+        FROM app_conversation_messages message
+        JOIN app_conversations conversation ON conversation.id = message.conversation_id
+        WHERE message.id = ?
+          AND message.sender_type = 'platform_operator'
+          AND message.actor_admin_id = ?
+      `).bind(
+        assignment.version,
+        adminId,
+        adminId,
+        assignment.version,
+        adminId,
+        messageId,
+        adminId,
       ),
       db.prepare(`
         UPDATE app_conversations
