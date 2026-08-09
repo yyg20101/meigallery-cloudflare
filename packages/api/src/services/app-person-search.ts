@@ -3,7 +3,11 @@ import type {
   AppPersonSearchMatchField,
   AppPersonSearchSort,
 } from '@meigallery/shared'
-import { mapPublicProfile, type PublicProjectionRow } from './app-discovery'
+import {
+  PUBLIC_TAXONOMY_SELECT,
+  mapPublicProfile,
+  type PublicProjectionRow,
+} from './app-discovery'
 import {
   APP_PERSON_SEARCH_DEFAULT_PAGE_SIZE,
   APP_PERSON_SEARCH_MAX_PAGE_SIZE,
@@ -205,6 +209,7 @@ export async function searchPublicPersonProfiles(
         p.recommendation_reason_code,
         p.recommendation_rule_version,
         p.published_at,
+        ${PUBLIC_TAXONOMY_SELECT} AS taxonomy_json,
         CASE
           WHEN p.display_name COLLATE NOCASE = ? THEN 500
           WHEN p.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE THEN 450

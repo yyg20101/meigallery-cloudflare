@@ -1,4 +1,8 @@
 import { generateId } from '../utils/db'
+import {
+  AppTaxonomyError,
+  assertAssignableTaxonomyTerms,
+} from './app-taxonomy'
 
 export const PERSON_VERIFICATION_ITEMS = [
   'identity_existence',
@@ -106,7 +110,7 @@ export type PersonWorkflowGate = {
 
 export class PersonSupplyError extends Error {
   constructor(
-    readonly status: 400 | 404 | 409 | 422,
+    readonly status: 400 | 403 | 404 | 409 | 422 | 503,
     readonly code: string,
     message: string,
     readonly detail?: unknown,
@@ -181,6 +185,12 @@ export type PausePublicationInput = {
   note?: unknown
 }
 
+export type SetPersonTaxonomyAssignmentsInput = {
+  expectedVersion: unknown
+  catalogVersionId: unknown
+  termIds: unknown
+}
+
 export async function listAdminPersons(
   db: D1Database,
   input: { page?: string; pageSize?: string; q?: string; publicationStatus?: string },
@@ -242,7 +252,7 @@ export async function getAdminPersonDetail(db: D1Database, personId: string, now
   const row = await getProfileRow(db, personId)
   if (!row) throw new PersonSupplyError(404, 'PERSON_NOT_FOUND', '人物候选不存在')
 
-  const [authorization, verification, authorizations, verifications, publications] = await Promise.all([
+  const [authorization, verification, authorizations, verifications, publications, taxonomy] = await Promise.all([
     getLatestAuthorization(db, row.profile_id, row.content_version),
     getLatestVerification(db, row.profile_id, row.content_version),
     db.prepare(`${AUTHORIZATION_SELECT} WHERE profile_id = ? ORDER BY created_at DESC LIMIT 20`)
@@ -251,8 +261,9 @@ export async function getAdminPersonDetail(db: D1Database, personId: string, now
       .bind(row.profile_id).all<VerificationRow>(),
     db.prepare(`${PUBLICATION_SELECT} WHERE profile_id = ? ORDER BY submitted_at DESC LIMIT 20`)
       .bind(row.profile_id).all<PublicationRow>(),
+    getProfileTaxonomyState(db, row.profile_id, row.content_version, now),
   ])
-  const gates = buildPublicationGates(row, authorization, verification, now)
+  const gates = buildPublicationGates(row, authorization, verification, taxonomy, now)
 
   return {
     personId: row.person_id,
@@ -276,6 +287,7 @@ export async function getAdminPersonDetail(db: D1Database, personId: string, now
       heatScore: row.heat_score,
       reasonCode: row.recommendation_reason_code,
     },
+    taxonomy,
     verificationStatus: effectiveVerificationStatus(verification, now),
     publicationStatus: row.publication_status,
     authorizationStatus: effectiveAuthorizationStatus(authorization, now),
@@ -423,6 +435,17 @@ export async function updatePersonCandidate(
       current.profile_id,
       expectedVersion,
     ),
+    db.prepare(`
+      INSERT INTO person_profile_taxonomy_assignments (
+        profile_id, profile_version, term_id, catalog_id,
+        catalog_term_version, assigned_by, created_at
+      )
+      SELECT a.profile_id, p.content_version, a.term_id, a.catalog_id,
+             a.catalog_term_version, ?, ?
+      FROM person_profile_taxonomy_assignments a
+      JOIN person_profiles p ON p.id = a.profile_id
+      WHERE a.profile_id = ? AND a.profile_version = ? AND p.mutation_token = ?
+    `).bind(adminId, now, current.profile_id, current.content_version, token),
     auditForClaimedProfile(db, {
       adminId,
       action: 'app_person.update',
@@ -433,6 +456,89 @@ export async function updatePersonCandidate(
       now,
     }),
   ])
+  assertClaimed(results, current.lock_version)
+  return getAdminPersonDetail(db, personId)
+}
+
+export async function setPersonTaxonomyAssignments(
+  db: D1Database,
+  personId: string,
+  input: SetPersonTaxonomyAssignmentsInput,
+  adminId: number,
+  options: { requireProductionReady?: boolean } = {},
+) {
+  const current = await requireProfileRow(db, personId)
+  const expectedVersion = expectedLockVersion(input.expectedVersion)
+  assertExpectedVersion(current, expectedVersion)
+  if (current.publication_status === 'archived') {
+    throw new PersonSupplyError(409, 'PERSON_ARCHIVED', '已归档人物不能继续编辑')
+  }
+  if (typeof input.catalogVersionId !== 'string') {
+    throw new PersonSupplyError(400, 'TAXONOMY_CATALOG_ID_INVALID', '分类目录 ID 格式无效')
+  }
+  let terms: Awaited<ReturnType<typeof assertAssignableTaxonomyTerms>>
+  try {
+    terms = await assertAssignableTaxonomyTerms(
+      db,
+      input.catalogVersionId,
+      input.termIds,
+      { requireProductionReady: options.requireProductionReady },
+    )
+  }
+  catch (error) {
+    if (error instanceof AppTaxonomyError) {
+      throw new PersonSupplyError(error.status, error.code, error.message, error.detail)
+    }
+    throw error
+  }
+  const token = crypto.randomUUID()
+  const now = new Date().toISOString()
+  const nextContentVersion = current.content_version + 1
+  const statements: D1PreparedStatement[] = [
+    db.prepare(`
+      UPDATE person_profiles
+      SET verification_status = 'unverified', publication_status = 'draft',
+          content_version = content_version + 1, lock_version = lock_version + 1,
+          mutation_token = ?, updated_by = ?, updated_at = ?
+      WHERE id = ? AND lock_version = ? AND publication_status <> 'archived'
+    `).bind(token, adminId, now, current.profile_id, expectedVersion),
+  ]
+  for (const term of terms) {
+    statements.push(db.prepare(`
+      INSERT INTO person_profile_taxonomy_assignments (
+        profile_id, profile_version, term_id, catalog_id,
+        catalog_term_version, assigned_by, created_at
+      )
+      SELECT id, content_version, ?, ?, ?, ?, ?
+      FROM person_profiles
+      WHERE id = ? AND mutation_token = ?
+    `).bind(
+      term.termId,
+      input.catalogVersionId,
+      term.termVersion,
+      adminId,
+      now,
+      current.profile_id,
+      token,
+    ))
+  }
+  statements.push(auditForClaimedProfile(db, {
+    adminId,
+    action: 'app_person.taxonomy_assign',
+    profileId: current.profile_id,
+    token,
+    before: { profileVersion: current.content_version },
+    after: {
+      profileVersion: nextContentVersion,
+      catalogVersionId: input.catalogVersionId,
+      termIds: terms.map(term => term.termId),
+      verificationStatus: 'unverified',
+      publicationStatus: 'draft',
+      liveProjectionUnchanged: Boolean(current.projection_version),
+    },
+    now,
+  }))
+  const results = await db.batch(statements)
   assertClaimed(results, current.lock_version)
   return getAdminPersonDetail(db, personId)
 }
@@ -675,15 +781,16 @@ export async function submitPersonPublication(
   const current = await requireProfileRow(db, personId)
   const expectedVersion = expectedLockVersion(input.expectedVersion)
   assertExpectedVersion(current, expectedVersion)
-  const [authorization, verification, pending] = await Promise.all([
+  const [authorization, verification, pending, taxonomy] = await Promise.all([
     getLatestAuthorization(db, current.profile_id, current.content_version),
     getLatestVerification(db, current.profile_id, current.content_version),
     getPendingPublication(db, current.profile_id, current.content_version),
+    getProfileTaxonomyState(db, current.profile_id, current.content_version, new Date()),
   ])
   if (pending) {
     throw new PersonSupplyError(409, 'PUBLICATION_ALREADY_PENDING', '当前内容版本已提交发布复核')
   }
-  const gates = buildPublicationGates(current, authorization, verification, new Date())
+  const gates = buildPublicationGates(current, authorization, verification, taxonomy, new Date())
   const blockers = gates.filter(gate => !gate.passed)
   if (blockers.length) {
     throw new PersonSupplyError(422, 'PUBLICATION_GATES_FAILED', '发布门禁未全部通过', { gates })
@@ -981,11 +1088,12 @@ async function publishProjection(
   note: string | null,
   adminId: number,
 ) {
-  const [authorization, verification] = await Promise.all([
+  const [authorization, verification, taxonomy] = await Promise.all([
     getLatestAuthorization(db, current.profile_id, current.content_version),
     getLatestVerification(db, current.profile_id, current.content_version),
+    getProfileTaxonomyState(db, current.profile_id, current.content_version, new Date()),
   ])
-  const gates = buildPublicationGates(current, authorization, verification, new Date())
+  const gates = buildPublicationGates(current, authorization, verification, taxonomy, new Date())
   if (!authorization || !verification || gates.some(gate => !gate.passed)) {
     throw new PersonSupplyError(422, 'PUBLICATION_GATES_FAILED', '发布门禁已变化，请刷新后重新复核', { gates })
   }
@@ -1109,6 +1217,34 @@ async function publishProjection(
       WHERE id = ?
         AND EXISTS (SELECT 1 FROM person_profiles WHERE id = ? AND mutation_token = ?)
     `).bind(current.profile_id, pending.id, current.profile_id, token),
+    db.prepare(`
+      DELETE FROM profile_public_taxonomy_terms
+      WHERE profile_id = ?
+        AND EXISTS (
+          SELECT 1 FROM person_profiles WHERE id = ? AND mutation_token = ?
+        )
+    `).bind(current.profile_id, current.profile_id, token),
+    db.prepare(`
+      INSERT INTO profile_public_taxonomy_terms (
+        profile_id, term_id, taxonomy_type, catalog_id, catalog_term_version,
+        projected_profile_version, projected_at
+      )
+      SELECT a.profile_id, a.term_id, i.type, a.catalog_id, a.catalog_term_version,
+             a.profile_version, ?
+      FROM person_profile_taxonomy_assignments a
+      JOIN app_taxonomy_catalog_items i
+        ON i.catalog_id = a.catalog_id AND i.term_id = a.term_id
+      JOIN app_taxonomy_catalogs c ON c.catalog_id = a.catalog_id
+      JOIN person_profiles p ON p.id = a.profile_id
+      WHERE a.profile_id = ? AND a.profile_version = p.content_version
+        AND p.mutation_token = ?
+        AND c.state IN ('development', 'published')
+        AND datetime(c.effective_at) <= datetime(?)
+        AND i.public_state = 'active'
+        AND i.visibility = 'public'
+        AND i.sensitivity = 'standard'
+        AND i.allowed_for_profile = 1
+    `).bind(now, current.profile_id, token, now),
     auditForClaimedProfile(db, {
       adminId,
       action: 'app_person.publication_publish',
@@ -1132,6 +1268,7 @@ function buildPublicationGates(
   row: ProfileRow,
   authorization: AuthorizationRow | null,
   verification: VerificationRow | null,
+  taxonomy: Awaited<ReturnType<typeof getProfileTaxonomyState>>,
   now: Date,
 ): PersonWorkflowGate[] {
   const authorizationStatus = effectiveAuthorizationStatus(authorization, now)
@@ -1143,6 +1280,12 @@ function buildPublicationGates(
     gate('SOURCE_GALLERY_PUBLISHED', '来源图库已发布', row.gallery_status === 'published', `当前：${row.gallery_status}`),
     gate('SOURCE_COVER_READY', '来源图库已有封面', Boolean(row.cover_key), row.cover_key ? '封面可用' : '缺少封面'),
     gate('SAFETY_CLEAR', '安全状态正常', row.safety_status === 'clear', `当前：${row.safety_status}`),
+    gate(
+      'TAXONOMY_ASSIGNMENTS_VALID',
+      '结构化分类引用有效',
+      taxonomy.ready,
+      taxonomy.readinessDetail,
+    ),
     gate('AUTHORIZATION_ACTIVE', '当前版本用途授权有效', authorizationStatus === 'active', `当前：${authorizationStatus}`),
     gate('VERIFICATION_VALID', '当前版本认证有效', verificationStatus === 'verified', `当前：${verificationStatus}`),
   ]
@@ -1338,6 +1481,97 @@ function mapListItem(row: ProfileRow, authorization: AuthorizationRow | null, ve
     lockVersion: row.lock_version,
     liveVisible: row.projection_publication_status === 'published' && row.projection_visibility_status === 'visible',
     updatedAt: row.updated_at,
+  }
+}
+
+async function getProfileTaxonomyState(
+  db: D1Database,
+  profileId: string,
+  profileVersion: number,
+  now: Date,
+) {
+  const [current, live] = await Promise.all([
+    db.prepare(`
+      SELECT a.term_id, a.catalog_id, a.catalog_term_version,
+             i.type, i.display_name, i.public_state, i.visibility,
+             i.allowed_for_profile, i.sensitivity,
+             c.state AS catalog_state, c.effective_at
+      FROM person_profile_taxonomy_assignments a
+      JOIN app_taxonomy_catalog_items i
+        ON i.catalog_id = a.catalog_id AND i.term_id = a.term_id
+      JOIN app_taxonomy_catalogs c ON c.catalog_id = a.catalog_id
+      WHERE a.profile_id = ? AND a.profile_version = ?
+      ORDER BY i.type ASC, i.sort_order ASC, i.display_name COLLATE NOCASE ASC, a.term_id ASC
+    `).bind(profileId, profileVersion).all<{
+      term_id: string
+      catalog_id: string
+      catalog_term_version: number
+      type: string
+      display_name: string
+      public_state: string
+      visibility: string
+      allowed_for_profile: number
+      sensitivity: string
+      catalog_state: string
+      effective_at: string
+    }>(),
+    db.prepare(`
+      SELECT p.term_id, p.catalog_id, p.catalog_term_version,
+             p.taxonomy_type, p.projected_profile_version,
+             i.display_name
+      FROM profile_public_taxonomy_terms p
+      JOIN app_taxonomy_catalog_items i
+        ON i.catalog_id = p.catalog_id AND i.term_id = p.term_id
+      WHERE p.profile_id = ?
+      ORDER BY p.taxonomy_type ASC, i.sort_order ASC, i.display_name COLLATE NOCASE ASC, p.term_id ASC
+    `).bind(profileId).all<{
+      term_id: string
+      catalog_id: string
+      catalog_term_version: number
+      taxonomy_type: string
+      projected_profile_version: number
+      display_name: string
+    }>(),
+  ])
+  const catalogIds = [...new Set(current.results.map(item => item.catalog_id))]
+  const nowMs = now.getTime()
+  const invalidTermIds = current.results.filter(item => (
+    !['development', 'published'].includes(item.catalog_state)
+    || !Number.isFinite(Date.parse(item.effective_at))
+    || Date.parse(item.effective_at) > nowMs
+    || item.public_state !== 'active'
+    || item.visibility !== 'public'
+    || item.allowed_for_profile !== 1
+    || item.sensitivity !== 'standard'
+  )).map(item => item.term_id)
+  const ready = catalogIds.length <= 1 && invalidTermIds.length === 0
+  const readinessDetail = !current.results.length
+    ? '未设置结构化分类；当前为可选项'
+    : catalogIds.length > 1
+      ? '当前内容版本混用了多个目录版本'
+      : invalidTermIds.length
+        ? `存在 ${invalidTermIds.length} 个已失效或不可公开的词条`
+        : `已关联 ${current.results.length} 个稳定词条`
+
+  return {
+    ready,
+    readinessDetail,
+    catalogVersionId: catalogIds.length === 1 ? catalogIds[0]! : null,
+    current: current.results.map(item => ({
+      termId: item.term_id,
+      termVersion: item.catalog_term_version,
+      type: item.type,
+      displayName: item.display_name,
+    })),
+    live: live.results.map(item => ({
+      termId: item.term_id,
+      termVersion: item.catalog_term_version,
+      type: item.taxonomy_type,
+      displayName: item.display_name,
+      catalogVersionId: item.catalog_id,
+      profileVersion: item.projected_profile_version,
+    })),
+    invalidTermIds,
   }
 }
 

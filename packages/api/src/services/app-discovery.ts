@@ -33,6 +33,7 @@ export type PublicProjectionRow = {
   recommendation_reason_code: string
   recommendation_rule_version: string
   published_at: string
+  taxonomy_json: string
 }
 
 type DiscoveryCursor = {
@@ -190,7 +191,8 @@ export async function listPublicPersonProfiles(
         p.heat_score,
         p.recommendation_reason_code,
         p.recommendation_rule_version,
-        p.published_at
+        p.published_at,
+        ${PUBLIC_TAXONOMY_SELECT} AS taxonomy_json
       FROM profile_public_projections p
       JOIN galleries g ON g.id = p.source_gallery_id
       WHERE ${conditions.join('\n        AND ')}
@@ -301,7 +303,8 @@ export async function getPublicPersonProfile(
         p.heat_score,
         p.recommendation_reason_code,
         p.recommendation_rule_version,
-        p.published_at
+        p.published_at,
+        ${PUBLIC_TAXONOMY_SELECT} AS taxonomy_json
       FROM profile_public_projections p
       JOIN galleries g ON g.id = p.source_gallery_id
       WHERE p.profile_id = ?
@@ -367,7 +370,8 @@ export async function getPublicPersonProfilesByIds(
       p.heat_score,
       p.recommendation_reason_code,
       p.recommendation_rule_version,
-      p.published_at
+      p.published_at,
+      ${PUBLIC_TAXONOMY_SELECT} AS taxonomy_json
     FROM profile_public_projections p
     JOIN galleries g ON g.id = p.source_gallery_id
     WHERE p.profile_id IN (${placeholders})
@@ -434,6 +438,7 @@ export function mapPublicProfile(row: PublicProjectionRow, apiUrl: string): AppP
     },
     region,
     tags: parsePublicTags(row.tags_json),
+    taxonomyTerms: parsePublicTaxonomyTerms(row.taxonomy_json),
     recommendation: {
       mode: 'rule_based',
       reasonCode: safeLabel(row.recommendation_reason_code, 'EDITORIAL_QUALITY'),
@@ -480,6 +485,56 @@ function parsePublicTags(raw: string): string[] {
     return []
   }
 }
+
+function parsePublicTaxonomyTerms(raw: string): AppPersonProfile['taxonomyTerms'] {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return []
+      const item = value as Record<string, unknown>
+      if (
+        typeof item.termId !== 'string'
+        || typeof item.type !== 'string'
+        || typeof item.displayName !== 'string'
+        || typeof item.catalogVersionId !== 'string'
+        || !Number.isSafeInteger(item.termVersion)
+      ) return []
+      return [{
+        termId: item.termId,
+        type: item.type as AppPersonProfile['taxonomyTerms'][number]['type'],
+        displayName: item.displayName,
+        catalogVersionId: item.catalogVersionId,
+        termVersion: Number(item.termVersion),
+      }]
+    }).slice(0, 30)
+  }
+  catch {
+    return []
+  }
+}
+
+export const PUBLIC_TAXONOMY_SELECT = `
+  COALESCE((
+    SELECT json_group_array(json_object(
+      'termId', taxonomy_items.term_id,
+      'type', taxonomy_items.taxonomy_type,
+      'displayName', taxonomy_items.display_name,
+      'catalogVersionId', taxonomy_items.catalog_id,
+      'termVersion', taxonomy_items.catalog_term_version
+    ))
+    FROM (
+      SELECT pt.term_id, pt.taxonomy_type, i.display_name,
+             pt.catalog_id, pt.catalog_term_version
+      FROM profile_public_taxonomy_terms pt
+      JOIN app_taxonomy_catalog_items i
+        ON i.catalog_id = pt.catalog_id AND i.term_id = pt.term_id
+      WHERE pt.profile_id = p.profile_id
+      ORDER BY pt.taxonomy_type ASC, i.sort_order ASC,
+               i.display_name COLLATE NOCASE ASC, pt.term_id ASC
+    ) taxonomy_items
+  ), '[]')
+`
 
 function encodeDiscoveryCursor(cursor: DiscoveryCursor) {
   const bytes = new TextEncoder().encode(JSON.stringify(cursor))

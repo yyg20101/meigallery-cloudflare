@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.13.0
+  version: 1.14.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -14,7 +14,8 @@ info:
     不开放购买、消费、转赠、兑换、提现或支付。Interaction-2 以默认关闭方式新增多文件夹收藏和本人浏览历史；
     收藏不等于喜欢或匹配，历史默认不记录且必须携带当前偏好版本写入。Interaction-3 新增关注对象已审核公开发布更新流，
     并在用户拉取通知时以同一发布事实惰性生成去重站内提醒；取消关注、拉黑或资料失效后不再投影。Search-1 新增登录后人物搜索与
-    独立、默认关闭的账号私有搜索历史；搜索词通过 POST 正文传输，不进入 URL、游标、审计或分析事件。高级筛选、保存条件、推荐信号、
+    独立、默认关闭的账号私有搜索历史；搜索词通过 POST 正文传输，不进入 URL、游标、审计或分析事件。Taxonomy-1 新增稳定词条 ID、
+    不可变目录快照和合并重定向的默认关闭公开目录；未知旧标签只能进入管理员待复核映射，不能自动公开。高级筛选、保存条件、推荐信号、
     系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
@@ -28,6 +29,7 @@ tags:
   - name: Account
   - name: Discovery
   - name: Search
+  - name: Taxonomy
   - name: PersonProfile
   - name: Interaction
   - name: Membership
@@ -55,6 +57,32 @@ paths:
                 $ref: '#/components/schemas/BootstrapResponse'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v2/taxonomy/catalog:
+    get:
+      tags: [Taxonomy]
+      operationId: getAppTaxonomyCatalog
+      summary: 获取当前不可变分类目录
+      description: >-
+        默认关闭。只返回当前配置目录中公开、标准敏感级别的快照词条；稳定 termId
+        不随展示名称变化，merged 词条以 redirectTargetTermId 保留兼容重定向。
+      responses:
+        '200':
+          description: 当前客户端可读取的分类目录快照
+          headers:
+            ETag:
+              description: 由目录稳定 ID 与版本号组成的条件请求标识。
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxonomyCatalogResponse'
+        '304':
+          description: If-None-Match 对应的目录快照未变化
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/auth/email-challenges:
     post:
       tags: [Auth]
@@ -2221,7 +2249,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.13.0
+        const: 1.14.0
   parameters:
     ProfileId:
       name: profileId
@@ -2371,7 +2399,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.13.0
+          const: 1.14.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -3955,7 +3983,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, search, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety]
+      required: [product, appVersion, capabilities, discovery, search, taxonomy, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety]
       properties:
         product:
           type: string
@@ -3966,7 +3994,7 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, search, auth, interactions, membership, messaging, notifications, wallet, safety, payments, systemPush]
+          required: [discovery, search, taxonomy, auth, interactions, membership, messaging, notifications, wallet, safety, payments, systemPush]
           properties:
             discovery:
               type: boolean
@@ -3979,6 +4007,13 @@ components:
                 profiles:
                   type: boolean
                 history:
+                  type: boolean
+            taxonomy:
+              type: object
+              additionalProperties: false
+              required: [catalog]
+              properties:
+                catalog:
                   type: boolean
             auth:
               type: boolean
@@ -4087,6 +4122,21 @@ components:
               type: integer
               minimum: 1
               maximum: 50
+        taxonomy:
+          type: object
+          additionalProperties: false
+          required: [catalogVersionId, supportedTypes]
+          properties:
+            catalogVersionId:
+              type: string
+              pattern: '^txc_[A-Za-z0-9_-]{4,92}$'
+            supportedTypes:
+              type: array
+              minItems: 11
+              maxItems: 11
+              uniqueItems: true
+              items:
+                $ref: '#/components/schemas/TaxonomyType'
         interactionCollections:
           type: object
           additionalProperties: false
@@ -4385,6 +4435,113 @@ components:
               minItems: 1
               items:
                 $ref: '#/components/schemas/SafetyReason'
+    TaxonomyType:
+      type: string
+      enum:
+        - region_scope
+        - region_group
+        - city_country
+        - identity
+        - personality
+        - style
+        - occupation
+        - hair
+        - clothing
+        - scene
+        - content_type
+    TaxonomyTerm:
+      type: object
+      additionalProperties: false
+      required:
+        - termId
+        - type
+        - parentTermId
+        - displayName
+        - slug
+        - aliases
+        - publicState
+        - redirectTargetTermId
+        - allowedForProfile
+        - sortOrder
+        - termVersion
+      properties:
+        termId:
+          type: string
+          pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+        type:
+          $ref: '#/components/schemas/TaxonomyType'
+        parentTermId:
+          type: [string, 'null']
+          pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 40
+        slug:
+          type: string
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        aliases:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+        publicState:
+          type: string
+          enum: [active, deprecated, redirect]
+        redirectTargetTermId:
+          type: [string, 'null']
+          pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+        allowedForProfile:
+          type: boolean
+        sortOrder:
+          type: integer
+        termVersion:
+          type: integer
+          minimum: 1
+    TaxonomyCatalog:
+      type: object
+      additionalProperties: false
+      required:
+        - catalogVersionId
+        - versionCode
+        - state
+        - productionReady
+        - effectiveAt
+        - minimumClientVersion
+        - terms
+      properties:
+        catalogVersionId:
+          type: string
+          pattern: '^txc_[A-Za-z0-9_-]{4,92}$'
+        versionCode:
+          type: string
+          pattern: '^\d+(?:\.\d+){1,3}$'
+        state:
+          type: string
+          enum: [development, published]
+        productionReady:
+          type: boolean
+        effectiveAt:
+          type: string
+          format: date-time
+        minimumClientVersion:
+          type: string
+        terms:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxonomyTerm'
+    TaxonomyCatalogResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/TaxonomyCatalog'
+        meta:
+          $ref: '#/components/schemas/Meta'
     BootstrapResponse:
       type: object
       additionalProperties: false
@@ -5534,6 +5691,7 @@ components:
         - operation
         - region
         - tags
+        - taxonomyTerms
         - recommendation
         - publishedAt
       properties:
@@ -5563,6 +5721,29 @@ components:
           maxItems: 8
           items:
             type: string
+        taxonomyTerms:
+          type: array
+          maxItems: 30
+          items:
+            type: object
+            additionalProperties: false
+            required: [termId, type, displayName, catalogVersionId, termVersion]
+            properties:
+              termId:
+                type: string
+                pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+              type:
+                $ref: '#/components/schemas/TaxonomyType'
+              displayName:
+                type: string
+                minLength: 1
+                maxLength: 40
+              catalogVersionId:
+                type: string
+                pattern: '^txc_[A-Za-z0-9_-]{4,92}$'
+              termVersion:
+                type: integer
+                minimum: 1
         recommendation:
           $ref: '#/components/schemas/Recommendation'
         publishedAt:

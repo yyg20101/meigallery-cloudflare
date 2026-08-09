@@ -24,6 +24,7 @@ import { adminAppConversationRoutes } from './app-conversations'
 import { adminAppSafetyRoutes } from './app-safety'
 import { adminAppNotificationRoutes } from './app-notifications'
 import { adminAppWalletRoutes } from './app-wallets'
+import { adminAppTaxonomyRoutes } from './app-taxonomy'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -75,4 +76,5 @@ adminRoutes.route('/app/conversations', adminAppConversationRoutes)
 adminRoutes.route('/app/safety', adminAppSafetyRoutes)
 adminRoutes.route('/app/notifications', adminAppNotificationRoutes)
 adminRoutes.route('/app/wallets', adminAppWalletRoutes)
+adminRoutes.route('/app/taxonomy', adminAppTaxonomyRoutes)
 adminRoutes.route('/', adminMediaRoutes)

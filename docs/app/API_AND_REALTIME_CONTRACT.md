@@ -137,6 +137,19 @@ Search-1 以兼容新增方式把累计契约提升为 `1.13.0`，冻结并实�
 
 完整边界见 [Search-1 人物搜索与搜索历史开发基线](./SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md)。
 
+### 1.12 Taxonomy-1 局部冻结记录
+
+Taxonomy-1 以兼容新增方式把累计契约提升为 `1.14.0`，冻结并实现默认关闭的稳定分类目录与人物关联服务端边界：
+
+- `GET /api/v2/taxonomy/catalog` 只返回配置的不可变目录快照，词条使用稳定 `termId`、固定类型和 `termVersion`；合并源保留 `redirectTargetTermId`。
+- bootstrap 新增独立 `capabilities.taxonomy.catalog` 和完整 11 类型声明。目录必须同时通过运行时开关、显式 catalog ID、有效时间与 production-ready 门禁。
+- 目录响应支持 ETag 条件请求和 300 秒公共短缓存；失败不回退到 legacy 标签，不返回跨目录版本混合结果。
+- `AppPersonProfile` 兼容新增 `taxonomyTerms`。人物结构化标注绑定内容版本、目录和词条版本；发布时与人物公开投影在同一 D1 batch 中刷新。
+- legacy 值只允许 exact/alias/split_required/unsupported/pending_review 显式映射；未知值默认待复核，不能自动公开。
+- 当前不执行 `0081`、不配置环境、不导入旧标签、不实现 Nuxt/KMP 页面，不运行专项测试；Search-2 在此稳定 ID 基线上继续冻结权益筛选和保存条件。
+
+完整边界见 [Taxonomy-1 稳定分类目录与人物关联开发基线](./TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md)。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -165,7 +178,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.13.0"
+    "contractVersion": "1.14.0"
   }
 }
 ```
@@ -261,9 +274,10 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 | GET | `/api/v2/app/bootstrap` | M0 已实现：能力与发现配置 |
 | GET | `/api/v2/discovery/feed` | M0 已实现：规则推荐、热门、最新、地区筛选和游标分页；Message-2 登录请求排除本人已屏蔽人物 |
 | GET | `/api/v2/discovery/regions` | M0 已实现：当前可用地区目录 |
+| GET | `/api/v2/taxonomy/catalog` | Taxonomy-1：默认关闭的不可变稳定分类目录，支持 ETag |
 | GET | `/api/v2/discovery/popular` | 后续兼容别名；M0 使用 `feed?sort=popular` |
 | GET | `/api/v2/discovery/latest` | 后续兼容别名；M0 使用 `feed?sort=latest` |
-| GET | `/api/v2/discovery/categories` | 待标签目录冻结后实现 |
+| GET | `/api/v2/discovery/categories` | 不再单独实现；客户端统一读取 `/taxonomy/catalog` |
 | POST | `/api/v2/person-profiles/search` | Search-1：登录后按公开昵称、地区、标签搜索，正文传词并使用账号绑定游标 |
 | GET | `/api/v2/person-profiles/:profileId` | M0 已实现：公开基础详情投影 |
 | POST | `/api/v2/person-profiles/:profileId/media-access` | 待媒体授权契约冻结后实现 |
@@ -285,6 +299,15 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
   },
   "region": { "code": "cn-bj", "label": "北京市", "precision": "city" },
   "tags": [],
+  "taxonomyTerms": [
+    {
+      "termId": "txt_style_fresh",
+      "type": "style",
+      "displayName": "清新",
+      "catalogVersionId": "txc_catalog_1_0_1",
+      "termVersion": 2
+    }
+  ],
   "recommendation": {
     "mode": "rule_based",
     "reasonCode": "PREFERRED_STYLE",
@@ -323,7 +346,7 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史；高级筛选、保存条件与推荐信号仍未冻结。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
+Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`，已提供稳定分类目录和人物公开分类投影；高级筛选、保存条件与推荐信号仍由 Search-2 实现。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
 
 ## 8. 会员和目录 API
 

@@ -194,16 +194,45 @@ import {
   parseAppWalletEntryListQuery,
   requireAppWalletEnabled,
 } from '../services/app-wallet'
+import {
+  APP_TAXONOMY_CATALOG_ID,
+  APP_TAXONOMY_TYPES,
+  AppTaxonomyError,
+  getAppTaxonomyRuntimeConfig,
+  getPublicAppTaxonomyCatalog,
+  resolveAppTaxonomyCatalogCapability,
+} from '../services/app-taxonomy'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 appV2Routes.use('*', async (c, next) => {
   await next()
-  c.header('Cache-Control', 'no-store')
+  if (c.req.path.endsWith('/taxonomy/catalog') && (c.res.status === 200 || c.res.status === 304)) {
+    c.header('Cache-Control', 'public, max-age=300, must-revalidate')
+  }
+  else {
+    c.header('Cache-Control', 'no-store')
+  }
 })
 
 appV2Routes.get('/app/bootstrap', async (c) => {
   return appApiSuccess(c, await bootstrapConfig(c.env))
+})
+
+appV2Routes.get('/taxonomy/catalog', async (c) => {
+  try {
+    const catalog = await getPublicAppTaxonomyCatalog(
+      c.env.DB,
+      getAppTaxonomyRuntimeConfig(c.env),
+    )
+    const etag = `"taxonomy-${catalog.catalogVersionId}-${catalog.versionCode}"`
+    c.header('ETag', etag)
+    if (c.req.header('If-None-Match') === etag) return c.body(null, 304)
+    return appApiSuccess(c, catalog)
+  }
+  catch (error) {
+    return appTaxonomyError(c, error)
+  }
 })
 
 appV2Routes.route('/auth', appAuthRoutes)
@@ -1525,6 +1554,7 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   const interactionCollections = getAppInteractionCollectionRuntimeConfig(env)
   const followUpdates = getAppFollowUpdateRuntimeConfig(env)
   const personSearch = getAppPersonSearchRuntimeConfig(env)
+  const taxonomy = getAppTaxonomyRuntimeConfig(env)
   const [interactionCollectionCapabilities, followUpdatesCapability, personSearchCapabilities] = auth.enabled
     ? await Promise.all([
         resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections),
@@ -1536,6 +1566,7 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
         false,
         { profiles: false, history: false, policy: null },
       ]
+  const taxonomyCatalogCapability = await resolveAppTaxonomyCatalogCapability(env.DB, taxonomy)
   return {
     product: 'meigallery',
     appVersion: '1.0',
@@ -1544,6 +1575,9 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       search: {
         profiles: personSearchCapabilities.profiles,
         history: personSearchCapabilities.history,
+      },
+      taxonomy: {
+        catalog: taxonomyCatalogCapability,
       },
       auth: auth.enabled,
       interactions: {
@@ -1588,6 +1622,10 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       historyRecordingDefault: false,
       maxHistoryItems: personSearchCapabilities.policy?.maxHistoryItems
         ?? APP_PERSON_SEARCH_MAX_HISTORY_ITEMS,
+    },
+    taxonomy: {
+      catalogVersionId: taxonomy.catalogId || APP_TAXONOMY_CATALOG_ID,
+      supportedTypes: [...APP_TAXONOMY_TYPES],
     },
     interactionCollections: {
       policyVersion: interactionCollections.policyId || APP_INTERACTION_COLLECTION_POLICY_ID,
@@ -1664,6 +1702,13 @@ async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
       reasons: APP_SAFETY_REASONS,
     },
   }
+}
+
+function appTaxonomyError(c: Parameters<typeof appApiError>[0], error: unknown) {
+  if (error instanceof AppTaxonomyError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  throw error
 }
 
 function notificationConfig(env: Bindings) {

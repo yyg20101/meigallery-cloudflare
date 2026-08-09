@@ -92,10 +92,12 @@ erDiagram
 | 表 | 关键字段 | 说明 |
 |----|----------|------|
 | `profile_public_projections` | `profile_id`, `person_id`, 公开展示快照、资格状态、地区、排序分数、`source_gallery_id`, `projection_version`, `published_at` | M0 已创建的可重建公开只读投影；不是认证/授权权威表 |
-| `taxonomy_terms` | `id`, `type`, `parent_id`, `status`, `version` | 标签、地区和分类 stable term |
-| `taxonomy_aliases` | `term_id`, `locale`, `alias`, `status` | 搜索别名和兼容名称 |
-| `taxonomy_mappings` | `source`, `source_term`, `target_term_id`, `mapping_version` | MeiGallery/外部值映射 |
-| `taxonomy_catalog_versions` | `id`, `region`, `status`, `effective_at` | 不可变目录发布版本 |
+| `app_taxonomy_terms` | `term_id`, `type`, `parent_term_id`, `lifecycle_status`, `version` | Taxonomy-1 标签、地区和分类稳定词条编辑事实 |
+| `app_taxonomy_term_revisions` | `term_id`, `version`, 修订快照、`change_reason` | 不可变词条修订历史，别名当前随修订以受约束 JSON 保存 |
+| `app_taxonomy_legacy_mappings` | 来源命名空间/类型/规范值、`mapping_type`, `target_term_id`, 规则版本 | MeiGallery/外部值显式映射；未知值默认待复核 |
+| `app_taxonomy_catalogs` / `app_taxonomy_catalog_items` | `catalog_id`, `version_code`, `effective_at`, 不可变条目快照 | Taxonomy-1 不可变目录发布版本和合并重定向 |
+| `person_profile_taxonomy_assignments` | `profile_id`, `profile_version`, `catalog_id`, `term_id`, `catalog_term_version` | 人物内容版本结构化标注 |
+| `profile_public_taxonomy_terms` | `profile_id`, `term_id`, `taxonomy_type`, `catalog_id` | 随人物发布原子刷新的公开分类投影 |
 | `viewer_interactions` | `account_id`, `profile_id`, `type`, `idempotency_key` | 喜欢/关注/收藏 |
 | `favorite_folders` | `id`, `account_id`, `name`, `sort_order` | 收藏夹 |
 | `favorite_folder_items` | `folder_id`, `profile_id`, `created_at` | 收藏归档 |

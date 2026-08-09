@@ -6,7 +6,7 @@ Feature ID：A-04
 
 App 版本：1.0
 
-状态：需求已细化，首发地区目录与敏感分类政策待决策门禁关闭
+状态：Taxonomy-1 服务端开发基线已完成，首发真实目录、细粒度权限与敏感分类政策待决策门禁关闭
 
 ## 2. Epic
 
@@ -34,6 +34,12 @@ App 版本：1.0
 - 减少重复、错拼、自由文本和过度精确地区造成的数据质量风险。
 - 允许分类调整而不破坏旧客户端、已保存筛选和历史资料。
 - 为多语言、多地区和推荐解释保留稳定扩展边界。
+
+### Taxonomy-1 开发基线（2026-08-09）
+
+`0081_app_taxonomy_catalog.sql` 与 App API v2 `1.14.0` 已实现 production 默认关闭的稳定词条、不可变修订/目录快照、合并重定向、legacy 显式映射、人物内容版本关联、发布资格门禁和公开分类投影。公共目录支持 ETag 条件读取，人物公开 DTO 兼容新增 `taxonomyTerms`；后台已提供词条草稿/复核/生命周期/合并、目录生成发布、映射维护和人物标注服务端 API。
+
+本阶段不 seed 真实词条、不导入 MeiGallery 旧标签、不修改 Wrangler、不执行 migration，也不启用现有环境。`restricted` 敏感词在隐私/法务升级审批完成前不能激活；细粒度权限、影响预览、多语言、灰度/回滚、迁移批次、Nuxt/KMP 页面和专项验证后置。完整工程边界见 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
 
 ## 4. User Personas
 

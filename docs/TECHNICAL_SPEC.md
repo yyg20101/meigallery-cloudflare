@@ -160,6 +160,22 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整边界见 `docs/app/SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md`。
 
+### Taxonomy-1 稳定目录与人物关联 `[服务端开发完成，默认关闭]`
+
+`0081_app_taxonomy_catalog.sql` 和 App API v2 `1.14.0` 建立 Search-2 依赖的稳定分类事实与公开投影基线：
+
+- `app_taxonomy_terms` 保存稳定 `term_id` 和编辑态事实，`app_taxonomy_term_revisions` 保存每次变更后的不可变修订；固定支持 11 类 taxonomy，不允许后台任意扩 schema 类型。
+- 词条使用 `draft/pending_review/active/hidden/deprecated/merged/archived` 生命周期。创建/编辑校验 slug、父子类型、层级循环和同类型名称/别名冲突；merged 源 ID 永久保留并指向同类型 active 目标。
+- `restricted` 敏感词在隐私/法务升级审批未实现前不能进入 active；只有 `active + public + standard + allowed_for_profile` 可用于新人物标注。
+- `app_taxonomy_catalogs/items` 从当前有效词条生成不可变快照。公开 `GET /api/v2/taxonomy/catalog` 只在独立 capability 就绪时返回配置目录，支持基于 `catalogVersionId + versionCode` 的 ETag 和 300 秒公共短缓存。
+- `app_taxonomy_legacy_mappings` 只允许 `exact/alias/split_required/unsupported/pending_review` 显式类型；未知值默认待复核，不能自动公开或进入搜索/推荐。
+- `person_profile_taxonomy_assignments` 绑定人物内容版本、目录和词条版本。设置分类与普通资料编辑一样创建新内容版本、重置认证/发布草稿状态并保留线上投影；普通资料编辑会显式继承当前结构化分类。
+- 人物发布新增 `TAXONOMY_ASSIGNMENTS_VALID` 门禁，并在同一 D1 batch 中刷新 `profile_public_projections` 与 `profile_public_taxonomy_terms`；公开 DTO 兼容新增 `taxonomyTerms`，legacy `tags` 只保留迁移期展示兼容。
+- 后台 `/api/admin/app/taxonomy` 提供词条草稿/审核/生命周期/合并、目录快照/发布和旧标签映射 API；`PUT /api/admin/app/persons/:personId/taxonomy` 提供人物结构化标注。所有修改要求管理员认证、独立后台能力开关、乐观版本并写审计。
+- 当前未配置 `APP_TAXONOMY_*`、未执行 `0081`、未导入 legacy 标签、未实现 Nuxt/KMP 页面，也未运行 migration/专项测试/远端联调；细粒度权限、敏感升级审批、影响预览、多语言、灰度/回滚和迁移批次后置。
+
+完整边界见 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
+
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
 `0071_app_membership_catalog_and_grants.sql` 和 App API v2 `1.4.0` 建立 Membership-1 最小闭环：
@@ -409,6 +425,7 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/invites/:code/status` | 公开校验邀请码状态，只返回可展示字段和失败原因，不泄露 `code_hash` |
 | GET | `/api/settings/public` | 公开站点设置和过滤后的首页广告数组 `home_ads` |
 | GET | `/api/v2/app/bootstrap` | App 1.0 能力开关与发现配置；M0 只读契约 |
+| GET | `/api/v2/taxonomy/catalog` | 默认关闭：当前不可变公开分类目录，支持 ETag 条件读取 |
 | GET | `/api/v2/discovery/feed` | 只读公开人物投影；推荐/热门/最新、地区筛选和不透明游标 |
 | GET | `/api/v2/discovery/regions` | 只统计当前仍具公开资格的人物地区 |
 | GET | `/api/v2/person-profiles/:profileId` | 按稳定公开资料 ID 重新校验并返回基础详情 |
@@ -484,6 +501,7 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/persons` | 从明确来源图库创建不可见人物候选 | admin+ |
 | GET | `/api/admin/app/persons/:personId` | 人物供给工作台、发布门禁和审批历史 | admin+ |
 | PATCH | `/api/admin/app/persons/:personId` | 以 `expectedVersion` 创建新内容草稿版本，不覆盖线上投影 | admin+ |
+| PUT | `/api/admin/app/persons/:personId/taxonomy` | 以稳定目录/词条 ID 创建新结构化分类版本，不覆盖线上投影 | admin+ |
 | POST | `/api/admin/app/persons/:personId/authorization` | 为当前内容版本登记 App 公开用途授权 | admin+ |
 | POST | `/api/admin/app/persons/:personId/authorization/revoke` | 撤销授权并立即暂停引用它的公开投影 | admin+ |
 | POST | `/api/admin/app/persons/:personId/verification/submit` | 提交当前内容版本认证复核 | admin+ |
@@ -492,6 +510,15 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/persons/:personId/publication/submit` | 全门禁预检后提交发布复核 | admin+ |
 | POST | `/api/admin/app/persons/:personId/publication/decision` | 发布时再次校验门禁并单向写公开投影，或退回草稿 | admin+ |
 | POST | `/api/admin/app/persons/:personId/publication/pause` | 立即暂停公开投影，保留版本和审批历史 | admin+ |
+| GET/POST | `/api/admin/app/taxonomy/terms` | 分类词条分页与草稿创建；独立后台能力默认关闭 | admin+ |
+| GET/PATCH | `/api/admin/app/taxonomy/terms/:termId` | 词条详情、修订/目录引用与乐观版本编辑 | admin+ |
+| POST | `/api/admin/app/taxonomy/terms/:termId/submit` | 提交分类词条复核 | admin+ |
+| POST | `/api/admin/app/taxonomy/terms/:termId/decision` | 分类审核通过或退回；敏感升级审批未完成时拒绝 restricted | admin+ |
+| POST | `/api/admin/app/taxonomy/terms/:termId/lifecycle` | hide/deprecate/archive/restore 生命周期操作 | admin+ |
+| POST | `/api/admin/app/taxonomy/terms/:termId/merge` | 同类型词条合并并保留稳定重定向 | admin+ |
+| GET/POST | `/api/admin/app/taxonomy/catalogs` | 目录历史与不可变快照生成 | admin+ |
+| GET/POST | `/api/admin/app/taxonomy/catalogs/:catalogId[/publish]` | 查看或发布目录快照 | admin+ |
+| GET/PUT | `/api/admin/app/taxonomy/legacy-mappings` | 旧标签显式映射查询与维护 | admin+ |
 | GET | `/api/admin/cases` | 真实案例列表（含草稿） | admin+ |
 | POST | `/api/admin/cases` | 创建真实案例草稿 | admin+ |
 | GET | `/api/admin/cases/:id` | 真实案例详情 | admin+ |
@@ -1350,6 +1377,7 @@ queued → processing → completed
 - **Interaction-2 服务端开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 接入、配置、migration、专项测试与远端联调后置。
 - **Interaction-3 服务端开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 接入、配置、migration、专项测试与远端联调后置。
 - **Search-1 服务端开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 接入、高级筛选、配置、migration、专项测试与远端联调后置。
+- **Taxonomy-1 服务端开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；Nuxt/KMP 接入、真实目录、配置、migration、专项测试与远端联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
 

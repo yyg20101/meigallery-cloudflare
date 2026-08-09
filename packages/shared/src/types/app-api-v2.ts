@@ -1,7 +1,8 @@
 /**
  * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
  * Message-2 安全、Safety-2 申诉、Message-3 站内通知、Wallet-1 与
- * Interaction-2 收藏历史、Interaction-3 关注更新与 Search-1 搜索契约。
+ * Interaction-2 收藏历史、Interaction-3 关注更新、Search-1 搜索与
+ * Taxonomy-1 稳定分类目录契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -13,7 +14,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.13.0'
+  contractVersion: '1.14.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -50,6 +51,9 @@ export interface AppBootstrapConfig {
     search: {
       profiles: boolean
       history: boolean
+    }
+    taxonomy: {
+      catalog: boolean
     }
     auth: boolean
     interactions: {
@@ -92,6 +96,10 @@ export interface AppBootstrapConfig {
     maxQueryLength: number
     historyRecordingDefault: false
     maxHistoryItems: number
+  }
+  taxonomy: {
+    catalogVersionId: string
+    supportedTypes: AppTaxonomyType[]
   }
   interactionCollections: {
     policyVersion: string
@@ -177,6 +185,46 @@ export interface AppBootstrapConfig {
     reportTargets: AppSafetyReportTargetType[]
     reasons: AppSafetyReason[]
   }
+}
+
+export type AppTaxonomyType =
+  | 'region_scope'
+  | 'region_group'
+  | 'city_country'
+  | 'identity'
+  | 'personality'
+  | 'style'
+  | 'occupation'
+  | 'hair'
+  | 'clothing'
+  | 'scene'
+  | 'content_type'
+
+export type AppTaxonomyCatalogState = 'development' | 'published'
+export type AppTaxonomyPublicState = 'active' | 'deprecated' | 'redirect'
+
+export interface AppTaxonomyTerm {
+  termId: string
+  type: AppTaxonomyType
+  parentTermId: string | null
+  displayName: string
+  slug: string
+  aliases: string[]
+  publicState: AppTaxonomyPublicState
+  redirectTargetTermId: string | null
+  allowedForProfile: boolean
+  sortOrder: number
+  termVersion: number
+}
+
+export interface AppTaxonomyCatalog {
+  catalogVersionId: string
+  versionCode: string
+  state: AppTaxonomyCatalogState
+  productionReady: boolean
+  effectiveAt: string
+  minimumClientVersion: string
+  terms: AppTaxonomyTerm[]
 }
 
 export interface AppDeviceDescriptor {
@@ -701,6 +749,14 @@ export interface AppPersonRegion {
   precision: 'city' | 'province' | 'country' | 'broad'
 }
 
+export interface AppPersonTaxonomyTerm {
+  termId: string
+  type: AppTaxonomyType
+  displayName: string
+  catalogVersionId: string
+  termVersion: number
+}
+
 export interface AppPersonProfile {
   profileId: string
   personId: string
@@ -717,6 +773,7 @@ export interface AppPersonProfile {
   }
   region: AppPersonRegion | null
   tags: string[]
+  taxonomyTerms: AppPersonTaxonomyTerm[]
   recommendation: {
     mode: 'rule_based'
     reasonCode: string

@@ -153,7 +153,7 @@ APP_FOLLOW_UPDATES_PRODUCTION_READY
 
 统一后置到“全部开发完成”之后：
 
-1. 在 `meigallery-client` 按当前累计 `1.13.0` 契约接入 DTO、Repository、关注更新页面和站内通知跳转。
+1. 在 `meigallery-client` 按当前累计 `1.14.0` 契约接入 DTO、Repository、关注更新页面和站内通知跳转。
 2. 选择隔离环境策略版本并配置运行门禁。
 3. 执行本地/远端 migration、D1 专项用例、契约兼容检查、KMP UI 回归和端到端联调。
 4. 独立评审 production 策略、模板审批、通知保留期与上线授权；不得由 development 策略直接推导生产启用。

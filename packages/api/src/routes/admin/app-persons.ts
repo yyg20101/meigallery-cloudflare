@@ -11,6 +11,7 @@ import {
   reviewPersonVerification,
   revokePersonAuthorization,
   revokePersonVerification,
+  setPersonTaxonomyAssignments,
   submitPersonPublication,
   submitPersonVerification,
   updatePersonCandidate,
@@ -20,10 +21,16 @@ import {
   type ReviewPublicationInput,
   type ReviewVerificationInput,
   type RevokeWorkflowRecordInput,
+  type SetPersonTaxonomyAssignmentsInput,
   type SubmitPublicationInput,
   type SubmitVerificationInput,
   type UpdatePersonProfileInput,
 } from '../../services/app-person-supply'
+import {
+  AppTaxonomyError,
+  getAppTaxonomyRuntimeConfig,
+  requireAppTaxonomyAdminEnabled,
+} from '../../services/app-taxonomy'
 import { errorJson } from '../../utils/api-error'
 
 export const adminAppPersonRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -71,6 +78,23 @@ adminAppPersonRoutes.patch('/:personId', async (c) => {
       c.get('userId')!,
     )
     return c.json({ message: '人物草稿已更新；现有公开版本未被静默覆盖', data })
+  } catch (error) {
+    return handlePersonSupplyError(c, error)
+  }
+})
+
+adminAppPersonRoutes.put('/:personId/taxonomy', async (c) => {
+  try {
+    const config = getAppTaxonomyRuntimeConfig(c.env)
+    requireAppTaxonomyAdminEnabled(config)
+    const data = await setPersonTaxonomyAssignments(
+      c.env.DB,
+      c.req.param('personId'),
+      await c.req.json<SetPersonTaxonomyAssignmentsInput>(),
+      c.get('userId')!,
+      { requireProductionReady: config.requireProductionReady },
+    )
+    return c.json({ message: '人物结构化分类已更新；现有公开版本未被静默覆盖', data })
   } catch (error) {
     return handlePersonSupplyError(c, error)
   }
@@ -190,6 +214,9 @@ adminAppPersonRoutes.post('/:personId/publication/pause', async (c) => {
 
 function handlePersonSupplyError(c: Parameters<typeof errorJson>[0], error: unknown) {
   if (error instanceof PersonSupplyError) {
+    return errorJson(c, error.status, error.message, { code: error.code, detail: error.detail })
+  }
+  if (error instanceof AppTaxonomyError) {
     return errorJson(c, error.status, error.message, { code: error.code, detail: error.detail })
   }
   throw error

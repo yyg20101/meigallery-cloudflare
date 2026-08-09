@@ -31,7 +31,7 @@
 - 已在同级独立仓库 `meigallery-client` 创建 KMP + Compose Multiplatform 最小技术脚手架；客户端与本仓库继续通过版本化契约协作，不放入当前 pnpm monorepo。
 - 客户端当前锁定 Kotlin 2.4.10、Compose Multiplatform 1.11.1、AGP 9.0.1、Gradle 9.6.1、JDK 21，Android `minSdk = 26`、`compileSdk/targetSdk = 36`。
 - 四个共享模块的 Android Host Test、Android Debug APK 和 iOS Simulator Kotlin/Native 编译均已通过；iOS Framework 本地链接仍被尚未接受的 Xcode 许可拦截，正式链接继续由 macOS CI 门禁验证。
-- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.13.0`，包含 production 默认关闭的 Auth-1、Interaction-1/2/3、Search-1、Membership-1/2、Message-1/2/3、Safety-2 独立复核与 Wallet-1 契约；Interaction-2/3 与 Search-1 当前只完成服务端开发代码，客户端、配置与验证后置，媒体访问仍按域冻结。
+- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.14.0`，包含 production 默认关闭的 Auth-1、Interaction-1/2/3、Search-1、Taxonomy-1、Membership-1/2、Message-1/2/3、Safety-2 独立复核与 Wallet-1 契约；Interaction-2/3、Search-1 与 Taxonomy-1 当前只完成服务端开发代码，客户端、配置与验证后置，媒体访问仍按域冻结。
 - 已新增 `0067_app_public_profile_projection.sql` 空读投影和 App API v2 查询实现，强制 `verified + published + authorization active/unexpired + visible + source gallery published`；migration 不含 seed、回填或 legacy 自动映射，尚未执行生产 migration 或部署生产路由。
 - KMP 客户端 M0 公共发现纵向切片已完成：capability、地区目录、推荐/热门/最新、地区筛选、游标分页、公开人物卡和基础详情均已接通；点击卡片会按稳定公开 ID 重新请求详情并复核最新公开资格，不直接信任列表快照。Android 模拟器已回归筛选、排序、详情错误/重试/成功和长列表，未发现崩溃、文字溢出或底部导航遮挡。正式应用 ID、会员、消息、钱包和媒体访问继续受各自门禁约束。
 - 已完成 M1 人物供给最小开发闭环：`0068_app_person_supply_workflow.sql` 创建空的 Person、资料、用途授权、认证和发布复核权威表；内容版本与并发锁版本分离，审批绑定具体内容版本，发布动作单向生成公开投影，暂停或撤销会立即使投影不可见。
@@ -52,6 +52,8 @@
 - 关注通知在用户拉取站内通知时按账号惰性投影，依赖既有 Outbox 唯一约束去重；投递前再次校验当前关注、屏蔽、发布、认证、授权、有效期和来源图库状态。取消关注或资料失效后的待投递项会被抑制，目标真人及运营端不会收到关注者身份。当前未修改 Wrangler、未执行 `0079`、未运行专项测试或 KMP/远端联调，所有现有环境继续返回 `followUpdates=false`；完整边界见 `docs/app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
 - 已完成 Search-1 服务端开发基线：`0080_app_person_search_and_history.sql` 新增人物搜索策略、默认关闭的账号私有历史设置和到期历史表；App API v2 `1.13.0` 新增 `POST /person-profiles/search`、搜索历史设置/记录/分页/逐条删除/全部清除、独立 capability 与 bootstrap 配置，并接入与 capability 解耦、受策略控制的到期分批清理。搜索只读取审核公开昵称、地区和标签，排除本人已屏蔽人物；搜索词通过请求正文传输，游标只保存哈希，不进入审计或分析事件。
 - Search-1 当前未修改 Wrangler、未执行 `0080`、未运行专项测试或 KMP/远端联调，所有现有环境继续返回 `search.profiles=false`、`search.history=false`。高级筛选、taxonomy 稳定 ID、保存条件、热门词和联想词进入 Search-2；完整边界见 `docs/app/SEARCH_1_PERSON_SEARCH_HISTORY_INTEGRATION.md`。
+- 已完成 Taxonomy-1 服务端开发基线：`0081_app_taxonomy_catalog.sql` 新增稳定词条、不可变修订与目录快照、合并重定向、legacy 待复核映射、人物内容版本关联和公开分类投影；App API v2 `1.14.0` 新增默认关闭的 `GET /taxonomy/catalog`、独立 capability、ETag 与人物 `taxonomyTerms`，后台新增词条审核/生命周期/合并、目录生成发布、兼容映射及人物结构化标注 API。人物发布会原子刷新公开资料与分类投影，未设置分类当前仍可发布。
+- Taxonomy-1 当前未修改 Wrangler、未执行 `0081`、未导入 legacy 标签、未实现 Nuxt/KMP 页面，也未运行专项测试或远端联调，所有现有环境继续返回 `taxonomy.catalog=false`。细粒度分类权限、敏感词升级审批、影响预览、灰度/回滚和迁移批次后置；Search-2 现在可以基于稳定 taxonomy ID 继续冻结筛选与保存条件，完整边界见 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
 - 已完成 Membership-1 跨仓开发闭环：`0071_app_membership_catalog_and_grants.sql` 建立版本化五级目录、typed entitlement、不可变 App grant、追加式撤销和管理员幂等请求；开发目录包含心遇、心悦、心知、心契、心耀及 `rank=10/20/30/40/50`，七项权益全部标记为 `planned`，不产生消息、筛选、历史或收藏夹的可执行权限。
 - App API v2 `1.4.0` 已新增公共 `/membership/catalog` 和本人 `/me/entitlements`；本人等级只解析 App grant，不把旧 Web `vip/svip` 隐式映射。production/dev 的目录和后台开关均保持关闭，production 还必须同时满足运行时放行与目录 `published + production_ready` 双门禁。
 - Nuxt 用户工作台已加入独立 App 会员面板，覆盖目标账号状态、五级权益、立即发放/续期预览、二次确认、幂等提交、grant 时间线和追加式撤销，并与旧 Web 会员明确隔离。KMP “我的”页已接入独立五级会员页，支持公开目录、本人权威快照、规划中标签及明确的平台运营/无支付边界；站内申请由 Membership-2 独立能力控制。
