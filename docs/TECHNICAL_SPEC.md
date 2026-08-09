@@ -188,7 +188,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `app_saved_person_filters` 只保存账号私有名称、canonical taxonomy stable ID、目录和热门/最新默认排序，不保存自由搜索词。创建使用 SHA-256 幂等标识和条件 INSERT 原子限制 `discovery.saved_filter.max`，修改/删除使用乐观版本。
 - 会员降级保留既有保存条件；列表按当前目录返回 `active/redirected/invalid` 和权限状态。删除保留最小 tombstone 并清空名称语义与词条内容，禁止旧幂等请求复活。
 - `0082` 新增不可变会员开发目录 `amc_app_1_0_search_2_dev_1`，复制五级展示与非搜索权益，只以 canonical `discovery.filter.advanced`、`discovery.saved_filter.max` 提供 Search-2 可执行值；不会自动切换目录或迁移 grant。
-- KMP 已实现结构化条件、400ms preview 防抖、服务端 entitlement、目录重定向/失效处理、保存条件 CRUD、使用前完整来源条件重验和乐观版本冲突确认。当前未配置 Search-2 策略、未执行 `0082`、未切换 taxonomy/会员目录、未实现 Nuxt 管理页面，也未运行 migration/专项测试/模拟器或远端联调；所有现有环境继续返回 `search.filters=false`、`search.savedFilters=false`。
+- KMP 已实现结构化条件、400ms preview 防抖、服务端 entitlement、目录重定向/失效处理、保存条件 CRUD、使用前完整来源条件重验和乐观版本冲突确认。Nuxt `/admin/app/search` 与 `GET /api/admin/app/search/overview` 已提供只读运营核查：只返回非敏感运行版本和聚合健康计数，不返回搜索词、条件名称或用户明细，也不能直接修改开关、切换目录或迁移 grant。当前未配置 Search-2 策略、未执行 `0082`、未切换 taxonomy/会员目录，也未运行 migration/专项测试/模拟器或远端联调；所有现有环境继续返回 `search.filters=false`、`search.savedFilters=false`。
 
 完整边界见 `docs/app/SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
 
@@ -1434,7 +1434,7 @@ queued → processing → completed
 - **Interaction-3 跨仓开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 已接入严格 transport、“更新 / 已关注 / 喜欢”关注页、取消关注回收与通知目标跳转。配置、migration、专项测试、模拟器/真机与远端联调后置，所有环境继续默认关闭。
 - **Search-1 跨仓开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 已完成严格 transport、搜索分页和账号历史全交互，配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Taxonomy-1 跨仓开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；KMP 已完成 Recommendation/Search 共用目录、缓存和 ETag 重验证；Nuxt 已完成 `ADM-TAX-01/02/03` 目录、词条和发布工作区，并在 `ADM-PER-03` 接通稳定分类标注。真实目录、配置、migration、专项测试、模拟器/真机与远端联调后置。
-- **Search-2 跨仓开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP 已完成筛选、预估、权益、保存条件和完整来源重验交互，Nuxt 管理页面、真实目录与 grant 迁移、配置、migration、专项测试、模拟器/真机与远端联调后置。
+- **Search-2 跨仓开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP 已完成筛选、预估、权益、保存条件和完整来源重验交互；Nuxt 已完成只读搜索运营核查、跨目录引用诊断和 entitlement 矩阵。真实目录与 grant 迁移、配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Recommendation-1 跨仓开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；KMP 已完成推荐 Feed、推荐解释、精选披露和本人偏好页面，配置、migration、专项测试、热度/证据决策与远端联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
