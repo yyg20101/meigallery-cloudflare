@@ -381,6 +381,37 @@ export async function setAppProfileBlock(
             AND block.mutation_token = ?
         )
     `).bind(accountId, profileId, accountId, profileId, nextVersion, mutationToken))
+    statements.push(db.prepare(`
+      DELETE FROM app_favorite_folder_items
+      WHERE account_id = ? AND profile_id = ?
+        AND EXISTS (
+          SELECT 1 FROM app_profile_blocks block
+          WHERE block.account_id = ? AND block.profile_id = ?
+            AND block.state = 'blocked' AND block.version = ?
+            AND block.mutation_token = ?
+        )
+    `).bind(accountId, profileId, accountId, profileId, nextVersion, mutationToken))
+    statements.push(db.prepare(`
+      UPDATE app_view_history_preferences
+      SET version = version + 1, mutation_token = ?, updated_at = ?
+      WHERE account_id = ?
+        AND EXISTS (
+          SELECT 1 FROM app_profile_blocks block
+          WHERE block.account_id = ? AND block.profile_id = ?
+            AND block.state = 'blocked' AND block.version = ?
+            AND block.mutation_token = ?
+        )
+    `).bind(mutationToken, nowIso, accountId, accountId, profileId, nextVersion, mutationToken))
+    statements.push(db.prepare(`
+      DELETE FROM app_profile_view_history
+      WHERE account_id = ? AND profile_id = ?
+        AND EXISTS (
+          SELECT 1 FROM app_profile_blocks block
+          WHERE block.account_id = ? AND block.profile_id = ?
+            AND block.state = 'blocked' AND block.version = ?
+            AND block.mutation_token = ?
+        )
+    `).bind(accountId, profileId, accountId, profileId, nextVersion, mutationToken))
     const conversation = await db.prepare(`
       SELECT id, last_sequence
       FROM app_conversations

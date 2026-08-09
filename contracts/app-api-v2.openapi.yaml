@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.10.0
+  version: 1.11.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -11,7 +11,9 @@ info:
     会员申请本身不产生 grant 或 entitlement，只有管理员正式发放成功后才显示已发放。
     Message-3 新增 HTTP pull 站内通知、服务端未读数、已读审计和可选分类偏好；通知只保存审核过的固定文案，
     受控动作打开时必须重新校验权威业务状态。Wallet-1 新增本人金币余额、追加式明细与分录详情；金币只记录管理员独立复核后的单笔调整，
-    不开放购买、消费、转赠、兑换、提现或支付。系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
+    不开放购买、消费、转赠、兑换、提现或支付。Interaction-2 以默认关闭方式新增多文件夹收藏和本人浏览历史；
+    收藏不等于喜欢或匹配，历史默认不记录且必须携带当前偏好版本写入。搜索历史、关注更新流、推荐信号、
+    系统推送、实时通道、媒体消息、账号/金币申诉和媒体访问仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -764,6 +766,367 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v2/me/favorites:
+    get:
+      tags: [Interaction]
+      operationId: listAppFavorites
+      summary: 获取本人全部收藏聚合列表
+      description: 同一人物位于多个收藏夹时只返回一项，并附当前全部文件夹 ID；失效资料只返回最小占位。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 本人全部收藏
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/favorite-folders:
+    get:
+      tags: [Interaction]
+      operationId: listAppFavoriteFolders
+      summary: 获取本人收藏夹与当前额度
+      description: 首次读取会建立不可删除的空默认收藏夹；不会创建任何收藏关系。
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 收藏夹、已用数量和当前可执行额度
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteFolderCollectionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/favorite-folders/{folderId}:
+    put:
+      tags: [Interaction]
+      operationId: createAppFavoriteFolder
+      summary: 使用客户端随机稳定 ID 幂等创建自定义收藏夹
+      description: 创建数量由当前可执行 favorite.folder_count entitlement 控制；会员降级不会删除既有收藏夹。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FavoriteFolderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FavoriteFolderCreateRequest'
+      responses:
+        '201':
+          description: 新建或同 ID 同内容重放后的收藏夹
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteFolderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    patch:
+      tags: [Interaction]
+      operationId: updateAppFavoriteFolder
+      summary: 条件重命名或调整本人自定义收藏夹顺序
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FavoriteFolderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FavoriteFolderUpdateRequest'
+      responses:
+        '200':
+          description: 更新后的收藏夹
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteFolderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Interaction]
+      operationId: deleteAppFavoriteFolder
+      summary: 条件删除本人自定义收藏夹
+      description: 默认收藏夹不可删除；响应区分被移除条目数与因此失去全局收藏状态的人物数。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FavoriteFolderId'
+        - name: expectedVersion
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: 删除影响摘要；重复删除返回 deleted=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteFolderDeleteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/favorite-folders/{folderId}/items:
+    get:
+      tags: [Interaction]
+      operationId: listAppFavoriteFolderItems
+      summary: 分页获取本人指定收藏夹条目
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FavoriteFolderId'
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 文件夹内收藏人物
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/favorite-folders/{folderId}/items/{profileId}:
+    put:
+      tags: [Interaction]
+      operationId: addAppFavoriteFolderItem
+      summary: 幂等加入本人指定收藏夹
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FavoriteFolderId'
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 人物的全局收藏状态与全部所在文件夹
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Interaction]
+      operationId: removeAppFavoriteFolderItem
+      summary: 幂等移出本人指定收藏夹
+      description: 仅移除当前文件夹；人物仍在其他文件夹时继续保持全局收藏。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/FavoriteFolderId'
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 移除后的全局收藏状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/view-history/settings:
+    get:
+      tags: [Interaction]
+      operationId: getAppViewHistorySettings
+      summary: 获取本人浏览历史开关、版本与当前保留权益
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 默认 recordingEnabled=false；未就绪权益以状态返回，不伪造天数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewHistorySettingsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Interaction]
+      operationId: updateAppViewHistorySettings
+      summary: 使用 expectedVersion 开启或关闭本人浏览历史记录
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViewHistorySettingsUpdateRequest'
+      responses:
+        '200':
+          description: 更新后的权威设置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewHistorySettingsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/view-history:
+    get:
+      tags: [Interaction]
+      operationId: listAppViewHistory
+      summary: 分页获取本人未到期浏览历史
+      description: 当前会员保留天数只会进一步缩短可见窗口；升级不会使此前已到期记录重新出现。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 本人浏览历史
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewHistoryListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/view-history/clear:
+    post:
+      tags: [Interaction]
+      operationId: clearAppViewHistory
+      summary: 原子清空本人历史并使旧写请求失效
+      description: 可同时关闭后续记录；无论是否关闭都会提升设置版本，防止清除前的在途请求重新写回。
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViewHistoryClearRequest'
+      responses:
+        '200':
+          description: 清除数量与新设置版本
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewHistoryClearResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/view-history/{profileId}:
+    delete:
+      tags: [Interaction]
+      operationId: deleteAppViewHistoryItem
+      summary: 幂等删除本人单条浏览历史并使旧版本写请求失效
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 删除结果；不存在时 deleted=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewHistoryDeleteResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/me/blocks:
     get:
       tags: [Safety]
@@ -1251,6 +1614,115 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/v2/person-profiles/{profileId}/favorite:
+    get:
+      tags: [Interaction]
+      operationId: getAppFavoriteState
+      summary: 获取本人对当前可用人物的收藏状态与所在文件夹
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 当前权威收藏状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Interaction]
+      operationId: favoriteAppPersonProfile
+      summary: 幂等收藏当前可用人物到默认收藏夹
+      description: 收藏与喜欢、关注完全独立，不创建匹配、话题或目标侧通知。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 收藏后的权威状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Interaction]
+      operationId: unfavoriteAppPersonProfile
+      summary: 幂等取消全局收藏
+      description: 移除该人物在本人全部收藏夹中的关系；即使资料失效也允许清理。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      responses:
+        '200':
+          description: 取消后的权威状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteMutationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/person-profiles/{profileId}/view-history:
+    post:
+      tags: [Interaction]
+      operationId: recordAppProfileView
+      summary: 详情成功呈现后幂等记录本人一次有效浏览
+      description: >-
+        卡片曝光、预取或详情失败不得调用。viewId 用于最近请求重放去重，expectedHistoryVersion
+        绑定当前显式开启的历史设置；清除或关闭会提升版本并使旧请求失败。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProfileId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViewHistoryRecordRequest'
+      responses:
+        '200':
+          description: 记录或同 viewId 重放后的权威结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViewHistoryRecordResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/notifications:
     get:
       tags: [Notification]
@@ -1517,7 +1989,7 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.10.0
+        const: 1.11.0
   parameters:
     ProfileId:
       name: profileId
@@ -1526,6 +1998,13 @@ components:
       schema:
         type: string
         pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+    FavoriteFolderId:
+      name: folderId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^ff_[A-Za-z0-9_-]{1,93}$'
     ListLimit:
       name: limit
       in: query
@@ -1614,6 +2093,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: 请求结构正确，但名称或业务内容不满足约束
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     TooManyRequests:
       description: 新话题日额度已用完或发送频率过高
       content:
@@ -1651,7 +2136,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.10.0
+          const: 1.11.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -3235,7 +3720,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, capabilities, discovery, auth, membershipApplications, messaging, notifications, wallet, safety]
+      required: [product, appVersion, capabilities, discovery, interactionCollections, auth, membershipApplications, messaging, notifications, wallet, safety]
       properties:
         product:
           type: string
@@ -3264,10 +3749,8 @@ components:
                   type: boolean
                 favorite:
                   type: boolean
-                  const: false
                 history:
                   type: boolean
-                  const: false
             membership:
               type: object
               additionalProperties: false
@@ -3321,6 +3804,26 @@ components:
             maxPageSize:
               type: integer
               const: 40
+        interactionCollections:
+          type: object
+          additionalProperties: false
+          required: [policyVersion, defaultFolderLabel, maxFolderNameLength, maxItemsPerFolder, historyRecordingDefault]
+          properties:
+            policyVersion:
+              type: string
+              pattern: '^icp_[A-Za-z0-9_-]{1,92}$'
+            defaultFolderLabel:
+              type: string
+              const: 默认收藏
+            maxFolderNameLength:
+              type: integer
+              const: 30
+            maxItemsPerFolder:
+              type: integer
+              const: 500
+            historyRecordingDefault:
+              type: boolean
+              const: false
         auth:
           type: object
           additionalProperties: false
@@ -4017,6 +4520,381 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/SafetyAppealDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    FavoriteFolderType:
+      type: string
+      enum: [default, custom]
+    FavoriteFolderSummary:
+      type: object
+      additionalProperties: false
+      required: [folderId, type, name, sortOrder, version, itemCount, createdAt, updatedAt]
+      properties:
+        folderId:
+          type: string
+          pattern: '^ff_[A-Za-z0-9_-]{1,93}$'
+        type:
+          $ref: '#/components/schemas/FavoriteFolderType'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 30
+        sortOrder:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        version:
+          type: integer
+          minimum: 1
+        itemCount:
+          type: integer
+          minimum: 0
+          maximum: 500
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    FavoriteFolderCollection:
+      type: object
+      additionalProperties: false
+      required: [folders, customFolderCount, customFolderLimit, canCreateCustomFolder]
+      properties:
+        folders:
+          type: array
+          maxItems: 101
+          items:
+            $ref: '#/components/schemas/FavoriteFolderSummary'
+        customFolderCount:
+          type: integer
+          minimum: 0
+          maximum: 100
+        customFolderLimit:
+          type: integer
+          minimum: 0
+          maximum: 100
+        canCreateCustomFolder:
+          type: boolean
+    FavoriteFolderCollectionResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/FavoriteFolderCollection'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    FavoriteFolderCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 30
+    FavoriteFolderUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      anyOf:
+        - required: [name]
+        - required: [sortOrder]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 30
+        sortOrder:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+    FavoriteFolderResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/FavoriteFolderSummary'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    FavoriteFolderDeleteResult:
+      type: object
+      additionalProperties: false
+      required: [folderId, deleted, removedItemCount, removedGlobalFavoriteCount]
+      properties:
+        folderId:
+          type: string
+          pattern: '^ff_[A-Za-z0-9_-]{1,93}$'
+        deleted:
+          type: boolean
+        removedItemCount:
+          type: integer
+          minimum: 0
+          maximum: 500
+        removedGlobalFavoriteCount:
+          type: integer
+          minimum: 0
+          maximum: 500
+    FavoriteFolderDeleteResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/FavoriteFolderDeleteResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    FavoriteMutationResult:
+      type: object
+      additionalProperties: false
+      required: [profileId, favorited, favoritedAt, folderIds]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        favorited:
+          type: boolean
+        favoritedAt:
+          type: [string, 'null']
+          format: date-time
+        folderIds:
+          type: array
+          maxItems: 101
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^ff_[A-Za-z0-9_-]{1,93}$'
+    FavoriteMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/FavoriteMutationResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    FavoriteListItem:
+      type: object
+      additionalProperties: false
+      required: [profileId, favoritedAt, folderIds, profile, unavailableReason]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        favoritedAt:
+          type: string
+          format: date-time
+        folderIds:
+          type: array
+          maxItems: 101
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^ff_[A-Za-z0-9_-]{1,93}$'
+        profile:
+          oneOf:
+            - $ref: '#/components/schemas/PersonProfile'
+            - type: 'null'
+        unavailableReason:
+          enum: [null, PROFILE_NOT_AVAILABLE]
+    FavoriteListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/FavoriteListItem'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    ViewHistoryEntitlementStatus:
+      type: string
+      enum: [available, required, not_ready]
+    ViewHistorySettings:
+      type: object
+      additionalProperties: false
+      required: [recordingEnabled, version, retentionDays, entitlementStatus, sourceTierId, updatedAt]
+      properties:
+        recordingEnabled:
+          type: boolean
+        version:
+          type: integer
+          minimum: 1
+        retentionDays:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 3650
+        entitlementStatus:
+          $ref: '#/components/schemas/ViewHistoryEntitlementStatus'
+        sourceTierId:
+          type: [string, 'null']
+          pattern: '^amt_[A-Za-z0-9_-]+$'
+        updatedAt:
+          type: [string, 'null']
+          format: date-time
+    ViewHistorySettingsResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ViewHistorySettings'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ViewHistorySettingsUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, recordingEnabled]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        recordingEnabled:
+          type: boolean
+    ViewHistoryRecordRequest:
+      type: object
+      additionalProperties: false
+      required: [viewId, expectedHistoryVersion]
+      properties:
+        viewId:
+          type: string
+          pattern: '^vhv_[A-Za-z0-9_-]{8,92}$'
+        expectedHistoryVersion:
+          type: integer
+          minimum: 1
+    ViewHistoryRecordResult:
+      type: object
+      additionalProperties: false
+      required: [profileId, recorded, duplicate, settingsVersion, lastViewedAt, expiresAt]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        recorded:
+          type: boolean
+        duplicate:
+          type: boolean
+        settingsVersion:
+          type: integer
+          minimum: 1
+        lastViewedAt:
+          type: [string, 'null']
+          format: date-time
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+    ViewHistoryRecordResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ViewHistoryRecordResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ViewHistoryItem:
+      type: object
+      additionalProperties: false
+      required: [profileId, firstViewedAt, lastViewedAt, viewCount, expiresAt, profile, unavailableReason]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        firstViewedAt:
+          type: string
+          format: date-time
+        lastViewedAt:
+          type: string
+          format: date-time
+        viewCount:
+          type: integer
+          minimum: 1
+        expiresAt:
+          type: string
+          format: date-time
+        profile:
+          oneOf:
+            - $ref: '#/components/schemas/PersonProfile'
+            - type: 'null'
+        unavailableReason:
+          enum: [null, PROFILE_NOT_AVAILABLE]
+    ViewHistoryListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/ViewHistoryItem'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    ViewHistoryDeleteResult:
+      type: object
+      additionalProperties: false
+      required: [profileId, deleted, settingsVersion, updatedAt]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        deleted:
+          type: boolean
+        settingsVersion:
+          type: integer
+          minimum: 2
+        updatedAt:
+          type: string
+          format: date-time
+    ViewHistoryDeleteResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ViewHistoryDeleteResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ViewHistoryClearRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, disableRecording]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        disableRecording:
+          type: boolean
+    ViewHistoryClearResult:
+      type: object
+      additionalProperties: false
+      required: [clearedCount, recordingEnabled, settingsVersion, updatedAt]
+      properties:
+        clearedCount:
+          type: integer
+          minimum: 0
+        recordingEnabled:
+          type: boolean
+        settingsVersion:
+          type: integer
+          minimum: 2
+        updatedAt:
+          type: string
+          format: date-time
+    ViewHistoryClearResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ViewHistoryClearResult'
         meta:
           $ref: '#/components/schemas/Meta'
     ViewerInteractionType:

@@ -1,6 +1,6 @@
 # 独立 App 与共享业务平台文档总览
 
-更新时间：2026-08-08
+更新时间：2026-08-09
 
 App 版本：1.0
 
@@ -17,6 +17,7 @@ App 版本：1.0
 - [Wallet-1 dev 迁移与验收 Runbook](./WALLET_1_DEV_VALIDATION_RUNBOOK.md)：定义仓库外备份、短期 manifest、部署硬门禁、迁移后只读验收、一次性写入 smoke 和事故恢复边界。
 - [Wallet-1 一次性功能验收 Runbook](./WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md)：定义一次性 D1 + 临时 Worker、机器 gate、16 类 HTTP/D1 断言、Worker → D1 自动销毁、聚合证据与恢复命令。
 - [Wallet-1 一次性 Smoke 局部决策包](./WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md)：收敛仅限合成验收的调币内控、30 天聚合证据、APAC 位置提示和两步授权文本，不关闭 production 全局决策。
+- [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)：记录 App API `1.11.0` 多文件夹收藏、显式浏览历史、拉黑联动、默认关闭门禁，以及配置和专项测试后置边界。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终状态和 169 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
 - [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、92 页/349 状态覆盖、2,284 个有效交互动作、排版与 Icon 修正、QA 结果和交付门禁。
@@ -116,6 +117,7 @@ App 版本：1.0
 | [Wallet-1 金币账本跨仓交付基线](./WALLET_1_LEDGER_INTEGRATION.md) | 本人余额/明细、追加式分录、管理员单笔调币、独立复核、完整冲正、KMP 页面和启用门禁 |
 | [Wallet-1 一次性功能验收 Runbook](./WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md) | 合成数据隔离环境、短期授权、完整 HTTP/D1 验收、自动销毁、聚合证据和失败恢复 |
 | [Wallet-1 一次性 Smoke 局部决策包](./WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md) | 合成验收专用 OQ-018/020/024 局部结论、APAC 推荐、证据保留期和确认/执行分离 |
+| [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md) | 多文件夹收藏、历史显式记录、版本化清除、拉黑联动和默认关闭门禁 |
 | [UI/UX 设计文档](./UI_UX_DESIGN.md) | 移动/桌面信息架构、关键页面、状态、文案和组件 |
 | [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) | 固化 Figma 最终文件、排版与 Icon 一致性、92 页/349 状态覆盖、原型连线、QA 和交付门禁 |
 | [Figma Design System Phase 1](./FIGMA_DESIGN_SYSTEM_PHASE1.md) | Figma 变量、跨端代码映射、Noto Sans SC 排版、基础效果与校验证据 |

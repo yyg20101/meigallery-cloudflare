@@ -113,10 +113,24 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `GET /api/v2/person-profiles/:profileId/interactions`、`PUT|DELETE .../like|follow` 和 `GET /api/v2/me/likes|follows` 全部复用 App Bearer 会话中间件，请求体不接收账号 ID。
 - PUT 通过参数化条件写入在 D1 内重新校验当前资料的认证、发布、授权时间、可见性和来源图库状态；DELETE 不依赖资料仍公开，便于用户清理已失效关系。
 - 本人列表以 `created_at DESC, profile_id ASC` 稳定分页，不透明游标绑定账号公开作用域和关系类型。资料已失效时只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不泄露历史封面、地区、标签或简介。
-- bootstrap 只在 Auth 安全配置整体可用时返回 `interactions.like=true` 和 `interactions.follow=true`；`favorite` 与 `history` 继续为 false。production 现有 Auth 开关保持关闭；dev 因内部 Safety-2 联调开启 Auth，会同时暴露既有喜欢/关注契约，但不开放注册且不改变生产上线状态。
-- 不提供按目标资料查看互动者的产品 API，不创建匹配、会话、目标侧通知、关注更新事件或推荐信号。收藏/收藏夹与历史必须在后续独立冻结，不得由当前关系表替代。
+- bootstrap 只在 Auth 安全配置整体可用时返回 `interactions.like=true` 和 `interactions.follow=true`；收藏与历史由 Interaction-2 独立门禁控制，不随 Auth 或喜欢/关注自动开启。production 现有 Auth 开关保持关闭；dev 因内部 Safety-2 联调开启 Auth，会同时暴露既有喜欢/关注契约，但不开放注册且不改变生产上线状态。
+- 不提供按目标资料查看互动者的产品 API，不创建匹配、会话、目标侧通知、关注更新事件或推荐信号。收藏/收藏夹与历史使用独立表族，不得写入当前关系表。
 
 完整跨仓边界与验收要求见 `docs/app/INTERACTION_1_CROSS_REPO_INTEGRATION.md`。
+
+### Interaction-2 收藏夹与浏览历史 `[服务端开发完成，默认关闭]`
+
+`0078_app_favorites_and_view_history.sql` 和 App API v2 `1.11.0` 建立收藏夹与浏览历史服务端开发基线：
+
+- 收藏是独立于喜欢、关注的账号私有关系，使用默认收藏夹、自定义收藏夹和条目表，不向 `app_viewer_interactions` 增加临时 `favorite` 类型。同一人物可存在于多个文件夹；全局取消收藏才移除全部文件夹关系。
+- 默认收藏夹按账号懒创建且不可删除；自定义收藏夹使用客户端随机稳定 ID 幂等创建，重命名、排序和删除要求 `expectedVersion`。文件夹数量读取可执行 `favorite.folder_count` entitlement，会员降级保留已有数据并只阻止继续超额创建。
+- 浏览历史默认关闭。用户显式开启后，详情成功呈现才可提交带 `viewId + expectedHistoryVersion` 的记录命令；卡片曝光、预取和详情失败不记录。同一人物聚合为一行，最近同 `viewId` 重放不重复计数。
+- 逐条删除与清空历史都会原子提升偏好版本并删除记录，使删除前的在途写请求失效；支持全部清除时同步关闭。列表同时检查行到期时间和当前可执行保留窗口，会员升级不会复活已过期记录。
+- 人物被屏蔽时，在既有 Safety 条件批次中清理喜欢、关注、收藏和当前可见历史，并提升历史版本；解除屏蔽不恢复任何旧关系。
+- `APP_INTERACTION_COLLECTIONS_ENABLED`、策略版本和 production-ready 是独立运行门禁；当前未加入 Wrangler 配置，全部现有环境继续返回 `favorite=false`、`history=false`。OQ-014、OQ-020 与 OQ-023 未关闭，不生成自动清理、不接推荐信号，也不把技术上限当作会员销售承诺。
+- 当前完成范围仅为服务端代码、D1 schema 和 OpenAPI；KMP 客户端、环境配置、migration 执行、专项测试与远端联调按当前开发顺序后置。
+
+完整边界见 `docs/app/INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md`。
 
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
@@ -378,6 +392,17 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/v2/me` | 默认关闭：当前账号和会员摘要 |
 | GET | `/api/v2/me/devices` | 默认关闭：本人设备列表 |
 | DELETE | `/api/v2/me/devices/:deviceId` | 默认关闭：幂等远程退出其他设备 |
+| GET/PUT/DELETE | `/api/v2/person-profiles/:profileId/favorite` | 默认关闭：本人收藏状态、加入默认收藏夹、取消全部收藏 |
+| GET | `/api/v2/me/favorites` | 默认关闭：本人全部收藏去重聚合列表 |
+| GET | `/api/v2/me/favorite-folders` | 默认关闭：本人收藏夹、条目数和当前额度 |
+| PUT/PATCH/DELETE | `/api/v2/me/favorite-folders/:folderId` | 默认关闭：幂等创建、条件编辑或删除自定义收藏夹 |
+| GET | `/api/v2/me/favorite-folders/:folderId/items` | 默认关闭：本人指定收藏夹条目分页 |
+| PUT/DELETE | `/api/v2/me/favorite-folders/:folderId/items/:profileId` | 默认关闭：幂等加入或移出指定收藏夹 |
+| GET/PUT | `/api/v2/me/view-history/settings` | 默认关闭：本人历史记录开关、版本和当前保留权益 |
+| POST | `/api/v2/person-profiles/:profileId/view-history` | 默认关闭：详情成功呈现后的版本化有效浏览记录 |
+| GET | `/api/v2/me/view-history` | 默认关闭：本人未到期浏览历史分页 |
+| POST | `/api/v2/me/view-history/clear` | 默认关闭：原子清空历史并使旧版本写请求失效 |
+| DELETE | `/api/v2/me/view-history/:profileId` | 默认关闭：幂等删除本人单条浏览历史 |
 | GET | `/api/v2/membership/catalog` | 默认关闭：Membership-1 五级开发目录与 typed entitlement |
 | GET | `/api/v2/me/entitlements` | 默认关闭：当前 App 账号的权威会员权益快照 |
 | GET | `/api/v2/me/membership-applications` | 默认关闭：本人最近会员申请与用户可见时间线 |
@@ -660,6 +685,21 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 | `app_account_security_events` | 登录、刷新、退出、重放和设备撤销安全事件 | 不保存邮箱、Token、验证码或设备安装原值 |
 
 该表族是可回滚开发基线，不替代未来经 G-01/G-03 冻结后的完整身份、隐私和数据权利模型；没有 production migration、seed 或真实同意数据。
+
+### App 互动、收藏与浏览历史表族 `[服务端开发完成，默认关闭]`
+
+`0070_app_viewer_interactions.sql` 保存 Interaction-1 喜欢/关注；`0078_app_favorites_and_view_history.sql` 另建 Interaction-2 收藏与历史表族。两者均不回填 legacy 数据，且收藏不得降级为 `app_viewer_interactions` 中的第三种关系：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_viewer_interactions` | 本人喜欢、关注私有关系 | 账号+资料+类型唯一；只允许 `like|follow` |
+| `app_interaction_collection_policies` | 收藏与历史版本化运行策略 | development/production-ready 分离；保留期、个性化和 purge 独立门禁 |
+| `app_favorite_folders` | 本人默认和自定义收藏夹 | 账号作用域 ID；默认夹唯一且不可删除；名称归一化去重；单调 version |
+| `app_favorite_folder_items` | 文件夹与人物资料关系 | 账号+文件夹+资料唯一；同一人物可属于多个文件夹 |
+| `app_view_history_preferences` | 本人历史记录开关与并发版本 | 默认关闭；mutation token 绑定清除和屏蔽联动 |
+| `app_profile_view_history` | 本人按人物聚合的浏览历史 | 账号+资料唯一；保存最近浏览、次数、最近 view ID 摘要和到期时间 |
+
+Interaction-2 策略只 seed 一条默认关闭的 development 配置，不 seed 收藏夹、收藏条目、偏好或历史。当前没有执行 `0078` migration；保留策略未决时不创建 purge 任务，也不允许 production-ready。
 
 ### App 五级会员表族 `[开发验证，默认关闭]`
 
@@ -1273,6 +1313,7 @@ queued → processing → completed
 - **Ops Hub 自动导入对接**：MeiGallery 只接收 Ops Hub 已解析好的 JSON payload；caption 触发、slug 缺省生成、图片排序和类型选择由 Ops Hub 保证，平台侧通过 Import Token、`sourceBotKey`、payload 校验和幂等约束兜底。
 - **生产域名**：Web 站点 `616618.xyz`，API 服务 `api.616618.xyz`。
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
+- **Interaction-2 服务端开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 接入、配置、migration、专项测试与远端联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
 

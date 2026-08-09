@@ -2,9 +2,9 @@
 
 App 版本：1.0
 
-日期：2026-08-08
+日期：2026-08-09
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -99,6 +99,18 @@ Wallet-1 以兼容新增方式把累计契约提升为 `1.10.0`，只冻结并�
 - 已生效分录不可编辑或删除，余额变化必须匹配新分录；用户申诉、批量、迁移、自动对账、部分冲正和全部商业交易能力未进入本切片。
 
 production/dev 的用户、管理员和 production-ready 开关均保持关闭，`0077` 未执行远端 migration，也没有真实余额或调币数据。完整边界见 [Wallet-1 金币账本跨仓交付基线](./WALLET_1_LEDGER_INTEGRATION.md)。
+
+### 1.9 Interaction-2 局部冻结记录
+
+Interaction-2 以兼容新增方式把累计契约提升为 `1.11.0`，只冻结并实现默认关闭的服务端收藏夹与浏览历史边界：
+
+- 收藏独立于喜欢和关注，使用默认收藏夹、多自定义收藏夹和“全部收藏”去重聚合视图；同一人物可进入多个文件夹，全局取消收藏才移除全部关系。
+- 自定义收藏夹以客户端随机稳定 ID 幂等创建，编辑和删除使用 `expectedVersion`；当前数量额度来自可执行 `favorite.folder_count` entitlement，降级保留已有数据并拒绝继续超额创建。
+- 浏览历史默认关闭；详情成功呈现后才提交 `viewId + expectedHistoryVersion`。逐条删除和清空都会原子提升版本并删除记录，防止操作前的在途写请求重新写回。
+- bootstrap 增加 `interactionCollections` 配置，并由 Auth、独立运行开关、策略版本和 production-ready 共同控制 `interactions.favorite|history`。当前未配置任何环境，因此两项继续为 `false`。
+- OQ-014、OQ-020、OQ-023 保持未决；当前不执行 migration、不生成 purge、不接推荐信号、搜索历史或关注更新。KMP 客户端、专项测试和远端联调按开发顺序后置。
+
+完整边界见 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)。
 
 ## 2. 通用请求
 
@@ -265,19 +277,25 @@ Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D
 | GET | `/api/v2/person-profiles/:profileId/interactions` | Interaction-1：本人喜欢/关注权威状态 |
 | PUT/DELETE | `/api/v2/person-profiles/:profileId/like` | 喜欢/取消喜欢 |
 | PUT/DELETE | `/api/v2/person-profiles/:profileId/follow` | 关注/取消关注 |
-| PUT/DELETE | `/api/v2/person-profiles/:profileId/favorite` | 收藏/取消收藏 |
+| GET/PUT/DELETE | `/api/v2/person-profiles/:profileId/favorite` | Interaction-2：收藏状态、加入默认收藏、取消全部收藏 |
+| POST | `/api/v2/person-profiles/:profileId/view-history` | Interaction-2：详情成功呈现后的版本化有效浏览记录 |
 | GET | `/api/v2/me/likes` | 喜欢列表 |
 | GET | `/api/v2/me/follows` | 关注和更新 |
-| GET | `/api/v2/me/favorites` | 收藏列表 |
-| GET/POST/PATCH/DELETE | `/api/v2/me/favorite-folders[/:id]` | 收藏夹 |
-| GET/DELETE | `/api/v2/me/view-history` | 历史查询/全部清除 |
-| DELETE | `/api/v2/me/view-history/:profileId` | 删除单条历史 |
+| GET | `/api/v2/me/favorites` | Interaction-2：全部收藏去重聚合列表 |
+| GET | `/api/v2/me/favorite-folders` | Interaction-2：收藏夹、条目数与当前额度 |
+| PUT/PATCH/DELETE | `/api/v2/me/favorite-folders/:folderId` | Interaction-2：幂等创建、条件编辑或删除自定义收藏夹 |
+| GET | `/api/v2/me/favorite-folders/:folderId/items` | Interaction-2：指定收藏夹分页 |
+| PUT/DELETE | `/api/v2/me/favorite-folders/:folderId/items/:profileId` | Interaction-2：加入或移出指定收藏夹 |
+| GET/PUT | `/api/v2/me/view-history/settings` | Interaction-2：记录开关、版本与当前保留权益 |
+| GET | `/api/v2/me/view-history` | Interaction-2：未到期历史分页 |
+| POST | `/api/v2/me/view-history/clear` | Interaction-2：版本化全部清除，可同时关闭记录 |
+| DELETE | `/api/v2/me/view-history/:profileId` | Interaction-2：幂等删除单条历史并返回新设置版本 |
 | GET/DELETE | `/api/v2/me/search-history` | 搜索历史查询/全部清除 |
 | DELETE | `/api/v2/me/search-history/:historyId` | 删除单条搜索历史 |
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-收藏/收藏夹、浏览历史、关注更新事件和推荐信号仍未冻结，现阶段不得以扁平收藏关系替代。所有互动接口不返回 reciprocal/matched 等字段，不创建会话，也不向目标真人或运营人员发送具体观看者通知。
+Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。搜索历史、关注更新事件和推荐信号仍未冻结；不得用自由文本或现有互动表临时替代。所有互动接口不返回 reciprocal/matched 等字段，不创建会话，也不向目标真人或运营人员发送具体观看者通知。
 
 ## 8. 会员和目录 API
 

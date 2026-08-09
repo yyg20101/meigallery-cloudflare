@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-08-08。
+更新时间：2026-08-09。
 
 本文件只记录当前状态。历史变更以 Git、PR、tag 和 `docs/releases/` 为准。
 
@@ -31,7 +31,7 @@
 - 已在同级独立仓库 `meigallery-client` 创建 KMP + Compose Multiplatform 最小技术脚手架；客户端与本仓库继续通过版本化契约协作，不放入当前 pnpm monorepo。
 - 客户端当前锁定 Kotlin 2.4.10、Compose Multiplatform 1.11.1、AGP 9.0.1、Gradle 9.6.1、JDK 21，Android `minSdk = 26`、`compileSdk/targetSdk = 36`。
 - 四个共享模块的 Android Host Test、Android Debug APK 和 iOS Simulator Kotlin/Native 编译均已通过；iOS Framework 本地链接仍被尚未接受的 Xcode 许可拦截，正式链接继续由 macOS CI 门禁验证。
-- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.10.0`，包含 production 默认关闭的 Auth-1、Interaction-1、Membership-1、Membership-2、Message-1、Message-2、Safety-2 独立复核、Message-3 站内通知与 Wallet-1 金币账本契约；dev 可按独立阶段受控联调，收藏、历史和媒体访问仍按域冻结。
+- 已进入逐域纵向切片：`contracts/app-api-v2.openapi.yaml` 的 M0 公共发现四个只读路径保持冻结，累计契约版本已以兼容新增方式提升到 `1.11.0`，包含 production 默认关闭的 Auth-1、Interaction-1/2、Membership-1/2、Message-1/2/3、Safety-2 独立复核与 Wallet-1 契约；Interaction-2 当前只完成服务端开发代码，客户端、配置与验证后置，媒体访问仍按域冻结。
 - 已新增 `0067_app_public_profile_projection.sql` 空读投影和 App API v2 查询实现，强制 `verified + published + authorization active/unexpired + visible + source gallery published`；migration 不含 seed、回填或 legacy 自动映射，尚未执行生产 migration 或部署生产路由。
 - KMP 客户端 M0 公共发现纵向切片已完成：capability、地区目录、推荐/热门/最新、地区筛选、游标分页、公开人物卡和基础详情均已接通；点击卡片会按稳定公开 ID 重新请求详情并复核最新公开资格，不直接信任列表快照。Android 模拟器已回归筛选、排序、详情错误/重试/成功和长列表，未发现崩溃、文字溢出或底部导航遮挡。正式应用 ID、会员、消息、钱包和媒体访问继续受各自门禁约束。
 - 已完成 M1 人物供给最小开发闭环：`0068_app_person_supply_workflow.sql` 创建空的 Person、资料、用途授权、认证和发布复核权威表；内容版本与并发锁版本分离，审批绑定具体内容版本，发布动作单向生成公开投影，暂停或撤销会立即使投影不可见。
@@ -46,6 +46,8 @@
 - KMP 客户端已实现详情喜欢/关注即时反馈与失败回滚、“关注”一级页、已关注/喜欢切换、空态、错误、分页和不可用占位；客户端不呈现匹配、对方已收到或互动者名单。
 - Interaction-1 测试覆盖重复 PUT、关系独立、账号隔离、不可用资料拒绝新增/允许取消、稳定分页、游标作用域、401 会话失效和客户端安全降级；`0001–0070` 已在全新临时本地 D1 连续升级通过。production 仍关闭 Auth；dev 因 Safety-2 内部联调开启 Auth，既有喜欢/关注 capability 会随 Auth 可用，但没有导入真实 App 互动数据。
 - API 36.1 Android 模拟器已使用临时本地 Worker/D1 完成 Interaction-1 真实闭环：协议更新登录、详情状态、喜欢/关注 PUT、本人列表 GET 与取消 DELETE 均成功，取消后回到对应空态。capability 关闭、未登录、真实卡片和底部导航经语义布局树与截图检查，未发现文字、按钮、间距、对齐或边界越界。
+- 已完成 Interaction-2 服务端开发基线：`0078_app_favorites_and_view_history.sql` 建立默认关闭的策略、多文件夹收藏、历史偏好与按人物聚合历史表；App API v2 `1.11.0` 提供收藏状态、全部收藏、收藏夹管理、历史显式开关、有效浏览记录、逐条删除与版本化全部清除。收藏保持独立于喜欢/关注，屏蔽人物会同步清理收藏与当前可见历史，解除后不恢复。
+- Interaction-2 当前未修改 Wrangler 配置、未执行 `0078` migration、未把 planned entitlement 改为 available，也未运行专项测试、KMP UI 回归或远端联调；所有现有环境继续返回 `favorite=false`、`history=false`。客户端开发与其余 App 1.0 功能继续优先，配置和测试统一在开发阶段结束后补齐。完整边界见 `docs/app/INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md`。
 - 已完成 Membership-1 跨仓开发闭环：`0071_app_membership_catalog_and_grants.sql` 建立版本化五级目录、typed entitlement、不可变 App grant、追加式撤销和管理员幂等请求；开发目录包含心遇、心悦、心知、心契、心耀及 `rank=10/20/30/40/50`，七项权益全部标记为 `planned`，不产生消息、筛选、历史或收藏夹的可执行权限。
 - App API v2 `1.4.0` 已新增公共 `/membership/catalog` 和本人 `/me/entitlements`；本人等级只解析 App grant，不把旧 Web `vip/svip` 隐式映射。production/dev 的目录和后台开关均保持关闭，production 还必须同时满足运行时放行与目录 `published + production_ready` 双门禁。
 - Nuxt 用户工作台已加入独立 App 会员面板，覆盖目标账号状态、五级权益、立即发放/续期预览、二次确认、幂等提交、grant 时间线和追加式撤销，并与旧 Web 会员明确隔离。KMP “我的”页已接入独立五级会员页，支持公开目录、本人权威快照、规划中标签及明确的平台运营/无支付边界；站内申请由 Membership-2 独立能力控制。
@@ -92,7 +94,7 @@
 - 已同步 `docs/app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`，作为研发、测试与验收的 App 1.0 唯一开发需求基线；文档覆盖当前范围、未来兼容方向、非功能要求、技术基线、92 页逐页规格、349 个 Figma 状态、169 个客户文档图片映射、需求追踪、DoR 与 DoD。
 - 已生成 `docs/app/APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md`，逐页覆盖角色、前置、入口、结构、交互、业务规则、数据权限、状态和验收。
 - 客户产品需求确认书和逐页交互设计确认册已按 Figma 最终口径重新生成；每个 Page ID 的功能说明、需求追踪和原型图保持同页映射。产品需求确认书内嵌 199 张图，逐页交互设计确认册内嵌 169 张图。
-- 已新增需求冻结准备清单与 15 页客户短版确认单，集中列出 8 项客户决策和 7 组专业门禁，并明确“功能交互冻结”与“像素级视觉冻结”必须分别记录；整体仍是冻结准备中，当前完成的 M0、M1、Auth-1、Interaction-1、Membership-1、Membership-2、Message-1、Message-2 与 Safety-2 均只是 production 默认关闭的保守开发验证，dev 联调不等于授权生产发布。
+- 已新增需求冻结准备清单与 15 页客户短版确认单，集中列出 8 项客户决策和 7 组专业门禁，并明确“功能交互冻结”与“像素级视觉冻结”必须分别记录；整体仍是冻结准备中，当前完成的 M0、M1、Auth-1、Interaction-1/2、Membership-1/2、Message-1/2/3、Safety-2 与 Wallet-1 均只是 production 默认关闭的分阶段开发验证，dev 联调或服务端代码存在不等于授权生产发布。
 - Figma Phase 0 审计、Phase 1 Design System、Phase 2 文件结构、最终页面/流程/QA 的完成记录分别见 `FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md`、`FIGMA_DESIGN_SYSTEM_PHASE1.md` 和 `FIGMA_FILE_STRUCTURE_PHASE2.md`。
 - 最终 MD、两份完整客户 DOCX 与冻结确认资料已通过 92 个 Page ID、349 个 Figma 最终状态、2,284 个有效交互动作、169 个客户文档原型映射、41 个 App 1.0 产品需求编号、92 个逐页追踪键和冻结基线 SHA-256 的一致性校验。
 - 三份客户 DOCX 已通过压缩包完整性、图片替代文本、表格表头、无障碍审计和中文字体环境下的全页渲染目检；LibreOffice 基准渲染分别为 197 页、165 页和 15 页，未发现异常空白页、图片缺失、内容错位、溢出或裁切。

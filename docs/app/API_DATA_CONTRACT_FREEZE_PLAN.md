@@ -2,13 +2,13 @@
 
 App 版本：1.0
 
-日期：2026-08-02
+日期：2026-08-09
 
-状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给、Auth-1 账号访问与 Interaction-1 喜欢/关注为保守开发基线
+状态：整体需求讨论中；M0 公共发现已局部冻结，M1 人物供给、Auth-1 账号访问、Interaction-1 喜欢/关注与 Interaction-2 收藏/历史服务端为保守开发基线
 
 ## 1. 文档目的
 
-本文定义从需求讨论进入实现前，如何冻结 HTTP API、实时事件、Kotlin/TypeScript DTO、D1 表、状态机、错误码和迁移契约。M0 公共只读契约已局部冻结；M1/Auth-1 仅形成可回滚的保守开发基线，不表示完整 schema、身份政策或认证政策已冻结，也不授权部署生产、执行 production migration 或导入真实数据。
+本文定义从需求讨论进入实现前，如何冻结 HTTP API、实时事件、Kotlin/TypeScript DTO、D1 表、状态机、错误码和迁移契约。M0 公共只读契约已局部冻结；M1/Auth-1/Interaction-1/2 仅形成可回滚的分阶段开发基线，不表示完整 schema、身份政策、认证政策、互动保留或个性化政策已冻结，也不授权部署生产、执行 production migration 或导入真实数据。
 
 冻结的目标不是让所有字段永远不变，而是建立事实源、兼容规则、评审顺序和可验证产物，使 Android、iOS、Nuxt、Hono、D1、DO 和迁移任务不会各自解释产品规则。
 
@@ -16,13 +16,13 @@ App 版本：1.0
 
 2026-08-02 经项目负责人继续开发确认，允许先实现不依赖未决身份与合规参数的公共发现读链路：
 
-- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式更新到 `1.3.0`，API 主版本仍为 `2`。
+- OpenAPI：`contracts/app-api-v2.openapi.yaml`；M0 首次冻结版本为 `1.0.0`，当前以向前兼容新增方式累计更新到 `1.11.0`，API 主版本仍为 `2`。
 - 路由：bootstrap、发现 feed、地区目录和公开人物基础详情共四个 GET 路径。
 - D1：`0067_app_public_profile_projection.sql` 仅创建空的可重建公开投影及四个真实查询索引。
 - 安全边界：查询强制验证认证、发布、授权、有效期、可见性和来源图库发布状态；migration 没有 seed、回填或 legacy 自动映射。
 - 客户端：手写 transport model 必须接受未知字段，但未知 enum/capability 安全降级；不得把 transport DTO 直接作为 Domain model。
 
-正式应用 ID、收藏/历史/互动信号、会员、消息、钱包、媒体访问及生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，Interaction-1 只增加依赖 Auth 的喜欢/关注开发基线；首发登录政策、年龄/地区和正式法律文档版本仍未冻结。本次实现的投影表是可删除重建的读模型，不替代 Person、Authorization、Verification 和审计权威表。
+正式应用 ID、互动推荐信号、媒体访问及各能力的生产启用仍未冻结。Auth-1 已加入默认关闭的邮箱账号开发契约，Interaction-1 增加依赖 Auth 的喜欢/关注基线，Interaction-2 增加独立默认关闭的收藏夹与浏览历史服务端契约；首发登录政策、年龄/地区、保留期和正式法律文档版本仍未冻结。本次实现的投影表是可删除重建的读模型，不替代 Person、Authorization、Verification 和审计权威表。
 
 ### 1.2 M1 保守开发基线
 
@@ -61,9 +61,22 @@ Auth-1 不关闭 G-01/G-03，不冻结法定年龄、首发地区、运营主体
 - 资格：PUT 只允许当前仍满足公开资格的 `PersonProfile`；DELETE 在资料失效后仍可幂等清理。
 - 隐私：列表只读取当前 Access Token 对应账号；不可用资料只返回最小占位，不提供目标侧明细接口。
 - 客户端：可做失败回滚的即时反馈，不提供离线写队列；跨设备以服务端结果为准。
-- 能力：bootstrap 分别声明 like/follow/favorite/history；只有 Auth 可用时 like/follow 才可用，favorite/history 继续为 false。
+- 能力：bootstrap 分别声明 like/follow/favorite/history；只有 Auth 可用时 like/follow 才可用，favorite/history 由 Interaction-2 的独立运行策略控制且当前继续为 false。
 
 本基线不关闭 OQ-014/OQ-020/OQ-023；收藏夹、历史保留、互动推荐信号、关注更新事件、拉黑 Workflow 和生产迁移仍须独立冻结。
+
+### 1.5 Interaction-2 收藏夹与浏览历史服务端开发基线
+
+2026-08-09 按“先完成开发、后统一配置与测试”的顺序，允许实现 production 默认关闭的服务端代码：
+
+- 范围：收藏状态、默认/自定义收藏夹、全部收藏聚合、历史显式开关、详情有效浏览记录、逐条删除与版本化全部清除。
+- 数据：`0078_app_favorites_and_view_history.sql` 只创建 development 策略和空表，不 seed、不回填、不执行 migration、不创建自动清理任务。
+- 权限：账号只能读取和修改本人文件夹与历史；收藏新增和历史写入重新校验资料公开资格与屏蔽状态，清理操作不依赖资料仍公开。
+- 并发：自定义文件夹编辑/删除使用 `expectedVersion`；历史记录绑定当前设置版本，清空或屏蔽会提升版本并阻止旧请求写回。
+- 能力：只有 Auth、`APP_INTERACTION_COLLECTIONS_ENABLED`、策略版本和 production-ready 全部满足时才可开启；当前没有 Wrangler 配置，bootstrap 保持 `favorite=false`、`history=false`。
+- 后置：KMP 客户端、配置、migration、专项测试、远端联调、搜索历史、关注更新、推荐信号和 purge 均不属于本次服务端代码提交。
+
+本基线仍不关闭 OQ-014/OQ-020/OQ-023，也不把技术防御上限解释为正式会员销售额度。
 
 ## 2. 契约事实源
 

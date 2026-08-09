@@ -1,6 +1,7 @@
 /**
  * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
- * Message-2 安全、Safety-2 申诉、Message-3 站内通知与 Wallet-1 契约。
+ * Message-2 安全、Safety-2 申诉、Message-3 站内通知、Wallet-1 与
+ * Interaction-2 收藏历史契约。
  *
  * M0 公开发现已冻结；账号访问当前仍是默认关闭、可回滚的开发基线。
  */
@@ -11,7 +12,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.10.0'
+  contractVersion: '1.11.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -49,8 +50,8 @@ export interface AppBootstrapConfig {
     interactions: {
       like: boolean
       follow: boolean
-      favorite: false
-      history: false
+      favorite: boolean
+      history: boolean
     }
     membership: {
       catalog: boolean
@@ -74,6 +75,13 @@ export interface AppBootstrapConfig {
     allowedSorts: AppDiscoverySort[]
     defaultPageSize: number
     maxPageSize: number
+  }
+  interactionCollections: {
+    policyVersion: string
+    defaultFolderLabel: '默认收藏'
+    maxFolderNameLength: number
+    maxItemsPerFolder: number
+    historyRecordingDefault: false
   }
   auth: {
     methods: Array<'email'>
@@ -716,4 +724,90 @@ export interface AppViewerInteractionListItem {
   createdAt: string
   profile: AppPersonProfile | null
   unavailableReason: 'PROFILE_NOT_AVAILABLE' | null
+}
+
+export type AppFavoriteFolderType = 'default' | 'custom'
+
+export interface AppFavoriteFolderSummary {
+  folderId: string
+  type: AppFavoriteFolderType
+  name: string
+  sortOrder: number
+  version: number
+  itemCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AppFavoriteFolderCollection {
+  folders: AppFavoriteFolderSummary[]
+  customFolderCount: number
+  customFolderLimit: number
+  canCreateCustomFolder: boolean
+}
+
+export interface AppFavoriteListItem {
+  profileId: string
+  favoritedAt: string
+  folderIds: string[]
+  profile: AppPersonProfile | null
+  unavailableReason: 'PROFILE_NOT_AVAILABLE' | null
+}
+
+export interface AppFavoriteMutationResult {
+  profileId: string
+  favorited: boolean
+  favoritedAt: string | null
+  folderIds: string[]
+}
+
+export interface AppFavoriteFolderDeleteResult {
+  folderId: string
+  deleted: boolean
+  removedItemCount: number
+  removedGlobalFavoriteCount: number
+}
+
+export type AppViewHistoryEntitlementStatus = 'available' | 'required' | 'not_ready'
+
+export interface AppViewHistorySettings {
+  recordingEnabled: boolean
+  version: number
+  retentionDays: number | null
+  entitlementStatus: AppViewHistoryEntitlementStatus
+  sourceTierId: string | null
+  updatedAt: string | null
+}
+
+export interface AppViewHistoryItem {
+  profileId: string
+  firstViewedAt: string
+  lastViewedAt: string
+  viewCount: number
+  expiresAt: string
+  profile: AppPersonProfile | null
+  unavailableReason: 'PROFILE_NOT_AVAILABLE' | null
+}
+
+export interface AppViewHistoryRecordResult {
+  profileId: string
+  recorded: boolean
+  duplicate: boolean
+  settingsVersion: number
+  lastViewedAt: string | null
+  expiresAt: string | null
+}
+
+export interface AppViewHistoryDeleteResult {
+  profileId: string
+  deleted: boolean
+  settingsVersion: number
+  updatedAt: string
+}
+
+export interface AppViewHistoryClearResult {
+  clearedCount: number
+  recordingEnabled: boolean
+  settingsVersion: number
+  updatedAt: string
 }

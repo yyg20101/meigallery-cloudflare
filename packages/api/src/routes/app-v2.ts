@@ -31,6 +31,40 @@ import {
   setViewerInteraction,
 } from '../services/app-viewer-interactions'
 import {
+  createAppFavoriteFolder,
+  deleteAppFavoriteFolder,
+  getAppFavoriteState,
+  listAppFavoriteFolders,
+  listAppFavorites,
+  parseAppFavoriteListQuery,
+  setAppFavoriteFolderItem,
+  setAppGlobalFavorite,
+  updateAppFavoriteFolder,
+  type CreateAppFavoriteFolderInput,
+  type UpdateAppFavoriteFolderInput,
+} from '../services/app-favorites'
+import {
+  APP_FAVORITE_DEFAULT_FOLDER_LABEL,
+  APP_FAVORITE_MAX_FOLDER_NAME_LENGTH,
+  APP_FAVORITE_MAX_ITEMS_PER_FOLDER,
+  APP_INTERACTION_COLLECTION_POLICY_ID,
+  AppInteractionCollectionError,
+  getAppInteractionCollectionRuntimeConfig,
+  resolveAppInteractionCollectionCapabilities,
+} from '../services/app-interaction-collections'
+import {
+  clearAppViewHistory,
+  deleteAppViewHistoryItem,
+  getAppViewHistorySettings,
+  listAppViewHistory,
+  parseAppViewHistoryListQuery,
+  recordAppProfileView,
+  updateAppViewHistorySettings,
+  type ClearAppViewHistoryInput,
+  type RecordAppProfileViewInput,
+  type UpdateAppViewHistorySettingsInput,
+} from '../services/app-view-history'
+import {
   AppMembershipError,
   getAppMembershipCatalog,
   getAppMembershipRuntimeConfig,
@@ -131,8 +165,8 @@ appV2Routes.use('*', async (c, next) => {
   c.header('Cache-Control', 'no-store')
 })
 
-appV2Routes.get('/app/bootstrap', (c) => {
-  return appApiSuccess(c, bootstrapConfig(c.env))
+appV2Routes.get('/app/bootstrap', async (c) => {
+  return appApiSuccess(c, await bootstrapConfig(c.env))
 })
 
 appV2Routes.route('/auth', appAuthRoutes)
@@ -173,6 +207,8 @@ for (const path of [
   '/person-profiles/:profileId/interactions',
   '/person-profiles/:profileId/like',
   '/person-profiles/:profileId/follow',
+  '/person-profiles/:profileId/favorite',
+  '/person-profiles/:profileId/view-history',
   '/person-profiles/:profileId/safety',
   '/person-profiles/:profileId/block',
   '/reports',
@@ -1015,13 +1051,296 @@ for (const [path, interactionType] of [
   })
 }
 
-function bootstrapConfig(env: Bindings): AppBootstrapConfig {
+appV2Routes.get('/person-profiles/:profileId/favorite', async (c) => {
+  try {
+    return appApiSuccess(c, await getAppFavoriteState(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('profileId'),
+      interactionCollectionConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.put('/person-profiles/:profileId/favorite', async (c) => {
+  try {
+    return appApiSuccess(c, await setAppGlobalFavorite(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('profileId'),
+      true,
+      interactionCollectionConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.delete('/person-profiles/:profileId/favorite', async (c) => {
+  try {
+    return appApiSuccess(c, await setAppGlobalFavorite(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('profileId'),
+      false,
+      interactionCollectionConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.get('/me/favorites', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const query = parseAppFavoriteListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppFavorites(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      null,
+      interactionCollectionConfig(c.env),
+      query,
+      c.req.url,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.get('/me/favorite-folders', async (c) => {
+  try {
+    return appApiSuccess(c, await listAppFavoriteFolders(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      interactionCollectionConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.put('/me/favorite-folders/:folderId', async (c) => {
+  try {
+    return appApiSuccess(c, await createAppFavoriteFolder(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('folderId'),
+      await c.req.json<CreateAppFavoriteFolderInput>(),
+      interactionCollectionConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    ), 201)
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.patch('/me/favorite-folders/:folderId', async (c) => {
+  try {
+    return appApiSuccess(c, await updateAppFavoriteFolder(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('folderId'),
+      await c.req.json<UpdateAppFavoriteFolderInput>(),
+      interactionCollectionConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.delete('/me/favorite-folders/:folderId', async (c) => {
+  try {
+    return appApiSuccess(c, await deleteAppFavoriteFolder(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('folderId'),
+      c.req.query('expectedVersion'),
+      interactionCollectionConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.get('/me/favorite-folders/:folderId/items', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const folderId = c.req.param('folderId')
+    const query = parseAppFavoriteListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+      folderId,
+    })
+    const result = await listAppFavorites(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      folderId,
+      interactionCollectionConfig(c.env),
+      query,
+      c.req.url,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+for (const active of [true, false] as const) {
+  const method = active ? 'put' : 'delete'
+  appV2Routes[method]('/me/favorite-folders/:folderId/items/:profileId', async (c) => {
+    try {
+      return appApiSuccess(c, await setAppFavoriteFolderItem(
+        c.env.DB,
+        appPrincipal(c).accountInternalId,
+        c.req.param('folderId'),
+        c.req.param('profileId'),
+        active,
+        interactionCollectionConfig(c.env),
+      ))
+    }
+    catch (error) {
+      return appInteractionError(c, error)
+    }
+  })
+}
+
+appV2Routes.get('/me/view-history/settings', async (c) => {
+  try {
+    return appApiSuccess(c, await getAppViewHistorySettings(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      interactionCollectionConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.put('/me/view-history/settings', async (c) => {
+  try {
+    return appApiSuccess(c, await updateAppViewHistorySettings(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      await c.req.json<UpdateAppViewHistorySettingsInput>(),
+      interactionCollectionConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.post('/person-profiles/:profileId/view-history', async (c) => {
+  try {
+    return appApiSuccess(c, await recordAppProfileView(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('profileId'),
+      await c.req.json<RecordAppProfileViewInput>(),
+      interactionCollectionConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.get('/me/view-history', async (c) => {
+  try {
+    const principal = appPrincipal(c)
+    const query = parseAppViewHistoryListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppViewHistory(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      interactionCollectionConfig(c.env),
+      getAppMembershipRuntimeConfig(c.env),
+      query,
+      c.req.url,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.post('/me/view-history/clear', async (c) => {
+  try {
+    return appApiSuccess(c, await clearAppViewHistory(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      await c.req.json<ClearAppViewHistoryInput>(),
+      interactionCollectionConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+appV2Routes.delete('/me/view-history/:profileId', async (c) => {
+  try {
+    return appApiSuccess(c, await deleteAppViewHistoryItem(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('profileId'),
+      interactionCollectionConfig(c.env),
+    ))
+  }
+  catch (error) {
+    return appInteractionError(c, error)
+  }
+})
+
+async function bootstrapConfig(env: Bindings): Promise<AppBootstrapConfig> {
   const auth = getAppAuthRuntimeConfig(env)
   const membership = getAppMembershipRuntimeConfig(env)
   const messaging = getAppMessagingRuntimeConfig(env)
   const safety = getAppSafetyRuntimeConfig(env)
   const notifications = getAppNotificationRuntimeConfig(env)
   const wallet = getAppWalletRuntimeConfig(env)
+  const interactionCollections = getAppInteractionCollectionRuntimeConfig(env)
+  const interactionCollectionCapabilities = auth.enabled
+    ? await resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections)
+    : { favorite: false, history: false }
   return {
     product: 'meigallery',
     appVersion: '1.0',
@@ -1031,8 +1350,8 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
       interactions: {
         like: auth.enabled,
         follow: auth.enabled,
-        favorite: false,
-        history: false,
+        favorite: interactionCollectionCapabilities.favorite,
+        history: interactionCollectionCapabilities.history,
       },
       membership: {
         catalog: membership.enabled,
@@ -1056,6 +1375,13 @@ function bootstrapConfig(env: Bindings): AppBootstrapConfig {
       allowedSorts: APP_DISCOVERY_SORTS,
       defaultPageSize: APP_DISCOVERY_DEFAULT_PAGE_SIZE,
       maxPageSize: APP_DISCOVERY_MAX_PAGE_SIZE,
+    },
+    interactionCollections: {
+      policyVersion: interactionCollections.policyId || APP_INTERACTION_COLLECTION_POLICY_ID,
+      defaultFolderLabel: APP_FAVORITE_DEFAULT_FOLDER_LABEL,
+      maxFolderNameLength: APP_FAVORITE_MAX_FOLDER_NAME_LENGTH,
+      maxItemsPerFolder: APP_FAVORITE_MAX_ITEMS_PER_FOLDER,
+      historyRecordingDefault: false,
     },
     auth: {
       methods: auth.methods,
@@ -1234,7 +1560,14 @@ function appInteractionError(
   if (error instanceof AppViewerInteractionError) {
     return appApiError(c, error.status, error.code, error.message)
   }
+  if (error instanceof AppInteractionCollectionError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
   throw error
+}
+
+function interactionCollectionConfig(env: Bindings) {
+  return getAppInteractionCollectionRuntimeConfig(env)
 }
 
 function appPrincipal(c: {
