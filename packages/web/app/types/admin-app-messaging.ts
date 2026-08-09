@@ -21,6 +21,11 @@ export interface AdminConversationSummary {
     leaseExpiresAt: string | null
     canClaim: boolean
   }
+  routing: {
+    groupId: string | null
+    groupName: string | null
+    claimAccess: 'legacy_unscoped' | 'eligible' | 'no_matching_rule' | 'not_group_member' | 'no_active_shift'
+  }
   unreadViewerCount: number
   lastSequence: number
   lastMessageAt: string

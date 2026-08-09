@@ -265,6 +265,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 会话正文要求操作员先取得限时 assignment；领取、续租、释放、正文访问、回复和关闭均由服务端重验租约并写审计。容量上限和新建/双方发送暂停由 D1 全局控制。
 - `0084_app_conversation_collaboration.sql` 在 assignment 上增加追加式内部备注和显式转派：内部备注正文只在受控业务表和有效租约响应中出现，审计仅保存 SHA-256、长度和引用；转派要求当前 `expectedAssignmentVersion`、有效目标管理员和剩余容量，并在同一 D1 批次中更新租约归属、写交接备注、转派事实、幂等结果与审计。成功后原操作员立即失权。
 - `0085_app_conversation_safety_escalations.sql` 增加独立于用户举报的运营安全升级案件：当前话题租约持有人只能创建案件和固定整个话题或目标消息前后一条的最小证据；发起人与审核人强制隔离。审核员领取后按 `safety_escalation_review` 读取内部说明，可形成无需动作、话题只读或关闭结论；内部说明和结论不进入用户响应，实际话题动作只通过固定系统消息对用户说明。
+- `0086_app_conversation_routing_and_shifts.sql` 增加运营组、成员职责/容量、上海时区跨日班次、真人/地区/默认规则和路由分配事实。自动分配在观看者新消息提交成功后异步尝试，按“真人 > 地区 > 默认、最低负载、最久未分配、稳定管理员 ID”确定候选；规则、班次、个人/组容量、服务日首次响应额度和 assignment 版本在条件写入时再次校验。失败只保留未分配状态，不回滚用户消息、不产生虚假回复。
 - 举报队列默认只读取未结案案件；审核员领取后才可按 `safety_review` 读取举报说明及“目标消息前一条 + 目标 + 后一条”的最小证据窗口。结论和关联安全动作使用 `expectedVersion + mutation_token`，旧请求不能留下部分处置。
 - 保留策略初始为 `unresolved`，消息/举报/证据天数为 `NULL` 且 `purge_enabled=0`。OQ-020、运营值班、合规和真机回归未完成前，不得把 safety 目录或运行开关设为 production-ready。
 
@@ -596,6 +597,13 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/conversations/:conversationId/internal-notes` | 幂等追加内部备注，通用审计不复制正文 | admin+ |
 | POST | `/api/admin/app/conversations/:conversationId/transfer` | 使用 assignment 版本、稳定原因和交接说明原子转派 | admin+ |
 | POST | `/api/admin/app/conversations/:conversationId/safety-escalations` | 当前租约内创建独立内部安全升级并固定最小证据 | admin+ |
+| GET | `/api/admin/app/conversation-groups` | 运营组、成员、班次、规则、容量和队列诊断快照 | admin+ |
+| POST/PATCH | `/api/admin/app/conversation-groups`、`/:groupId` | 创建或乐观版本更新运营组 | owner / group lead |
+| PUT | `/api/admin/app/conversation-groups/:groupId/members/:adminId` | 乐观版本新增或更新组成员职责与容量 | owner / group lead |
+| POST/PATCH | `/api/admin/app/conversation-groups/:groupId/shifts`、`.../:shiftId` | 创建或乐观版本更新上海时区班次 | owner / group lead |
+| PUT | `/api/admin/app/conversation-groups/policy` | 创建或乐观版本更新全局人工/自动分配策略 | owner |
+| POST/PATCH | `/api/admin/app/conversation-groups/rules`、`/rules/:ruleId` | 创建或乐观版本更新真人、地区或默认规则 | owner |
+| POST | `/api/admin/app/conversation-groups/dispatch` | 按策略上限补偿分配当前未领取队列并返回无正文结果 | owner |
 | GET | `/api/admin/app/safety/reports` | 不含说明/正文的待处理举报队列及筛选 | admin+ |
 | POST | `/api/admin/app/safety/reports/:reportId/claim` | 幂等领取举报案件 | admin+ |
 | GET | `/api/admin/app/safety/reports/:reportId` | 领取后按 `safety_review` 读取最小证据并审计 | admin+ |
@@ -898,7 +906,7 @@ Search-2 新会员目录是独立不可变快照；在配置切换前没有账�
 | `app_conversation_transfer_events` | 显式转派不可变事实 | 会话+assignment version 唯一；来源与目标不同；绑定交接备注和新租约到期时间 |
 | `app_conversation_admin_idempotency` | 内部备注与转派幂等结果 | 管理员+操作+key 唯一；绑定规范化请求哈希、会话和结果版本 |
 
-转派不会伪造 `released + claimed` 两次独立成功，而以单次 assignment 版本跃迁作为权威事实；原租约持有人在批次成功后不能再读取正文、备注或执行写操作。运营组、班次、自动分配和质量抽检不属于 `0084`；安全升级案件由 `0085` 独立实现。
+转派不会伪造 `released + claimed` 两次独立成功，而以单次 assignment 版本跃迁作为权威事实；原租约持有人在批次成功后不能再读取正文、备注或执行写操作。安全升级案件由 `0085` 独立实现，运营组、班次与自动分配由 `0086` 独立实现；质量抽检不属于 `0084`。
 
 ### App 话题内部安全升级表族 `[开发完成，migration 待执行]`
 
@@ -912,6 +920,22 @@ Search-2 新会员目录是独立不可变快照；在配置切换前没有账�
 | `app_conversation_safety_escalation_idempotency` | 创建、领取和结论幂等结果 | 管理员+操作+key 唯一；绑定规范化请求哈希与案件版本 |
 
 队列列表不返回内部说明或消息正文。实际话题动作与案件结论在同一 D1 条件批次中收敛；如果 assignment、话题 sequence、案件 version 或证据状态发生竞争，不得留下未绑定系统消息、会话限制、案件结论或审计。
+
+### App 话题运营组、班次与路由表族 `[开发完成，migration 待执行]`
+
+`0086_app_conversation_routing_and_shifts.sql` 只创建空表，不创建运营组、成员、班次或路由规则，也不启用自动分配：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_conversation_groups` | 稳定运营组及组级容量 | 固定 `Asia/Shanghai`；状态、双容量和乐观 version 均由服务端校验 |
+| `app_conversation_group_members` | 组内职责与个人容量 | 仅有效 admin/owner；operator/lead 才可接单，quality 不进入候选 |
+| `app_conversation_group_shifts` | 周期班次 | 星期+分钟表达，开始大于结束表示跨日；无生效班次时不分配 |
+| `app_conversation_assignment_policies` | 全局人工/自动模式 | 固定最低负载最久未分配算法；未命中固定保留未分配 |
+| `app_conversation_routing_rules` | 真人、地区与默认路由 | 生效匹配唯一；真人优先于地区，地区优先于默认，同类型按 priority+ID |
+| `app_conversation_routing_assignment_events` | 自动与受路由人工领取事实 | 绑定 assignment version、规则/策略、组/管理员、服务日与分配前容量快照 |
+| `app_conversation_routing_idempotency` | 后台配置和补偿分配幂等 | 管理员+操作+key 唯一；绑定规范请求哈希、结果 ID/version |
+
+自动分配由观看者消息成功响应后的 Worker `waitUntil` 尝试；它是消息写入之后的可恢复运营副作用，失败不得改变消息成功事实。Owner 可在工作台按 `max_dispatch_batch` 对积压执行补偿分配。人工领取在尚未创建策略时保持旧行为；策略一旦存在，就必须命中当前最具体规则、属于目标组且处于有效班次，条件写入还会重新检查成员/规则版本、个人和组容量以及服务日首次响应额度。所有路径都复用 `app_conversation_assignment_state` 作为唯一租约权威，不创建第二套 assignment 状态。
 
 ### App Safety-2 申诉表族 `[dev 受控联调，production 默认关闭]`
 

@@ -36,6 +36,7 @@ const navItems: AdminNavItem[] = [
   { to: '/admin/app/search', label: 'App 搜索运营', icon: 'refresh' },
   { to: '/admin/app/recommendation/rules', label: 'App 推荐运营', icon: 'chart' },
   { to: '/admin/app/conversations', label: 'App 平台话题', icon: 'message' },
+  { to: '/admin/app/conversation-groups', label: 'App 话题排班', icon: 'users' },
   { to: '/admin/app/notifications', label: 'App 站内通知', icon: 'message' },
   { to: '/admin/app/wallets', label: 'App 金币钱包', icon: 'ticket' },
   { to: '/admin/app/membership/applications', activePrefix: '/admin/app/membership', label: 'App 会员运营', icon: 'ticket' },

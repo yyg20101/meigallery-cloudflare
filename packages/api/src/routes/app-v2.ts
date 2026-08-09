@@ -159,6 +159,7 @@ import {
   type CreateAppConversationInput,
   type SendAppMessageInput,
 } from '../services/app-messaging'
+import { autoAssignConversationIfEligible } from '../services/app-conversation-auto-assignment'
 import {
   APP_SAFETY_MAX_DESCRIPTION_LENGTH,
   APP_SAFETY_MAX_APPEAL_STATEMENT_LENGTH,
@@ -764,16 +765,26 @@ appV2Routes.get('/conversations/:conversationId/messages', async (c) => {
 appV2Routes.post('/conversations/:conversationId/messages', async (c) => {
   try {
     const config = messagingConfig(c.env)
+    const conversationId = c.req.param('conversationId')
+    const now = new Date()
     const data = await sendAppViewerMessage(
       c.env.DB,
       appPrincipal(c).accountInternalId,
-      c.req.param('conversationId'),
+      conversationId,
       config.catalogVersionId,
       c.req.header('Idempotency-Key') ?? null,
       await c.req.json<SendAppMessageInput>(),
-      new Date(),
+      now,
       config.requireProductionReady,
     )
+    if (!data.replayed) {
+      scheduleConversationAutoAssignment(c, autoAssignConversationIfEligible(
+        c.env.DB,
+        conversationId,
+        'viewer_message',
+        now,
+      ))
+    }
     return appApiSuccess(c, data, data.replayed ? 200 : 201)
   }
   catch (error) {
@@ -2165,6 +2176,22 @@ function appPersonSearchError(
 
 function interactionCollectionConfig(env: Bindings) {
   return getAppInteractionCollectionRuntimeConfig(env)
+}
+
+function scheduleConversationAutoAssignment(
+  c: { executionCtx: { waitUntil(task: Promise<unknown>): void } },
+  task: Promise<unknown>,
+) {
+  const guarded = task.catch((error: unknown) => {
+    const code = error instanceof Error ? error.name : 'UNKNOWN_ERROR'
+    console.error('平台话题自动分配执行失败', { code })
+  })
+  try {
+    c.executionCtx.waitUntil(guarded)
+  }
+  catch {
+    // 非 Worker 测试宿主可能不提供 waitUntil；任务本身仍已启动且已受控捕获异常。
+  }
 }
 
 function appPrincipal(c: {

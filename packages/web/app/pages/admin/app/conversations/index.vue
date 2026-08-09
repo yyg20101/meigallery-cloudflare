@@ -392,6 +392,16 @@ function statusLabel(value: AdminConversationDetail['status']) {
   return '进行中'
 }
 
+function routingAccessLabel(item: AdminConversationSummary) {
+  if (item.assignment.status === 'mine' || item.assignment.status === 'other') {
+    return item.routing.groupName || '已分配话题'
+  }
+  if (item.routing.claimAccess === 'no_matching_rule') return '未命中分配规则'
+  if (item.routing.claimAccess === 'not_group_member') return `${item.routing.groupName || '目标运营组'} · 非本组`
+  if (item.routing.claimAccess === 'no_active_shift') return `${item.routing.groupName || '目标运营组'} · 当前无班次`
+  return item.routing.groupName || '未配置运营组范围'
+}
+
 function noteTypeLabel(value: AdminConversationInternalNoteType) {
   if (value === 'handoff') return '交接记录'
   if (value === 'quality') return '质量备注'
@@ -432,13 +442,18 @@ function apiErrorMessage(error: unknown, fallback: string) {
           处理由观看者发起的平台话题。所有回复固定显示为“平台运营”，不得冒充真人本人或承诺见面、回复时效与关系结果。
         </p>
       </div>
-      <button
-        class="inline-flex min-h-10 shrink-0 items-center justify-center self-start rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        :disabled="status === 'pending' || detailLoading"
-        @click="refreshWorkbench"
-      >
-        刷新队列
-      </button>
+      <div class="flex shrink-0 flex-wrap gap-2">
+        <NuxtLink to="/admin/app/conversation-groups" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          运营组与班次
+        </NuxtLink>
+        <button
+          class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          :disabled="status === 'pending' || detailLoading"
+          @click="refreshWorkbench"
+        >
+          刷新队列
+        </button>
+      </div>
     </div>
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
@@ -489,6 +504,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
               <span class="min-w-0 truncate text-gray-600">{{ queueLabel(item.queueStatus) }} · {{ assignmentLabel(item.assignment.status) }}</span>
               <span class="shrink-0 text-gray-400">{{ formatDate(item.lastMessageAt) }}</span>
             </span>
+            <span class="mt-1 block truncate text-xs text-gray-400">{{ routingAccessLabel(item) }}</span>
           </button>
         </div>
       </section>
@@ -559,6 +575,9 @@ function apiErrorMessage(error: unknown, fallback: string) {
               </h3>
               <p class="mt-2 text-sm leading-6 text-gray-600">
                 未领取时列表仅显示账号、人物、队列和时间信息，不返回任何消息正文。领取为限时权限，所有访问都会写入审计。
+              </p>
+              <p v-if="selectedSummary && !selectedSummary.assignment.canClaim && selectedSummary.assignment.status === 'unassigned'" class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800">
+                {{ routingAccessLabel(selectedSummary) }}。请由运营组长调整规则、成员或班次，当前账号不能绕过范围直接领取。
               </p>
               <button
                 v-if="selectedSummary?.assignment.canClaim"

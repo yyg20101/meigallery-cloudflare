@@ -17,6 +17,11 @@ import {
   type AppConversationInternalRow,
 } from './app-messaging'
 import { getAppMessagingRuntimeControl } from './app-safety'
+import {
+  resolveConversationRoutingClaimAccesses,
+  shanghaiClock,
+  type ConversationRoutingClaimAccess,
+} from './app-conversation-auto-assignment'
 
 const MAX_ADMIN_LIST_SIZE = 100
 const DEFAULT_ADMIN_LIST_SIZE = 40
@@ -67,6 +72,11 @@ export interface AdminAppConversationSummary {
     leaseExpiresAt: string | null
     canClaim: boolean
   }
+  routing: {
+    groupId: string | null
+    groupName: string | null
+    claimAccess: ConversationRoutingClaimAccess['status']
+  }
   unreadViewerCount: number
   lastSequence: number
   lastMessageAt: string
@@ -105,6 +115,7 @@ type AdminConversationRow = {
   account_public_id: string
   nickname: string | null
   profile_id: string
+  region_code: string | null
   display_name: string
   operation_mode: string
   receiver_label: string
@@ -174,7 +185,7 @@ export async function listAdminAppConversations(
   const params: unknown[] = query.queueStatus ? [query.queueStatus] : []
   const result = await db.prepare(`
     SELECT conversation.id, conversation.account_id, security.account_public_id,
-           account.nickname, conversation.profile_id, profile.display_name,
+           account.nickname, conversation.profile_id, profile.display_name, profile.region_code,
            conversation.operation_mode, conversation.receiver_label,
            conversation.disclosure_version, conversation.status,
            conversation.queue_status, conversation.last_sequence,
@@ -204,7 +215,22 @@ export async function listAdminAppConversations(
       conversation.id ASC
     LIMIT ?
   `).bind(...params, query.limit).all<AdminConversationRow>()
-  return result.results.map(row => mapAdminConversationSummary(row, adminId, now))
+  const routingAccesses = await resolveConversationRoutingClaimAccesses(
+    db,
+    adminId,
+    result.results.map(row => ({
+      conversationId: row.id,
+      profileId: row.profile_id,
+      regionCode: row.region_code,
+    })),
+    now,
+  )
+  return result.results.map(row => mapAdminConversationSummary(
+    row,
+    adminId,
+    now,
+    routingAccesses.get(row.id),
+  ))
 }
 
 export async function getAdminAppConversation(
@@ -215,8 +241,13 @@ export async function getAdminAppConversation(
 ): Promise<AdminAppConversationDetail> {
   await requireAdminConversationAssignment(db, adminId, conversationIdValue, now)
   const row = await getAdminConversationRow(db, conversationIdValue)
+  const routingAccesses = await resolveConversationRoutingClaimAccesses(db, adminId, [{
+    conversationId: row.id,
+    profileId: row.profile_id,
+    regionCode: row.region_code,
+  }], now)
   return {
-    ...mapAdminConversationSummary(row, adminId, now),
+    ...mapAdminConversationSummary(row, adminId, now, routingAccesses.get(row.id)),
     disclosureVersion: row.disclosure_version,
     accessReason: ACCESS_REASON,
     operatorReadSequence: Number(row.operator_read_sequence),
@@ -533,6 +564,11 @@ export async function claimAdminAppConversation(
   if (active && existing!.assigned_admin_id !== adminId) {
     throw new AppMessagingError(409, 'ASSIGNMENT_TAKEN', '该话题已被其他运营人员领取')
   }
+  let routingAccess: ConversationRoutingClaimAccess | null = null
+  if (!active) {
+    routingAccess = await resolveClaimAccess(db, adminId, conversationId, now)
+    assertRoutingClaimAllowed(routingAccess)
+  }
   await requireAssignmentCapacity(db, adminId, conversationId, control.maxActiveAssignmentsPerOperator, now)
 
   const nextVersion = (existing?.version ?? 0) + 1
@@ -543,6 +579,7 @@ export async function claimAdminAppConversation(
   const reasonCode = eventType === 'renewed'
     ? 'operator_renewed'
     : existing?.status === 'active' ? 'expired_reclaimed' : 'operator_claimed'
+  const routingGate = routingClaimWriteGate(routingAccess, adminId, conversationId, now)
   const stateStatement = existing
     ? db.prepare(`
         UPDATE app_conversation_assignment_state
@@ -569,6 +606,7 @@ export async function claimAdminAppConversation(
             SELECT max_active_assignments_per_operator
             FROM app_messaging_runtime_controls WHERE scope = 'global'
           )
+          AND (${routingGate.sql})
       `).bind(
         adminId,
         nextVersion,
@@ -584,6 +622,7 @@ export async function claimAdminAppConversation(
         adminId,
         conversationId,
         nowIso,
+        ...routingGate.bindings,
       )
     : db.prepare(`
         INSERT INTO app_conversation_assignment_state (
@@ -601,7 +640,82 @@ export async function claimAdminAppConversation(
               AND active_assignment.assigned_admin_id = ?
               AND datetime(active_assignment.lease_expires_at) > datetime(?)
           ) < runtime_control.max_active_assignments_per_operator
-      `).bind(adminId, leaseExpiresAt, mutationToken, nowIso, nowIso, conversationId, adminId, nowIso)
+          AND (${routingGate.sql})
+      `).bind(
+        adminId,
+        leaseExpiresAt,
+        mutationToken,
+        nowIso,
+        nowIso,
+        conversationId,
+        adminId,
+        nowIso,
+        ...routingGate.bindings,
+      )
+
+  const routingAssignmentStatements = eventType === 'claimed'
+    && routingAccess?.status === 'eligible'
+    && routingAccess.groupId
+    && routingAccess.ruleId
+    && routingAccess.policyVersion !== null
+      ? [db.prepare(`
+          INSERT INTO app_conversation_routing_assignment_events (
+            id, conversation_id, assignment_version, group_id, admin_id,
+            policy_version, routing_rule_id, trigger_code, service_day,
+            is_new_first_response, operator_active_before, operator_capacity,
+            group_active_before, group_capacity, created_at
+          )
+          SELECT ?, assignment.conversation_id, assignment.version,
+                 operation_group.id, assignment.assigned_admin_id,
+                 ?, ?, 'manual_claim', ?,
+                 CASE WHEN EXISTS (
+                   SELECT 1 FROM app_conversation_messages response
+                   WHERE response.conversation_id = assignment.conversation_id
+                     AND response.sender_type = 'platform_operator'
+                 ) THEN 0 ELSE 1 END,
+                 (
+                   SELECT COUNT(*) FROM app_conversation_assignment_state operator_assignment
+                   WHERE operator_assignment.assigned_admin_id = assignment.assigned_admin_id
+                     AND operator_assignment.conversation_id <> assignment.conversation_id
+                     AND operator_assignment.status = 'active'
+                     AND datetime(operator_assignment.lease_expires_at) > datetime(?)
+                 ),
+                 MIN(member.max_active_assignments, runtime.max_active_assignments_per_operator),
+                 (
+                   SELECT COUNT(DISTINCT group_assignment.conversation_id)
+                   FROM app_conversation_assignment_state group_assignment
+                   JOIN app_conversation_group_members group_member
+                     ON group_member.group_id = operation_group.id
+                    AND group_member.admin_id = group_assignment.assigned_admin_id
+                   WHERE group_member.status = 'active'
+                     AND group_assignment.conversation_id <> assignment.conversation_id
+                     AND group_assignment.status = 'active'
+                     AND datetime(group_assignment.lease_expires_at) > datetime(?)
+                 ),
+                 operation_group.max_active_assignments, ?
+          FROM app_conversation_assignment_state assignment
+          JOIN app_conversation_groups operation_group ON operation_group.id = ?
+          JOIN app_conversation_group_members member
+            ON member.group_id = operation_group.id AND member.admin_id = assignment.assigned_admin_id
+          JOIN app_messaging_runtime_controls runtime ON runtime.scope = 'global'
+          WHERE assignment.conversation_id = ? AND assignment.version = ?
+            AND assignment.mutation_token = ? AND assignment.status = 'active'
+            AND assignment.assigned_admin_id = ?
+        `).bind(
+          `cra_${crypto.randomUUID().replace(/-/gu, '')}`,
+          routingAccess.policyVersion,
+          routingAccess.ruleId,
+          shanghaiClock(now).serviceDay,
+          nowIso,
+          nowIso,
+          nowIso,
+          routingAccess.groupId,
+          conversationId,
+          nextVersion,
+          mutationToken,
+          adminId,
+        )]
+      : []
 
   try {
     await db.batch([
@@ -627,6 +741,7 @@ export async function claimAdminAppConversation(
         mutationToken,
         adminId,
       ),
+      ...routingAssignmentStatements,
       db.prepare(`
         INSERT INTO app_safety_idempotency (
           actor_scope, operation, idempotency_key, request_hash,
@@ -659,7 +774,11 @@ export async function claimAdminAppConversation(
         adminId,
         eventType === 'renewed' ? 'app_conversation.assignment_renew' : 'app_conversation.assignment_claim',
         JSON.stringify(existing ? assignmentAuditValue(existing) : null),
-        JSON.stringify({ version: nextVersion, leaseExpiresAt }),
+        JSON.stringify({
+          version: nextVersion,
+          leaseExpiresAt,
+          routingGroupId: routingAccess?.groupId ?? null,
+        }),
         nowIso,
         conversationId,
         nextVersion,
@@ -1013,6 +1132,197 @@ function isAssignmentActive(assignment: ConversationAssignmentRow | null, now: D
   )
 }
 
+async function resolveClaimAccess(
+  db: D1Database,
+  adminId: number,
+  conversationId: string,
+  now: Date,
+): Promise<ConversationRoutingClaimAccess> {
+  const subject = await db.prepare(`
+    SELECT conversation.id, conversation.profile_id, profile.region_code
+    FROM app_conversations conversation
+    JOIN person_profiles profile ON profile.id = conversation.profile_id
+    WHERE conversation.id = ?
+  `).bind(conversationId).first<{
+    id: string
+    profile_id: string
+    region_code: string | null
+  }>()
+  if (!subject) throw conversationNotFound()
+  const accesses = await resolveConversationRoutingClaimAccesses(db, adminId, [{
+    conversationId: subject.id,
+    profileId: subject.profile_id,
+    regionCode: subject.region_code,
+  }], now)
+  return accesses.get(conversationId) ?? {
+    status: 'no_matching_rule',
+    canClaim: false,
+    policyVersion: null,
+    ruleId: null,
+    ruleVersion: null,
+    groupId: null,
+    groupName: null,
+    memberVersion: null,
+  }
+}
+
+function assertRoutingClaimAllowed(access: ConversationRoutingClaimAccess) {
+  if (access.canClaim) return
+  if (access.status === 'no_matching_rule') {
+    throw new AppMessagingError(409, 'ROUTING_RULE_REQUIRED', '该话题尚未命中生效分配规则，请由运营组长处理配置')
+  }
+  if (access.status === 'not_group_member') {
+    throw new AppMessagingError(403, 'CONVERSATION_GROUP_REQUIRED', '该话题属于其他运营组，当前账号不能领取')
+  }
+  if (access.status === 'no_active_shift') {
+    throw new AppMessagingError(409, 'ACTIVE_SHIFT_REQUIRED', '目标运营组当前无生效班次，话题保持未分配')
+  }
+  throw new AppMessagingError(403, 'CONVERSATION_ROUTING_FORBIDDEN', '当前账号不能领取该话题')
+}
+
+function routingClaimWriteGate(
+  access: ConversationRoutingClaimAccess | null,
+  adminId: number,
+  conversationId: string,
+  now: Date,
+): { sql: string; bindings: unknown[] } {
+  if (access === null) return { sql: '1 = 1', bindings: [] }
+  if (access.status === 'legacy_unscoped') {
+    return {
+      sql: `NOT EXISTS (
+        SELECT 1 FROM app_conversation_assignment_policies WHERE scope = 'global'
+      )`,
+      bindings: [],
+    }
+  }
+  if (
+    !access.canClaim
+    || access.policyVersion === null
+    || access.ruleId === null
+    || access.ruleVersion === null
+    || access.groupId === null
+    || access.memberVersion === null
+  ) {
+    return { sql: '0 = 1', bindings: [] }
+  }
+  const local = shanghaiClock(now)
+  const nowIso = now.toISOString()
+  return {
+    sql: `EXISTS (
+      SELECT 1
+      FROM app_conversation_assignment_policies policy
+      JOIN app_conversation_routing_rules rule ON rule.id = ?
+      JOIN app_conversation_groups operation_group ON operation_group.id = rule.group_id
+      JOIN app_conversation_group_members member
+        ON member.group_id = operation_group.id AND member.admin_id = ?
+      JOIN users admin ON admin.id = member.admin_id
+      JOIN app_conversations routed_conversation ON routed_conversation.id = ?
+      JOIN person_profiles profile ON profile.id = routed_conversation.profile_id
+      JOIN app_messaging_runtime_controls runtime ON runtime.scope = 'global'
+      WHERE policy.scope = 'global' AND policy.version = ?
+        AND rule.version = ? AND rule.status = 'active'
+        AND operation_group.id = ? AND operation_group.status = 'active'
+        AND member.version = ? AND member.status = 'active'
+        AND member.accepts_new_assignments = 1
+        AND member.member_role IN ('operator', 'lead')
+        AND admin.status = 'active' AND admin.role IN ('admin', 'owner')
+        AND (
+          (rule.match_type = 'profile' AND rule.match_value = routed_conversation.profile_id)
+          OR (rule.match_type = 'region' AND rule.match_value = profile.region_code)
+          OR (rule.match_type = 'default' AND rule.match_value = '*')
+        )
+        AND rule.id = (
+          SELECT candidate_rule.id
+          FROM app_conversation_routing_rules candidate_rule
+          JOIN app_conversation_groups candidate_group
+            ON candidate_group.id = candidate_rule.group_id
+          WHERE candidate_rule.status = 'active' AND candidate_group.status = 'active'
+            AND (
+              (candidate_rule.match_type = 'profile' AND candidate_rule.match_value = routed_conversation.profile_id)
+              OR (candidate_rule.match_type = 'region' AND candidate_rule.match_value = profile.region_code)
+              OR (candidate_rule.match_type = 'default' AND candidate_rule.match_value = '*')
+            )
+          ORDER BY
+            CASE candidate_rule.match_type WHEN 'profile' THEN 0 WHEN 'region' THEN 1 ELSE 2 END,
+            candidate_rule.priority ASC,
+            candidate_rule.id ASC
+          LIMIT 1
+        )
+        AND EXISTS (
+          SELECT 1 FROM app_conversation_group_shifts shift
+          WHERE shift.group_id = operation_group.id AND shift.status = 'active'
+            AND (
+              (shift.weekday = ? AND shift.start_minute < shift.end_minute
+                AND shift.start_minute <= ? AND shift.end_minute > ?)
+              OR (shift.weekday = ? AND shift.start_minute > shift.end_minute
+                AND shift.start_minute <= ?)
+              OR (shift.weekday = ? AND shift.start_minute > shift.end_minute
+                AND shift.end_minute > ?)
+            )
+        )
+        AND (
+          SELECT COUNT(*) FROM app_conversation_assignment_state operator_assignment
+          WHERE operator_assignment.assigned_admin_id = member.admin_id
+            AND operator_assignment.conversation_id <> routed_conversation.id
+            AND operator_assignment.status = 'active'
+            AND datetime(operator_assignment.lease_expires_at) > datetime(?)
+        ) < MIN(member.max_active_assignments, runtime.max_active_assignments_per_operator)
+        AND (
+          SELECT COUNT(DISTINCT group_assignment.conversation_id)
+          FROM app_conversation_assignment_state group_assignment
+          JOIN app_conversation_group_members group_member
+            ON group_member.group_id = operation_group.id
+           AND group_member.admin_id = group_assignment.assigned_admin_id
+          WHERE group_member.status = 'active'
+            AND group_assignment.conversation_id <> routed_conversation.id
+            AND group_assignment.status = 'active'
+            AND datetime(group_assignment.lease_expires_at) > datetime(?)
+        ) < operation_group.max_active_assignments
+        AND (
+          EXISTS (
+            SELECT 1 FROM app_conversation_messages response
+            WHERE response.conversation_id = routed_conversation.id
+              AND response.sender_type = 'platform_operator'
+          )
+          OR (
+            (
+              SELECT COUNT(*) FROM app_conversation_routing_assignment_events operator_event
+              WHERE operator_event.admin_id = member.admin_id
+                AND operator_event.service_day = ?
+                AND operator_event.is_new_first_response = 1
+            ) < member.max_new_first_responses_per_service_day
+            AND (
+              SELECT COUNT(*) FROM app_conversation_routing_assignment_events group_event
+              WHERE group_event.group_id = operation_group.id
+                AND group_event.service_day = ?
+                AND group_event.is_new_first_response = 1
+            ) < operation_group.max_new_first_responses_per_service_day
+          )
+        )
+    )`,
+    bindings: [
+      access.ruleId,
+      adminId,
+      conversationId,
+      access.policyVersion,
+      access.ruleVersion,
+      access.groupId,
+      access.memberVersion,
+      local.weekday,
+      local.minute,
+      local.minute,
+      local.weekday,
+      local.minute,
+      local.previousWeekday,
+      local.minute,
+      nowIso,
+      nowIso,
+      local.serviceDay,
+      local.serviceDay,
+    ],
+  }
+}
+
 async function requireAssignmentCapacity(
   db: D1Database,
   adminId: number,
@@ -1045,6 +1355,9 @@ async function diagnoseAssignmentClaimFailure(
   const assignment = await findConversationAssignment(db, conversationId)
   if (isAssignmentActive(assignment, now) && assignment!.assigned_admin_id !== adminId) {
     throw new AppMessagingError(409, 'ASSIGNMENT_TAKEN', '该话题已被其他运营人员领取')
+  }
+  if (!isAssignmentActive(assignment, now)) {
+    assertRoutingClaimAllowed(await resolveClaimAccess(db, adminId, conversationId, now))
   }
   const control = await getAppMessagingRuntimeControl(db)
   await requireAssignmentCapacity(
@@ -1099,7 +1412,7 @@ async function getAdminConversationRow(
   const conversationId = normalizeConversationId(conversationIdValue)
   const row = await db.prepare(`
     SELECT conversation.id, conversation.account_id, security.account_public_id,
-           account.nickname, conversation.profile_id, profile.display_name,
+           account.nickname, conversation.profile_id, profile.display_name, profile.region_code,
            conversation.operation_mode, conversation.receiver_label,
            conversation.disclosure_version, conversation.status,
            conversation.queue_status, conversation.last_sequence,
@@ -1133,6 +1446,7 @@ function mapAdminConversationSummary(
   row: AdminConversationRow,
   adminId: number,
   now: Date,
+  routingAccess?: ConversationRoutingClaimAccess,
 ): AdminAppConversationSummary {
   const assignmentActive = row.assignment_status === 'active'
     && Boolean(row.lease_expires_at)
@@ -1158,7 +1472,14 @@ function mapAdminConversationSummary(
       status: assignmentStatus,
       version: Number(row.assignment_version ?? 0),
       leaseExpiresAt: assignmentActive ? row.lease_expires_at : null,
-      canClaim: row.status !== 'closed' && assignmentStatus !== 'other',
+      canClaim: row.status !== 'closed'
+        && assignmentStatus !== 'other'
+        && (assignmentStatus === 'mine' || routingAccess?.canClaim !== false),
+    },
+    routing: {
+      groupId: routingAccess?.groupId ?? null,
+      groupName: routingAccess?.groupName ?? null,
+      claimAccess: routingAccess?.status ?? 'legacy_unscoped',
     },
     unreadViewerCount: Math.max(0, Number(row.unread_count)),
     lastSequence: Number(row.last_sequence),
