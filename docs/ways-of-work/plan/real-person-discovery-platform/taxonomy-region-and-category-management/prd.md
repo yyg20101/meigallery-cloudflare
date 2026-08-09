@@ -6,7 +6,7 @@ Feature ID：A-04
 
 App 版本：1.0
 
-状态：Taxonomy-1 服务端开发基线已完成，首发真实目录、细粒度权限与敏感分类政策待决策门禁关闭
+状态：Taxonomy-1 Cloudflare、KMP 与 Nuxt 后台开发基线已完成，首发真实目录、细粒度权限与敏感分类政策待决策门禁关闭
 
 ## 2. Epic
 
@@ -39,7 +39,7 @@ App 版本：1.0
 
 `0081_app_taxonomy_catalog.sql` 与 App API v2 `1.14.0` 已实现 production 默认关闭的稳定词条、不可变修订/目录快照、合并重定向、legacy 显式映射、人物内容版本关联、发布资格门禁和公开分类投影。公共目录支持 ETag 条件读取，人物公开 DTO 兼容新增 `taxonomyTerms`；后台已提供词条草稿/复核/生命周期/合并、目录生成发布、映射维护和人物标注服务端 API。
 
-本阶段不 seed 真实词条、不导入 MeiGallery 旧标签、不修改 Wrangler、不执行 migration，也不启用现有环境。`restricted` 敏感词在隐私/法务升级审批完成前不能激活；细粒度权限、影响预览、多语言、灰度/回滚、迁移批次、Nuxt/KMP 页面和专项验证后置。完整工程边界见 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
+KMP 已提供 Recommendation/Search 共用的严格目录、缓存与 ETag 重验证；Nuxt 已提供 `ADM-TAX-01/02/03` 词条目录、详情治理和不可变发布工作区。本阶段不 seed 真实词条、不导入 MeiGallery 旧标签、不修改 Wrangler、不执行 migration，也不启用现有环境。`restricted` 敏感词在隐私/法务升级审批完成前不能激活；细粒度权限、跨域完整影响计数、多语言、灰度/显式回滚、迁移批次和专项验证后置。完整工程边界见 `docs/app/TAXONOMY_1_CATALOG_AND_PROFILE_INTEGRATION.md`。
 
 Search-2 已在该事实源上新增目录父子/合并 closure、stable ID 分组筛选、旧条件重定向和失效诊断；保存条件不复制展示名或 legacy 值。该扩展仍默认关闭，详见 `docs/app/SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
 
