@@ -2,7 +2,7 @@
 
 App 版本：1.0
 
-日期：2026-08-02
+日期：2026-08-10
 
 状态：需求讨论中；多个 App 1.0 纵向切片已进入开发验证，production 仍默认关闭
 
@@ -240,8 +240,8 @@ Recommendation-1 已按上述四个 Page ID 完成 Nuxt 开发基线：规则列
 
 | Page ID | 设计路由 | 页面 | 主操作 | 关键状态 |
 |---------|----------|------|----------|----------|
-| `ADM-MBR-01` | `/admin/app/membership/catalogs` | 五级目录 | 新建版本、比较、提交发布 | 草稿、生效、待回滚 |
-| `ADM-MBR-02` | `/admin/app/entitlements` | Entitlement 定义 | 新建定义、schema 校验、影响查询 | 未知客户端、合并冲突 |
+| `ADM-MBR-01` | `/admin/app/membership/catalogs` | 五级目录 | 完整复制、比较、提交发布、独立复核 | 草稿、运行引用、待复核、已发布 |
+| `ADM-MBR-02` | `/admin/app/entitlements` | Entitlement 定义 | 新建/编辑定义、Schema 校验、影响查询 | 未知客户端、类型冲突、只读引用 |
 | `ADM-MBR-03` | `/admin/app/membership/applications` | 会员申请与发放 | 领取申请、查账号、查看申请/grant 时间线 | 待处理、待补充、已通过、已拒绝、重叠 grant |
 | `ADM-MBR-04` | `/admin/app/membership/grants/new` | 发放申请 | 预览、保存草稿、提交 | 账号错误、高风险、重复业务单 |
 | `ADM-MBR-05` | `/admin/app/membership/reviews/{id}` | 发放复核 | 批准、拒绝 | 发起人冲突、状态已变 |
@@ -250,6 +250,8 @@ Recommendation-1 已按上述四个 Page ID 完成 Nuxt 开发基线：规则列
 `ADM-MBR-03` 必须区分“用户申请状态”和“会员 grant 状态”：申请获批不等于权限已经生效。操作员批准申请后仍需进入 `ADM-MBR-04` 的发放预览与必要复核；只有 grant 事务成功，用户申请才显示“已发放”。管理员也可在无用户申请时直接创建发放申请，但原因和业务单号仍为必填。
 
 `ADM-MBR-04/05` 已完成 Nuxt 单账号开发闭环：创建页支持账号搜索与确认、当前会员/历史 grant、五级稳定 tier、逐项 entitlement availability、立即或预约发放、同级续期、服务端策略预览、幂等提交和追加式撤销；复核队列与逐单详情支持策略快照、基线/当前权益对比、发起人冲突、批准、拒绝和账号变化失效。未发布正式风险策略时所有变更默认进入独立复核；批准必须由另一位管理员执行，且只有 D1 条件批次写入正式 grant/revocation 后才生效。`0088` migration、真实策略配置和专项测试统一后置，批量发放和旧会员迁移仍未开放。
+
+`ADM-MBR-01/02` 已完成 Nuxt 目录管理闭环：从稳定基线完整复制草稿，原子维护五级展示/rank 与全部 Entitlement 显式值，展示结构校验、客户端 capability、基线差异、服务依赖和 grant 影响；提交后按 lock 与内容哈希冻结，并由非创建人、非申请人的有效 Owner 独立决定。当前环境引用、已发布、待复核以及存在 grant、申请或后继目录依赖时只读。发布不切换运行目录、不迁移 grant，也不等于 production-ready；`0089`、真实数值、配置和专项测试统一后置。
 
 ### 5.7 钱包与调币
 

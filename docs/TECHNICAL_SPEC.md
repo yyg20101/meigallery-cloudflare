@@ -220,10 +220,11 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - entitlement 以稳定 key、schema 版本和值类型定义；当前支持 `boolean|integer|enum`。七项开发配置全部为 `planned`，只能展示，不能据此开放消息、筛选、历史或收藏夹业务。
 - `GET /api/v2/membership/catalog` 提供公共五级目录；`GET /api/v2/me/entitlements` 使用 App Bearer 会话返回本人最高有效 App grant 和快照。`GET /api/v2/me` 复用同一摘要，不读取旧 Web `user_memberships`。
 - 管理后台在现有用户详情页提供独立 App 会员面板，并以 `/admin/app/membership/grants/new` 提供 `ADM-MBR-04` 单账号变更工作台；支持账号搜索确认、预览、立即/预约发放、同级续期和撤销。`0088_app_membership_change_reviews.sql` 进一步交付 `ADM-MBR-05` 独立复核队列与逐单详情：发起人不得自审，批准时在 D1 条件批次内重验账号、当前 grant、业务单号和会员申请锁，并原子写入正式 grant/revocation、复核结果、事件和审计。没有已发布风险策略时服务端保守要求全部复核。
+- `0089_app_membership_catalog_management.sql` 交付 `ADM-MBR-01/02` 管理平面：目录从稳定基线完整复制，使用乐观锁和管理员幂等命令维护五级与 typed entitlement；发布申请固化校验报告和内容哈希，只能由非创建人、非申请人的有效 Owner 决定。当前运行引用、已发布、待复核以及被 grant、申请或后继目录引用的版本不可原地修改。发布只生成不可变版本，不切换环境目录或迁移 grant。
 - `APP_MEMBERSHIP_ENABLED` 与 `APP_MEMBERSHIP_ADMIN_ENABLED` 分离；production 还要求 `APP_MEMBERSHIP_PRODUCTION_READY=true` 且目录行同时为 `published + production_ready=1`。production/dev 当前都显式关闭。
 - migration 不 seed 账号 grant、不回填 legacy 数据、不把 `vip/svip` 自动映射为五级会员。`0088` 同样不 seed 风险策略；正式阈值、migration 执行、配置和专项测试统一后置。批量发放、额度消耗和旧会员迁移仍未实现。
 
-完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md` 和 `docs/app/MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md`。
+完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md`、`docs/app/MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md` 和 `docs/app/MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md`。
 
 ### Membership-2 站内会员申请 `[开发验证，默认关闭]`
 
@@ -574,6 +575,17 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | PATCH | `/api/admin/tags/:id` | 编辑标签 | admin+ |
 | GET | `/api/admin/users` | 用户列表和搜索 | admin+ |
 | POST | `/api/admin/users/:id/memberships` | 发放会员等级 | admin+ |
+| GET | `/api/admin/app/memberships/catalogs` | 读取全部目录版本、运行引用、事实依赖和最近发布复核摘要 | admin+ |
+| POST | `/api/admin/app/memberships/catalogs` | 从基线完整复制会员目录草稿，要求幂等键 | admin+ |
+| GET | `/api/admin/app/memberships/catalogs/:catalogId` | 读取五级、Entitlement、内容哈希与校验报告 | admin+ |
+| PATCH | `/api/admin/app/memberships/catalogs/:catalogId` | 乐观锁修改未引用草稿设置 | admin+ |
+| PUT | `/api/admin/app/memberships/catalogs/:catalogId/tiers` | 原子替换完整五级展示与 rank | admin+ |
+| GET | `/api/admin/app/memberships/catalogs/:catalogId/compare` | 比较目录基线、Schema 与等级值差异 | admin+ |
+| PUT | `/api/admin/app/memberships/catalogs/:catalogId/entitlements/:entitlementKey` | 原子保存 typed 定义与全部五级显式值 | admin+ |
+| GET | `/api/admin/app/memberships/catalogs/:catalogId/entitlements/:entitlementKey/impact` | 查询 capability、服务依赖、grant 与基线影响 | admin+ |
+| POST | `/api/admin/app/memberships/catalogs/:catalogId/publish-requests` | 固化 lock/哈希并提交目录发布独立复核 | admin+ |
+| GET | `/api/admin/app/memberships/catalog-publish-reviews[/:requestId]` | 读取目录发布复核队列或单个详情 | admin+ |
+| POST | `/api/admin/app/memberships/catalog-publish-reviews/:requestId/decision` | 有效 Owner 独立批准或拒绝目录发布 | owner |
 | GET | `/api/admin/app/memberships/catalog` | 读取 Membership-1 当前配置目录 | admin+ |
 | GET | `/api/admin/app/memberships/users/:userId` | 读取指定账号 App 会员状态与 grant 时间线 | admin+ |
 | POST | `/api/admin/app/memberships/grants/preview` | 预览立即发放或续期，不产生写入 | admin+ |
@@ -864,6 +876,18 @@ Search-2 新会员目录是独立不可变快照；在配置切换前没有账�
 | `app_membership_grants` | 不可变账号发放事实 | 快照化等级、有效区间、原因、用户说明、发放人；账号内业务单号唯一 |
 | `app_membership_grant_revocations` | 追加式撤销 | 每个 grant 最多一条；不更新或删除原 grant |
 | `app_membership_admin_requests` | 后台写操作幂等结果 | 幂等键唯一；绑定规范化请求哈希、目标账号和结果 grant |
+
+`0089_app_membership_catalog_management.sql` 在上述业务快照上增加管理平面，但不修改既有目录内容或运行配置：
+
+| 表 | 责任 | 关键约束 |
+|----|------|----------|
+| `app_membership_catalog_metadata` | 基线、lock、摘要、生产决策和责任人 | 基线/创建身份不可变；创建人与发布人分离；后继目录冻结基线 |
+| `app_membership_catalog_commands` | 管理写命令幂等事实 | 管理员 + 幂等键唯一；请求哈希绑定操作与结果 lock；不可修改/删除 |
+| `app_membership_catalog_publish_requests` | 固化内容哈希、校验报告和发布状态 | 每目录最多一个待复核申请；申请人与复核人分离 |
+| `app_membership_catalog_publish_events` | 提交、批准、拒绝和失效时间线 | 申请内 sequence 唯一；不可修改/删除 |
+| `app_membership_catalog_publish_decisions` | Owner 决定幂等结果 | reviewer + 幂等键唯一；不可修改/删除 |
+
+目录服务只允许未被当前环境、发布申请、grant、会员申请或后继目录引用的 `development` 草稿原地编辑。发布批准在同一 D1 条件批次内重新检查 Owner、职责分离、目录 lock、内容哈希和校验结果；成功只更新为不可变 `published`，不会改 Wrangler 或当前目录 ID。真实 production-ready 决策、`0089` 执行、配置和专项测试统一后置。
 
 ### App Membership-2 申请表族 `[开发验证，默认关闭]`
 

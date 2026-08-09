@@ -2,9 +2,9 @@
 
 App 版本：1.0
 
-日期：2026-08-09
+日期：2026-08-10
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2/3、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Membership-1/2/3/4、Message-1/2/3、Safety-2 与 Wallet-1 进入默认关闭的保守开发验证
 
 ## 1. 契约原则
 
@@ -48,7 +48,15 @@ Membership-1 以兼容新增方式把契约提升为 `1.4.0`，只冻结并实�
 - bootstrap 增加 `membership.catalog`、`membership.entitlements` 和 `membership.applications`；本阶段申请能力固定为 `false`。
 - Nuxt 后台暂时复用受保护的 `/api/admin/app/memberships`，覆盖目录、账号状态、发放/续期/撤销预览、独立复核申请、队列、逐单批准/拒绝和策略允许时的低风险直达执行。
 
-当前五级数值全部是 `development + planned`，不构成正式额度承诺或可执行业务权限。`user_memberships` 的旧 `vip/svip` 不进入 App 权益解析。Membership-2 已冻结用户申请，Membership-3 已实现管理员单账号独立复核；没有正式策略时全部复核。批量操作、额度消耗和迁移仍未冻结为实现契约。
+当前五级数值全部是 `development + planned`，不构成正式额度承诺或可执行业务权限。`user_memberships` 的旧 `vip/svip` 不进入 App 权益解析。Membership-2 已冻结用户申请，Membership-3 已实现管理员单账号独立复核；没有正式策略时全部复核。Membership-4 已实现目录与 typed entitlement 管理平面，不改变 App API v2 响应结构或运行目录。批量操作、额度消耗和迁移仍未冻结为实现契约。
+
+#### Membership-4 管理平面开发补充
+
+`/api/admin/app/memberships` 已新增目录列表/详情、完整复制、设置与完整五级编辑、Entitlement upsert、基线比较、影响分析、发布申请、复核队列和 Owner 决定。所有写命令要求管理员会话、`Idempotency-Key`，修改与决定同时要求 `expectedVersion`；发布申请固化目录 lock、校验报告与内容哈希。
+
+目录管理接口不依赖当前 App 会员能力开关，以便在功能关闭时准备下一版本，但它不能切换 Wrangler 的目录 ID。当前环境引用、已发布、待复核以及存在 grant、会员申请或后继版本引用的目录都只读。发布决定只把新目录变为不可变 `published`；只有后续独立配置变更和既有 production 双门禁同时通过，App 才可能读取或执行该目录。
+
+Entitlement 校验要求五级显式值、typed 安全默认值和稳定 capability。未登记 capability 可以作为全量 `planned` 保存，但任何 `available` 都会阻断发布；这为未来能力预留 Schema，不允许旧客户端因未知字段扩大权限。完整接口和状态边界见 [Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md)。
 
 ### 1.5 Message-1 局部冻结记录
 
@@ -520,7 +528,7 @@ Wallet-1 当前实现的用户路由只读，余额来自追加式分录/受控�
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
-M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1/2/3 同样暂时复用 `/api/admin/app/memberships`，提供目录、账号状态、会员申请、单账号变更预览、独立复核申请/队列/决定，以及策略允许时的低风险直达发放或撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。Wallet-1 暂时使用 `/api/admin/app/wallets` 提供账号确认、单笔预览/申请、独立批准/拒绝和完整冲正，不提供直接改余额、批量或复核绕过。Recommendation-1 暂时使用 `/api/admin/app/recommendations` 提供规则、Dry-run、复核、排期、暂停/回滚和固定披露精选。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
+M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1/2/3/4 同样暂时复用 `/api/admin/app/memberships`，提供版本化目录与 Entitlement 管理、账号状态、会员申请、单账号变更预览、独立复核申请/队列/决定，以及策略允许时的低风险直达发放或撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。Wallet-1 暂时使用 `/api/admin/app/wallets` 提供账号确认、单笔预览/申请、独立批准/拒绝和完整冲正，不提供直接改余额、批量或复核绕过。Recommendation-1 暂时使用 `/api/admin/app/recommendations` 提供规则、Dry-run、复核、排期、暂停/回滚和固定披露精选。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
 
 | 资源 | 主要能力 |
 |------|----------|

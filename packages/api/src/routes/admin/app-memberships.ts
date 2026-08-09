@@ -33,8 +33,228 @@ import {
   reviewAdminAppMembershipChangeRequest,
   type AdminAppMembershipChangeReviewInput,
 } from '../../services/admin-app-membership-reviews'
+import {
+  compareAdminAppMembershipCatalogs,
+  createAdminAppMembershipCatalog,
+  getAdminAppMembershipCatalog,
+  getAdminAppMembershipCatalogPublishRequest,
+  getAdminAppMembershipEntitlementImpact,
+  listAdminAppMembershipCatalogPublishRequests,
+  listAdminAppMembershipCatalogs,
+  replaceAdminAppMembershipCatalogTiers,
+  reviewAdminAppMembershipCatalogPublish,
+  submitAdminAppMembershipCatalogPublish,
+  updateAdminAppMembershipCatalog,
+  upsertAdminAppMembershipEntitlement,
+  type CreateAdminMembershipCatalogInput,
+  type ReplaceAdminMembershipCatalogTiersInput,
+  type ReviewAdminMembershipCatalogPublishInput,
+  type SubmitAdminMembershipCatalogPublishInput,
+  type UpdateAdminMembershipCatalogInput,
+  type UpsertAdminMembershipEntitlementInput,
+} from '../../services/admin-app-membership-catalogs'
 
 export const adminAppMembershipRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
+adminAppMembershipRoutes.get('/catalogs', async (c) => {
+  try {
+    return c.json({ data: await listAdminAppMembershipCatalogs(
+      c.env.DB,
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/catalogs', async (c) => {
+  try {
+    const result = await createAdminAppMembershipCatalog(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<CreateAdminMembershipCatalogInput>(),
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    )
+    return c.json({
+      message: result.replayed ? '已返回原目录草稿' : '会员目录草稿已从基线复制',
+      data: result.catalog,
+    }, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/catalogs/:catalogId/compare', async (c) => {
+  try {
+    return c.json({ data: await compareAdminAppMembershipCatalogs(
+      c.env.DB,
+      c.req.param('catalogId'),
+      c.req.query('baseCatalogVersionId'),
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/catalogs/:catalogId/entitlements/:entitlementKey/impact', async (c) => {
+  try {
+    return c.json({ data: await getAdminAppMembershipEntitlementImpact(
+      c.env.DB,
+      c.req.param('catalogId'),
+      c.req.param('entitlementKey'),
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.put('/catalogs/:catalogId/entitlements/:entitlementKey', async (c) => {
+  try {
+    const result = await upsertAdminAppMembershipEntitlement(
+      c.env.DB,
+      c.req.param('catalogId'),
+      c.req.param('entitlementKey'),
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<UpsertAdminMembershipEntitlementInput>(),
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    )
+    return c.json({
+      message: result.replayed ? '已返回原 Entitlement 修改结果' : 'Entitlement 草稿已保存',
+      data: result.catalog,
+    })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.put('/catalogs/:catalogId/tiers', async (c) => {
+  try {
+    const result = await replaceAdminAppMembershipCatalogTiers(
+      c.env.DB,
+      c.req.param('catalogId'),
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<ReplaceAdminMembershipCatalogTiersInput>(),
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    )
+    return c.json({
+      message: result.replayed ? '已返回原五级目录修改结果' : '五级目录草稿已保存',
+      data: result.catalog,
+    })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/catalogs/:catalogId/publish-requests', async (c) => {
+  try {
+    const result = await submitAdminAppMembershipCatalogPublish(
+      c.env.DB,
+      c.req.param('catalogId'),
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<SubmitAdminMembershipCatalogPublishInput>(),
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    )
+    return c.json({
+      message: result.replayed ? '已返回原目录发布复核申请' : '目录发布已提交独立复核',
+      data: result.request,
+    }, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/catalogs/:catalogId', async (c) => {
+  try {
+    return c.json({ data: await getAdminAppMembershipCatalog(
+      c.env.DB,
+      c.req.param('catalogId'),
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.patch('/catalogs/:catalogId', async (c) => {
+  try {
+    const result = await updateAdminAppMembershipCatalog(
+      c.env.DB,
+      c.req.param('catalogId'),
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<UpdateAdminMembershipCatalogInput>(),
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    )
+    return c.json({
+      message: result.replayed ? '已返回原目录设置修改结果' : '目录设置草稿已保存',
+      data: result.catalog,
+    })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/catalog-publish-reviews', async (c) => {
+  try {
+    return c.json({ data: await listAdminAppMembershipCatalogPublishRequests(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.query('status'),
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/catalog-publish-reviews/:requestId', async (c) => {
+  try {
+    return c.json({ data: await getAdminAppMembershipCatalogPublishRequest(
+      c.env.DB,
+      c.req.param('requestId'),
+      c.get('userId')!,
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/catalog-publish-reviews/:requestId/decision', async (c) => {
+  try {
+    const result = await reviewAdminAppMembershipCatalogPublish(
+      c.env.DB,
+      c.req.param('requestId'),
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<ReviewAdminMembershipCatalogPublishInput>(),
+      getAppMembershipRuntimeConfig(c.env).catalogVersionId,
+    )
+    return c.json({
+      message: result.replayed ? '已返回原目录发布复核结果' : '目录发布复核决定已记录',
+      data: result.request,
+    })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
 
 adminAppMembershipRoutes.get('/catalog', async (c) => {
   try {

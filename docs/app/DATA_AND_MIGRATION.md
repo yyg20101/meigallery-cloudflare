@@ -2,9 +2,9 @@
 
 App 版本：1.0
 
-日期：2026-08-02
+日期：2026-08-10
 
-状态：需求讨论中；M0 公开投影与 M1 空权威表已进入开发验证
+状态：需求讨论中；M0 公开投影、M1 空权威表与 Membership-4 目录管理平面已进入开发验证
 
 范围说明：目标模型覆盖长期产品，但 App 1.0 只要求会员目录/grant/entitlement、钱包账本和管理员调币。`products`、`orders`、礼物和装扮表在未来商业化 Feature 冻结后再创建 production migration，不能因出现在目标模型中而默认进入 1.0 实现。
 
@@ -187,6 +187,8 @@ erDiagram
 | `cosmetic_inventory` | `account_id`, `product_version_id`, `valid_until`, `equipped_slot` | 未来商业化：装扮库存 |
 | `coin_adjustment_requests` | `id`, `business_ref`, `account_id`, `direction`, `amount`, `operator_id`, `approver_id`, `reason`, `status` | 单笔调币、复核和执行 |
 | `coin_adjustment_batches` / `items` | `id`, `status`, `operator_id`, `approver_id`; `batch_id`, `account_id`, `external_ref`, `status` | 批量校验、逐项幂等和部分结果 |
+
+Membership-4 当前实现使用 `app_membership_catalog_metadata`、`app_membership_catalog_commands`、`app_membership_catalog_publish_requests/events/decisions` 为既有五级目录增加基线、乐观锁、内容哈希、管理员幂等和独立发布复核。目录创建采用全量复制；当前环境引用、已发布、待复核以及被 grant、会员申请或后继目录引用的版本不可原地修改。`0089` 只建立 schema 和既有目录 metadata，不切换运行目录、不迁移 grant、不批准真实 production-ready；执行、配置和测试统一后置。
 
 ### 3.6 审核和审计
 

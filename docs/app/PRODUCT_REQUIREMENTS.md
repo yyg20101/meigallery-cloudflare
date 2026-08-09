@@ -2,7 +2,7 @@
 
 App 版本：1.0
 
-日期：2026-07-28
+日期：2026-08-10
 
 状态：需求讨论中
 
@@ -205,6 +205,8 @@ Search-1 当前已完成 production 默认关闭的公开字段人物搜索和�
 - **PRD-FR-066**：用户可在 App 内选择等级并提交会员申请，查看已提交、处理中、待补充、已通过、已拒绝和已取消状态；会员权限仅在管理员 grant 生效后获得。
 
 详细要求见 [心享会员、Entitlement 与管理员手动发放 PRD](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)。
+
+当前开发实现已交付 `ADM-MBR-01/02` 的版本完整复制、五级原子编辑、typed entitlement、安全默认值、客户端 capability、影响分析和独立发布复核。目录发布只形成不可变业务版本，不自动切换环境目录或迁移 grant；真实等级数值、production-ready 决策、配置、migration 执行和测试统一在开发结束后处理。实现边界见 [Membership-4 会员目录与 Entitlement 管理开发基线](./MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md)。
 
 ### 5.8 金币与后续虚拟商品
 
