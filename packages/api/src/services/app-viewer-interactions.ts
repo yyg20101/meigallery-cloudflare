@@ -126,33 +126,7 @@ export async function setViewerInteraction(
       FROM profile_public_projections p
       JOIN galleries g ON g.id = p.source_gallery_id
       WHERE p.profile_id = ?
-        AND p.verification_status = 'verified'
-        AND p.publication_status = 'published'
-        AND p.authorization_status = 'active'
-        AND p.visibility_status = 'visible'
-        AND (
-          p.authorization_valid_from IS NULL
-          OR (
-            datetime(p.authorization_valid_from) IS NOT NULL
-            AND datetime(p.authorization_valid_from) <= datetime(?)
-          )
-        )
-        AND (
-          p.authorization_valid_until IS NULL
-          OR (
-            datetime(p.authorization_valid_until) IS NOT NULL
-            AND datetime(p.authorization_valid_until) > datetime(?)
-          )
-        )
-        AND (
-          p.verification_valid_until IS NULL
-          OR (
-            datetime(p.verification_valid_until) IS NOT NULL
-            AND datetime(p.verification_valid_until) > datetime(?)
-          )
-        )
-        AND datetime(p.published_at) IS NOT NULL
-        AND g.status = 'published'
+        AND (${PUBLIC_PROFILE_ELIGIBILITY_SQL})
         AND NOT EXISTS (
           SELECT 1 FROM app_profile_blocks block
           WHERE block.account_id = ?
@@ -165,9 +139,7 @@ export async function setViewerInteraction(
       interactionType,
       createdAt,
       profileId,
-      createdAt,
-      createdAt,
-      createdAt,
+      ...publicProfileEligibilityParams(now),
       accountId,
     ).run()
 

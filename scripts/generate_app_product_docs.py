@@ -5,7 +5,7 @@
 - 基础预设：standard_business_brief。
 - 首页模板：customer_pack。
 - 命名覆盖：标题与标题层级使用 MeiGallery 品牌粉色；为保证中文在
-  Word、LibreOffice 与 macOS 预览中均可读，正文统一使用 Arial Unicode MS，
+  Word、LibreOffice 与 macOS 预览中均可读，正文统一使用 Hiragino Sans GB，
   缺少该字体的办公环境由系统中文字体替代。
   正文尺寸、间距、列表缩进、表格几何仍严格沿用预设。
 """
@@ -56,8 +56,8 @@ from table_geometry import apply_table_geometry, column_widths_from_weights  # n
 DELIVERABLES = ROOT / "docs/app/deliverables"
 PAGE_ASSET_ROOT = ROOT / "docs/app/assets/page-prototypes"
 PAGE_MANIFEST = PAGE_ASSET_ROOT / "manifest.json"
-BODY_FONT = "Arial Unicode MS"
-EAST_ASIA_FONT = "Arial Unicode MS"
+BODY_FONT = "Hiragino Sans GB"
+EAST_ASIA_FONT = "Hiragino Sans GB"
 MONO_FONT = "JetBrains Mono"
 BRAND = RGBColor(216, 61, 115)
 BRAND_DARK = RGBColor(143, 36, 75)
@@ -963,6 +963,14 @@ def load_page_manifest() -> dict[str, Any]:
         "figmaMobileStates": 208,
         "figmaAdminStates": 200,
         "figmaFlowPreviews": 99,
+        "figmaMobilePageActions": 928,
+        "figmaMobileSupportActions": 1076,
+        "figmaMobileFlowActions": 180,
+        "figmaAdminPageActions": 2043,
+        "figmaAdminFlowActions": 434,
+        "figmaPageActions": 2971,
+        "figmaFlowActions": 614,
+        "figmaActionTotal": 3585,
         "figmaHistoricalPageActionBaseline": 2957,
         "figmaHistoricalFlowActionBaseline": 614,
         "figmaHistoricalActionBaseline": 3571,
@@ -1467,9 +1475,9 @@ def add_detailed_figma_state_appendix(
     add_inline_content(
         paragraph,
         "最终设计覆盖移动端 50 页/208 状态、后台 49 页/200 状态；"
-        "3,571 个页面内与流程交互源、缺失目标 0、移动端不足 44dp 的关键热区 0 和"
-        "文字溢出 0 均为 APP-SET-08 增量六态前历史审计基线，新增六态已完成定向 QA，"
-        "当前全量动作与 QA 统计待开发结束后统一重算。附录 A/B 中这 5 个页面的同名状态已自动使用逐状态导出图。",
+        "2026-08-24 实时复核得到 3,585 个正式页面与流程动作（页面 2,971、流程 614），"
+        "缺失目标 0，移动端正式稿与支持稿不足 44dp 的关键热区 0，文字溢出 0。"
+        "3,571 仅保留为 APP-SET-08 增量六态前历史基线。附录 A/B 中这 5 个页面的同名状态已自动使用逐状态导出图。",
         base_size=9.5,
         base_color=BRAND_DARK,
         base_bold=True,
@@ -1497,8 +1505,9 @@ def add_final_delivery_confirmation(
         f"默认原型与关键状态合计 {counts['totalCaptures']} 张。",
         f"Figma 最终设计覆盖 {counts['figmaDesignedPages']} 页、"
         f"{counts['figmaDesignedStates']} 个需求状态和 "
-        f"APP-SET-08 增量前历史基线为 {counts['figmaHistoricalActionBaseline']:,} 个有效交互动作，"
-        "当前动作总数待全部开发完成后统一重算；"
+        f"{counts['figmaActionTotal']:,} 个当前有效交互动作（页面 "
+        f"{counts['figmaPageActions']:,}、流程 {counts['figmaFlowActions']:,}）；"
+        f"APP-SET-08 增量前历史基线为 {counts['figmaHistoricalActionBaseline']:,}，"
         f"移动端/后台状态分别为 {counts['figmaMobileStates']}/"
         f"{counts['figmaAdminStates']}。",
         f"通知与金币 {counts['detailedFigmaPages']} 个页面另保留 "
@@ -1574,9 +1583,9 @@ def build_document(spec: DocumentSpec) -> None:
     doc.core_properties.keywords = "MeiGallery, App 1.0, PRD, 交互设计, 客户确认"
     doc.core_properties.comments = (
         "版式：standard_business_brief；首页：customer_pack；"
-        "命名覆盖：MeiGallery 品牌粉色标题层级、Arial Unicode MS 中文字体；"
+        "命名覆盖：MeiGallery 品牌粉色标题层级、Hiragino Sans GB 中文字体；"
         "逐页原型：99 张默认状态 + 57 张 P0 关键状态；"
-        "Figma 最终设计：99 页、408 个状态；3,571 个有效交互源为增量前历史基线，待开发结束后统一重算；"
+        "Figma 最终设计：99 页、408 个状态、3,585 个当前有效交互动作；3,571 仅为增量前历史基线；"
         "客户文档图片映射：179 个。"
     )
     doc.core_properties.last_modified_by = "MeiGallery 产品团队"

@@ -57,6 +57,14 @@ EXPECTED_COUNTS = {
     "figmaMobileStates": 208,
     "figmaAdminStates": 200,
     "figmaFlowPreviews": 99,
+    "figmaMobilePageActions": 928,
+    "figmaMobileSupportActions": 1076,
+    "figmaMobileFlowActions": 180,
+    "figmaAdminPageActions": 2043,
+    "figmaAdminFlowActions": 434,
+    "figmaPageActions": 2971,
+    "figmaFlowActions": 614,
+    "figmaActionTotal": 3585,
     "figmaHistoricalPageActionBaseline": 2957,
     "figmaHistoricalFlowActionBaseline": 614,
     "figmaHistoricalActionBaseline": 3571,
@@ -214,6 +222,7 @@ def main() -> None:
         require(text, "179", str(path.relative_to(ROOT)))
         require(text, "408", str(path.relative_to(ROOT)))
         require(text, "208", str(path.relative_to(ROOT)))
+        require(text, "3,585", str(path.relative_to(ROOT)))
         require(text, "3,571", str(path.relative_to(ROOT)))
 
     require(texts[PAGE_DESIGN], "P0 57 页、P1 32 页、P2 10 页", "逐页产品设计")
@@ -236,7 +245,6 @@ def main() -> None:
         texts[DEVELOPMENT],
     )
     figma_captures = manifest.get("figmaStateCaptures", [])
-    figma_page_ids = {capture["pageId"] for capture in figma_captures}
     if len(figma_captures) != EXPECTED_COUNTS["detailedFigmaStateCaptures"]:
         raise ValueError("Figma 最终状态截图数量与基线不一致")
     if len({capture["frameId"] for capture in figma_captures}) != len(
@@ -244,19 +252,18 @@ def main() -> None:
     ):
         raise ValueError("Figma Frame ID 存在重复")
 
-    expected_capture_paths: list[str] = []
-    for page in pages:
-        page_id = page["pageId"]
-        source = (
-            figma_captures
-            if page_id in figma_page_ids
-            else manifest["captures"]
-        )
-        expected_capture_paths.extend(
-            capture["image"]
-            for capture in source
-            if capture["pageId"] == page_id
-        )
+    expected_capture_paths = manifest.get("developmentMarkdownCapturePaths", [])
+    current_capture_paths = {
+        capture["image"]
+        for key in ("captures", "figmaStateCaptures", "supplementalFigmaCaptures")
+        for capture in manifest.get(key, [])
+    }
+    if (
+        len(expected_capture_paths) != 307
+        or len(set(expected_capture_paths)) != 307
+        or any(path not in current_capture_paths for path in expected_capture_paths)
+    ):
+        raise ValueError("manifest 的开发规格图片映射不是 307 张唯一当前截图")
     if development_capture_paths != expected_capture_paths:
         raise ValueError("开发需求规格的逐页原型顺序或覆盖与原型清单不一致")
 
@@ -290,7 +297,7 @@ def main() -> None:
     forbid(texts[MANAGED_TOPIC], "点击私信", "平台话题总纲")
 
     p0_block_match = re.search(
-        r"管理后台 P0：\s*\n\n(?P<body>.+?)\n\n其余页面",
+        r"管理后台 P0：\s*\n\n(?P<body>.+?)(?=\n\n除下列 P2 页面外，其余页面)",
         texts[PAGE_DESIGN],
         flags=re.DOTALL,
     )

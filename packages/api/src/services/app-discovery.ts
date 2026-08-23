@@ -15,39 +15,52 @@ const DISCOVERY_RULE_VERSION = 'discovery_v1'
 const REGION_CODE_PATTERN = /^[a-z0-9-]{2,32}$/
 const PROFILE_ID_PATTERN = /^pp_[A-Za-z0-9_-]{1,77}$/
 
+const SQL_ALIAS_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u
+
 /**
- * 所有公开发现、搜索、推荐和运营精选必须复用这一资格表达式。
+ * 所有面向观看者的人物读取与写入目标校验必须复用这一资格表达式。
  * 调用方依次绑定三个相同的 UTC now 参数，且必须继续 JOIN 已发布图库。
  */
-export const PUBLIC_PROFILE_ELIGIBILITY_SQL = `
-  p.verification_status = 'verified'
-  AND p.publication_status = 'published'
-  AND p.authorization_status = 'active'
-  AND p.visibility_status = 'visible'
+export function publicProfileEligibilitySql(
+  profileAlias = 'p',
+  galleryAlias = 'g',
+): string {
+  if (!SQL_ALIAS_PATTERN.test(profileAlias) || !SQL_ALIAS_PATTERN.test(galleryAlias)) {
+    throw new Error('PUBLIC_PROFILE_ELIGIBILITY_ALIAS_INVALID')
+  }
+  return `
+  ${profileAlias}.verification_status = 'verified'
+  AND ${profileAlias}.publication_status = 'published'
+  AND ${profileAlias}.authorization_status = 'active'
+  AND ${profileAlias}.visibility_status = 'visible'
+  AND ${profileAlias}.operation_mode = 'platform_managed'
   AND (
-    p.authorization_valid_from IS NULL
+    ${profileAlias}.authorization_valid_from IS NULL
     OR (
-      datetime(p.authorization_valid_from) IS NOT NULL
-      AND datetime(p.authorization_valid_from) <= datetime(?)
+      datetime(${profileAlias}.authorization_valid_from) IS NOT NULL
+      AND datetime(${profileAlias}.authorization_valid_from) <= datetime(?)
     )
   )
   AND (
-    p.authorization_valid_until IS NULL
+    ${profileAlias}.authorization_valid_until IS NULL
     OR (
-      datetime(p.authorization_valid_until) IS NOT NULL
-      AND datetime(p.authorization_valid_until) > datetime(?)
+      datetime(${profileAlias}.authorization_valid_until) IS NOT NULL
+      AND datetime(${profileAlias}.authorization_valid_until) > datetime(?)
     )
   )
   AND (
-    p.verification_valid_until IS NULL
+    ${profileAlias}.verification_valid_until IS NULL
     OR (
-      datetime(p.verification_valid_until) IS NOT NULL
-      AND datetime(p.verification_valid_until) > datetime(?)
+      datetime(${profileAlias}.verification_valid_until) IS NOT NULL
+      AND datetime(${profileAlias}.verification_valid_until) > datetime(?)
     )
   )
-  AND datetime(p.published_at) IS NOT NULL
-  AND g.status = 'published'
+  AND datetime(${profileAlias}.published_at) IS NOT NULL
+  AND ${galleryAlias}.status = 'published'
 `
+}
+
+export const PUBLIC_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql()
 
 export function publicProfileEligibilityParams(now: Date): [string, string, string] {
   const value = now.toISOString()

@@ -20,6 +20,10 @@ import {
   type AppFollowUpdateRuntimeConfig,
 } from './app-follow-updates'
 import { isAppConversationMuted } from './app-conversation-settings'
+import {
+  publicProfileEligibilityParams,
+  publicProfileEligibilitySql,
+} from './app-discovery'
 import { publishAppRealtimeRefresh } from './app-realtime'
 
 export const APP_NOTIFICATION_POLICY_ID = 'ntp_app_1_0_message_3_dev_1'
@@ -39,6 +43,7 @@ export const APP_NOTIFICATION_CATEGORIES: Array<{
 const NOTIFICATION_CATEGORIES = new Set<AppNotificationCategory>(
   APP_NOTIFICATION_CATEGORIES.map(item => item.code),
 )
+const NOTIFICATION_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql('profile', 'gallery')
 const DEFAULT_PAGE_SIZE = 20
 const MAX_DELIVERY_ATTEMPTS = 5
 const PROCESSING_LEASE_MILLISECONDS = 5 * 60 * 1000
@@ -1193,7 +1198,7 @@ async function toNotificationSummary(
     title: row.title_text,
     summary: row.summary_text,
     state: deriveNotificationState(row, now),
-    target: await resolveTarget(db, accountId, row, capabilities),
+    target: await resolveTarget(db, accountId, row, capabilities, now),
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     readAt: row.read_at,
@@ -1205,6 +1210,7 @@ async function resolveTarget(
   accountId: number,
   row: Pick<NotificationRow, 'target_type' | 'target_id' | 'action'>,
   capabilities: AppNotificationTargetCapabilities,
+  now: Date,
 ): Promise<AppNotificationTarget> {
   const type = requireStoredTargetType(row.target_type)
   const action = requireStoredAction(row.action)
@@ -1215,7 +1221,7 @@ async function resolveTarget(
   if (!capabilityEnabled) {
     return { type, id: row.target_id, action, available: false, unavailableReason: 'FEATURE_DISABLED' }
   }
-  const available = await targetBelongsToAccount(db, accountId, type, row.target_id)
+  const available = await targetBelongsToAccount(db, accountId, type, row.target_id, now)
   return {
     type,
     id: row.target_id,
@@ -1246,6 +1252,7 @@ async function targetBelongsToAccount(
   accountId: number,
   type: AppNotificationTargetType,
   targetId: string,
+  now: Date,
 ) {
   let query: string | null = null
   if (type === 'conversation') query = 'SELECT 1 AS found FROM app_conversations WHERE id = ? AND account_id = ?'
@@ -1259,11 +1266,15 @@ async function targetBelongsToAccount(
   if (type === 'person_profile') {
     query = `
       SELECT 1 AS found
-      FROM profile_public_projections
-      WHERE profile_id = ? AND publication_status = 'published' AND visibility_status = 'visible'
+      FROM profile_public_projections profile
+      JOIN galleries gallery ON gallery.id = profile.source_gallery_id
+      WHERE profile.profile_id = ?
+        AND (${NOTIFICATION_PROFILE_ELIGIBILITY_SQL})
       LIMIT 1
     `
-    return Boolean(await db.prepare(query).bind(targetId).first<{ found: number }>())
+    return Boolean(await db.prepare(query)
+      .bind(targetId, ...publicProfileEligibilityParams(now))
+      .first<{ found: number }>())
   }
   if (!query) return false
   return Boolean(await db.prepare(`${query} LIMIT 1`).bind(targetId, accountId).first<{ found: number }>())

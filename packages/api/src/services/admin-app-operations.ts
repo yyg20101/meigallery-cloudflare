@@ -6,6 +6,10 @@ import {
   type AppOperationalControlKey,
 } from './app-operational-safety'
 import {
+  publicProfileEligibilityParams,
+  publicProfileEligibilitySql,
+} from './app-discovery'
+import {
   readCloudflareOperationsAnalytics,
   type CloudflareOperationsAnalyticsConfig,
   type CloudflareOperationsMetricValues,
@@ -23,6 +27,7 @@ const DETECTOR_VERSION = 'operations-detectors-v3'
 const CLOUDFLARE_STATUS_SUMMARY_URL = 'https://www.cloudflarestatus.com/api/v2/summary.json'
 const CLOUDFLARE_STATUS_TIMEOUT_MS = 4_000
 const CLOUDFLARE_STATUS_MAX_RESPONSE_BYTES = 1_000_000
+const OPERATIONS_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql('projection', 'gallery')
 const RELEVANT_CLOUDFLARE_COMPONENT_NAMES = [
   'API',
   'D1',
@@ -583,15 +588,8 @@ async function collectMetricValue(
           SELECT COUNT(*) AS count, MAX(projection.updated_at) AS watermark
           FROM profile_public_projections projection
           JOIN galleries gallery ON gallery.id = projection.source_gallery_id
-          WHERE projection.verification_status = 'verified'
-            AND projection.publication_status = 'published'
-            AND projection.authorization_status = 'active'
-            AND projection.visibility_status = 'visible'
-            AND (projection.authorization_valid_from IS NULL OR datetime(projection.authorization_valid_from) <= datetime(?))
-            AND (projection.authorization_valid_until IS NULL OR datetime(projection.authorization_valid_until) > datetime(?))
-            AND (projection.verification_valid_until IS NULL OR datetime(projection.verification_valid_until) > datetime(?))
-            AND gallery.status = 'published'
-        `, [now.toISOString(), now.toISOString(), now.toISOString()])
+          WHERE (${OPERATIONS_PROFILE_ELIGIBILITY_SQL})
+        `, publicProfileEligibilityParams(now))
       case 'supply.pending_publications':
         return countMetric(db, `SELECT COUNT(*) AS count, MAX(updated_at) AS watermark FROM person_profiles WHERE publication_status = 'pending_review'`)
       case 'discovery.active_rules':
@@ -2019,15 +2017,10 @@ async function collectOperationalFindings(db: D1Database, now: Date): Promise<De
       LEFT JOIN galleries gallery ON gallery.id = projection.source_gallery_id
       WHERE projection.visibility_status = 'visible'
         AND (
-          projection.verification_status <> 'verified'
-          OR projection.publication_status <> 'published'
-          OR projection.authorization_status <> 'active'
-          OR (projection.authorization_valid_from IS NOT NULL AND datetime(projection.authorization_valid_from) > datetime(?))
-          OR (projection.authorization_valid_until IS NOT NULL AND datetime(projection.authorization_valid_until) <= datetime(?))
-          OR (projection.verification_valid_until IS NOT NULL AND datetime(projection.verification_valid_until) <= datetime(?))
-          OR gallery.id IS NULL OR gallery.status <> 'published'
+          gallery.id IS NULL
+          OR NOT (${OPERATIONS_PROFILE_ELIGIBILITY_SQL})
         )
-    `).bind(nowIso, nowIso, nowIso).first<{ count: number }>(),
+    `).bind(...publicProfileEligibilityParams(now)).first<{ count: number }>(),
     db.prepare(`
       SELECT COUNT(*) AS count
       FROM app_conversation_messages message

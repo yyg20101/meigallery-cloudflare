@@ -57,24 +57,24 @@ App 版本：1.0
 - [External Import-2 Telegram 队列与运行完整性开发基线](./EXTERNAL_IMPORT_2_QUEUE_INTEGRITY.md)：记录原子接收、专用 Queue、30 分钟处理租约、确定性 R2 key、过期恢复、有界图片校验和安全错误证据，以及 `0118`/Queue 配置后置边界。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、99 个 Page ID、408 个 Figma 最终状态和 179 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。
-- [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、99 页/408 状态覆盖、增量前 3,571 个历史交互动作、排版与 Icon 修正、QA 结果和交付门禁。
+- [Figma 最终交付审计与实施计划](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)：记录最终文件、99 页/408 状态覆盖、当前 3,585 个动作、增量前 3,571 个历史动作、交付标注清理、QA 结果和交付门禁。
 - [Figma Design System Phase 1](./FIGMA_DESIGN_SYSTEM_PHASE1.md)：记录已落入 Figma 的 5 个变量集合、103 个变量、三端 Code Syntax、13 个文字样式、4 个效果样式、回滚点和校验结果。
 - [Figma 文件结构 Phase 2](./FIGMA_FILE_STRUCTURE_PHASE2.md)：记录正式交付页、历史无损归档、Delivery Index、命名与 Spec Card 规则及原型目标校验；其数量是阶段快照，当前实时口径以最终交付审计为准。
 
 ## 客户确认交付
 
-- [App 1.0 需求冻结确认单（DOCX）](./deliverables/MeiGallery_App_1.0_需求冻结确认单.docx)：冻结准备阶段的 15 页历史签署快照；其中 402/202 与 3,571 个动作均不是当前实时口径，全部开发完成后统一重生成。
+- [App 1.0 需求冻结确认单（DOCX）](./deliverables/MeiGallery_App_1.0_需求冻结确认单.docx)：冻结准备阶段的 15 页历史签署快照；其中 402/202 与 3,571 个动作均不是当前实时口径，该文件保留历史属性，不用于覆盖当前 408/208/3,585 事实。
 - [App 1.0 需求冻结准备清单（Markdown）](./APP_1_0_REQUIREMENTS_FREEZE_CHECKLIST.md)：保留当时的客户决策、专业门禁、基线文件 SHA-256、冻结规则和签署顺序；当前实时设计事实以 408/208 为准。
 - [App 1.0 产品需求确认书（DOCX）](./deliverables/MeiGallery_App_1.0_产品需求确认书.docx)：可直接提供客户评审、填写结论和签字确认的完整交付版。
-- [App 1.0 逐页交互设计确认册（DOCX）](./deliverables/MeiGallery_App_1.0_逐页交互设计确认册.docx)：客户交付件；将在全部开发完成后按 50 个移动端页面与 49 个后台页面统一重新生成，汇总 Page ID、页面目标、主操作、必备状态、跨页旅程、验收清单和签字页。
+- [App 1.0 逐页交互设计确认册（DOCX）](./deliverables/MeiGallery_App_1.0_逐页交互设计确认册.docx)：客户交付件；已按 50 个移动端页面与 49 个后台页面及当前 408/208 状态基线统一重新生成，汇总 Page ID、页面目标、主操作、必备状态、跨页旅程、验收清单和签字页。
 - [客户确认书生成源（Markdown）](./MEIGALLERY_APP_1_0_CLIENT_PRD.md)：用于生成客户 DOCX，不作为研发直接实现依据，也不单独提供客户维护。
 - [逐页确认册生成源（Markdown）](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)：用于生成逐页客户 DOCX；研发按开发需求规格和 Page ID 实现。
 - [详细功能与原型中间规格（Markdown）](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)：由页面目录生成，供文档与原型映射复核；最终开发入口仍是开发需求规格。
 - [App 1.0 高保真关键旅程原型](./interactive-prototype/index.html)：可点击体验 8 个移动端与后台关键旅程，包含业务规则、建议操作、预期结果、响应式布局和状态反馈。
 - [App 1.0 逐页交互设计库](./interactive-prototype/pages.html)：覆盖移动端 50 页和管理后台 49 页，共 99 个可独立访问、搜索、切换状态和操作的页面设计。
 - [App 1.0 逐页产品与交互设计](./APP_PAGE_LEVEL_PRODUCT_DESIGN.md)：逐页列出页面目标、主操作、必备状态、跨页旅程和验收方法。
-- [逐页客户确认原型图](./assets/page-prototypes/)：99 张页面默认状态 + 57 张 P0 关键状态，共 156 张基础原型；通知与金币 5 页另有 23 张 874 × 1792 Figma 逐状态导出图。`manifest.json` 共记录 179 个 Page ID/状态/图片确定性映射及 SHA-256，并同步 Figma 99 页/408 状态的当前交付事实；3,571 个交互源只保留为 `APP-SET-08` 增量前历史基线。
-- [逐页原型 QA 联系表](./assets/page-prototypes/qa/contact-sheets/)：14 个基础功能组加 1 张 Figma 最终状态总览，共 15 组视觉与映射复核图。
+- [逐页客户确认原型图](./assets/page-prototypes/)：99 张页面默认状态 + 57 张 P0 关键状态，共 156 张基础原型；通知与金币 5 页另有 23 张 874 × 1792 Figma 逐状态导出图。`manifest.json` 共记录 179 个 Page ID/状态/图片确定性映射及 SHA-256，并同步 Figma 99 页/408 状态/3,585 当前动作的交付事实；3,571 只保留为 `APP-SET-08` 增量前历史基线。
+- [逐页原型 QA 联系表](./assets/page-prototypes/qa/contact-sheets/)：15 个基础功能组加 1 张 Figma 最终状态总览，共 16 张视觉与映射复核图。
 
 ## 1. 产品定位
 
@@ -214,10 +214,10 @@ App 版本：1.0
 ## 7. 交付物维护
 
 - `scripts/generate_app_product_assets.py`：生成客户文档使用的流程总览和原始参考对照图。
-- `scripts/generate_app_page_spec.mjs`：从产品总需求、发布范围和页面目录生成开发需求规格、99 页详细规格、需求追踪矩阵、156 张基础截图任务、23 张逐状态导出图和 179 个确定性图片映射，并同步 Figma 99 页/408 状态与增量前 3,571 动作历史基线。
-- `scripts/verify_app_page_prototypes.py`：校验截图数量、尺寸、真实 PNG、哈希重复、Frame 映射和清单引用，并生成 15 组联系表。
+- `scripts/generate_app_page_spec.mjs`：从产品总需求、发布范围和页面目录生成开发需求规格、99 页详细规格、需求追踪矩阵、156 张基础截图任务、23 张逐状态导出图和 179 个确定性图片映射，并同步 Figma 99 页/408 状态、当前 3,585 动作与增量前 3,571 动作历史基线。
+- `scripts/verify_app_page_prototypes.py`：校验截图数量、尺寸、真实 PNG、哈希重复、Frame 映射和清单引用，并生成 15 组基础功能联系表及 1 张 Figma 最终状态总览。
 - `scripts/generate_app_product_docs.py`：根据当前 Markdown 和已验证原型清单生成两份 DOCX，避免手工副本与需求基线分叉。
-- `scripts/verify_app_product_docs.py`：在全部开发完成后校验两份 DOCX 是否完整包含 99 个 Page ID、逐页需求追踪键、156 个基础映射、23 个逐状态导出映射、408 个最终状态、当时重算的交互总数和图片替代文本。
+- `scripts/verify_app_product_docs.py`：校验两份 DOCX 是否完整包含 99 个 Page ID、逐页需求追踪键、156 个基础映射、23 个逐状态导出映射、408 个最终状态、3,585 个当前动作、3,571 历史基线和图片替代文本。
 - `scripts/generate_app_freeze_confirmation.py`：根据当前 408/208 manifest 校验结果重建历史冻结准备快照与 15 页客户确认单，并明确 402/202 与 3,571 动作为增量前历史数据。
 - `scripts/verify_app_freeze_confirmation.py`：校验 C-01～C-08、G-01～G-07、99 页/408 状态、156/23/179 图片映射、基线哈希、DOCX 表头、图片替代文本和页面几何。
 - `scripts/create_docx_contact_sheets.py`：将 DOCX 全页渲染结果整理为可配置的视觉复核联系表。

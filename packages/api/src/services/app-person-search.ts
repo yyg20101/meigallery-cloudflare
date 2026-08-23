@@ -4,8 +4,10 @@ import type {
   AppPersonSearchSort,
 } from '@meigallery/shared'
 import {
+  PUBLIC_PROFILE_ELIGIBILITY_SQL,
   PUBLIC_TAXONOMY_SELECT,
   mapPublicProfile,
+  publicProfileEligibilityParams,
   type PublicProjectionRow,
 } from './app-discovery'
 import type { AppResolvedPersonFilterSelection } from './app-search-filters'
@@ -126,7 +128,7 @@ export async function searchPublicPersonProfiles(
   now = new Date(),
 ): Promise<{ data: AppPersonSearchItem[]; nextCursor: string | null; hasMore: boolean }> {
   assertPositiveSearchAccountId(accountId)
-  const where = buildSearchWhere(query, accountId, now.toISOString())
+  const where = buildSearchWhere(query, accountId, now)
   const score = buildRelevanceSelect(query)
   const bindings: unknown[] = [...score.bindings, ...where.bindings]
   const scoreColumn = query.sort === 'relevance'
@@ -276,7 +278,7 @@ export async function countPublicPersonSearchResults(
   now = new Date(),
 ): Promise<number> {
   assertPositiveSearchAccountId(accountId)
-  const where = buildSearchWhere(query, accountId, now.toISOString())
+  const where = buildSearchWhere(query, accountId, now)
   const row = await db.prepare(`
     SELECT COUNT(*) AS count
     FROM profile_public_projections p
@@ -293,18 +295,10 @@ export async function countPublicPersonSearchResults(
 function buildSearchWhere(
   query: AppPersonSearchQuery,
   accountId: number,
-  nowIso: string,
+  now: Date,
 ): SearchWhere {
   const conditions = [
-    "p.verification_status = 'verified'",
-    "p.publication_status = 'published'",
-    "p.authorization_status = 'active'",
-    "p.visibility_status = 'visible'",
-    '(p.authorization_valid_from IS NULL OR datetime(p.authorization_valid_from) <= datetime(?))',
-    '(p.authorization_valid_until IS NULL OR datetime(p.authorization_valid_until) > datetime(?))',
-    '(p.verification_valid_until IS NULL OR datetime(p.verification_valid_until) > datetime(?))',
-    'datetime(p.published_at) IS NOT NULL',
-    "g.status = 'published'",
+    `(${PUBLIC_PROFILE_ELIGIBILITY_SQL})`,
     `NOT EXISTS (
       SELECT 1
       FROM app_profile_blocks block
@@ -313,7 +307,7 @@ function buildSearchWhere(
         AND block.state = 'blocked'
     )`,
   ]
-  const bindings: unknown[] = [nowIso, nowIso, nowIso, accountId]
+  const bindings: unknown[] = [...publicProfileEligibilityParams(now), accountId]
   if (query.foldedText) {
     const contains = `%${escapeLike(query.foldedText)}%`
     conditions.push(`(

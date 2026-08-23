@@ -35,12 +35,13 @@
 
 ## 2026-08-24 开发收口与运行资源复核
 
-- 业务复审确认 App 公共发现列表、地区目录和公开人物详情均允许游客只读；新增路由回归锁定无 Authorization 时返回 200。所有公开人物仍统一要求 `verified + published + authorization active/current + visible + source gallery published`，普通注册账号只创建观看者，不会生成真人资料或进入推荐。
+- 业务复审确认 App 公共发现列表、地区目录和公开人物详情均允许游客只读；新增路由回归锁定无 Authorization 时返回 200。所有面向观看者的人物读取与写入目标统一要求 `verified + published + authorization active/current + visible + valid published_at + platform_managed + source gallery published`，普通注册账号只创建观看者，不会生成真人资料或进入推荐；列表、地区、详情、搜索、推荐、运营精选、关注更新、收藏/喜欢/浏览历史、平台话题和通知深链均复用同一资格表达式，管理端精选校验与运营指标同口径，避免异常投影从旁路进入用户体验。
 - production/dev Wrangler 已补齐 ZIP 导入、私有数据导出、不可逆注销和 Telegram 导入四组 Queue；dev 使用独立 `-dev` 名称，Queue dispatch 对非法 `APP_ENV` 和跨环境业务 Queue fail closed。`AppRealtimeHub` 使用声明式 SQLite Durable Object export，production/dev 运行开关均保持关闭。
 - Cloudflare 只读反查与受控初始化确认：仅创建 4 个 dev 主 Queue 和 4 个 dev 诊断 DLQ，均为 0 producer / 0 consumer；没有创建同名 production Queue、部署 Worker、设置 Secret、执行 D1 migration 或接入业务流量。
 - 原租约收缩 migration 已从未执行的旧 `0117` 安全顺延到末尾 `0119`；新的无副作用 `0117` 只保持 0001～0119 连续。分阶段执行器在 dev/production 远端只读计划中均精确选择截至 `0118` 的连续扩展，并确认只剩 `0119` 在兼容运行时激活后单独执行。
-- 本轮最终门禁为：脚本测试 72/72、API 测试 1,098/1,098（140 个文件）、Web 单元测试 301/301（60 个文件），ESLint 零警告，三个 workspace 类型检查、production/dev API Wrangler dry-run 和 Nuxt Cloudflare Worker 构建全部通过。没有执行共享 dev/production migration、部署 Worker 或开启受治理能力。
-- KMP `dev` 已保持干净并同步 `origin/dev`；正式包不含 Mock 资产，独立 Mock 包已在 Huawei 真机覆盖 208 个 Mobile 正式状态和完整可操作目录。真机复核已包含底部导航稳定性、无黑色点击遮罩、游客浏览、交付标注清理和新应用图标；对应提交为 `71fd488`、`ee3e5bb`、`c4841c1`。
+- 本轮最终门禁为：脚本测试 72/72、API 测试 1,099/1,099（140 个文件）、Web 单元测试 301/301（60 个文件）、Shared 测试 13/13、Web Playwright E2E 52/52，ESLint 零警告，三个 workspace 类型检查、production/dev API Wrangler dry-run 和 Nuxt Cloudflare Worker 构建全部通过。没有执行共享 dev/production migration、部署 Worker 或开启受治理能力。
+- KMP `dev` 已保持干净并同步 `origin/dev`；正式包不含 Mock 资产，独立 Mock 包已在 Huawei 真机覆盖 208 个 Mobile 正式状态和完整可操作目录。真机复核已包含底部导航稳定性、无黑色点击遮罩、游客浏览、交付标注清理、新应用图标及账号异常根态返回一级导航；对应提交为 `71fd488`、`ee3e5bb`、`c4841c1`、`f3e6c5c`。
+- Figma 实时文件已完成最终结构与交付标注复核：Mobile 50 页/208 正式状态、Admin 49 页/200 正式状态、99 个流程预览均保持完整；当前正式页面/流程动作 3,585（页面 2,971、流程 614），缺失目标 0。移动端正式/支持签名为 `de752dd3`/`49d31b64`，后台签名为 `a89d0c59`；可见 Page ID、设计路由、Node ID、“页面标识”和说明卡残留为 0。3,571 只保留为 `APP-SET-08` 增量前历史基线。
 - 线上正式人物列表当前为空不是前端 Mock 回退：远端只读检查未发现可供 App 公开发现使用的已授权人物投影，且 dev Worker 仍是旧版本。不得伪造真人或版权授权数据；后续必须由管理员提供真实素材及来源、用途授权、认证、发布复核证据，再按门禁执行 migration、部署并完成在线游客 E2E。
 
 ## ADM-PER-04 ZIP 导入开发状态
@@ -194,7 +195,8 @@
 - 2026-08-08 只读远端检查确认 dev 当前待执行 migration 恰为 `0075`～`0077`；实际一次性 gate 仍为 `remoteSmokeAuthorized=false`，未创建远程 D1/Worker，未执行共享 dev migration 或任何远端写入。下一步先确认合成 smoke 局部决策，再分别取得短期 Gate 与当次执行批准；通过也不关闭全局 OQ 或自动放行共享 dev。操作边界见 `docs/app/WALLET_1_DISPOSABLE_SMOKE_DECISION_PACKET.md`、`docs/app/WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md` 与 `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`。
 - 已完成移动端 50 页和管理后台 49 页的页面级产品设计。
 - Figma 最终文件当前已完成移动端 50 页/208 状态、管理后台 49 页/200 状态，共 99 个 Page ID/408 个正式状态；`30｜Prototype Flows` 覆盖 99 个流程预览。
-- 3,571 个正式页面与流程交互源是 `APP-SET-08` 增量六态前的历史基线，当时缺失目标为 0；当前动作总数与全量 408 状态 QA 统计留到全部开发完成后统一重算。移动端另有 14 个交互支持 Section、171 张 393 × 852 支持稿。原先游离在 Page 顶层的 49 张发现支持稿已归回既有 Section，8 张收藏夹支持稿已归档到新 Section `1078:3614`，并新增重命名失败节点 `1088:3705`；页面顶层 APP 游离稿为 0。数据权利支持稿 5 张分别覆盖创建导出、注销、导出取消 `1059:3643`、注销取消 `1099:3614` 与 Privacy-1 下载能力未开放态。原 402 个正式状态的全量设计 QA 中，移动端断链、缺失字体、未绑定 Text Style、横向/裁切文字溢出和不足 44dp 的点击热区均为 0；新增六态已完成 393 × 852 定向检查，后台 49 页/200 状态的既有 QA 结论不变。
+- 2026-08-24 已对实时 Figma 重算 3,585 个正式页面与流程动作（Mobile 页面 928、流程 180；Admin 页面 2,043、流程 434），缺失目标为 0；3,571 仅为 `APP-SET-08` 增量六态前历史基线。移动端另有 14 个交互支持 Section、171 张 393 × 852 支持稿和 1,076 个支持稿动作；208 个正式状态与 171 张支持稿均无不足 44dp 的交互目标。正式/支持文字节点为 4,582/4,355，后台正式文字节点为 10,230，未绑定样式、缺失字体和文字溢出均为 0。
+- Figma 交付标注清理已完成：Mobile 正式页移除 1 张说明卡，Admin 正式页移除 200 个路由标签，Mobile/Admin 流程预览分别移除 20 个“页面标识”和 49 个路由标签；复核后可见技术标注为 0。`APP-SET-08` 的补充说明、补充提交失败、升级处理中三态已连同状态标签归入 `159:72271`，九态均不再是 Page 顶层游离稿。
 - Nuxt 管理后台 49 个 Page ID/200 个状态已与实时 Figma 以 `pageId|stateName|nodeId` 生成稳定签名，设计与代码签名均为 `a89d0c59`。41 个实际 Vue 页面壳（动态路由覆盖 49 个 Page ID）全部显式传入正式 `figma-state`；`AdminAppPageHeader` 已改为严格解析，拼写错误、跨页状态或遗漏映射会直接失败，不再静默回退“正常”主稿。Page ID、设计路由、Figma Node ID 与状态 key 仅以不可见 DOM 属性保留给实现和测试追踪，公共页头不再把 `ADM-* · /admin/...` 渲染成管理员可见文案。
 - 管理后台注册 Page ID 与实际 Vue/动态路由声明已做静态覆盖求差，覆盖结果 49/49、缺失 0；41/41 个页面壳缺失 `figma-state` 为 0。当前只完成开发与静态门禁，不提前执行 Nuxt 构建、浏览器视觉回归或生产配置。
 - 已将 Figma 固化为全部用户可见页面与状态的开发前置门禁：新增路由或新状态必须先取得唯一 Page ID、正式 Frame、Prototype Flow、Delivery Index 和 QA 证据，再进入 KMP 或 Nuxt 实现；不得以代码页面、临时截图或文字说明替代 Figma。上述 Page ID、设计路由、Node ID 和状态 key 是交付标注而非产品 UI，生成器已把 99 页验收统一改为“真实 UI 不渲染交付标注”。
@@ -214,7 +216,7 @@
 - `APP-INT-02` 已按 Figma 完成 3 张正式稿和 16 张支持稿，覆盖账号私有搜索、地区/风格筛选、分页、服务端确认取消喜欢及游标整表刷新；19 张画板共 220 个动作全部可达，关键热区、文字、Icon、间距、对齐与溢出审计均通过。
 - `APP-SET-01｜我的｜正常` 已新增正式“我的喜欢”入口 `852:3613` 并导航至 `APP-INT-02｜喜欢｜正常` `159:66943`；入口复用现有设置行、颜色变量、Noto Sans SC 样式与心形矢量，文字、Icon、边界、分组间距和底部导航避让审计问题数为 0。该批次完成时移动端正式稿为 4,327 个文字节点、745 个页面动作；随后仅按 202 张正式画板内部节点统计得到 4,552 个文字节点、914 个页面动作，该数据是 `APP-SET-08` 增量前的历史基线，不代表当前 208 状态总量。
 - `ADM-PRI-01/02` 数据权利队列与处置页已进入 Figma 正式 Admin Pages：共 13 个需求状态、125 个页面动作和 17 个流程动作，覆盖加载、失败、空态、逾期、未领取、Privacy-1/2 门禁、操作失败与终态只读；页面、流程、交付索引和 QA 均已补齐。
-- Figma 最终版本 ID 为 `2381987656588552168`；`40｜Delivery Index` 与 `50｜QA & Handoff` 已完成，最终事实源为 `docs/app/figma-final-delivery-state.json`。
+- Figma 原始冻结版本 ID 为 `2381987656588552168`；当前事实源为同一 fileKey 实时文件与 `docs/app/figma-final-delivery-state.json`。Mobile 208 状态、Mobile 171 支持状态和 Admin 200 状态的稳定签名分别为 `de752dd3`、`49d31b64`、`a89d0c59`。
 - 已按客户确认的原始暖粉视觉方向完成同视口对照，并修正文字排版、Icon 对齐、后台头部按钮重叠、会员选中卡对比度、运营总览 KPI 与表格溢出。
 - 客户文档下一次生成的映射基线包含 99 张默认状态、57 张 P0 关键状态和通知/金币 23 张逐状态导出图，共 179 个 Page ID/状态/图片确定性映射；Figma 的 408 个正式状态是像素级视觉与交互权威来源。客户 DOCX 按开发顺序留到全部开发完成后统一重新生成。
 - 已同步 `docs/app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`，作为研发、测试与验收的 App 1.0 唯一开发需求基线；文档覆盖当前范围、未来兼容方向、非功能要求、技术基线、99 页逐页规格、408 个 Figma 状态、179 个客户文档图片映射、Operations-1 实现状态、需求追踪、DoR 与 DoD。
@@ -222,9 +224,9 @@
 - 现有客户产品需求确认书和逐页交互设计确认册是上一轮交付快照；当前 MD、manifest 与 Figma 已更新为 99 页/408 状态/179 个映射。两份 DOCX 将按“全部开发完成后统一处理”的顺序重新生成并做同页映射复核，现阶段不作为开发需求源。
 - 已新增需求冻结准备清单与 15 页客户短版确认单，集中列出 8 项客户决策和 7 组专业门禁，并明确“功能交互冻结”与“像素级视觉冻结”必须分别记录；整体仍是冻结准备中，当前完成的 M0、M1、Auth-1、Interaction-1/2/3、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1 与 Audit-1/2/3 均只是 production 默认关闭或未配置的分阶段开发验证，dev 联调或服务端代码存在不等于授权生产发布。
 - Figma Phase 0 审计、Phase 1 Design System、Phase 2 文件结构、最终页面/流程/QA 的完成记录分别见 `FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md`、`FIGMA_DESIGN_SYSTEM_PHASE1.md` 和 `FIGMA_FILE_STRUCTURE_PHASE2.md`。
-- 最终 MD 已同步 99 个 Page ID、408 个 Figma 最终状态、179 个客户文档原型映射、41 个 App 1.0 产品需求编号和 99 个逐页追踪键；3,571 个有效交互动作只保留为 `APP-SET-08` 增量前历史基线，当前总数在全部开发完成后统一重算。两份客户 DOCX 的新口径将在文档交付阶段统一重新生成并复核。
+- 最终 MD 已同步 99 个 Page ID、408 个 Figma 最终状态、179 个客户文档原型映射、41 个 App 1.0 产品需求编号、99 个逐页追踪键和当前 3,585 个有效交互动作；3,571 只保留为 `APP-SET-08` 增量前历史基线。两份客户 DOCX 由同一 manifest 与 Markdown 生成并在本轮按新口径重新复核。
 - 三份客户 DOCX 已通过压缩包完整性、图片替代文本、表格表头、无障碍审计和中文字体环境下的全页渲染目检；LibreOffice 基准渲染分别为 197 页、165 页和 15 页，未发现异常空白页、图片缺失、内容错位、溢出或裁切。
-- 逐页原型清单、SHA-256、15 组功能联系表规划和设计 QA 证据位于 `docs/app/assets/page-prototypes/` 与 `docs/app/interactive-prototype/design-qa.md`；联系表与 DOCX 的最终重生成仍按约定后置。
+- 逐页原型清单、SHA-256、15 组基础功能联系表、1 张 Figma 最终状态总览和设计 QA 证据位于 `docs/app/assets/page-prototypes/` 与 `docs/app/interactive-prototype/design-qa.md`；联系表与三份 DOCX 已按当前 408/208 状态基线重新生成并通过校验。
 - 详细实施规格见 `docs/superpowers/specs/2026-07-28-app-detailed-prd-prototype-docx-design.md`。
 
 ## 通用广告归因

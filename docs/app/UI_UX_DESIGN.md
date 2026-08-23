@@ -14,7 +14,7 @@ App 版本：1.0
 
 因此保留“温暖、浪漫、轻盈”的品牌感，移除会造成双边交友误解的匹配、在线承诺和本人代聊视觉。
 
-页面级交互、后台工作台以及可复用状态/文案/埋点已经分别拆为 [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md)、[Nuxt 管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) 和 [统一 UI 状态、文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md)。Figma 最终文件已覆盖 99 个 Page ID、408 个需求状态和 99 个流程预览；3,571 个有效交互源是 `APP-SET-08` 增量六态前的历史基线，当前动作总数在开发完成后统一重算。客户文档下一次生成将维护 179 个 Page ID/状态/图片映射。所有用户可见新页面和新状态必须先进入 Figma 正式页并通过 QA，之后才允许进入 KMP 或 Nuxt 实现。需求与设计追踪见 [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)、[详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md) 和 [Figma 最终交付审计](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)。本文继续作为整体设计原则和视觉方向事实源。
+页面级交互、后台工作台以及可复用状态/文案/埋点已经分别拆为 [移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md)、[Nuxt 管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) 和 [统一 UI 状态、文案与埋点目录](./UI_STATE_COPY_AND_ANALYTICS_CATALOG.md)。Figma 最终文件已覆盖 99 个 Page ID、408 个需求状态和 99 个流程预览；当前 3,585 个正式页面/流程动作已完成复核，缺失目标为 0，3,571 只保留为 `APP-SET-08` 增量六态前历史基线。客户文档维护 179 个 Page ID/状态/图片映射。所有用户可见新页面和新状态必须先进入 Figma 正式页并通过 QA，之后才允许进入 KMP 或 Nuxt 实现。需求与设计追踪见 [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)、[详细功能与逐页原型说明](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md) 和 [Figma 最终交付审计](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md)。本文继续作为整体设计原则和视觉方向事实源。
 
 ## 2. 设计原则
 

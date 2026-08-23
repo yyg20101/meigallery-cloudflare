@@ -6,7 +6,11 @@ import type {
   AppViewHistoryRecordResult,
   AppViewHistorySettings,
 } from '@meigallery/shared'
-import { getPublicPersonProfilesByIds } from './app-discovery'
+import {
+  getPublicPersonProfilesByIds,
+  publicProfileEligibilityParams,
+  publicProfileEligibilitySql,
+} from './app-discovery'
 import {
   AppMembershipError,
   type AppMembershipRuntimeConfig,
@@ -26,6 +30,7 @@ import {
 const HISTORY_RETENTION_ENTITLEMENT = 'history.retention_days'
 const HISTORY_CURSOR_VERSION = 1
 const VIEW_ID_PATTERN = /^vhv_[A-Za-z0-9_-]{8,92}$/u
+const VIEW_HISTORY_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql('profile', 'gallery')
 
 type PreferenceRow = {
   recording_enabled: number
@@ -190,15 +195,7 @@ export async function recordAppProfileView(
     WHERE preference.account_id = ?
       AND preference.recording_enabled = 1
       AND preference.version = ?
-      AND profile.verification_status = 'verified'
-      AND profile.publication_status = 'published'
-      AND profile.authorization_status = 'active'
-      AND profile.visibility_status = 'visible'
-      AND (profile.authorization_valid_from IS NULL OR datetime(profile.authorization_valid_from) <= datetime(?))
-      AND (profile.authorization_valid_until IS NULL OR datetime(profile.authorization_valid_until) > datetime(?))
-      AND (profile.verification_valid_until IS NULL OR datetime(profile.verification_valid_until) > datetime(?))
-      AND datetime(profile.published_at) IS NOT NULL
-      AND gallery.status = 'published'
+      AND (${VIEW_HISTORY_PROFILE_ELIGIBILITY_SQL})
       AND NOT EXISTS (
         SELECT 1
         FROM app_profile_blocks block
@@ -229,9 +226,7 @@ export async function recordAppProfileView(
     profileId,
     accountId,
     expectedHistoryVersion,
-    nowIso,
-    nowIso,
-    nowIso,
+    ...publicProfileEligibilityParams(now),
     accountId,
   ).run()
 

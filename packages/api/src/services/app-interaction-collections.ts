@@ -1,4 +1,8 @@
 import type { Bindings } from '../index'
+import {
+  PUBLIC_PROFILE_ELIGIBILITY_SQL,
+  publicProfileEligibilityParams,
+} from './app-discovery'
 
 export const APP_INTERACTION_COLLECTION_POLICY_ID = 'icp_app_1_0_interaction_2_dev_1'
 export const APP_FAVORITE_DEFAULT_FOLDER_LABEL = '默认收藏' as const
@@ -229,21 +233,12 @@ export async function requireAvailableUnblockedProfile(
   now = new Date(),
 ): Promise<string> {
   const profileId = normalizeAppProfileId(profileIdValue)
-  const nowIso = now.toISOString()
   const row = await db.prepare(`
     SELECT p.profile_id
     FROM profile_public_projections p
     JOIN galleries g ON g.id = p.source_gallery_id
     WHERE p.profile_id = ?
-      AND p.verification_status = 'verified'
-      AND p.publication_status = 'published'
-      AND p.authorization_status = 'active'
-      AND p.visibility_status = 'visible'
-      AND (p.authorization_valid_from IS NULL OR datetime(p.authorization_valid_from) <= datetime(?))
-      AND (p.authorization_valid_until IS NULL OR datetime(p.authorization_valid_until) > datetime(?))
-      AND (p.verification_valid_until IS NULL OR datetime(p.verification_valid_until) > datetime(?))
-      AND datetime(p.published_at) IS NOT NULL
-      AND g.status = 'published'
+      AND (${PUBLIC_PROFILE_ELIGIBILITY_SQL})
       AND NOT EXISTS (
         SELECT 1
         FROM app_profile_blocks block
@@ -252,7 +247,11 @@ export async function requireAvailableUnblockedProfile(
           AND block.state = 'blocked'
       )
     LIMIT 1
-  `).bind(profileId, nowIso, nowIso, nowIso, accountId).first<{ profile_id: string }>()
+  `).bind(
+    profileId,
+    ...publicProfileEligibilityParams(now),
+    accountId,
+  ).first<{ profile_id: string }>()
   if (!row) throw profileNotAvailable()
   return row.profile_id
 }

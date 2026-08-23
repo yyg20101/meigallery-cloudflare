@@ -101,6 +101,12 @@ def main() -> None:
     if manifest["counts"]["figmaAdminStates"] != 200:
         raise ValueError("Figma 管理后台最终设计状态不是 200 个")
     verify_page_state_counts(manifest)
+    if manifest["counts"]["figmaPageActions"] != 2971:
+        raise ValueError("Figma 当前页面动作不是 2,971 个")
+    if manifest["counts"]["figmaFlowActions"] != 614:
+        raise ValueError("Figma 当前流程动作不是 614 个")
+    if manifest["counts"]["figmaActionTotal"] != 3585:
+        raise ValueError("Figma 当前有效交互动作不是 3,585 个")
     if manifest["counts"]["figmaHistoricalActionBaseline"] != 3571:
         raise ValueError("Figma 的 APP-SET-08 增量前历史动作基线不是 3,571 个")
     if (
@@ -157,7 +163,7 @@ def main() -> None:
             )
         if "原型图片暂不可用" in text:
             raise ValueError(f"{path.name} 包含缺图回退文案")
-        for required_text in ("408", "3,571", "2381987656588552168"):
+        for required_text in ("408", "3,585", "3,571", "2381987656588552168"):
             if required_text not in text:
                 raise ValueError(
                     f"{path.name} 缺少 Figma 最终交付事实：{required_text}"
@@ -175,6 +181,7 @@ def main() -> None:
             f"Figma 逐状态导出={len(expected_figma_alts)}，"
             f"Figma 最终设计={manifest['counts']['figmaDesignedPages']} 页/"
             f"{manifest['counts']['figmaDesignedStates']} 状态/"
+            f"当前动作={manifest['counts']['figmaActionTotal']}/"
             f"历史动作基线={manifest['counts']['figmaHistoricalActionBaseline']}（APP-SET-08 增量前），"
             f"内嵌图片={len(document.inline_shapes)}，"
             f"图片替代文本={len(image_alts)}。"

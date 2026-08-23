@@ -1,5 +1,5 @@
 {
-  "runId": "meigallery-app-1.0-figma-final-20260813",
+  "runId": "meigallery-app-1.0-figma-final-20260824",
   "appVersion": "1.0",
   "status": "completed",
   "figmaFile": {
@@ -7,7 +7,7 @@
     "fileKey": "LaNSwwGsznwcpV8msj7BQC",
     "url": "https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery",
     "finalVersionId": "2381987656588552168",
-    "versionNote": "该版本 ID 为原始 349 状态冻结点；当前事实源为同一 fileKey 的实时文件。2026-08-14 已完成 408 个正式状态登记。APP-SET-08 除创建、处理、失败、补充与升级状态外，新增维持原结论 1130:3617、申诉成立 1132:3618、已关闭 1132:3670 三个终态节点；三个结果页均已完成 393 × 852 定向排版检查并可返回 APP-SET-01。历史 Prototype Flow、Delivery Index 与全量交互计数仍待开发结束后的统一复核。",
+    "versionNote": "该版本 ID 为原始 349 状态冻结点；当前事实源为同一 fileKey 的实时文件。2026-08-24 已完成 408 个正式状态、99 个流程预览与 3,585 个正式页面/流程动作的实时复核。APP-SET-08 九态均已归入“我的与设置”正式 Section；三个结果页完成 393 × 852 排版检查并可返回 APP-SET-01。",
     "mobileCheckpointVersionId": "2381975076605262200"
   },
   "coverage": {
@@ -23,9 +23,23 @@
     "deliveryIndexCards": 99,
     "legacyDeliveryIndexRows": 99
   },
+  "currentInteractionAudit": {
+    "measuredAt": "2026-08-24",
+    "scope": "同一 fileKey 的实时正式页面与流程预览",
+    "mobilePageActions": 928,
+    "mobileSupportActions": 1076,
+    "mobileFlowActions": 180,
+    "adminPageActions": 2043,
+    "adminFlowActions": 434,
+    "pageActions": 2971,
+    "flowActions": 614,
+    "totalActions": 3585,
+    "missingDestinations": 0,
+    "undersizedMobileOfficialTouchTargets": 0,
+    "undersizedMobileSupportTouchTargets": 0
+  },
   "historicalInteractionBaseline": {
     "scope": "APP-SET-08 增量六态前；不是当前 408 状态最终动作总数",
-    "currentTotalStatus": "待全部开发完成后统一重算",
     "mobilePageActions": 914,
     "mobileSupportActions": 1008,
     "mobileFlowActions": 180,
@@ -37,10 +51,30 @@
     "missingDestinations": 0,
     "undersizedMobileTouchTargets": 0
   },
+  "registrySignatures": {
+    "mobileOfficial": "de752dd3",
+    "mobileSupport": "49d31b64",
+    "adminOfficial": "a89d0c59"
+  },
+  "annotationCleanup": {
+    "measuredAt": "2026-08-24",
+    "mobileFormalAnnotationCardsRemoved": 1,
+    "adminFormalRouteLabelsRemoved": 200,
+    "mobileFlowPageLabelsRemoved": 20,
+    "adminFlowRouteLabelsRemoved": 49,
+    "remainingVisibleTechnicalAnnotations": 0,
+    "appSet08FramesReparented": [
+      "1118:3615",
+      "1123:3616",
+      "1123:3668"
+    ]
+  },
   "visualQa": {
-    "mobileTextNodes": 4866,
-    "mobileSupportTextNodes": 4122,
-    "adminTextNodes": 10464,
+    "mobileTextNodes": 4582,
+    "mobileSupportTextNodes": 4355,
+    "adminTextNodes": 10230,
+    "mobileFlowTextNodes": 1126,
+    "adminFlowTextNodes": 2495,
     "mobileUnstyledText": 0,
     "mobileSupportUnstyledText": 0,
     "adminUnstyledText": 0,

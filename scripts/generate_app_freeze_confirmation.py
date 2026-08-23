@@ -9,7 +9,7 @@
 版式：
 - 基础预设：compact_reference_guide。
 - 首页模板：customer_pack。
-- 命名覆盖：沿用 MeiGallery 品牌粉色与 Arial Unicode MS 中文字体。
+- 命名覆盖：沿用 MeiGallery 品牌粉色与 Hiragino Sans GB 中文字体。
 """
 
 from __future__ import annotations
@@ -340,7 +340,7 @@ App 版本：1.0
 
 状态：历史快照（2026-07-30 冻结准备阶段，尚未授权开发）
 
-当前事实提示：截至 2026-08-19，Figma 为 99 页/408 个正式状态，移动端 50 页/208 状态、后台 49 页/200 状态；本快照正文中的 402/202 与 3,571 个动作均为 `APP-SET-08` 六态增量前历史基线。
+当前事实提示：截至 2026-08-24，Figma 为 99 页/408 个正式状态，移动端 50 页/208 状态、后台 49 页/200 状态，当前动作总数为 3,585；本快照正文中的 402/202 与 3,571 个动作均为 `APP-SET-08` 六态增量前历史基线。
 
 基线指纹：`{fingerprint}`
 
@@ -805,7 +805,7 @@ def add_visual_evidence(doc: Document) -> None:
         paragraph,
         "99 页已经具备独立的信息结构、交互状态、业务规则和验收条件。"
         "Figma 最终文件完整覆盖移动端 50 页/202 状态、管理后台 49 页/200 状态，"
-        "并完成 99 个流程预览与 3,571 个有效交互动作；当前等待客户和设计负责人签署。",
+        "并完成 99 个流程预览；其中 3,571 个动作是 APP-SET-08 六态增量前历史基线，当前实时总数为 3,585；当前等待客户和设计负责人签署。",
         base_size=10.2,
     )
 
@@ -1120,7 +1120,7 @@ def add_signoff(doc: Document) -> None:
     for option in options:
         paragraph = doc.add_paragraph()
         paragraph.paragraph_format.space_before = Pt(3)
-        paragraph.paragraph_format.space_after = Pt(8)
+        paragraph.paragraph_format.space_after = Pt(4)
         run = paragraph.add_run(option)
         pd.set_run_font(run, size=11, color=pd.INK, bold=True)
 
@@ -1144,13 +1144,14 @@ def add_signoff(doc: Document) -> None:
         "重新生成两份完整客户 DOCX、原型清单和本确认单。",
         "完成需求、Page ID、原型、DOCX、无障碍和全页渲染校验。",
         "由 Owner 记录冻结状态、组合指纹、签署人和日期。",
-        "关闭客户视觉意见和阻塞工程门禁，再进入 API/DTO 数据契约冻结与 KMP 脚手架。",
+        "关闭视觉意见与阻塞门禁后，再冻结 API/DTO 契约并启动 KMP。",
     )
     num_id = create_compact_numbering(doc, "decimal")
     for step in steps:
         paragraph = doc.add_paragraph()
         apply_compact_numbering(paragraph, num_id)
-        pd.add_inline_content(paragraph, step, base_size=9.7)
+        paragraph.paragraph_format.space_after = Pt(2)
+        pd.add_inline_content(paragraph, step, base_size=9.5)
 
 
 def build_docx(
@@ -1182,7 +1183,7 @@ def build_docx(
     )
     doc.core_properties.comments = (
         "版式：compact_reference_guide；首页：customer_pack；"
-        "命名覆盖：MeiGallery 品牌粉色、Arial Unicode MS；"
+        "命名覆盖：MeiGallery 品牌粉色、Hiragino Sans GB；"
         "客户决策 8 项、专业门禁 7 组；"
         "当前状态为冻结准备中，不代表已授权开发。"
     )

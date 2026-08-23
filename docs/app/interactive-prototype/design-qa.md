@@ -2,16 +2,16 @@
 
 App 版本：1.0
 
-日期：2026-08-13
+日期：2026-08-24
 
-结论：Figma 全量设计审计通过；本地联系表与客户 DOCX 在全部开发结束后统一重生成和复核
+结论：Figma 全量设计审计通过；本地联系表与客户 DOCX 已按当前 408/208 状态基线重新生成并通过自动校验
 
 ## 1. QA 范围
 
 - 99 个独立页面：移动端 50 页、管理后台 49 页。
 - 99 张默认状态原型：每个 Page ID 一张，禁止以模块拼图替代。
 - 57 张 P0 关键状态原型：每个 P0 Page ID 额外一张。
-- 总计 156 张基础逐页原型图和 15 组联系表；客户文档连同通知/金币逐状态图共使用 179 个确定性图片映射。
+- 总计 156 张基础逐页原型图、15 组基础功能联系表和 1 张 Figma 最终状态总览（共 16 张联系表）；客户文档连同通知/金币逐状态图共使用 179 个确定性图片映射。
 - 登录、发现、真人详情、互动、会员申请、平台话题、钱包、设置、管理后台等完整功能域。
 - Page ID、页面名称、状态、路由、需求说明、原型文件和 DOCX 引用的确定性映射。
 
@@ -20,7 +20,7 @@ App 版本：1.0
 - 客户原始视觉参考：`qa/source-ui-reference.png`
 - 早期关键旅程对照：`qa/source-prototype-comparison.png`
 - 原始参考、逐页移动端和管理后台同画面对照：`qa/source-page-capture-comparison.png`
-- 现有逐页原型联系表：`../assets/page-prototypes/qa/contact-sheets/01-mobile.png` 至 `14-admin.png`；当前新增的 `APP-INT-06` 与 `ADM-PRI-01/02` 将在最终客户文档生成阶段重排为 15 组
+- 现有逐页原型联系表：`../assets/page-prototypes/qa/contact-sheets/01-mobile.png` 至 `15-admin.png`，另有 `15-mobile-figma-final.png` 汇总移动端 Figma 最终状态；`APP-INT-06` 与 `ADM-PRI-01/02` 已纳入当前分组
 - 逐页原型清单：`../assets/page-prototypes/manifest.json`
 
 客户提供的是宣传合成图，不是逐页 UI 源稿，因此不进行虚假的像素级复刻。对照结论如下：

@@ -12,6 +12,7 @@ import {
   getPublicPersonProfilesByIds,
   PUBLIC_PROFILE_ELIGIBILITY_SQL,
   publicProfileEligibilityParams,
+  publicProfileEligibilitySql,
 } from './app-discovery'
 import {
   AppMembershipError,
@@ -40,6 +41,7 @@ const MAX_CUSTOM_FOLDER_LIMIT = 100
 const REGION_CODE_PATTERN = /^[a-z0-9-]{2,32}$/u
 const TAXONOMY_TERM_ID_PATTERN = /^txt_[A-Za-z0-9_-]{4,92}$/u
 const SEARCH_TEXT_MAX_LENGTH = 40
+const FAVORITE_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql('profile', 'gallery')
 
 type FolderRow = {
   id: string
@@ -606,15 +608,7 @@ async function insertFavoriteItem(
     JOIN profile_public_projections profile ON profile.profile_id = ?
     JOIN galleries gallery ON gallery.id = profile.source_gallery_id
     WHERE folder.account_id = ? AND folder.id = ?
-      AND profile.verification_status = 'verified'
-      AND profile.publication_status = 'published'
-      AND profile.authorization_status = 'active'
-      AND profile.visibility_status = 'visible'
-      AND (profile.authorization_valid_from IS NULL OR datetime(profile.authorization_valid_from) <= datetime(?))
-      AND (profile.authorization_valid_until IS NULL OR datetime(profile.authorization_valid_until) > datetime(?))
-      AND (profile.verification_valid_until IS NULL OR datetime(profile.verification_valid_until) > datetime(?))
-      AND datetime(profile.published_at) IS NOT NULL
-      AND gallery.status = 'published'
+      AND (${FAVORITE_PROFILE_ELIGIBILITY_SQL})
       AND NOT EXISTS (
         SELECT 1
         FROM app_profile_blocks block
@@ -634,9 +628,7 @@ async function insertFavoriteItem(
     profileId,
     accountId,
     folderId,
-    now.toISOString(),
-    now.toISOString(),
-    now.toISOString(),
+    ...publicProfileEligibilityParams(now),
     accountId,
     profileId,
     policy.maxItemsPerFolder,

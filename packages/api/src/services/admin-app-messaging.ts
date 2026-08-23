@@ -16,6 +16,10 @@ import {
   sha256Hex,
   type AppConversationInternalRow,
 } from './app-messaging'
+import {
+  publicProfileEligibilityParams,
+  publicProfileEligibilitySql,
+} from './app-discovery'
 import { getAppMessagingRuntimeControl } from './app-safety'
 import { requireAppOperationalControlAvailable } from './app-operational-safety'
 import {
@@ -35,6 +39,7 @@ const MAX_ADMIN_MESSAGE_PAGE_SIZE = 100
 const DEFAULT_ADMIN_MESSAGE_PAGE_SIZE = 100
 const OPERATOR_MESSAGES_PER_MINUTE = 60
 const ACCESS_REASON = 'service_operation'
+const OPERATOR_MESSAGE_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql('projection', 'gallery')
 const PROHIBITED_OPERATOR_PHRASES = [
   '我是本人',
   '我就是本人',
@@ -476,15 +481,7 @@ export async function sendAdminAppConversationMessage(
           AND runtime_control.operator_sends_paused = 0
           AND operational_control.state = 'available'
           AND security.status = 'active'
-          AND projection.operation_mode = 'platform_managed'
-          AND projection.verification_status = 'verified'
-          AND projection.publication_status = 'published'
-          AND projection.authorization_status = 'active'
-          AND projection.visibility_status = 'visible'
-          AND (projection.authorization_valid_from IS NULL OR datetime(projection.authorization_valid_from) <= datetime(?))
-          AND (projection.authorization_valid_until IS NULL OR datetime(projection.authorization_valid_until) > datetime(?))
-          AND (projection.verification_valid_until IS NULL OR datetime(projection.verification_valid_until) > datetime(?))
-          AND gallery.status = 'published'
+          AND (${OPERATOR_MESSAGE_PROFILE_ELIGIBILITY_SQL})
           AND (
             SELECT COUNT(*) FROM app_conversation_messages recent
             WHERE recent.conversation_id = conversation.id
@@ -504,9 +501,7 @@ export async function sendAdminAppConversationMessage(
         adminId,
         assignment.version,
         nowIso,
-        nowIso,
-        nowIso,
-        nowIso,
+        ...publicProfileEligibilityParams(now),
         recentBoundary,
         OPERATOR_MESSAGES_PER_MINUTE,
       ),
@@ -1675,17 +1670,12 @@ async function diagnoseOperatorSendFailure(
     JOIN galleries gallery ON gallery.id = projection.source_gallery_id
     WHERE conversation.id = ?
       AND security.status = 'active'
-      AND projection.operation_mode = 'platform_managed'
-      AND projection.verification_status = 'verified'
-      AND projection.publication_status = 'published'
-      AND projection.authorization_status = 'active'
-      AND projection.visibility_status = 'visible'
-      AND (projection.authorization_valid_from IS NULL OR datetime(projection.authorization_valid_from) <= datetime(?))
-      AND (projection.authorization_valid_until IS NULL OR datetime(projection.authorization_valid_until) > datetime(?))
-      AND (projection.verification_valid_until IS NULL OR datetime(projection.verification_valid_until) > datetime(?))
-      AND gallery.status = 'published'
+      AND (${OPERATOR_MESSAGE_PROFILE_ELIGIBILITY_SQL})
     LIMIT 1
-  `).bind(conversationId, now.toISOString(), now.toISOString(), now.toISOString()).first<{ eligible: number }>()
+  `).bind(
+    conversationId,
+    ...publicProfileEligibilityParams(now),
+  ).first<{ eligible: number }>()
   if (!eligible) {
     throw new AppMessagingError(403, 'CONVERSATION_FORBIDDEN', '账号或人物资料当前不可用，会话只能查看历史')
   }

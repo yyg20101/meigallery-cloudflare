@@ -1,6 +1,10 @@
 import type { AppFollowUpdateItem } from '@meigallery/shared'
 import type { Bindings } from '../index'
-import { getPublicPersonProfilesByIds } from './app-discovery'
+import {
+  getPublicPersonProfilesByIds,
+  publicProfileEligibilityParams,
+  publicProfileEligibilitySql,
+} from './app-discovery'
 
 export const APP_FOLLOW_UPDATE_POLICY_ID = 'fupol_app_1_0_interaction_3_dev_1'
 export const APP_FOLLOW_UPDATE_DEFAULT_PAGE_SIZE = 20
@@ -10,6 +14,7 @@ export const APP_FOLLOW_UPDATE_EVENT_TYPE = 'interaction.followed_profile_update
 const FOLLOW_UPDATE_CURSOR_VERSION = 1
 const POLICY_ID_PATTERN = /^fupol_[A-Za-z0-9_-]{1,90}$/u
 const PUBLICATION_ID_PATTERN = /^ppub_[A-Za-z0-9_-]{1,75}$/u
+const FOLLOW_UPDATE_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql('projection', 'gallery')
 
 export interface AppFollowUpdateRuntimeConfig {
   enabled: boolean
@@ -145,7 +150,6 @@ export async function listAppFollowUpdates(
       query.cursor.publicationId,
     )
   }
-  const nowIso = now.toISOString()
   const result = await db.prepare(`
     SELECT publication.id AS publication_id,
            publication.profile_id,
@@ -160,33 +164,7 @@ export async function listAppFollowUpdates(
     JOIN galleries gallery
       ON gallery.id = projection.source_gallery_id
     WHERE ${conditions.join(' AND ')}
-      AND projection.verification_status = 'verified'
-      AND projection.publication_status = 'published'
-      AND projection.authorization_status = 'active'
-      AND projection.visibility_status = 'visible'
-      AND (
-        projection.authorization_valid_from IS NULL
-        OR (
-          datetime(projection.authorization_valid_from) IS NOT NULL
-          AND datetime(projection.authorization_valid_from) <= datetime(?)
-        )
-      )
-      AND (
-        projection.authorization_valid_until IS NULL
-        OR (
-          datetime(projection.authorization_valid_until) IS NOT NULL
-          AND datetime(projection.authorization_valid_until) > datetime(?)
-        )
-      )
-      AND (
-        projection.verification_valid_until IS NULL
-        OR (
-          datetime(projection.verification_valid_until) IS NOT NULL
-          AND datetime(projection.verification_valid_until) > datetime(?)
-        )
-      )
-      AND datetime(projection.published_at) IS NOT NULL
-      AND gallery.status = 'published'
+      AND (${FOLLOW_UPDATE_PROFILE_ELIGIBILITY_SQL})
       AND NOT EXISTS (
         SELECT 1
         FROM app_profile_blocks block
@@ -196,7 +174,11 @@ export async function listAppFollowUpdates(
       )
     ORDER BY publication.reviewed_at DESC, publication.id DESC
     LIMIT ?
-  `).bind(...bindings, nowIso, nowIso, nowIso, query.limit + 1).all<FollowUpdateRow>()
+  `).bind(
+    ...bindings,
+    ...publicProfileEligibilityParams(now),
+    query.limit + 1,
+  ).all<FollowUpdateRow>()
 
   const hasMore = result.results.length > query.limit
   const pageRows = result.results.slice(0, query.limit)
@@ -292,23 +274,7 @@ export async function enqueueAppFollowUpdateNotifications(
       AND publication.reviewed_at > relation.created_at
       AND publication.reviewed_at >= ?
       AND publication.reviewed_at >= ?
-      AND projection.verification_status = 'verified'
-      AND projection.publication_status = 'published'
-      AND projection.authorization_status = 'active'
-      AND projection.visibility_status = 'visible'
-      AND (
-        projection.authorization_valid_from IS NULL
-        OR datetime(projection.authorization_valid_from) <= datetime(?)
-      )
-      AND (
-        projection.authorization_valid_until IS NULL
-        OR datetime(projection.authorization_valid_until) > datetime(?)
-      )
-      AND (
-        projection.verification_valid_until IS NULL
-        OR datetime(projection.verification_valid_until) > datetime(?)
-      )
-      AND gallery.status = 'published'
+      AND (${FOLLOW_UPDATE_PROFILE_ELIGIBILITY_SQL})
       AND NOT EXISTS (
         SELECT 1
         FROM app_profile_blocks block
@@ -326,9 +292,7 @@ export async function enqueueAppFollowUpdateNotifications(
     accountId,
     policy.effectiveAt,
     notification.effectiveAt,
-    nowIso,
-    nowIso,
-    nowIso,
+    ...publicProfileEligibilityParams(now),
     APP_FOLLOW_UPDATE_MAX_PAGE_SIZE,
   ).run()
   return Number(result.meta?.changes ?? 0)
@@ -353,7 +317,6 @@ export async function isAppFollowUpdateDeliveryEligible(
     return false
   }
   if (!policy.notificationProjectionEnabled) return false
-  const nowIso = now.toISOString()
   const row = await db.prepare(`
     SELECT 1 AS eligible
     FROM app_viewer_interactions relation
@@ -372,23 +335,7 @@ export async function isAppFollowUpdateDeliveryEligible(
       AND publication.projection_version IS NOT NULL
       AND publication.reviewed_at > relation.created_at
       AND publication.reviewed_at >= ?
-      AND projection.verification_status = 'verified'
-      AND projection.publication_status = 'published'
-      AND projection.authorization_status = 'active'
-      AND projection.visibility_status = 'visible'
-      AND (
-        projection.authorization_valid_from IS NULL
-        OR datetime(projection.authorization_valid_from) <= datetime(?)
-      )
-      AND (
-        projection.authorization_valid_until IS NULL
-        OR datetime(projection.authorization_valid_until) > datetime(?)
-      )
-      AND (
-        projection.verification_valid_until IS NULL
-        OR datetime(projection.verification_valid_until) > datetime(?)
-      )
-      AND gallery.status = 'published'
+      AND (${FOLLOW_UPDATE_PROFILE_ELIGIBILITY_SQL})
       AND NOT EXISTS (
         SELECT 1
         FROM app_profile_blocks block
@@ -402,9 +349,7 @@ export async function isAppFollowUpdateDeliveryEligible(
     input.accountId,
     input.profileId,
     policy.effectiveAt,
-    nowIso,
-    nowIso,
-    nowIso,
+    ...publicProfileEligibilityParams(now),
   ).first<{ eligible: number }>()
   return Boolean(row)
 }

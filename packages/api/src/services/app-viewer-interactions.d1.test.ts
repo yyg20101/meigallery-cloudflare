@@ -93,8 +93,11 @@ describe('App 观看者喜欢与关注 D1 关系', () => {
   it('不可用资料拒绝新增，但既有关系可在失效后幂等取消', async () => {
     await insertEligibleProfile('pp_visible')
     await insertEligibleProfile('pp_hidden', 'hidden')
+    await insertEligibleProfile('pp_self_managed', 'visible', 'self_managed')
 
     await expect(setViewerInteraction(db, 1, 'pp_hidden', 'like', true, NOW))
+      .rejects.toMatchObject({ code: 'PROFILE_NOT_AVAILABLE', status: 404 })
+    await expect(setViewerInteraction(db, 1, 'pp_self_managed', 'like', true, NOW))
       .rejects.toMatchObject({ code: 'PROFILE_NOT_AVAILABLE', status: 404 })
 
     await setViewerInteraction(db, 1, 'pp_visible', 'like', true, NOW)
@@ -222,7 +225,11 @@ describe('App 观看者喜欢与关注 D1 关系', () => {
   })
 })
 
-async function insertEligibleProfile(profileId: string, visibility = 'visible') {
+async function insertEligibleProfile(
+  profileId: string,
+  visibility = 'visible',
+  operationMode: 'platform_managed' | 'self_managed' = 'platform_managed',
+) {
   const galleryId = `gal_${profileId}`
   await db.prepare('INSERT INTO galleries (id, cover_key, status) VALUES (?, ?, ?)')
     .bind(galleryId, `covers/${profileId}.jpg`, 'published')
@@ -266,8 +273,8 @@ async function insertEligibleProfile(profileId: string, visibility = 'visible') 
     'active',
     null,
     visibility,
-    'platform_managed',
-    '消息由平台运营接收',
+    operationMode,
+    operationMode === 'platform_managed' ? '消息由平台运营接收' : '资料本人接收',
     'cn-bj',
     '北京市',
     'city',

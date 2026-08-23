@@ -135,11 +135,24 @@ const FIGMA_FINAL_DELIVERY = Object.freeze({
   mobileStates: 208,
   adminStates: 200,
   flowPreviews: 99,
-  mobilePageActions: 914,
+  mobilePageActions: 928,
+  mobileSupportActions: 1076,
   mobileFlowActions: 180,
   adminPageActions: 2043,
   adminFlowActions: 434,
+  historicalMobilePageActions: 914,
+  historicalPageActions: 2957,
+  historicalFlowActions: 614,
   historicalActionBaseline: 3571,
+  currentActionTotal: 3585,
+  mobileOfficialStateSignature: 'de752dd3',
+  mobileSupportStateSignature: '49d31b64',
+  adminOfficialStateSignature: 'a89d0c59',
+  mobileTextNodes: 4582,
+  mobileSupportTextNodes: 4355,
+  adminTextNodes: 10230,
+  mobileFlowTextNodes: 1126,
+  adminFlowTextNodes: 2495,
   missingDestinations: 0,
   undersizedMobileTouchTargets: 0,
   unstyledText: 0,
@@ -2515,12 +2528,20 @@ const counts = {
   figmaMobileStates: derivedFigmaStateCounts.mobileStates,
   figmaAdminStates: derivedFigmaStateCounts.adminStates,
   figmaFlowPreviews: FIGMA_FINAL_DELIVERY.flowPreviews,
-  figmaHistoricalPageActionBaseline:
+  figmaMobilePageActions: FIGMA_FINAL_DELIVERY.mobilePageActions,
+  figmaMobileSupportActions: FIGMA_FINAL_DELIVERY.mobileSupportActions,
+  figmaMobileFlowActions: FIGMA_FINAL_DELIVERY.mobileFlowActions,
+  figmaAdminPageActions: FIGMA_FINAL_DELIVERY.adminPageActions,
+  figmaAdminFlowActions: FIGMA_FINAL_DELIVERY.adminFlowActions,
+  figmaPageActions:
     FIGMA_FINAL_DELIVERY.mobilePageActions
     + FIGMA_FINAL_DELIVERY.adminPageActions,
-  figmaHistoricalFlowActionBaseline:
+  figmaFlowActions:
     FIGMA_FINAL_DELIVERY.mobileFlowActions
     + FIGMA_FINAL_DELIVERY.adminFlowActions,
+  figmaActionTotal: FIGMA_FINAL_DELIVERY.currentActionTotal,
+  figmaHistoricalPageActionBaseline: FIGMA_FINAL_DELIVERY.historicalPageActions,
+  figmaHistoricalFlowActionBaseline: FIGMA_FINAL_DELIVERY.historicalFlowActions,
   figmaHistoricalActionBaseline: FIGMA_FINAL_DELIVERY.historicalActionBaseline,
   groups: catalog.groups.length
 }
@@ -2544,6 +2565,14 @@ const expectedCounts = {
   figmaMobileStates: 208,
   figmaAdminStates: 200,
   figmaFlowPreviews: 99,
+  figmaMobilePageActions: 928,
+  figmaMobileSupportActions: 1076,
+  figmaMobileFlowActions: 180,
+  figmaAdminPageActions: 2043,
+  figmaAdminFlowActions: 434,
+  figmaPageActions: 2971,
+  figmaFlowActions: 614,
+  figmaActionTotal: 3585,
   figmaHistoricalPageActionBaseline: 2957,
   figmaHistoricalFlowActionBaseline: 614,
   figmaHistoricalActionBaseline: 3571,
@@ -2588,6 +2617,100 @@ const captureArtifacts = [
   ...figmaStateCaptures,
   ...supplementalFigmaCaptures
 ]
+const developmentMarkdownCapturePaths = enrichedPages.flatMap(page => {
+  if (page.figmaStates.length) {
+    return figmaStateCaptures
+      .filter(capture => capture.pageId === page.pageId)
+      .map(capture => capture.image)
+  }
+  const supplementalStates = supplementalFigmaStateSpecs[page.pageId]
+  if (supplementalStates?.length) {
+    return [
+      ...supplementalStates.map(capture => capture.image),
+      ...(supplementalFigmaDelivery[page.pageId]?.supportScreens || [])
+        .map(capture => capture.image)
+    ]
+  }
+  return captures
+    .filter(capture => capture.pageId === page.pageId)
+    .map(capture => capture.image)
+})
+const captureArtifactImages = new Set(captureArtifacts.map(capture => capture.image))
+if (
+  developmentMarkdownCapturePaths.length !== 307
+  || new Set(developmentMarkdownCapturePaths).size !== developmentMarkdownCapturePaths.length
+  || developmentMarkdownCapturePaths.some(image => !captureArtifactImages.has(image))
+) {
+  throw new Error('开发需求规格的 307 张图片映射不完整或存在重复')
+}
+
+// 已被当前注册图取代、但仍保留以复核历史阶段交付的截图；不得用于当前 MD/DOCX。
+const historicalCapturePaths = Object.freeze([
+  'figma-final/phase14/phase14-23-entryReversing.png',
+  'figma-final/phase16/adm-pri-01-governance-gate.png',
+  'figma-final/phase16/adm-pri-01-normal.png',
+  'figma-final/phase16/adm-pri-02-normal.png',
+  'figma-final/phase16/adm-pri-02-privacy2-gate.png',
+  'figma-final/phase17/adm-aud-05__default.png',
+  'figma-final/phase17/adm-aud-06__default.png',
+  'figma-final/phase17/adm-mbr-07__default.png',
+  'figma-final/phase17/adm-mbr-07__state-03.png',
+  'figma-final/phase17/adm-pri-01__default.png',
+  'figma-final/phase17/adm-pri-02__default.png',
+  'figma-final/phase17/adm-src-01__default.png',
+  'mobile/app-auth-04__state-02.png',
+  'mobile/app-auth-04__state-03.png',
+  'mobile/app-auth-06__loading.png',
+  'mobile/app-auth-06__state-03.png',
+  'mobile/app-int-01__capability-unavailable.png',
+  'mobile/app-int-01__cursor-refresh-failed.png',
+  'mobile/app-int-01__cursor-refreshing.png',
+  'mobile/app-int-01__filter-sheet.png',
+  'mobile/app-int-01__load-failed.png',
+  'mobile/app-int-01__loading.png',
+  'mobile/app-int-01__pagination-failed.png',
+  'mobile/app-int-01__pagination-loading.png',
+  'mobile/app-int-01__recent-following.png',
+  'mobile/app-int-01__signed-out.png',
+  'mobile/app-int-01__state-02-first-empty.png',
+  'mobile/app-int-01__state-03-no-updates.png',
+  'mobile/app-int-01__unfollow-confirm.png',
+  'mobile/app-int-01__unfollow-failed.png',
+  'mobile/app-int-01__unfollow-processing.png',
+  'mobile/app-int-01__unfollow-success.png',
+  'mobile/app-int-01__with-updates.png',
+  'mobile/app-int-02__cancel-confirm.png',
+  'mobile/app-int-02__cancel-failed.png',
+  'mobile/app-int-02__cancel-processing.png',
+  'mobile/app-int-02__cancel-success.png',
+  'mobile/app-int-02__capability-unavailable.png',
+  'mobile/app-int-02__cursor-refresh-failed.png',
+  'mobile/app-int-02__cursor-refreshing.png',
+  'mobile/app-int-02__filter-region.png',
+  'mobile/app-int-02__filter-sheet.png',
+  'mobile/app-int-02__filter-style.png',
+  'mobile/app-int-02__load-failed.png',
+  'mobile/app-int-02__loading.png',
+  'mobile/app-int-02__pagination-failed.png',
+  'mobile/app-int-02__pagination-loading.png',
+  'mobile/app-int-02__search-empty.png',
+  'mobile/app-int-02__signed-out.png',
+  'mobile/app-int-02__state-02-empty.png',
+  'mobile/app-set-01__figma-likes-entry.png'
+])
+const historicalCaptures = historicalCapturePaths.map(image => ({
+  image,
+  archiveReason: '历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。',
+  ...localCaptureMetadata(image),
+  status: 'archived'
+}))
+if (
+  historicalCaptures.length !== 51
+  || new Set(historicalCapturePaths).size !== historicalCapturePaths.length
+  || historicalCaptures.some(capture => !capture.sha256 || !capture.bytes)
+) {
+  throw new Error('历史截图归档清单不完整或存在重复')
+}
 const captureHashes = captureArtifacts
   .map(capture => capture.sha256)
   .filter(Boolean)
@@ -2601,17 +2724,17 @@ const captureArtifactsVerified = captureArtifacts.every(capture => (
 const manifest = {
   schemaVersion: 5,
   appVersion: '1.0',
-  generatedAt: '2026-08-14',
-  figmaAuditAt: '2026-08-14',
+  generatedAt: '2026-08-24',
+  figmaAuditAt: '2026-08-24',
   status: captureArtifactsVerified ? 'verified' : 'capture-pending',
-  ...(captureArtifactsVerified ? { verifiedAt: '2026-08-14' } : {}),
+  ...(captureArtifactsVerified ? { verifiedAt: '2026-08-24' } : {}),
   source: 'docs/app/interactive-prototype/page-catalog.js',
   captureViewport: { width: 1600, height: 1000 },
   figmaFinal: {
     fileKey: FIGMA_FILE_KEY,
     fileUrl: FIGMA_DESIGN_URL,
     finalVersionId: FIGMA_FINAL_VERSION_ID,
-    versionNote: '该版本 ID 为历史冻结点；当前事实源为同一 fileKey 的实时文件，2026-08-14 已完成 408 个正式状态登记；APP-SET-08 已补齐补充、升级和三个终态结果页。全量交互统计留待开发结束后统一重算。',
+    versionNote: '该版本 ID 为历史冻结点；当前事实源为同一 fileKey 的实时文件。2026-08-24 已完成 408 个正式状态、99 个流程预览和 3,585 个正式页面/流程动作的全量复核；APP-SET-08 九态已全部归入“我的与设置”正式 Section。',
     scope: '移动端 50 页、管理后台 49 页及全部 408 个需求状态',
     status: 'final-deliverable',
     officialPages: {
@@ -2627,16 +2750,40 @@ const manifest = {
       mobileStateCoverage: '208/208',
       adminStateCoverage: '200/200',
       flowPreviews: FIGMA_FINAL_DELIVERY.flowPreviews,
-      historicalActionBaseline: {
-        scope: 'APP-SET-08 增量六态前',
+      currentActions: {
+        measuredAt: '2026-08-24',
+        mobilePageActions: FIGMA_FINAL_DELIVERY.mobilePageActions,
+        mobileSupportActions: FIGMA_FINAL_DELIVERY.mobileSupportActions,
+        mobileFlowActions: FIGMA_FINAL_DELIVERY.mobileFlowActions,
+        adminPageActions: FIGMA_FINAL_DELIVERY.adminPageActions,
+        adminFlowActions: FIGMA_FINAL_DELIVERY.adminFlowActions,
         pageActions:
           FIGMA_FINAL_DELIVERY.mobilePageActions
           + FIGMA_FINAL_DELIVERY.adminPageActions,
         flowActions:
           FIGMA_FINAL_DELIVERY.mobileFlowActions
           + FIGMA_FINAL_DELIVERY.adminFlowActions,
+        totalActions: FIGMA_FINAL_DELIVERY.currentActionTotal,
+        missingDestinations: FIGMA_FINAL_DELIVERY.missingDestinations
+      },
+      historicalActionBaseline: {
+        scope: 'APP-SET-08 增量六态前',
+        pageActions: FIGMA_FINAL_DELIVERY.historicalPageActions,
+        flowActions: FIGMA_FINAL_DELIVERY.historicalFlowActions,
         totalActions: FIGMA_FINAL_DELIVERY.historicalActionBaseline,
         missingDestinations: FIGMA_FINAL_DELIVERY.missingDestinations
+      },
+      registrySignatures: {
+        mobileOfficial: FIGMA_FINAL_DELIVERY.mobileOfficialStateSignature,
+        mobileSupport: FIGMA_FINAL_DELIVERY.mobileSupportStateSignature,
+        adminOfficial: FIGMA_FINAL_DELIVERY.adminOfficialStateSignature
+      },
+      textNodes: {
+        mobileOfficial: FIGMA_FINAL_DELIVERY.mobileTextNodes,
+        mobileSupport: FIGMA_FINAL_DELIVERY.mobileSupportTextNodes,
+        adminOfficial: FIGMA_FINAL_DELIVERY.adminTextNodes,
+        mobileFlow: FIGMA_FINAL_DELIVERY.mobileFlowTextNodes,
+        adminFlow: FIGMA_FINAL_DELIVERY.adminFlowTextNodes
       },
       undersizedMobileTouchTargets:
         FIGMA_FINAL_DELIVERY.undersizedMobileTouchTargets,
@@ -2651,7 +2798,12 @@ const manifest = {
   pages: enrichedPages,
   captures,
   figmaStateCaptures,
-  supplementalFigmaCaptures
+  supplementalFigmaCaptures,
+  developmentMarkdownCapturePaths,
+  historicalCaptureArchive: {
+    scope: '历史阶段截图；不属于当前 408 状态或 307 张开发规格图片映射。',
+    captures: historicalCaptures
+  }
 }
 
 function imagePathFor(capture) {
@@ -2906,7 +3058,7 @@ const markdown = [
   '',
   'App 版本：1.0',
   '',
-  '更新日期：2026-08-14',
+  '更新日期：2026-08-24',
   '',
   '状态：需求讨论中，待客户确认',
   '',
@@ -2916,7 +3068,7 @@ const markdown = [
   '',
   'Page ID、设计路由、Figma Node ID 和状态 key 是设计交付、实现映射与测试追踪元数据，不是真实产品 UI 文案；除非产品需求另行定义面向用户的业务编号，否则 KMP 与 Nuxt 页面不得可见渲染这些标注。',
   '',
-  `Figma 最终设计已覆盖移动端 ${counts.mobilePages} 页、管理后台 ${counts.adminPages} 页和全部 ${counts.figmaDesignedStates} 个正式需求状态，并建立 ${counts.figmaFlowPreviews} 个流程预览。${counts.figmaHistoricalActionBaseline.toLocaleString('en-US')} 个有效交互动作是 APP-SET-08 增量六态前的历史基线，开发结束后统一重算。客户文档保留 ${counts.defaultCaptures} 张默认状态、${counts.keyStateCaptures} 张 P0 关键状态和通知/金币 23 张逐状态注册导出，共 ${counts.documentPrototypeMappings} 个 manifest 确定性图片映射；APP-DSC-01 至 APP-DSC-09、APP-INT-06 与 ADM-PRI-01/02 的逐状态 Figma 图直接进入本 MD。图片均通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。`,
+  `Figma 最终设计已覆盖移动端 ${counts.mobilePages} 页、管理后台 ${counts.adminPages} 页和全部 ${counts.figmaDesignedStates} 个正式需求状态，并建立 ${counts.figmaFlowPreviews} 个流程预览。2026-08-24 实时复核得到 ${counts.figmaActionTotal.toLocaleString('en-US')} 个正式页面/流程动作（页面 ${counts.figmaPageActions.toLocaleString('en-US')}、流程 ${counts.figmaFlowActions.toLocaleString('en-US')}），缺失目标为 0；${counts.figmaHistoricalActionBaseline.toLocaleString('en-US')} 仅保留为 APP-SET-08 增量六态前历史基线。客户文档保留 ${counts.defaultCaptures} 张默认状态、${counts.keyStateCaptures} 张 P0 关键状态和通知/金币 23 张逐状态注册导出，共 ${counts.documentPrototypeMappings} 个 manifest 确定性图片映射；APP-DSC-01 至 APP-DSC-09、APP-INT-06 与 ADM-PRI-01/02 的逐状态 Figma 图直接进入本 MD。图片均通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。`,
   '',
   '## 2. 覆盖统计',
   '',
@@ -2932,6 +3084,8 @@ const markdown = [
   `| Figma 最终设计页面 | ${counts.figmaDesignedPages} |`,
   `| Figma 最终设计状态 | ${counts.figmaDesignedStates}（移动端 ${counts.figmaMobileStates} / 后台 ${counts.figmaAdminStates}） |`,
   `| Figma 流程预览 | ${counts.figmaFlowPreviews} |`,
+  `| Figma 当前页面内 / 流程动作 | ${counts.figmaPageActions} / ${counts.figmaFlowActions} |`,
+  `| Figma 当前有效交互动作总数 | ${counts.figmaActionTotal} |`,
   `| Figma 有效交互动作（APP-SET-08 增量前历史基线） | ${counts.figmaHistoricalActionBaseline} |`,
   `| 通知与金币逐状态本地导出 | ${counts.detailedFigmaPages} 页 / ${counts.detailedFigmaStateCaptures} 张 |`,
   '| 发现页逐状态 MD 直嵌 | 9 页 / 38 正式状态（16 张注册图 + 22 张补充图） |',
@@ -2990,7 +3144,7 @@ const developmentMarkdown = [
   '',
   'App 版本：1.0',
   '',
-  '更新日期：2026-08-14',
+  '更新日期：2026-08-24',
   '',
   '状态：需求讨论中；客户确认结论同步后作为开发排期与实现验收基线',
   '',
@@ -3019,6 +3173,8 @@ const developmentMarkdown = [
   `| 基础逐页原型 | ${counts.totalCaptures} |`,
   `| Figma 最终设计页面 | ${counts.figmaDesignedPages} |`,
   `| Figma 最终设计状态 | ${counts.figmaDesignedStates}（移动端 ${counts.figmaMobileStates} / 后台 ${counts.figmaAdminStates}） |`,
+  `| Figma 当前页面内 / 流程动作 | ${counts.figmaPageActions} / ${counts.figmaFlowActions} |`,
+  `| Figma 当前有效交互动作总数 | ${counts.figmaActionTotal} |`,
   `| Figma 页面内 / 流程动作（APP-SET-08 增量前历史基线） | ${counts.figmaHistoricalPageActionBaseline} / ${counts.figmaHistoricalFlowActionBaseline} |`,
   `| Figma 有效交互动作总数（APP-SET-08 增量前历史基线） | ${counts.figmaHistoricalActionBaseline} |`,
   `| 通知与金币逐状态本地导出 | ${counts.detailedFigmaPages} 页 / ${counts.detailedFigmaStateCaptures} 张 |`,
@@ -3031,7 +3187,7 @@ const developmentMarkdown = [
   '',
   `- 最终文件：[Peachmote UI 借鉴审查板 - MeiGallery](${FIGMA_DESIGN_URL})；最终版本 ID：\`${FIGMA_FINAL_VERSION_ID}\`。`,
   `- \`10｜Mobile Pages\` 覆盖 ${counts.mobilePages} 个 Page ID、${counts.figmaMobileStates} 个状态；\`20｜Admin Pages\` 覆盖 ${counts.adminPages} 个 Page ID、${counts.figmaAdminStates} 个状态。`,
-  `- \`30｜Prototype Flows\` 覆盖 ${counts.figmaFlowPreviews} 个流程预览；${counts.figmaHistoricalActionBaseline} 个页面内与流程动作及缺失目标 0 只代表 APP-SET-08 增量六态前的历史基线，当前动作总数待开发结束后统一重算。`,
+  `- \`30｜Prototype Flows\` 覆盖 ${counts.figmaFlowPreviews} 个流程预览；2026-08-24 实时复核共有 ${counts.figmaActionTotal} 个正式页面/流程动作（页面 ${counts.figmaPageActions}、流程 ${counts.figmaFlowActions}），缺失目标 0。${counts.figmaHistoricalActionBaseline} 仅代表 APP-SET-08 增量六态前历史基线。`,
   '- `40｜Delivery Index` 按 Page ID 提供页面索引和需求追踪；`50｜QA & Handoff` 提供视觉、交互、边界和交付门禁。',
   '- 最终 QA 中未发现未绑定文字样式、原始填充/描边、缺失字体、文字溢出或移动端不足 44dp 的关键点击热区。',
   `- 开发以 Page ID、状态名称和需求追踪键定位设计；客户文档中的 ${counts.documentPrototypeMappings} 张图用于离线逐页确认，不替代 Figma 中 ${counts.figmaDesignedStates} 个最终状态。`,
@@ -3174,7 +3330,7 @@ const traceability = [
   '',
   'App 版本：1.0',
   '',
-  '更新时间：2026-08-14',
+  '更新时间：2026-08-24',
   '',
   '状态：需求讨论中，待客户确认',
   '',
@@ -3202,7 +3358,8 @@ const traceability = [
   `| 基础逐页原型 | ${counts.totalCaptures} |`,
   `| Figma 最终设计页面 | ${counts.figmaDesignedPages} |`,
   `| Figma 最终设计状态 | ${counts.figmaDesignedStates} |`,
-  `| Figma 流程预览 / 历史动作基线 | ${counts.figmaFlowPreviews} / ${counts.figmaHistoricalActionBaseline}（APP-SET-08 增量前） |`,
+  `| Figma 流程预览 / 当前动作总数 | ${counts.figmaFlowPreviews} / ${counts.figmaActionTotal} |`,
+  `| Figma 增量前历史动作基线 | ${counts.figmaHistoricalActionBaseline}（APP-SET-08 增量前） |`,
   `| 通知与金币逐状态本地导出 | ${counts.detailedFigmaPages} 页 / ${counts.detailedFigmaStateCaptures} 张 |`,
   `| 客户文档图片映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.length} |`,
@@ -3245,7 +3402,7 @@ traceability.push(
   '- 每个 Page ID 必须同时存在页面目录、详细功能说明、默认状态原型和需求追踪键。',
   `- ${counts.p0Pages} 个 P0 页面必须额外存在一张关键异常、受限、冲突或处理中状态原型。`,
   `- ${counts.pages} 个 Page ID 的 ${counts.figmaDesignedStates} 个需求状态必须全部存在于 Figma 最终页，并按 Page ID、状态名称、模块和需求追踪键定位；\`30｜Prototype Flows\` 必须覆盖 ${counts.figmaFlowPreviews} 个流程预览。`,
-  `- ${counts.figmaHistoricalActionBaseline.toLocaleString('en-US')} 个页面内与流程动作是 APP-SET-08 增量六态前的历史基线；开发结束后必须重算，增量期间每个新增状态单独核对缺失目标和 44dp 移动端关键热区。`,
+  `- 2026-08-24 已重算 ${counts.figmaActionTotal.toLocaleString('en-US')} 个正式页面/流程动作，缺失目标为 0；移动端 208 个正式状态与 171 张支持稿的原型交互源均不存在不足 44dp 的目标。${counts.figmaHistoricalActionBaseline.toLocaleString('en-US')} 仅保留为 APP-SET-08 增量六态前历史基线。`,
   '- `APP-MSG-05`、`APP-MSG-06`、`APP-WAL-01`、`APP-WAL-02`、`APP-WAL-03` 另外保留 23 张逐状态本地导出图；每张图都具备唯一 Frame ID、触发条件、关键交互、预期结果和权威边界。',
   '- Page ID、页面名称、优先级、默认状态、关键状态、图片文件名和需求追踪键由同一清单生成并自动校验。',
   '- `ADM-AUD-03` 的完整可视化页面属于 P2；审计完整性的最小自动校验与告警属于 P0 后端门禁，两者不得混为同一页面优先级。',

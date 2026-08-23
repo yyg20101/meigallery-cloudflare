@@ -63,6 +63,14 @@ def validate_counts(manifest: dict) -> None:
         "figmaMobileStates": 208,
         "figmaAdminStates": 200,
         "figmaFlowPreviews": 99,
+        "figmaMobilePageActions": 928,
+        "figmaMobileSupportActions": 1076,
+        "figmaMobileFlowActions": 180,
+        "figmaAdminPageActions": 2043,
+        "figmaAdminFlowActions": 434,
+        "figmaPageActions": 2971,
+        "figmaFlowActions": 614,
+        "figmaActionTotal": 3585,
         "figmaHistoricalPageActionBaseline": 2957,
         "figmaHistoricalFlowActionBaseline": 614,
         "figmaHistoricalActionBaseline": 3571,
@@ -170,6 +178,34 @@ def validate_images(manifest: dict) -> None:
         capture["sha256"] = sha256
         capture["bytes"] = path.stat().st_size
         capture["status"] = "verified"
+
+    archive = manifest.get("historicalCaptureArchive", {})
+    archived_captures = archive.get("captures", [])
+    if archive.get("scope") != "历史阶段截图；不属于当前 408 状态或 307 张开发规格图片映射。":
+        raise ValueError("历史截图归档缺少明确的非当前范围说明")
+    if len(archived_captures) != 51:
+        raise ValueError("历史截图归档数量不是 51 张")
+    archived_paths: set[Path] = set()
+    for capture in archived_captures:
+        relative_path = Path(capture["image"])
+        path = ASSET_DIR / relative_path
+        resolved = path.resolve()
+        if resolved in expected_files or resolved in archived_paths:
+            raise ValueError(f"历史截图重复登记：{path.relative_to(ROOT)}")
+        archived_paths.add(resolved)
+        expected_files.add(resolved)
+        if not path.exists():
+            raise FileNotFoundError(f"缺少历史归档图：{path.relative_to(ROOT)}")
+        if capture.get("status") != "archived" or "不得作为当前交付依据" not in capture.get("archiveReason", ""):
+            raise ValueError(f"历史截图未明确标记归档：{path.relative_to(ROOT)}")
+        with Image.open(path) as image:
+            image.load()
+            if image.format != "PNG":
+                raise ValueError(f"历史归档图不是 PNG：{path.relative_to(ROOT)}")
+            if [image.width, image.height] != [capture.get("width"), capture.get("height")]:
+                raise ValueError(f"历史归档图尺寸与清单不一致：{path.relative_to(ROOT)}")
+        if image_hash(path) != capture.get("sha256") or path.stat().st_size != capture.get("bytes"):
+            raise ValueError(f"历史归档图内容与清单不一致：{path.relative_to(ROOT)}")
 
     actual_files = {
         path.resolve()

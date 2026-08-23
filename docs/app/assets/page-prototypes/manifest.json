@@ -1,10 +1,10 @@
 {
   "schemaVersion": 5,
   "appVersion": "1.0",
-  "generatedAt": "2026-08-14",
-  "figmaAuditAt": "2026-08-14",
+  "generatedAt": "2026-08-24",
+  "figmaAuditAt": "2026-08-24",
   "status": "verified",
-  "verifiedAt": "2026-08-14",
+  "verifiedAt": "2026-08-24",
   "source": "docs/app/interactive-prototype/page-catalog.js",
   "captureViewport": {
     "width": 1600,
@@ -14,7 +14,7 @@
     "fileKey": "LaNSwwGsznwcpV8msj7BQC",
     "fileUrl": "https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery",
     "finalVersionId": "2381987656588552168",
-    "versionNote": "该版本 ID 为历史冻结点；当前事实源为同一 fileKey 的实时文件，2026-08-14 已完成 408 个正式状态登记；APP-SET-08 已补齐补充、升级和三个终态结果页。全量交互统计留待开发结束后统一重算。",
+    "versionNote": "该版本 ID 为历史冻结点；当前事实源为同一 fileKey 的实时文件。2026-08-24 已完成 408 个正式状态、99 个流程预览和 3,585 个正式页面/流程动作的全量复核；APP-SET-08 九态已全部归入“我的与设置”正式 Section。",
     "scope": "移动端 50 页、管理后台 49 页及全部 408 个需求状态",
     "status": "final-deliverable",
     "officialPages": {
@@ -30,12 +30,36 @@
       "mobileStateCoverage": "208/208",
       "adminStateCoverage": "200/200",
       "flowPreviews": 99,
+      "currentActions": {
+        "measuredAt": "2026-08-24",
+        "mobilePageActions": 928,
+        "mobileSupportActions": 1076,
+        "mobileFlowActions": 180,
+        "adminPageActions": 2043,
+        "adminFlowActions": 434,
+        "pageActions": 2971,
+        "flowActions": 614,
+        "totalActions": 3585,
+        "missingDestinations": 0
+      },
       "historicalActionBaseline": {
         "scope": "APP-SET-08 增量六态前",
         "pageActions": 2957,
         "flowActions": 614,
         "totalActions": 3571,
         "missingDestinations": 0
+      },
+      "registrySignatures": {
+        "mobileOfficial": "de752dd3",
+        "mobileSupport": "49d31b64",
+        "adminOfficial": "a89d0c59"
+      },
+      "textNodes": {
+        "mobileOfficial": 4582,
+        "mobileSupport": 4355,
+        "adminOfficial": 10230,
+        "mobileFlow": 1126,
+        "adminFlow": 2495
       },
       "undersizedMobileTouchTargets": 0,
       "unstyledText": 0,
@@ -64,6 +88,14 @@
     "figmaMobileStates": 208,
     "figmaAdminStates": 200,
     "figmaFlowPreviews": 99,
+    "figmaMobilePageActions": 928,
+    "figmaMobileSupportActions": 1076,
+    "figmaMobileFlowActions": 180,
+    "figmaAdminPageActions": 2043,
+    "figmaAdminFlowActions": 434,
+    "figmaPageActions": 2971,
+    "figmaFlowActions": 614,
+    "figmaActionTotal": 3585,
     "figmaHistoricalPageActionBaseline": 2957,
     "figmaHistoricalFlowActionBaseline": 614,
     "figmaHistoricalActionBaseline": 3571,
@@ -8044,7 +8076,7 @@
       "bytes": 527525,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-AUTH-01",
@@ -8065,7 +8097,7 @@
       "bytes": 525089,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-AUTH-02",
@@ -8086,7 +8118,7 @@
       "bytes": 255593,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-AUTH-02",
@@ -8107,7 +8139,7 @@
       "bytes": 275685,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-AUTH-03",
@@ -8128,7 +8160,7 @@
       "bytes": 259943,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-AUTH-03",
@@ -8149,7 +8181,7 @@
       "bytes": 285738,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-AUTH-04",
@@ -8170,7 +8202,7 @@
       "bytes": 100991,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-AUTH-05",
@@ -8191,7 +8223,7 @@
       "bytes": 289406,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-AUTH-06",
@@ -8212,7 +8244,7 @@
       "bytes": 156414,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-AUTH-06",
@@ -8233,7 +8265,7 @@
       "bytes": 149758,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-01",
@@ -8254,7 +8286,7 @@
       "bytes": 479888,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-01",
@@ -8275,7 +8307,7 @@
       "bytes": 424053,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-02",
@@ -8296,7 +8328,7 @@
       "bytes": 141413,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-02",
@@ -8317,7 +8349,7 @@
       "bytes": 151228,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-03",
@@ -8338,7 +8370,7 @@
       "bytes": 191816,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -8359,7 +8391,7 @@
       "bytes": 139376,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -8380,7 +8412,7 @@
       "bytes": 146501,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -8401,7 +8433,7 @@
       "bytes": 151272,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -8422,7 +8454,7 @@
       "bytes": 161283,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -8443,7 +8475,7 @@
       "bytes": 113758,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -8464,7 +8496,7 @@
       "bytes": 455811,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -8485,7 +8517,7 @@
       "bytes": 148533,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -8506,7 +8538,7 @@
       "bytes": 607736,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -8527,7 +8559,7 @@
       "bytes": 149855,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -8548,7 +8580,7 @@
       "bytes": 161423,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -8569,7 +8601,7 @@
       "bytes": 159071,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-01",
@@ -8590,7 +8622,7 @@
       "bytes": 383775,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-01",
@@ -8611,7 +8643,7 @@
       "bytes": 316900,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-02",
@@ -8632,7 +8664,7 @@
       "bytes": 318777,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-02",
@@ -8653,7 +8685,7 @@
       "bytes": 220171,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-03",
@@ -8674,7 +8706,7 @@
       "bytes": 271055,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-04",
@@ -8695,7 +8727,7 @@
       "bytes": 282408,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-05",
@@ -8716,7 +8748,7 @@
       "bytes": 269890,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -8737,7 +8769,7 @@
       "bytes": 183468,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-01",
@@ -8758,7 +8790,7 @@
       "bytes": 275311,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-01",
@@ -8779,7 +8811,7 @@
       "bytes": 296549,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-02",
@@ -8800,7 +8832,7 @@
       "bytes": 301633,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-02",
@@ -8821,7 +8853,7 @@
       "bytes": 314747,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-03",
@@ -8842,7 +8874,7 @@
       "bytes": 287452,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-03",
@@ -8863,7 +8895,7 @@
       "bytes": 302848,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-04",
@@ -8884,7 +8916,7 @@
       "bytes": 280793,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-04",
@@ -8905,7 +8937,7 @@
       "bytes": 304001,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-05",
@@ -8926,7 +8958,7 @@
       "bytes": 272778,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-05",
@@ -8947,7 +8979,7 @@
       "bytes": 294086,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-06",
@@ -8968,7 +9000,7 @@
       "bytes": 290978,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MBR-01",
@@ -8989,7 +9021,7 @@
       "bytes": 315648,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MBR-01",
@@ -9010,7 +9042,7 @@
       "bytes": 326344,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MBR-02",
@@ -9031,7 +9063,7 @@
       "bytes": 295135,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MBR-02",
@@ -9052,7 +9084,7 @@
       "bytes": 310465,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MBR-03",
@@ -9073,7 +9105,7 @@
       "bytes": 326154,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MBR-03",
@@ -9094,7 +9126,7 @@
       "bytes": 328840,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-01",
@@ -9115,7 +9147,7 @@
       "bytes": 284817,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-01",
@@ -9136,7 +9168,7 @@
       "bytes": 299864,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-02",
@@ -9157,7 +9189,7 @@
       "bytes": 267357,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-02",
@@ -9178,7 +9210,7 @@
       "bytes": 290213,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-03",
@@ -9199,7 +9231,7 @@
       "bytes": 290284,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-01",
@@ -9220,7 +9252,7 @@
       "bytes": 255652,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-01",
@@ -9241,7 +9273,7 @@
       "bytes": 274856,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-02",
@@ -9262,7 +9294,7 @@
       "bytes": 268916,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-03",
@@ -9283,7 +9315,7 @@
       "bytes": 256955,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-04",
@@ -9304,7 +9336,7 @@
       "bytes": 283127,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-05",
@@ -9325,7 +9357,7 @@
       "bytes": 301099,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-06",
@@ -9346,7 +9378,7 @@
       "bytes": 273462,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-06",
@@ -9367,7 +9399,7 @@
       "bytes": 295908,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-07",
@@ -9388,7 +9420,7 @@
       "bytes": 242498,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-07",
@@ -9409,7 +9441,7 @@
       "bytes": 265014,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-08",
@@ -9430,7 +9462,7 @@
       "bytes": 282952,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-08",
@@ -9451,7 +9483,7 @@
       "bytes": 309913,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-09",
@@ -9472,7 +9504,7 @@
       "bytes": 279247,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-10",
@@ -9493,7 +9525,7 @@
       "bytes": 286067,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-11",
@@ -9514,7 +9546,7 @@
       "bytes": 271469,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-11",
@@ -9535,7 +9567,7 @@
       "bytes": 283492,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SET-12",
@@ -9556,7 +9588,7 @@
       "bytes": 252013,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SYS-01",
@@ -9577,7 +9609,7 @@
       "bytes": 248793,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SYS-02",
@@ -9598,7 +9630,7 @@
       "bytes": 241795,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SYS-03",
@@ -9619,7 +9651,7 @@
       "bytes": 252151,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SYS-03",
@@ -9640,7 +9672,7 @@
       "bytes": 251661,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SYS-04",
@@ -9661,7 +9693,7 @@
       "bytes": 250090,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SYS-04",
@@ -9682,7 +9714,7 @@
       "bytes": 252850,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-SYS-05",
@@ -9703,7 +9735,7 @@
       "bytes": 243277,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-OV-01",
@@ -9724,7 +9756,7 @@
       "bytes": 321946,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-OV-02",
@@ -9745,7 +9777,7 @@
       "bytes": 285982,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-OV-03",
@@ -9766,7 +9798,7 @@
       "bytes": 309100,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-01",
@@ -9787,7 +9819,7 @@
       "bytes": 304524,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-01",
@@ -9808,7 +9840,7 @@
       "bytes": 314440,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-02",
@@ -9829,7 +9861,7 @@
       "bytes": 310964,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-02",
@@ -9850,7 +9882,7 @@
       "bytes": 332851,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-03",
@@ -9871,7 +9903,7 @@
       "bytes": 349479,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-03",
@@ -9892,7 +9924,7 @@
       "bytes": 372021,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-04",
@@ -9913,7 +9945,7 @@
       "bytes": 316452,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-04",
@@ -9934,7 +9966,7 @@
       "bytes": 330568,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-05",
@@ -9955,7 +9987,7 @@
       "bytes": 377874,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-05",
@@ -9976,7 +10008,7 @@
       "bytes": 403239,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-06",
@@ -9997,7 +10029,7 @@
       "bytes": 379342,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PER-06",
@@ -10018,7 +10050,7 @@
       "bytes": 404273,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-TAX-01",
@@ -10039,7 +10071,7 @@
       "bytes": 307075,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-TAX-02",
@@ -10060,7 +10092,7 @@
       "bytes": 288808,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-TAX-03",
@@ -10081,7 +10113,7 @@
       "bytes": 326413,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-REC-01",
@@ -10102,7 +10134,7 @@
       "bytes": 310762,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-REC-02",
@@ -10123,7 +10155,7 @@
       "bytes": 332073,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-REC-03",
@@ -10144,7 +10176,7 @@
       "bytes": 332270,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-REC-04",
@@ -10165,7 +10197,7 @@
       "bytes": 306406,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-SRC-01",
@@ -10186,7 +10218,7 @@
       "bytes": 147936,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MSG-01",
@@ -10207,7 +10239,7 @@
       "bytes": 294794,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MSG-01",
@@ -10228,7 +10260,7 @@
       "bytes": 321557,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MSG-02",
@@ -10249,7 +10281,7 @@
       "bytes": 351409,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MSG-02",
@@ -10270,7 +10302,7 @@
       "bytes": 373364,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MSG-03",
@@ -10291,7 +10323,7 @@
       "bytes": 303933,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MSG-03",
@@ -10312,7 +10344,7 @@
       "bytes": 324689,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MSG-04",
@@ -10333,7 +10365,7 @@
       "bytes": 344948,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MSG-04",
@@ -10354,7 +10386,7 @@
       "bytes": 366269,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-SAF-01",
@@ -10375,7 +10407,7 @@
       "bytes": 292850,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-SAF-01",
@@ -10396,7 +10428,7 @@
       "bytes": 313584,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-SAF-02",
@@ -10417,7 +10449,7 @@
       "bytes": 322096,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-SAF-02",
@@ -10438,7 +10470,7 @@
       "bytes": 343187,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-SAF-03",
@@ -10459,7 +10491,7 @@
       "bytes": 278568,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-SAF-03",
@@ -10480,7 +10512,7 @@
       "bytes": 310162,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-SAF-04",
@@ -10501,7 +10533,7 @@
       "bytes": 310188,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-SAF-04",
@@ -10522,7 +10554,7 @@
       "bytes": 330357,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-01",
@@ -10543,7 +10575,7 @@
       "bytes": 323877,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-02",
@@ -10564,7 +10596,7 @@
       "bytes": 305641,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-03",
@@ -10585,7 +10617,7 @@
       "bytes": 354343,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-03",
@@ -10606,7 +10638,7 @@
       "bytes": 345188,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-04",
@@ -10627,7 +10659,7 @@
       "bytes": 324179,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-04",
@@ -10648,7 +10680,7 @@
       "bytes": 340938,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-05",
@@ -10669,7 +10701,7 @@
       "bytes": 320047,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-05",
@@ -10690,7 +10722,7 @@
       "bytes": 341796,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-06",
@@ -10711,7 +10743,7 @@
       "bytes": 311274,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-07",
@@ -10732,7 +10764,7 @@
       "bytes": 138328,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-MBR-07",
@@ -10753,7 +10785,7 @@
       "bytes": 82760,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-01",
@@ -10774,7 +10806,7 @@
       "bytes": 292911,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-01",
@@ -10795,7 +10827,7 @@
       "bytes": 310742,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-02",
@@ -10816,7 +10848,7 @@
       "bytes": 320036,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-02",
@@ -10837,7 +10869,7 @@
       "bytes": 335988,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-03",
@@ -10858,7 +10890,7 @@
       "bytes": 310698,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-03",
@@ -10879,7 +10911,7 @@
       "bytes": 334258,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-04",
@@ -10900,7 +10932,7 @@
       "bytes": 312834,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-04",
@@ -10921,7 +10953,7 @@
       "bytes": 337084,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-05",
@@ -10942,7 +10974,7 @@
       "bytes": 314869,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-06",
@@ -10963,7 +10995,7 @@
       "bytes": 321611,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-WAL-06",
@@ -10984,7 +11016,7 @@
       "bytes": 338974,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-NTF-01",
@@ -11005,7 +11037,7 @@
       "bytes": 307312,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-NTF-02",
@@ -11026,7 +11058,7 @@
       "bytes": 341170,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-NTF-03",
@@ -11047,7 +11079,7 @@
       "bytes": 320174,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-AUD-01",
@@ -11068,7 +11100,7 @@
       "bytes": 306405,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-AUD-01",
@@ -11089,7 +11121,7 @@
       "bytes": 319080,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-AUD-02",
@@ -11110,7 +11142,7 @@
       "bytes": 312654,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-AUD-02",
@@ -11131,7 +11163,7 @@
       "bytes": 336675,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-AUD-03",
@@ -11152,7 +11184,7 @@
       "bytes": 321680,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-AUD-04",
@@ -11173,7 +11205,7 @@
       "bytes": 315336,
       "width": 1600,
       "height": 1000,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-AUD-05",
@@ -11194,7 +11226,7 @@
       "bytes": 131279,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-AUD-06",
@@ -11215,7 +11247,7 @@
       "bytes": 140760,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-01",
@@ -11236,7 +11268,7 @@
       "bytes": 113815,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-01",
@@ -11257,7 +11289,7 @@
       "bytes": 120043,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-02",
@@ -11278,7 +11310,7 @@
       "bytes": 133074,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-02",
@@ -11299,7 +11331,7 @@
       "bytes": 135697,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     }
   ],
   "figmaStateCaptures": [
@@ -11330,7 +11362,7 @@
       "bytes": 457247,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-05",
@@ -11359,7 +11391,7 @@
       "bytes": 459517,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-05",
@@ -11388,7 +11420,7 @@
       "bytes": 478080,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-05",
@@ -11417,7 +11449,7 @@
       "bytes": 472277,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-05",
@@ -11446,7 +11478,7 @@
       "bytes": 469377,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-06",
@@ -11475,7 +11507,7 @@
       "bytes": 486305,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-06",
@@ -11504,7 +11536,7 @@
       "bytes": 487199,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-06",
@@ -11533,7 +11565,7 @@
       "bytes": 486721,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-MSG-06",
@@ -11562,7 +11594,7 @@
       "bytes": 490062,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-01",
@@ -11591,7 +11623,7 @@
       "bytes": 496356,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-01",
@@ -11620,7 +11652,7 @@
       "bytes": 493021,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-01",
@@ -11649,7 +11681,7 @@
       "bytes": 502548,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-01",
@@ -11678,7 +11710,7 @@
       "bytes": 499331,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-02",
@@ -11707,7 +11739,7 @@
       "bytes": 453615,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-02",
@@ -11736,7 +11768,7 @@
       "bytes": 442692,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-02",
@@ -11765,7 +11797,7 @@
       "bytes": 428573,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-02",
@@ -11794,7 +11826,7 @@
       "bytes": 418030,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-02",
@@ -11823,7 +11855,7 @@
       "bytes": 456025,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-02",
@@ -11852,7 +11884,7 @@
       "bytes": 506736,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-03",
@@ -11881,7 +11913,7 @@
       "bytes": 499644,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-03",
@@ -11910,7 +11942,7 @@
       "bytes": 506454,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-03",
@@ -11939,7 +11971,7 @@
       "bytes": 459779,
       "width": 874,
       "height": 1792,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-WAL-03",
@@ -11968,7 +12000,7 @@
       "bytes": 149155,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     }
   ],
   "supplementalFigmaCaptures": [
@@ -11991,7 +12023,7 @@
       "bytes": 142702,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-01",
@@ -12012,7 +12044,7 @@
       "bytes": 126860,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-01",
@@ -12033,7 +12065,7 @@
       "bytes": 464258,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-01",
@@ -12054,7 +12086,7 @@
       "bytes": 130936,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-02",
@@ -12075,7 +12107,7 @@
       "bytes": 149681,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-02",
@@ -12096,7 +12128,7 @@
       "bytes": 148875,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-03",
@@ -12117,7 +12149,7 @@
       "bytes": 90467,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-03",
@@ -12138,7 +12170,7 @@
       "bytes": 102924,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-03",
@@ -12158,7 +12190,7 @@
       "bytes": 70343,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-03",
@@ -12178,7 +12210,7 @@
       "bytes": 97468,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-03",
@@ -12198,7 +12230,7 @@
       "bytes": 97565,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12219,7 +12251,7 @@
       "bytes": 137761,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12240,7 +12272,7 @@
       "bytes": 173863,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12261,7 +12293,7 @@
       "bytes": 150595,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12281,7 +12313,7 @@
       "bytes": 126103,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12301,7 +12333,7 @@
       "bytes": 142512,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12321,7 +12353,7 @@
       "bytes": 172902,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12341,7 +12373,7 @@
       "bytes": 174286,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12361,7 +12393,7 @@
       "bytes": 135218,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12381,7 +12413,7 @@
       "bytes": 137171,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12401,7 +12433,7 @@
       "bytes": 147340,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12421,7 +12453,7 @@
       "bytes": 150066,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12441,7 +12473,7 @@
       "bytes": 161806,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12461,7 +12493,7 @@
       "bytes": 149098,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12481,7 +12513,7 @@
       "bytes": 144131,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-04",
@@ -12501,7 +12533,7 @@
       "bytes": 149555,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12522,7 +12554,7 @@
       "bytes": 159924,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12543,7 +12575,7 @@
       "bytes": 157012,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12563,7 +12595,7 @@
       "bytes": 151913,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12583,7 +12615,7 @@
       "bytes": 160092,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12603,7 +12635,7 @@
       "bytes": 155970,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12623,7 +12655,7 @@
       "bytes": 159265,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12643,7 +12675,7 @@
       "bytes": 148514,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12663,7 +12695,7 @@
       "bytes": 155838,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12683,7 +12715,7 @@
       "bytes": 122185,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12703,7 +12735,7 @@
       "bytes": 119897,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-05",
@@ -12723,7 +12755,7 @@
       "bytes": 122631,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12744,7 +12776,7 @@
       "bytes": 86485,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12765,7 +12797,7 @@
       "bytes": 111127,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12786,7 +12818,7 @@
       "bytes": 109495,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12806,7 +12838,7 @@
       "bytes": 110640,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12826,7 +12858,7 @@
       "bytes": 90440,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12846,7 +12878,7 @@
       "bytes": 112328,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12866,7 +12898,7 @@
       "bytes": 108288,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12886,7 +12918,7 @@
       "bytes": 110893,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12906,7 +12938,7 @@
       "bytes": 109127,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12926,7 +12958,7 @@
       "bytes": 103931,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12946,7 +12978,7 @@
       "bytes": 69919,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12966,7 +12998,7 @@
       "bytes": 69882,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -12986,7 +13018,7 @@
       "bytes": 66503,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -13006,7 +13038,7 @@
       "bytes": 68888,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -13026,7 +13058,7 @@
       "bytes": 61434,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -13046,7 +13078,7 @@
       "bytes": 57387,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -13066,7 +13098,7 @@
       "bytes": 59908,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-06",
@@ -13086,7 +13118,7 @@
       "bytes": 110167,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13107,7 +13139,7 @@
       "bytes": 147684,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13128,7 +13160,7 @@
       "bytes": 363154,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13149,7 +13181,7 @@
       "bytes": 399878,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13169,7 +13201,7 @@
       "bytes": 119131,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13189,7 +13221,7 @@
       "bytes": 130007,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13209,7 +13241,7 @@
       "bytes": 457090,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13229,7 +13261,7 @@
       "bytes": 457081,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13249,7 +13281,7 @@
       "bytes": 457122,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13269,7 +13301,7 @@
       "bytes": 450105,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13289,7 +13321,7 @@
       "bytes": 453714,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13309,7 +13341,7 @@
       "bytes": 334977,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13329,7 +13361,7 @@
       "bytes": 335792,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13349,7 +13381,7 @@
       "bytes": 324989,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13369,7 +13401,7 @@
       "bytes": 345185,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13389,7 +13421,7 @@
       "bytes": 319310,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13409,7 +13441,7 @@
       "bytes": 330796,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13429,7 +13461,7 @@
       "bytes": 335259,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13449,7 +13481,7 @@
       "bytes": 334316,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13469,7 +13501,7 @@
       "bytes": 335818,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13489,7 +13521,7 @@
       "bytes": 330555,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13509,7 +13541,7 @@
       "bytes": 280935,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13529,7 +13561,7 @@
       "bytes": 398664,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13549,7 +13581,7 @@
       "bytes": 400804,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13569,7 +13601,7 @@
       "bytes": 319561,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13589,7 +13621,7 @@
       "bytes": 319394,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13609,7 +13641,7 @@
       "bytes": 319380,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13629,7 +13661,7 @@
       "bytes": 449988,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-07",
@@ -13649,7 +13681,7 @@
       "bytes": 450183,
       "width": 453,
       "height": 912,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13670,7 +13702,7 @@
       "bytes": 402678,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13691,7 +13723,7 @@
       "bytes": 151521,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13711,7 +13743,7 @@
       "bytes": 401515,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13731,7 +13763,7 @@
       "bytes": 147762,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13751,7 +13783,7 @@
       "bytes": 401119,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13771,7 +13803,7 @@
       "bytes": 150258,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13791,7 +13823,7 @@
       "bytes": 151896,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13811,7 +13843,7 @@
       "bytes": 148854,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13831,7 +13863,7 @@
       "bytes": 152621,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13851,7 +13883,7 @@
       "bytes": 621480,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13871,7 +13903,7 @@
       "bytes": 400442,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13891,7 +13923,7 @@
       "bytes": 402813,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13911,7 +13943,7 @@
       "bytes": 371540,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13931,7 +13963,7 @@
       "bytes": 310170,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13951,7 +13983,7 @@
       "bytes": 268543,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13971,7 +14003,7 @@
       "bytes": 371744,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -13991,7 +14023,7 @@
       "bytes": 378204,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -14011,7 +14043,7 @@
       "bytes": 376082,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -14031,7 +14063,7 @@
       "bytes": 150833,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -14051,7 +14083,7 @@
       "bytes": 150916,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-08",
@@ -14071,7 +14103,7 @@
       "bytes": 271801,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14092,7 +14124,7 @@
       "bytes": 157972,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14112,7 +14144,7 @@
       "bytes": 125816,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14132,7 +14164,7 @@
       "bytes": 140172,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14152,7 +14184,7 @@
       "bytes": 155426,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14172,7 +14204,7 @@
       "bytes": 143669,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14192,7 +14224,7 @@
       "bytes": 146807,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14212,7 +14244,7 @@
       "bytes": 145051,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14232,7 +14264,7 @@
       "bytes": 149711,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14252,7 +14284,7 @@
       "bytes": 147242,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14272,7 +14304,7 @@
       "bytes": 146215,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14292,7 +14324,7 @@
       "bytes": 150201,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14312,7 +14344,7 @@
       "bytes": 146810,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14332,7 +14364,7 @@
       "bytes": 146820,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-DSC-09",
@@ -14352,7 +14384,7 @@
       "bytes": 146811,
       "width": 437,
       "height": 896,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -14373,7 +14405,7 @@
       "bytes": 169270,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -14394,7 +14426,7 @@
       "bytes": 159445,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -14415,7 +14447,7 @@
       "bytes": 176735,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -14436,7 +14468,7 @@
       "bytes": 182528,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -14457,7 +14489,7 @@
       "bytes": 180385,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -14478,7 +14510,7 @@
       "bytes": 180049,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -14499,7 +14531,7 @@
       "bytes": 193888,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -14520,7 +14552,7 @@
       "bytes": 177521,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "APP-INT-06",
@@ -14541,7 +14573,7 @@
       "bytes": 176820,
       "width": 461,
       "height": 920,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-01",
@@ -14562,7 +14594,7 @@
       "bytes": 89503,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-01",
@@ -14583,7 +14615,7 @@
       "bytes": 86048,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-01",
@@ -14604,7 +14636,7 @@
       "bytes": 88519,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-01",
@@ -14625,7 +14657,7 @@
       "bytes": 114810,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-02",
@@ -14646,7 +14678,7 @@
       "bytes": 119889,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-02",
@@ -14667,7 +14699,7 @@
       "bytes": 126724,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-02",
@@ -14688,7 +14720,7 @@
       "bytes": 133238,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-02",
@@ -14709,7 +14741,7 @@
       "bytes": 134994,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     },
     {
       "pageId": "ADM-PRI-02",
@@ -14730,7 +14762,780 @@
       "bytes": 132973,
       "width": 1440,
       "height": 960,
-      "status": "captured"
+      "status": "verified"
     }
-  ]
+  ],
+  "developmentMarkdownCapturePaths": [
+    "mobile/app-auth-01__default.png",
+    "mobile/app-auth-01__state-03.png",
+    "mobile/app-auth-02__default.png",
+    "mobile/app-auth-02__state-05.png",
+    "mobile/app-auth-03__default.png",
+    "mobile/app-auth-03__state-03.png",
+    "mobile/app-auth-04__default.png",
+    "mobile/app-auth-05__default.png",
+    "mobile/app-auth-06__default.png",
+    "mobile/app-auth-06__state-02.png",
+    "mobile/app-dsc-01__default.png",
+    "mobile/app-dsc-01__state-02.png",
+    "mobile/app-dsc-01__state-03.png",
+    "mobile/app-dsc-01__state-04.png",
+    "mobile/app-dsc-01__state-05.png",
+    "mobile/app-dsc-01__state-06.png",
+    "mobile/app-dsc-02__default.png",
+    "mobile/app-dsc-02__state-02.png",
+    "mobile/app-dsc-02__state-03.png",
+    "mobile/app-dsc-02__state-04.png",
+    "mobile/app-dsc-03__default.png",
+    "mobile/app-dsc-03__state-02.png",
+    "mobile/app-dsc-03__state-03.png",
+    "mobile/app-dsc-03__loading.png",
+    "mobile/app-dsc-03__catalog-explanation.png",
+    "mobile/app-dsc-03__load-failed.png",
+    "mobile/app-dsc-04__default.png",
+    "mobile/app-dsc-04__state-02.png",
+    "mobile/app-dsc-04__state-03.png",
+    "mobile/app-dsc-04__state-04.png",
+    "mobile/app-dsc-04__state-05.png",
+    "mobile/app-dsc-04__loading.png",
+    "mobile/app-dsc-04__load-failed.png",
+    "mobile/app-dsc-04__pagination-loading.png",
+    "mobile/app-dsc-04__pagination-failed.png",
+    "mobile/app-dsc-04__history-loading.png",
+    "mobile/app-dsc-04__history-load-failed.png",
+    "mobile/app-dsc-04__history-empty.png",
+    "mobile/app-dsc-04__history-clear-confirm.png",
+    "mobile/app-dsc-04__verification-rules.png",
+    "mobile/app-dsc-04__history-management.png",
+    "mobile/app-dsc-04__history-deleting.png",
+    "mobile/app-dsc-04__history-delete-failed.png",
+    "mobile/app-dsc-05__default.png",
+    "mobile/app-dsc-05__state-02.png",
+    "mobile/app-dsc-05__state-03.png",
+    "mobile/app-dsc-05__state-04.png",
+    "mobile/app-dsc-05__loading.png",
+    "mobile/app-dsc-05__load-failed.png",
+    "mobile/app-dsc-05__preview-loading.png",
+    "mobile/app-dsc-05__preview-failed.png",
+    "mobile/app-dsc-05__cleared.png",
+    "mobile/app-dsc-05__applying.png",
+    "mobile/app-dsc-05__save-naming.png",
+    "mobile/app-dsc-05__saving.png",
+    "mobile/app-dsc-05__save-failed.png",
+    "mobile/app-dsc-06__default.png",
+    "mobile/app-dsc-06__state-02.png",
+    "mobile/app-dsc-06__state-03.png",
+    "mobile/app-dsc-06__state-04.png",
+    "mobile/app-dsc-06__loading.png",
+    "mobile/app-dsc-06__load-failed.png",
+    "mobile/app-dsc-06__revalidating.png",
+    "mobile/app-dsc-06__revalidation-failed.png",
+    "mobile/app-dsc-06__membership-downgraded.png",
+    "mobile/app-dsc-06__invalid.png",
+    "mobile/app-dsc-06__editing.png",
+    "mobile/app-dsc-06__update-confirm.png",
+    "mobile/app-dsc-06__update-latest-sort.png",
+    "mobile/app-dsc-06__updating.png",
+    "mobile/app-dsc-06__update-failed.png",
+    "mobile/app-dsc-06__delete-confirm.png",
+    "mobile/app-dsc-06__deleting.png",
+    "mobile/app-dsc-06__delete-failed.png",
+    "mobile/app-dsc-06__version-conflict.png",
+    "mobile/app-dsc-07__default.png",
+    "mobile/app-dsc-07__state-02.png",
+    "mobile/app-dsc-07__state-03.png",
+    "mobile/app-dsc-07__state-04.png",
+    "mobile/app-dsc-07__state-05.png",
+    "mobile/app-dsc-07__loading.png",
+    "mobile/app-dsc-07__load-failed.png",
+    "mobile/app-dsc-07__liked.png",
+    "mobile/app-dsc-07__followed.png",
+    "mobile/app-dsc-07__favorited.png",
+    "mobile/app-dsc-07__action-processing.png",
+    "mobile/app-dsc-07__action-failed.png",
+    "mobile/app-dsc-07__share.png",
+    "mobile/app-dsc-07__share-unavailable.png",
+    "mobile/app-dsc-07__operation-disclosure.png",
+    "mobile/app-dsc-07__more.png",
+    "mobile/app-dsc-07__report-reason.png",
+    "mobile/app-dsc-07__report-submitting.png",
+    "mobile/app-dsc-07__report-failed.png",
+    "mobile/app-dsc-07__report-submitted.png",
+    "mobile/app-dsc-07__block-confirm.png",
+    "mobile/app-dsc-07__block-processing.png",
+    "mobile/app-dsc-07__offline-blocked.png",
+    "mobile/app-dsc-07__media-retrying.png",
+    "mobile/app-dsc-07__media-retry-failed.png",
+    "mobile/app-dsc-07__report-reason-privacy.png",
+    "mobile/app-dsc-07__report-reason-content.png",
+    "mobile/app-dsc-07__report-reason-other.png",
+    "mobile/app-dsc-07__follow-processing.png",
+    "mobile/app-dsc-07__favorite-processing.png",
+    "mobile/app-dsc-08__default.png",
+    "mobile/app-dsc-08__state-02.png",
+    "mobile/app-dsc-08__state-03.png",
+    "mobile/app-dsc-08__state-04.png",
+    "mobile/app-dsc-08__loading.png",
+    "mobile/app-dsc-08__empty.png",
+    "mobile/app-dsc-08__image-loading.png",
+    "mobile/app-dsc-08__sign-in-required.png",
+    "mobile/app-dsc-08__membership-required.png",
+    "mobile/app-dsc-08__access-expired.png",
+    "mobile/app-dsc-08__media-unavailable.png",
+    "mobile/app-dsc-08__zoomed.png",
+    "mobile/app-dsc-08__page-transition.png",
+    "mobile/app-dsc-08__pagination-loading.png",
+    "mobile/app-dsc-08__pagination-failed.png",
+    "mobile/app-dsc-08__media-info.png",
+    "mobile/app-dsc-08__report-reason.png",
+    "mobile/app-dsc-08__report-submitting.png",
+    "mobile/app-dsc-08__report-failed.png",
+    "mobile/app-dsc-08__report-submitted.png",
+    "mobile/app-dsc-08__list-updated.png",
+    "mobile/app-dsc-08__image-failed.png",
+    "mobile/app-dsc-08__report-reason-privacy.png",
+    "mobile/app-dsc-09__default.png",
+    "mobile/app-dsc-09__state-02.png",
+    "mobile/app-dsc-09__state-03.png",
+    "mobile/app-dsc-09__loading.png",
+    "mobile/app-dsc-09__load-failed.png",
+    "mobile/app-dsc-09__verification-rules.png",
+    "mobile/app-dsc-09__report-reason.png",
+    "mobile/app-dsc-09__report-reason-false-info.png",
+    "mobile/app-dsc-09__report-submitting.png",
+    "mobile/app-dsc-09__report-failed.png",
+    "mobile/app-dsc-09__report-submitted.png",
+    "mobile/app-dsc-09__refreshing.png",
+    "mobile/app-dsc-09__refresh-failed.png",
+    "mobile/app-dsc-09__report-reason-authorization.png",
+    "mobile/app-dsc-09__report-reason-privacy.png",
+    "mobile/app-dsc-09__report-reason-other.png",
+    "mobile/app-int-01__default.png",
+    "mobile/app-int-01__state-04.png",
+    "mobile/app-int-02__default.png",
+    "mobile/app-int-02__state-03.png",
+    "mobile/app-int-03__default.png",
+    "mobile/app-int-04__default.png",
+    "mobile/app-int-05__default.png",
+    "mobile/app-int-06__default.png",
+    "figma-final/phase15/app-int-06-loading.png",
+    "figma-final/phase15/app-int-06-load-failed.png",
+    "figma-final/phase15/app-int-06-updating.png",
+    "figma-final/phase15/app-int-06-update-failed.png",
+    "figma-final/phase15/app-int-06-success.png",
+    "figma-final/phase15/app-int-06-unavailable.png",
+    "figma-final/phase15/app-int-06-last-removal-confirm.png",
+    "figma-final/phase15/app-int-06-last-removal-processing.png",
+    "figma-final/phase15/app-int-06-unfavorited.png",
+    "mobile/app-msg-01__default.png",
+    "mobile/app-msg-01__state-04.png",
+    "mobile/app-msg-02__default.png",
+    "mobile/app-msg-02__state-02.png",
+    "mobile/app-msg-03__default.png",
+    "mobile/app-msg-03__state-05.png",
+    "mobile/app-msg-04__default.png",
+    "mobile/app-msg-04__state-02.png",
+    "figma-final/phase14/phase14-01-noticeDefault.png",
+    "figma-final/phase14/phase14-02-noticeRead.png",
+    "figma-final/phase14/phase14-03-noticeEmpty.png",
+    "figma-final/phase14/phase14-04-noticeError.png",
+    "figma-final/phase14/phase14-05-noticeOffline.png",
+    "figma-final/phase14/phase14-06-detailDefault.png",
+    "figma-final/phase14/phase14-07-detailUnavailable.png",
+    "figma-final/phase14/phase14-08-detailForbidden.png",
+    "figma-final/phase14/phase14-09-detailUpgrade.png",
+    "mobile/app-mbr-01__default.png",
+    "mobile/app-mbr-01__state-04.png",
+    "mobile/app-mbr-02__default.png",
+    "mobile/app-mbr-02__state-05.png",
+    "mobile/app-mbr-03__default.png",
+    "mobile/app-mbr-03__state-06.png",
+    "figma-final/phase14/phase14-10-walletDefault.png",
+    "figma-final/phase14/phase14-11-walletEmpty.png",
+    "figma-final/phase14/phase14-12-walletOffline.png",
+    "figma-final/phase14/phase14-13-walletFailed.png",
+    "figma-final/phase14/phase14-14-ledgerDefault.png",
+    "figma-final/phase14/phase14-15-ledgerCredit.png",
+    "figma-final/phase14/phase14-16-ledgerDebit.png",
+    "figma-final/phase14/phase14-17-ledgerEmpty.png",
+    "figma-final/phase14/phase14-18-ledgerLoading.png",
+    "figma-final/phase14/phase14-19-ledgerMaintenance.png",
+    "figma-final/phase14/phase14-20-entryDefault.png",
+    "figma-final/phase14/phase14-21-entryCopied.png",
+    "figma-final/phase14/phase14-22-entryUnavailable.png",
+    "figma-final/phase17/app-wal-03-debit.png",
+    "mobile/app-set-01__default.png",
+    "mobile/app-set-01__state-02.png",
+    "mobile/app-set-02__default.png",
+    "mobile/app-set-03__default.png",
+    "mobile/app-set-04__default.png",
+    "mobile/app-set-05__default.png",
+    "mobile/app-set-06__default.png",
+    "mobile/app-set-06__state-03.png",
+    "mobile/app-set-07__default.png",
+    "mobile/app-set-07__state-03.png",
+    "mobile/app-set-08__default.png",
+    "mobile/app-set-08__state-02.png",
+    "mobile/app-set-09__default.png",
+    "mobile/app-set-10__default.png",
+    "mobile/app-set-11__default.png",
+    "mobile/app-set-11__state-02.png",
+    "mobile/app-set-12__default.png",
+    "mobile/app-sys-01__default.png",
+    "mobile/app-sys-02__default.png",
+    "mobile/app-sys-03__default.png",
+    "mobile/app-sys-03__state-02.png",
+    "mobile/app-sys-04__default.png",
+    "mobile/app-sys-04__state-02.png",
+    "mobile/app-sys-05__default.png",
+    "admin/adm-ov-01__default.png",
+    "admin/adm-ov-02__default.png",
+    "admin/adm-ov-03__default.png",
+    "admin/adm-per-01__default.png",
+    "admin/adm-per-01__state-06.png",
+    "admin/adm-per-02__default.png",
+    "admin/adm-per-02__state-04.png",
+    "admin/adm-per-03__default.png",
+    "admin/adm-per-03__state-04.png",
+    "admin/adm-per-04__default.png",
+    "admin/adm-per-04__state-03.png",
+    "admin/adm-per-05__default.png",
+    "admin/adm-per-05__state-03.png",
+    "admin/adm-per-06__default.png",
+    "admin/adm-per-06__state-03.png",
+    "admin/adm-tax-01__default.png",
+    "admin/adm-tax-02__default.png",
+    "admin/adm-tax-03__default.png",
+    "admin/adm-rec-01__default.png",
+    "admin/adm-rec-02__default.png",
+    "admin/adm-rec-03__default.png",
+    "admin/adm-rec-04__default.png",
+    "admin/adm-src-01__default.png",
+    "admin/adm-msg-01__default.png",
+    "admin/adm-msg-01__state-05.png",
+    "admin/adm-msg-02__default.png",
+    "admin/adm-msg-02__state-02.png",
+    "admin/adm-msg-03__default.png",
+    "admin/adm-msg-03__state-04.png",
+    "admin/adm-msg-04__default.png",
+    "admin/adm-msg-04__state-02.png",
+    "admin/adm-saf-01__default.png",
+    "admin/adm-saf-01__state-03.png",
+    "admin/adm-saf-02__default.png",
+    "admin/adm-saf-02__state-02.png",
+    "admin/adm-saf-03__default.png",
+    "admin/adm-saf-03__state-02.png",
+    "admin/adm-saf-04__default.png",
+    "admin/adm-saf-04__state-02.png",
+    "admin/adm-mbr-01__default.png",
+    "admin/adm-mbr-02__default.png",
+    "admin/adm-mbr-03__default.png",
+    "admin/adm-mbr-03__state-05.png",
+    "admin/adm-mbr-04__default.png",
+    "admin/adm-mbr-04__state-02.png",
+    "admin/adm-mbr-05__default.png",
+    "admin/adm-mbr-05__state-02.png",
+    "admin/adm-mbr-06__default.png",
+    "admin/adm-mbr-07__default.png",
+    "admin/adm-mbr-07__state-03.png",
+    "admin/adm-wal-01__default.png",
+    "admin/adm-wal-01__state-02.png",
+    "admin/adm-wal-02__default.png",
+    "admin/adm-wal-02__state-02.png",
+    "admin/adm-wal-03__default.png",
+    "admin/adm-wal-03__state-02.png",
+    "admin/adm-wal-04__default.png",
+    "admin/adm-wal-04__state-03.png",
+    "admin/adm-wal-05__default.png",
+    "admin/adm-wal-06__default.png",
+    "admin/adm-wal-06__state-02.png",
+    "admin/adm-ntf-01__default.png",
+    "admin/adm-ntf-02__default.png",
+    "admin/adm-ntf-03__default.png",
+    "admin/adm-aud-01__default.png",
+    "admin/adm-aud-01__state-02.png",
+    "admin/adm-aud-02__default.png",
+    "admin/adm-aud-02__state-03.png",
+    "admin/adm-aud-03__default.png",
+    "admin/adm-aud-04__default.png",
+    "admin/adm-aud-05__default.png",
+    "admin/adm-aud-06__default.png",
+    "admin/adm-pri-01__default.png",
+    "figma-final/phase16/adm-pri-01-loading.png",
+    "figma-final/phase16/adm-pri-01-load-failure.png",
+    "figma-final/phase16/adm-pri-01-empty.png",
+    "admin/adm-pri-01__state-02.png",
+    "figma-final/phase16/adm-pri-01-overdue.png",
+    "admin/adm-pri-02__default.png",
+    "figma-final/phase16/adm-pri-02-loading.png",
+    "figma-final/phase16/adm-pri-02-load-failure.png",
+    "figma-final/phase16/adm-pri-02-unclaimed.png",
+    "admin/adm-pri-02__state-02.png",
+    "figma-final/phase16/adm-pri-02-operation-failure.png",
+    "figma-final/phase16/adm-pri-02-terminal-readonly.png"
+  ],
+  "historicalCaptureArchive": {
+    "scope": "历史阶段截图；不属于当前 408 状态或 307 张开发规格图片映射。",
+    "captures": [
+      {
+        "image": "figma-final/phase14/phase14-23-entryReversing.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 874,
+        "height": 1792,
+        "sha256": "ea4d8c04e8855974341d85199732294b259de8f307a60aaf53880ae4a3be16d3",
+        "bytes": 508944,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase16/adm-pri-01-governance-gate.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "d61ae8d0e5c4826c1e3a4cbd1a639f12e5cba5f2960a3c896f91c1a3994cbcf9",
+        "bytes": 120043,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase16/adm-pri-01-normal.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "1e7e4a7d38d7361e095fe03c8b8ebc7a404b11a98f1fc19be4688201e59c254e",
+        "bytes": 113972,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase16/adm-pri-02-normal.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "d4e6a4034a4ddd309ab575240b9a8393562f926606b975f875c193de601f2447",
+        "bytes": 133278,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase16/adm-pri-02-privacy2-gate.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "36cac4ccb9ed35ad9e527617eea9ed18ec43b4ae0f2b81886c8459a19ecd1144",
+        "bytes": 135697,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase17/adm-aud-05__default.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "ffa0f6f372a1242bcab527cf76ce5cd9cef080d4d6a4bd6b418ee6672cf0d8ba",
+        "bytes": 131279,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase17/adm-aud-06__default.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "156c80eac62056c37455e759d593d3194d46ae7cb5fadd1a80080400598a5bb3",
+        "bytes": 140760,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase17/adm-mbr-07__default.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "89409cb2f143df4c1ca286a2cc9e4eb2a727f42d0c55bb138413403b601b455e",
+        "bytes": 138328,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase17/adm-mbr-07__state-03.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "12342974d5cfb47f2820914683709bece45a20660b206e2fd73ad4431b7e2e16",
+        "bytes": 82760,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase17/adm-pri-01__default.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "bca5380a252568f64fce1a37aaa80cdb2c24ee3fed2bca698f2572dc5f277ce2",
+        "bytes": 113815,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase17/adm-pri-02__default.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "52a530a5efe44652e831d2de6c58e94b07efc71b53de1fdd401bf68936354d79",
+        "bytes": 133074,
+        "status": "archived"
+      },
+      {
+        "image": "figma-final/phase17/adm-src-01__default.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 1440,
+        "height": 960,
+        "sha256": "1b72d3166cdb8875fb75489cda44039e98d90fcd49e440bf3188c5241cf8c5c4",
+        "bytes": 147936,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-auth-04__state-02.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 437,
+        "height": 896,
+        "sha256": "433c74b7d01edca479701839a15df88f80440ee65f01cba736e6594898148f64",
+        "bytes": 100647,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-auth-04__state-03.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 437,
+        "height": 896,
+        "sha256": "852e79bb2902cdadf5bc362e68377e0a39efe6b8d693862dfc3cd358f6566bde",
+        "bytes": 100399,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-auth-06__loading.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 437,
+        "height": 896,
+        "sha256": "6ca52c255b24169010ae73516ac5d5fb8a4ca38d196959ebe9dc4d796cc440b6",
+        "bytes": 139774,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-auth-06__state-03.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 437,
+        "height": 896,
+        "sha256": "1ce2cfd7a532320a963dcfb7531f95954eb50361d1757dcf4441193c27ba8cdc",
+        "bytes": 163421,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__capability-unavailable.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "8680138e250e1103ce3724f3dbc2225130f4e80d62d0f03bec6b52115b0bbc50",
+        "bytes": 174714,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__cursor-refresh-failed.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "4d167b42a9b5fb57c1ed0b703a30f0247b8190fce610c502f1fc9b05e9282d27",
+        "bytes": 383924,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__cursor-refreshing.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "0143b02ffc4cd93289551a2b1d7f76ec1d9d49dc1909734337640b8632b6a75e",
+        "bytes": 384356,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__filter-sheet.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "bc0147f2cb49a21362ff59c3635f5ac12c6b17d27fbf9ca54f415dea20bcb08e",
+        "bytes": 230320,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__load-failed.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "e76228d7d2fa50d5d25bc5f497330ad5365840539e0009f333e05bd7d4dfe04f",
+        "bytes": 176139,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__loading.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "6621174f2a572689effee871c1d9d58d3a9258727e0aa9edf1d2bbac9a654f00",
+        "bytes": 161849,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__pagination-failed.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "12a915698f4c009eed372facef101a04c9c2b08a18b206a3b06530f7d5b3d42a",
+        "bytes": 384856,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__pagination-loading.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "b84e084dd9a38553fec326c90b60bf12734d2af5f01fdaa4a7c33bb6bbc84976",
+        "bytes": 384566,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__recent-following.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "f3046892b419c8f4d951ad73f390ae65bedade5844432227d6fcee38c0d6eacf",
+        "bytes": 196339,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__signed-out.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "ad3557e29408e8143cfad6b52a8c713011999e97f4cea179bab6174bd3ad62e7",
+        "bytes": 175221,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__state-02-first-empty.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "ec6ab66927933df2ef35a1ab02940571047d8371ecfaad91b994ea897feb6bb7",
+        "bytes": 147199,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__state-03-no-updates.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "cd82b29fd91eee21e68d6d7697108d91461bbb2b716c1dceeeb17f25b17eaca8",
+        "bytes": 153272,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__unfollow-confirm.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "4b6a91df18f0f6e2c518e23310934e1ec581c3d10aa1584fefad25ba3c20286a",
+        "bytes": 146264,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__unfollow-failed.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "71564386d8718d76b5b0a5881152ad6f22edf28cb49813bdda8bb06f9844b707",
+        "bytes": 144285,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__unfollow-processing.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "f462fcaf55602554542beda5fdbca7e0ee9886d5aca7de2237435dccc6aff1c7",
+        "bytes": 143621,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__unfollow-success.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "1e0ef8ec25854994fdb81ad419597ebf757c9dd12b74e27e555338e5e51b924a",
+        "bytes": 186589,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-01__with-updates.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "727499be930f3fe208ece95d920f1b8615b7fdf3ac954cc8afa91224bef0bcc5",
+        "bytes": 384179,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__cancel-confirm.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "00e58b7b8ec023687dcfb24e589650338d7173cc20a76eb9df4738a728b644c6",
+        "bytes": 89230,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__cancel-failed.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "12a03ba1dbc0aa4f3e95e1a46ae56a9968f813a7c076b07118457f23a05d9850",
+        "bytes": 91024,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__cancel-processing.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "68b4a0121e2214445d0fda2fc4c0dbc58bd5d3fcce370301d07d5f92bb7870c1",
+        "bytes": 85112,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__cancel-success.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "8af8bd1264a9c3030d194b1d2cda5bef6235e07784bbcebc0e950bdea88f6687",
+        "bytes": 259896,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__capability-unavailable.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "9b2cd0ef4c1d16fcf4ca7d3ad3cd3b5cded5e981ca30744841f7a761b259b693",
+        "bytes": 116123,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__cursor-refresh-failed.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "b3a188d9eb27785ab04372a2e10e4a4ab537114a36d84a0d7f707e116ff23d79",
+        "bytes": 320666,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__cursor-refreshing.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "30b95ba1095f27163213278e0b422702da710acf1844788f6d648b680fec3a6f",
+        "bytes": 321121,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__filter-region.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "4c36c958494f060adbc35236205c340566310427861167a66a8c6955bd8e746a",
+        "bytes": 143570,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__filter-sheet.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "7c46db41fec8cbd1807468047e13d8fcf4fe446868a77bcd7bed2b4a8d350518",
+        "bytes": 178113,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__filter-style.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "0f3ff32e971086c55bf9684ea62a314d074585091817c35f4b486c9c8750d20c",
+        "bytes": 199369,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__load-failed.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "9592089c55b3e1efd548e40bc252efd3bdd20ceaf8c55ce2a82d1a82dfc2b319",
+        "bytes": 111965,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__loading.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "9043f7039681387bd9b4ae91530e4d172e0fcbd6dbb31df49c55786ebd2d0135",
+        "bytes": 98743,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__pagination-failed.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "6a3c272c038f5c9abcef0aae50cf693feb746a0b160c509e4a368e04890ee5d9",
+        "bytes": 320373,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__pagination-loading.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "f9feb09a6a73428a8142ee27db1bec5bbe57fd0ba59231e9af31404560b5cdc4",
+        "bytes": 325385,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__search-empty.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "0e91f1f4733b9e2da60579d5836200e6322a87b6739222caeb75cd3800a0ee1d",
+        "bytes": 90977,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__signed-out.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "b325a577ffe3e3eec67bbfc2e48a084da32f46b25749cfade74b34ec1df9e57b",
+        "bytes": 110708,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-int-02__state-02-empty.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "ad017e132717020cbdfdb0286a8f6a937a415d01ffa1312fb0716de44f48b0f7",
+        "bytes": 87157,
+        "status": "archived"
+      },
+      {
+        "image": "mobile/app-set-01__figma-likes-entry.png",
+        "archiveReason": "历史阶段截图；已被当前注册图或正式 Figma 状态取代，不得作为当前交付依据。",
+        "width": 461,
+        "height": 920,
+        "sha256": "9b10eb1d5be8ad28cb63964c650ed4da8ea8fbbe7f740c3648c5ca77599f263e",
+        "bytes": 202103,
+        "status": "archived"
+      }
+    ]
+  }
 }

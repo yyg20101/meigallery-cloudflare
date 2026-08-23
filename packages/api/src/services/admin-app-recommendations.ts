@@ -24,10 +24,15 @@ import {
   parseRecommendationWeights,
   type RecommendationRuleRow,
 } from './app-recommendations'
+import {
+  publicProfileEligibilityParams,
+  publicProfileEligibilitySql,
+} from './app-discovery'
 import { requireAppOperationalControlAvailable } from './app-operational-safety'
 import { assertRecommendationGuardrailForActivation } from './admin-app-recommendation-guardrails'
 
 const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7E]{16,128}$/u
+const PLACEMENT_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql('projection', 'g')
 
 type AdminActor = {
   adminId: number
@@ -1444,19 +1449,12 @@ async function getPlacementEligibility(db: D1Database, profileId: string, now: D
         FROM profile_public_projections projection
         JOIN galleries g ON g.id = projection.source_gallery_id
         WHERE projection.profile_id = p.id
-          AND projection.verification_status = 'verified'
-          AND projection.publication_status = 'published'
-          AND projection.authorization_status = 'active'
-          AND projection.visibility_status = 'visible'
-          AND (projection.authorization_valid_from IS NULL OR datetime(projection.authorization_valid_from) <= datetime(?))
-          AND (projection.authorization_valid_until IS NULL OR datetime(projection.authorization_valid_until) > datetime(?))
-          AND (projection.verification_valid_until IS NULL OR datetime(projection.verification_valid_until) > datetime(?))
-          AND g.status = 'published'
+          AND (${PLACEMENT_PROFILE_ELIGIBILITY_SQL})
       ) AS eligible
     FROM person_profiles p
     WHERE p.id = ?
     LIMIT 1
-  `).bind(now.toISOString(), now.toISOString(), now.toISOString(), profileId)
+  `).bind(...publicProfileEligibilityParams(now), profileId)
     .first<{ id: string; eligible: number }>()
   return {
     exists: Boolean(row),

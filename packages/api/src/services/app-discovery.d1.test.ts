@@ -6,7 +6,14 @@ import {
   listPublicDiscoveryRegions,
   listPublicPersonProfiles,
   parseAppDiscoveryQuery,
+  publicProfileEligibilitySql,
 } from './app-discovery'
+import { requireAvailableUnblockedProfile } from './app-interaction-collections'
+import {
+  countPublicPersonSearchResults,
+  searchPublicPersonProfiles,
+  type AppPersonSearchQuery,
+} from './app-person-search'
 
 const MIGRATION = readFileSync(
   new URL('../../migrations/0067_app_public_profile_projection.sql', import.meta.url),
@@ -77,7 +84,7 @@ describe('App 公开人物投影 D1 查询', () => {
     expect(result.hasMore).toBe(false)
   })
 
-  it('只返回认证、发布、授权有效、可见且来源图库仍发布的人物', async () => {
+  it('只返回认证、发布、授权有效、可见、平台运营且来源图库仍发布的人物', async () => {
     await seedEligibilityCases()
 
     const result = await listPublicPersonProfiles(
@@ -99,6 +106,7 @@ describe('App 公开人物投影 D1 查询', () => {
       operation: { mode: 'platform_managed', label: '消息由平台运营接收' },
       region: { code: 'cn-bj', label: '北京市', precision: 'city' },
     })
+    expect(result.data.map(item => item.profileId)).not.toContain('pp_self_managed')
   })
 
   it('地区与热度排序使用稳定不透明游标且不会重复记录', async () => {
@@ -178,6 +186,46 @@ describe('App 公开人物投影 D1 查询', () => {
     )).resolves.toBeNull()
   })
 
+  it('搜索、互动目标和别名查询复用平台运营资格边界', async () => {
+    await seedEligibilityCases()
+    const query: AppPersonSearchQuery = {
+      text: null,
+      foldedText: null,
+      queryHash: '0'.repeat(64),
+      filterHash: '1'.repeat(64),
+      filters: null,
+      sort: 'popular',
+      limit: 20,
+      cursor: null,
+    }
+
+    const result = await searchPublicPersonProfiles(
+      db,
+      7,
+      'acc_seven',
+      query,
+      'https://api.test/api/v2/person-search',
+      NOW,
+    )
+
+    expect(result.data.map(item => item.profile.profileId)).toEqual([
+      'pp_beijing_hot',
+      'pp_shanghai',
+      'pp_beijing_new',
+    ])
+    await expect(countPublicPersonSearchResults(db, 7, query, NOW)).resolves.toBe(3)
+    await expect(requireAvailableUnblockedProfile(db, 7, 'pp_self_managed', NOW))
+      .rejects.toMatchObject({ code: 'PROFILE_NOT_AVAILABLE', status: 404 })
+    await expect(requireAvailableUnblockedProfile(db, 7, 'pp_shanghai', NOW))
+      .resolves.toBe('pp_shanghai')
+
+    const aliasedSql = publicProfileEligibilitySql('projection', 'gallery')
+    expect(aliasedSql).toContain("projection.operation_mode = 'platform_managed'")
+    expect(aliasedSql).toContain("gallery.status = 'published'")
+    expect(() => publicProfileEligibilitySql('projection; DROP TABLE galleries', 'gallery'))
+      .toThrow('PUBLIC_PROFILE_ELIGIBILITY_ALIAS_INVALID')
+  })
+
   it('migration 不写入种子且拒绝非法资格状态', async () => {
     expect(MIGRATION).not.toMatch(/\bINSERT\b/iu)
     expect(MIGRATION).toContain("verification_status IN ('pending', 'verified', 'rejected', 'suspended')")
@@ -204,6 +252,7 @@ async function seedEligibilityCases() {
     ['gal_expired', 'published'],
     ['gal_future_authorization', 'published'],
     ['gal_expired_verification', 'published'],
+    ['gal_self_managed', 'published'],
     ['gal_unpublished', 'unpublished'],
   ] as const) {
     await insertGallery(id, status)
@@ -261,6 +310,12 @@ async function seedEligibilityCases() {
     recommendationScore: 200,
   })
   await insertProjection({
+    profileId: 'pp_self_managed',
+    sourceGalleryId: 'gal_self_managed',
+    operationMode: 'self_managed',
+    recommendationScore: 300,
+  })
+  await insertProjection({
     profileId: 'pp_unpublished_gallery',
     sourceGalleryId: 'gal_unpublished',
     recommendationScore: 200,
@@ -283,6 +338,7 @@ async function insertProjection(options: {
   authorizationValidUntil?: string | null
   verificationValidUntil?: string | null
   visibilityStatus?: string
+  operationMode?: 'platform_managed' | 'self_managed'
   regionCode?: string
   regionLabel?: string
   recommendationScore?: number
@@ -329,7 +385,7 @@ async function insertProjection(options: {
     options.authorizationStatus ?? 'active',
     options.authorizationValidUntil ?? null,
     options.visibilityStatus ?? 'visible',
-    'platform_managed',
+    options.operationMode ?? 'platform_managed',
     '不可信的旧文案',
     options.regionCode ?? 'cn-bj',
     options.regionLabel ?? '北京市',

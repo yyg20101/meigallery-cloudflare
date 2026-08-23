@@ -7,7 +7,12 @@ import type {
   AppMembershipResolvedEntitlement,
 } from '@meigallery/shared'
 import type { Bindings } from '../index'
-import { getPublicPersonProfile, getPublicPersonProfilesByIds } from './app-discovery'
+import {
+  getPublicPersonProfile,
+  getPublicPersonProfilesByIds,
+  publicProfileEligibilityParams,
+  publicProfileEligibilitySql,
+} from './app-discovery'
 import {
   AppMembershipError,
   getAppMembershipRuntimeConfig,
@@ -43,6 +48,8 @@ const PROFILE_ID_PATTERN = /^pp_[A-Za-z0-9_-]{1,77}$/u
 const CONVERSATION_ID_PATTERN = /^cv_[A-Za-z0-9_-]{1,77}$/u
 const CLIENT_MESSAGE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{7,95}$/u
 const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7E]{16,128}$/u
+const CREATE_CONVERSATION_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql('p', 'gallery')
+const SEND_MESSAGE_PROFILE_ELIGIBILITY_SQL = publicProfileEligibilitySql('profile', 'gallery')
 
 export interface AppMessagingRuntimeConfig {
   enabled: boolean
@@ -358,16 +365,7 @@ export async function createAppConversation(
          AND quota_entitlement.tier_id = grant_row.tier_id
          AND quota_entitlement.entitlement_key = '${DAILY_THREAD_ENTITLEMENT}'
         WHERE p.profile_id = ?
-          AND p.operation_mode = 'platform_managed'
-          AND p.verification_status = 'verified'
-          AND p.publication_status = 'published'
-          AND p.authorization_status = 'active'
-          AND p.visibility_status = 'visible'
-          AND (p.authorization_valid_from IS NULL OR datetime(p.authorization_valid_from) <= datetime(?))
-          AND (p.authorization_valid_until IS NULL OR datetime(p.authorization_valid_until) > datetime(?))
-          AND (p.verification_valid_until IS NULL OR datetime(p.verification_valid_until) > datetime(?))
-          AND datetime(p.published_at) IS NOT NULL
-          AND gallery.status = 'published'
+          AND (${CREATE_CONVERSATION_PROFILE_ELIGIBILITY_SQL})
           AND runtime_control.new_conversations_paused = 0
           AND NOT EXISTS (
             SELECT 1 FROM app_profile_blocks block
@@ -409,9 +407,7 @@ export async function createAppConversation(
         nowIso,
         entitlement.grantId,
         profileId,
-        nowIso,
-        nowIso,
-        nowIso,
+        ...publicProfileEligibilityParams(now),
         accountId,
         accountId,
         catalogVersionId,
@@ -767,15 +763,7 @@ export async function sendAppViewerMessage(
               AND block.profile_id = conversation.profile_id
               AND block.state = 'blocked'
           )
-          AND profile.operation_mode = 'platform_managed'
-          AND profile.verification_status = 'verified'
-          AND profile.publication_status = 'published'
-          AND profile.authorization_status = 'active'
-          AND profile.visibility_status = 'visible'
-          AND (profile.authorization_valid_from IS NULL OR datetime(profile.authorization_valid_from) <= datetime(?))
-          AND (profile.authorization_valid_until IS NULL OR datetime(profile.authorization_valid_until) > datetime(?))
-          AND (profile.verification_valid_until IS NULL OR datetime(profile.verification_valid_until) > datetime(?))
-          AND gallery.status = 'published'
+          AND (${SEND_MESSAGE_PROFILE_ELIGIBILITY_SQL})
           AND grant_row.user_id = ?
           AND grant_row.catalog_version_id = ?
           AND grant_row.starts_at <= ?
@@ -804,9 +792,7 @@ export async function sendAppViewerMessage(
         entitlement.grantId,
         conversationId,
         accountId,
-        nowIso,
-        nowIso,
-        nowIso,
+        ...publicProfileEligibilityParams(now),
         accountId,
         catalogVersionId,
         nowIso,
