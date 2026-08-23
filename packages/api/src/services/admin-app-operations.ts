@@ -1748,7 +1748,7 @@ export async function runAdminAppOperationalDetection(
   try {
     await db.batch(statements)
   }
-  catch (error) {
+  catch {
     const raced = await findAdminCommand(db, actor.adminId, 'run_detection', idempotencyKey)
     if (raced) {
       assertCommandReplay(raced, requestHash, 'detection_run')

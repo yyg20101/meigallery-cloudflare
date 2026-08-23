@@ -243,7 +243,7 @@ async function withWpRequestTimeout<T>(
     return await operation(signal)
   } catch (error: unknown) {
     if (signal.aborted) {
-      throw new Error(`WP ${label}请求超过 60 秒安全上限`)
+      throw new Error(`WP ${label}请求超过 60 秒安全上限`, { cause: error })
     }
     throw error
   }

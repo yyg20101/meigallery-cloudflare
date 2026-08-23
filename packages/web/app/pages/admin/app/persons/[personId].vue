@@ -32,26 +32,31 @@ const pageMode = computed<PersonPageMode>(() => {
   if (route.path.startsWith('/admin/app/publications/')) return 'publication'
   return 'workbench'
 })
-const pageContext = computed<{ pageId: AdminFigmaPageId; route: string; title: string; description: string }>(() => ({
-  workbench: {
+type PersonPageContext = { pageId: AdminFigmaPageId; route: string; title: string; description: string }
+const pageContext = computed<PersonPageContext>(() => {
+  if (pageMode.value === 'verification') {
+    return {
+      pageId: 'ADM-PER-05',
+      route: route.path,
+      title: '认证审核',
+      description: '独立检查主体存在性、成年、授权范围、资料一致性与媒体权利。',
+    }
+  }
+  if (pageMode.value === 'publication') {
+    return {
+      pageId: 'ADM-PER-06',
+      route: route.path,
+      title: '发布审核',
+      description: '预览锁定版本，并在服务端重新校验认证、授权、公开字段与媒体安全。',
+    }
+  }
+  return {
     pageId: 'ADM-PER-03',
     route: route.path,
     title: '真人工作台',
     description: '在版本化工作台中维护人物事实、草稿、用途授权、认证和公开投影。',
-  },
-  verification: {
-    pageId: 'ADM-PER-05',
-    route: route.path,
-    title: '认证审核',
-    description: '独立检查主体存在性、成年、授权范围、资料一致性与媒体权利。',
-  },
-  publication: {
-    pageId: 'ADM-PER-06',
-    route: route.path,
-    title: '发布审核',
-    description: '预览锁定版本，并在服务端重新校验认证、授权、公开字段与媒体安全。',
-  },
-}[pageMode.value]))
+  }
+})
 const busyAction = ref('')
 const message = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 

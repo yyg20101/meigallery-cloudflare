@@ -1,5 +1,6 @@
 import type { AppTaxonomyType } from '@meigallery/shared'
 import { generateId } from '../utils/db'
+import { containsUnsafeInvisibleCharacter } from '../utils/text-safety'
 import {
   AppTaxonomyError,
   isAppTaxonomyType,
@@ -1481,7 +1482,7 @@ function parseStringArray(value: string): string[] {
 }
 
 function hasControlCharacters(value: string) {
-  return /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u.test(value)
+  return containsUnsafeInvisibleCharacter(value)
 }
 
 function escapeLike(value: string) {

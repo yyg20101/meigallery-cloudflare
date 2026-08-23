@@ -248,7 +248,7 @@ async function executeImport() {
           <h2 class="text-sm font-semibold text-[#2c2421]">最近导入任务</h2>
           <p class="mt-0.5 text-xs text-[#8a7d76]">点击任务查看逐项校验、失败原因和安全重试入口。</p>
         </div>
-        <button type="button" class="text-xs font-medium text-[#b93252] hover:underline" :disabled="listStatus === 'pending'" @click="refresh">刷新</button>
+        <button type="button" class="text-xs font-medium text-[#b93252] hover:underline" :disabled="listStatus === 'pending'" @click="refresh()">刷新</button>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full min-w-[760px] text-left text-sm">

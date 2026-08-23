@@ -1,4 +1,5 @@
 import type { AppNotificationCategory } from '@meigallery/shared'
+import { containsForbiddenTextControlCharacter } from '../utils/text-safety'
 import { APP_NOTIFICATION_CATEGORIES, AppNotificationError } from './app-notifications'
 
 const CATEGORIES = new Set(APP_NOTIFICATION_CATEGORIES.map(item => item.code))
@@ -625,7 +626,7 @@ function validateTemplateVariables(
 function requiredText(value: unknown, field: string, min: number, max: number) {
   if (typeof value !== 'string') throw new AppNotificationError(400, 'TEMPLATE_INPUT_INVALID', `${field} 格式无效`)
   const normalized = value.trim()
-  if (normalized.length < min || normalized.length > max || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(normalized)) {
+  if (normalized.length < min || normalized.length > max || containsForbiddenTextControlCharacter(normalized)) {
     throw new AppNotificationError(400, 'TEMPLATE_INPUT_INVALID', `${field} 长度或字符无效`)
   }
   return normalized

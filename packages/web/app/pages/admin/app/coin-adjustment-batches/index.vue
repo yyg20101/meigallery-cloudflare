@@ -178,7 +178,14 @@ function rowClass(item: AdminWalletBatchItem) {
 }
 
 function actionLabel(value: AdminWalletBatchItem['actionType']) {
-  return { admin_credit: '管理员加币', admin_debit: '管理员扣币', compensation: '服务补偿', reversal: '冲正' }[value ?? ''] ?? '—'
+  if (!value) return '—'
+  const labels: Record<NonNullable<AdminWalletBatchItem['actionType']>, string> = {
+    admin_credit: '管理员加币',
+    admin_debit: '管理员扣币',
+    compensation: '服务补偿',
+    reversal: '冲正',
+  }
+  return labels[value]
 }
 
 function formatTime(value: string | null) {

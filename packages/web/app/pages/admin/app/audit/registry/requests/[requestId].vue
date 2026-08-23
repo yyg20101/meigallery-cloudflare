@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   auditRegistryOperationLabel,
-  auditRegistryRequestStatusClass,
   auditRegistryRequestStatusLabel,
   auditRegistryRiskLabel,
   auditRegistrySensitivityLabel,

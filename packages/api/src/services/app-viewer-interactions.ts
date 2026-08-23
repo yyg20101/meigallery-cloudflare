@@ -3,6 +3,7 @@ import type {
   AppViewerInteractionState,
   AppViewerInteractionType,
 } from '@meigallery/shared'
+import { containsAsciiControlCharacter } from '../utils/text-safety'
 import {
   getPublicPersonProfile,
   getPublicPersonProfilesByIds,
@@ -396,7 +397,7 @@ function normalizeSearchText(value: string | undefined): string | null {
     normalized
     && (
       normalized.length > SEARCH_TEXT_MAX_LENGTH
-      || /[\u0000-\u001F\u007F]/u.test(normalized)
+      || containsAsciiControlCharacter(normalized)
     )
   ) {
     throw invalidRequest('搜索文字格式不正确或超过 40 个字符')

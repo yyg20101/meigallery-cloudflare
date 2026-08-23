@@ -283,13 +283,17 @@ function toIso(value: string) {
   const date = new Date(value)
   return Number.isFinite(date.getTime()) ? date.toISOString() : undefined
 }
+
+async function refreshWorkspace() {
+  await Promise.all([refreshTerms(), refreshCatalogs(), refreshMappings()])
+}
 </script>
 
 <template>
   <div class="min-w-0 space-y-5">
     <AdminAppPageHeader page-id="ADM-TAX-01" route="/admin/app/taxonomy" title="Taxonomy 目录树" description="维护稳定词条、不可变目录快照和 legacy 显式映射；跨模块引用必须使用稳定 ID。" figma-state="正常">
       <template #actions>
-        <button type="button" class="min-h-10 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" @click="Promise.all([refreshTerms(), refreshCatalogs(), refreshMappings()])">刷新工作区</button>
+        <button type="button" class="min-h-10 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" @click="refreshWorkspace">刷新工作区</button>
         <button type="button" class="min-h-10 rounded-[10px] bg-[#d63363] px-4 py-2 text-sm font-medium text-white hover:bg-[#bd2756]" @click="activeTab = 'terms'; showCreateTerm = !showCreateTerm">新建词条</button>
       </template>
     </AdminAppPageHeader>

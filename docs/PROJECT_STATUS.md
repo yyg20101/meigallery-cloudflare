@@ -26,13 +26,20 @@
 - 一方数据分析、来源、邀请码、有效联系、转化趋势和后台看板。
 - SEO 设置、sitemap、robots、结构化数据和 production 校验。
 
+## 2026-08-23 全仓质量复核
+
+- 已完成当前 `dev` 全仓冷验证：脚本测试 64/64、API 测试 1,094/1,094（140 个文件）、Web 单元测试 301/301（60 个文件）通过；ESLint 零警告、三个 workspace 类型检查、API Wrangler dry-run 与 Web Cloudflare Worker 生产构建通过。
+- 复核修复了后台页面上下文推断、统一 API 错误呈现、对账编辑状态索引、异步刷新事件签名等类型断裂；控制字符和不可见字符边界收敛到共享安全工具，并补齐 C0、C1、零宽和双向控制字符测试。
+- 归因架构门禁发现数据权利删除服务重新写入废弃用户归因编号，现已移除该运行时依赖；架构测试重新确认运行时只使用 `attribution_conversion_facts` 单一事实入口。废弃数据库列仍须遵循“先发布兼容代码，再单独执行 contract migration”的既定顺序，不能与本次代码修复同批删除。
+- 本轮只验证源码与本地产物；没有执行 production/dev migration、修改 Cloudflare 资源配置、部署 Worker、导入真人资料或开启任何 production App 能力。下方逐切片的“测试未运行/构建后置”是其开发完成当时的记录；当前全仓冷验证结果以本节为准，环境 migration、浏览器/设备远端联调和生产发布状态仍以各节明确边界为准。
+
 ## ADM-PER-04 ZIP 导入开发状态
 
 - 已按正式 Figma `ADM-PER-04` 的正常、校验中、部分失败、已暂停、已完成五态重做 `/admin/app/imports` 列表和任务详情；页面只呈现服务端权威任务/逐项结果，不在浏览器解析 ZIP。
 - `0101_zip_import_packages.sql`、`admin-zip-package.ts`、`admin-zip-import.ts` 已完成 256 MiB 私有 ZIP 原包的 8 MiB R2 multipart、一次性会话隔离、服务端 ETag 清单、range 流式解压硬上限、ZIP 安全边界、图片元数据净化、Queue 逐项处理、部分失败、带轮次/会话 guard 的暂停恢复、公式安全错误 CSV 与后台审计。
 - Cloudflare 官方当前单请求上限按账户方案为 Free/Pro 100 MB、Business 200 MB；因此没有让 256 MiB 原包穿过单个 Worker 请求，而是使用现有私有 R2 binding multipart。无需新增 S3 密钥或浏览器直传 CORS 配置。
 - ZIP schema 是 Gallery 内容包。成功项只创建 Gallery/媒体/标签，不自动创建 Person/Profile，也不自动进入推荐；任何真人候选仍需独立来源、授权、认证和发布工作流。
-- 当前只完成开发：`0101` 尚未执行，`IMPORT_QUEUE` consumer/producer 与 Stream 仍未配置，测试源码已补但未运行，构建、测试、模拟器/浏览器 QA 和部署均按当前要求统一后置。
+- 当前源码与测试已通过 2026-08-23 全仓冷验证；`0101` 尚未执行，`IMPORT_QUEUE` consumer/producer 与 Stream 仍未配置，环境 migration、模拟器/浏览器 QA 和部署仍未执行。
 
 ## WordPress 旧站迁移运行完整性
 
@@ -42,7 +49,7 @@
 - 远程链接入库前执行安全 HTTPS 校验，Gallery 正文移除源站媒体嵌入；私有来源快照冻结旧分类/标签 ID、媒体描述和原 HTML。审核保存结论、备注、审核人和时间，不覆盖风险标记，也绝不直接发布 Gallery。
 - 全局下载、状态、失败重置和封面设置已限定到 legacy Gallery，普通 Admin 进一步只处理本人任务，避免误改 ZIP 或手工上传内容。
 - 执行已增加 30 分钟 D1 权威租约：WordPress 每个 REST 请求有 60 秒截止时间，每页校验后与逐篇落库期间续租，完成/失败按当前 token 条件收敛；过期或历史缺失租约的 processing 任务可被原子收敛为失败，有效租约不能提前回收。
-- `0116_legacy_import_operational_integrity.sql` 与 `0117_legacy_import_processing_lease_guards.sql` 已编写但未执行，后续按 `0116 → 兼容代码 → 0117` 发布；REST API 是当前唯一可执行来源，XML 上传/解析和 Stream 视频仍后置。测试源码已补但未运行，构建、浏览器 QA、部署、提交与推送继续统一后置。完整边界见 `docs/app/LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md`。
+- `0116_legacy_import_operational_integrity.sql` 与 `0117_legacy_import_processing_lease_guards.sql` 已编写但未执行，后续按 `0116 → 兼容代码 → 0117` 发布；REST API 是当前唯一可执行来源，XML 上传/解析和 Stream 视频仍后置。源码与测试已通过 2026-08-23 全仓冷验证，浏览器 QA 和部署仍未执行。完整边界见 `docs/app/LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md`。
 
 ## Telegram 外部导入运行完整性
 
@@ -50,7 +57,7 @@
 - 媒体处理已从 HTTP `waitUntil` 改为专用 `TELEGRAM_IMPORT_QUEUE`。pending 派发、failed 清理和 fetching 处理均使用一次性 token 与可过期 30 分钟租约；fetching 有效租约下的重复投递只延迟重试，租约为空或过期后才条件接管，避免并行处理同一文件。每个文件预先持久化目标文件 ID 与确定性 R2 key，Queue 重投可以续跑且不会生成新的不可定位对象。
 - Telegram 两段请求均增加 60 秒超时和有界流读取；图片执行 10 MiB、魔数、容器、尺寸、像素、元数据净化和声明 MIME 一致性校验。底层网络、D1、R2 异常原文不再进入状态、文件错误、审计或结构化日志。
 - failed 重试会再次清理持久化 R2/D1 资源；没有有效派发租约的 pending 或租约为空/过期的 fetching 可由 Import Token 或后台显式恢复。旧执行器在失败清理前重新证明 token 所有权，有效租约和旧 token 均不能覆盖新尝试。
-- `0118_external_import_queue_integrity.sql`、Queue 消费者、Bot/后台恢复端点与测试源码已完成；Wrangler Queue 配置、migration 执行、构建、测试和环境 QA 按要求统一后置。当前无 App API v2、KMP、Nuxt 页面、Page ID 或 Figma 增量，页面事实保持 99/408、Mobile 50/208、Admin 49/200。完整边界见 `docs/app/EXTERNAL_IMPORT_2_QUEUE_INTEGRITY.md`。
+- `0118_external_import_queue_integrity.sql`、Queue 消费者、Bot/后台恢复端点与测试源码已完成，并已通过 2026-08-23 全仓冷验证；Wrangler Queue 配置、migration 执行和环境 QA 仍未执行。当前无 App API v2、KMP、Nuxt 页面、Page ID 或 Figma 增量，页面事实保持 99/408、Mobile 50/208、Admin 49/200。完整边界见 `docs/app/EXTERNAL_IMPORT_2_QUEUE_INTEGRITY.md`。
 
 ## 独立 App 产品设计
 

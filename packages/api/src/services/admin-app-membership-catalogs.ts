@@ -1,4 +1,5 @@
 import { generateId } from '../utils/db'
+import { stripAsciiControlCharacters } from '../utils/text-safety'
 import { AppMembershipError } from './app-membership'
 
 const CATALOG_ID = /^amc_[A-Za-z0-9_-]{1,76}$/u
@@ -554,7 +555,7 @@ export async function updateAdminAppMembershipCatalog(
   const replay = await findCommand(db, actor.id, key)
   if (replay) return resolveCommandReplay(db, replay, 'update_catalog', requestHash, activeCatalogVersionId)
   requireEditable(current)
-  let replayed = false
+  let replayed: boolean
   try {
     replayed = await executeDraftMutation(
       db,
@@ -2328,7 +2329,7 @@ function asObject(value: unknown, field: string): Record<string, unknown> {
 
 function requiredText(value: unknown, field: string, min: number, max: number) {
   if (typeof value !== 'string') throw invalidInput(field, '需要文本')
-  const normalized = value.trim().replace(/[\u0000-\u001F\u007F]/gu, '')
+  const normalized = stripAsciiControlCharacters(value.trim())
   const length = Array.from(normalized).length
   if (length < min || length > max) throw invalidInput(field, `长度需要在 ${min}–${max} 个字符之间`)
   return normalized

@@ -1605,7 +1605,7 @@ async function tombstoneAccount(
       SET email = ?, username = NULL, nickname = NULL,
           password_hash = '!deleted:' || lower(hex(randomblob(32))),
           avatar_key = NULL, status = 'deleted', email_verified = 0,
-          notification_enabled = 0, conversion_external_id = NULL,
+          notification_enabled = 0,
           updated_at = ?
       WHERE id = ? AND status = 'deletion_pending'
     `).bind(tombstoneEmail, timestamp, execution.account_id),

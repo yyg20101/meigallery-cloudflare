@@ -466,7 +466,7 @@ export async function getAppNotificationPreferences(
   now = new Date(),
 ): Promise<AppNotificationPreferences> {
   requireAppNotificationsEnabled(config)
-  const policy = await requireNotificationPolicy(db, config)
+  await requireNotificationPolicy(db, config)
   await ensurePreferenceRow(db, accountId, config.policyId, now)
   const row = await readPreferenceRow(db, accountId)
   if (!row) throw new AppNotificationError(503, 'NOTIFICATION_PREFERENCES_UNAVAILABLE', '通知偏好暂不可用', true)

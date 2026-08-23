@@ -26,32 +26,38 @@ const routeAccountId = computed(() => typeof route.params.accountId === 'string'
   ? route.params.accountId
   : typeof route.query.accountId === 'string' ? route.query.accountId : null)
 const routeAdjustmentId = computed(() => typeof route.params.adjustmentId === 'string' ? route.params.adjustmentId : null)
-const pageContext = computed<WalletPageContext>(() => ({
-  search: {
+const pageContext = computed<WalletPageContext>(() => {
+  if (pageMode.value === 'detail') {
+    return {
+      pageId: 'ADM-WAL-02',
+      route: route.path,
+      title: '钱包详情',
+      description: '展示余额、账本版本、追加式分录与冲正关系，不允许直接编辑余额。',
+    }
+  }
+  if (pageMode.value === 'request') {
+    return {
+      pageId: 'ADM-WAL-03',
+      route: '/admin/app/coin-adjustments/new',
+      title: '调币申请',
+      description: '填写加币或扣币数量、标准原因、用户说明、内部备注与业务单号。',
+    }
+  }
+  if (pageMode.value === 'review') {
+    return {
+      pageId: 'ADM-WAL-04',
+      route: route.path,
+      title: '调币复核',
+      description: '由不同管理员复核余额变化、阈值、原因与业务证据，批准后才追加分录。',
+    }
+  }
+  return {
     pageId: 'ADM-WAL-01',
     route: '/admin/app/wallets',
     title: '钱包查询',
     description: '按稳定账号搜索余额、有效分录和对账状态。',
-  },
-  detail: {
-    pageId: 'ADM-WAL-02',
-    route: route.path,
-    title: '钱包详情',
-    description: '展示余额、账本版本、追加式分录与冲正关系，不允许直接编辑余额。',
-  },
-  request: {
-    pageId: 'ADM-WAL-03',
-    route: '/admin/app/coin-adjustments/new',
-    title: '调币申请',
-    description: '填写加币或扣币数量、标准原因、用户说明、内部备注与业务单号。',
-  },
-  review: {
-    pageId: 'ADM-WAL-04',
-    route: route.path,
-    title: '调币复核',
-    description: '由不同管理员复核余额变化、阈值、原因与业务证据，批准后才追加分录。',
-  },
-}[pageMode.value]))
+  }
+})
 const query = ref('')
 const accounts = ref<AdminWalletAccountSummary[]>([])
 const selected = ref<AdminWalletState | null>(null)

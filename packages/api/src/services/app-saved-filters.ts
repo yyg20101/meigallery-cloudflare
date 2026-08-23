@@ -1,4 +1,5 @@
 import type { AppPersonSearchSort } from '@meigallery/shared'
+import { containsUnsafeInvisibleCharacter } from '../utils/text-safety'
 import type { AppMembershipRuntimeConfig } from './app-membership'
 import {
   assertAppFilterSelectionCanApply,
@@ -447,7 +448,7 @@ function normalizeSavedFilterName(value: unknown, maxLength: number) {
   if (
     !normalizedValue
     || [...normalizedValue].length > maxLength
-    || /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u.test(normalizedValue)
+    || containsUnsafeInvisibleCharacter(normalizedValue)
   ) {
     throw new AppPersonSearchError(
       400,

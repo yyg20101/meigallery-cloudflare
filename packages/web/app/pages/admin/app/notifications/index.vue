@@ -19,26 +19,31 @@ const initialTab = route.path.endsWith('/deliveries')
   ? 'deliveries'
   : route.path.includes('/templates') ? 'templates' : 'events'
 const activeTab = ref<'events' | 'templates' | 'deliveries'>(initialTab)
-const pageContext = computed<{ pageId: AdminFigmaPageId; route: string; title: string; description: string }>(() => ({
-  events: {
+type NotificationPageContext = { pageId: AdminFigmaPageId; route: string; title: string; description: string }
+const pageContext = computed<NotificationPageContext>(() => {
+  if (activeTab.value === 'templates') {
+    return {
+      pageId: 'ADM-NTF-02',
+      route: route.path,
+      title: '通知模板版本',
+      description: '维护用户安全文案、变量、地区与语言版本，并通过审核后生效。',
+    }
+  }
+  if (activeTab.value === 'deliveries') {
+    return {
+      pageId: 'ADM-NTF-03',
+      route: '/admin/app/notifications/deliveries',
+      title: '通知生成结果',
+      description: '查询事件生成、失败、抑制与防重结果，不展示不必要的消息正文。',
+    }
+  }
+  return {
     pageId: 'ADM-NTF-01',
     route: '/admin/app/notifications/events',
     title: '通知事件定义',
     description: '查看事件 Schema、必要性、敏感字段策略、消费者与版本状态。',
-  },
-  templates: {
-    pageId: 'ADM-NTF-02',
-    route: route.path,
-    title: '通知模板版本',
-    description: '维护用户安全文案、变量、地区与语言版本，并通过审核后生效。',
-  },
-  deliveries: {
-    pageId: 'ADM-NTF-03',
-    route: '/admin/app/notifications/deliveries',
-    title: '通知生成结果',
-    description: '查询事件生成、失败、抑制与防重结果，不展示不必要的消息正文。',
-  },
-}[activeTab.value]))
+  }
+})
 const deliveryStatus = ref<AdminNotificationDeliveryStatus | ''>('')
 const deliveryCategory = ref<AdminNotificationCategory | ''>('')
 const errorMessage = ref('')

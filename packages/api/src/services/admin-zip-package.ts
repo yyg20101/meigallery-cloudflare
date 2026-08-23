@@ -1,4 +1,5 @@
 import { IMPORT_PACKAGE_LIMITS } from '@meigallery/shared/constants'
+import { containsAsciiControlCharacter } from '../utils/text-safety'
 
 const EOCD_SIGNATURE = 0x06054b50
 const CENTRAL_FILE_SIGNATURE = 0x02014b50
@@ -1032,7 +1033,7 @@ function compareArchivePaths(left: string, right: string): number {
 }
 
 function hasControlCharacter(value: string): boolean {
-  return /[\u0000-\u001f\u007f]/.test(value)
+  return containsAsciiControlCharacter(value)
 }
 
 function packageError(code: string, message: string): ZipImportError {

@@ -6,7 +6,6 @@ import {
   formatRecommendationDate,
   newRecommendationIdempotencyKey,
   recommendationApiError,
-  recommendationStateClass,
 } from '~/types/admin-app-recommendations'
 
 definePageMeta({ layout: 'admin' })
@@ -148,8 +147,12 @@ async function mutate(action: 'submit' | 'decision' | 'activate' | 'pause' | 'ro
     operationError.value = '请填写本次操作原因，便于复核和审计。'
     return
   }
-  if (['activate', 'pause', 'rollback'].includes(action) && import.meta.client) {
-    const label = { activate: '启用', pause: '暂停', rollback: '回滚' }[action]
+  if ((action === 'activate' || action === 'pause' || action === 'rollback') && import.meta.client) {
+    const label = {
+      activate: '启用',
+      pause: '暂停',
+      rollback: '回滚',
+    }[action]
     if (!window.confirm(`确认${label}当前推荐规则？该操作会改变版本化推荐运行状态。`)) return
   }
   operation.value = action

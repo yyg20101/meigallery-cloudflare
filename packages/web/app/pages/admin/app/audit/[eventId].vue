@@ -3,7 +3,6 @@ import {
   adminAuditPurposeLabel,
   adminAuditResultClass,
   adminAuditResultLabel,
-  adminAuditRiskClass,
   adminAuditRiskLabel,
   formatAdminAuditTime,
   type AdminAppAuditEventDetail,

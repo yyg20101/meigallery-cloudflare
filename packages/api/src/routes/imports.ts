@@ -10,6 +10,7 @@ import {
 import { ImportError, importErrorBody } from '../utils/import-errors'
 import { hashImportToken, hasImportPermission, isImportTokenExpired, isSourceBotAllowed } from '../utils/import-token'
 import { importPermissionForType, validateTelegramImportPayload } from '../utils/import-validation'
+import { stripAsciiControlCharacters } from '../utils/text-safety'
 
 export const importRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -60,7 +61,7 @@ function clientIp(c: { req: { header: (name: string) => string | undefined } }) 
 }
 
 function boundedRequestEvidence(value: string | undefined, maxLength: number) {
-  const normalized = value?.trim().replace(/[\u0000-\u001F\u007F]/gu, '')
+  const normalized = value ? stripAsciiControlCharacters(value.trim()) : undefined
   return normalized ? normalized.slice(0, maxLength) : null
 }
 

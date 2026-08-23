@@ -1,4 +1,4 @@
-import type { AppTaxonomyCatalog, AppTaxonomyTerm, AppTaxonomyType } from '@meigallery/shared'
+import type { AppTaxonomyTerm, AppTaxonomyType } from '@meigallery/shared'
 import {
   AppMembershipError,
   resolveAppMembershipSnapshot,

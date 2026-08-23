@@ -1635,7 +1635,7 @@ async function finalizeExportArtifact(
     {
       httpMetadata: {
         contentType: 'application/x-tar',
-        contentDisposition: 'attachment; filename=\"meigallery-data-export.tar\"',
+        contentDisposition: 'attachment; filename="meigallery-data-export.tar"',
         cacheControl: 'private, no-store, max-age=0',
       },
       customMetadata: {
@@ -2219,7 +2219,7 @@ export async function downloadAppDataRightsExport(
       'Cache-Control': 'private, no-store, max-age=0',
       'Content-Type': 'application/x-tar',
       'Content-Length': String(ticket.archive_size_snapshot),
-      'Content-Disposition': 'attachment; filename=\"meigallery-data-export.tar\"',
+      'Content-Disposition': 'attachment; filename="meigallery-data-export.tar"',
       'X-Content-Type-Options': 'nosniff',
       'X-Data-Rights-Manifest-SHA256': ticket.manifest_sha256_snapshot,
     },

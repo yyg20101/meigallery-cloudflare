@@ -8,7 +8,6 @@ import {
 } from './app-messaging'
 import {
   requireAdminConversationAssignment,
-  type ConversationAssignmentRow,
 } from './admin-app-messaging'
 import { getAppMessagingRuntimeControl } from './app-safety'
 

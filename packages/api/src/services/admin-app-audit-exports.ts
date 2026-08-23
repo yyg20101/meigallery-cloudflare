@@ -812,11 +812,10 @@ export async function issueAdminAppAuditExportDownloadTicket(
   }
 
   const tokenHash = await sha256Hex(stepUpToken)
-  let prepared: AdminAppAuditPreparedQuery | null = null
   let observedDigest = await sha256Hex(stableStringify({ requestId, state: 'scope_unavailable' }))
   let scopeMatches = false
   try {
-    prepared = await prepareAdminAppAuditQuery(
+    const prepared = await prepareAdminAppAuditQuery(
       env.DB,
       current.requested_by,
       parseStoredScopeQuery(current.scope_query_json),

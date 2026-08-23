@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+import { stripAsciiControlCharacters } from '../utils/text-safety'
 
 export const APP_REALTIME_PROTOCOL = 'meigallery.realtime.v1' as const
 export const APP_REALTIME_EVENT_SCHEMA_VERSION = 1 as const
@@ -546,6 +547,6 @@ function normalizeCloseCode(code: number) {
 }
 
 function normalizeCloseReason(reason: string) {
-  const normalized = String(reason ?? '').replace(/[\u0000-\u001F\u007F]/gu, '').trim()
+  const normalized = stripAsciiControlCharacters(String(reason ?? '')).trim()
   return normalized.slice(0, 80) || 'client_closed'
 }

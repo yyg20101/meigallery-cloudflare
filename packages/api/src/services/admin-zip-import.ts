@@ -4,6 +4,7 @@ import {
   R2_KEY_PREFIX,
 } from '@meigallery/shared/constants'
 import { generateId } from '../utils/db'
+import { containsAsciiControlCharacter } from '../utils/text-safety'
 import {
   isExpectedImportErrorReportKey,
   isExpectedImportPackageKey,
@@ -1288,7 +1289,7 @@ function assertMultipartUploadSession(job: ImportJobRow, uploadSession: string):
     || !isExpectedImportPackageKey(job.source_key, job.id)
     || !job.multipart_upload_id
     || job.multipart_upload_id.length > 256
-    || /[\u0000-\u001f\u007f]/.test(job.multipart_upload_id)
+    || containsAsciiControlCharacter(job.multipart_upload_id)
     || !Number.isSafeInteger(Number(job.package_size))
     || Number(job.package_size) <= 0
     || !Number.isSafeInteger(Number(job.upload_part_size))
@@ -1843,7 +1844,7 @@ function normalizeSourceName(value: string): string {
   if (!normalized || normalized.length > 180 || !normalized.toLocaleLowerCase('en-US').endsWith('.zip')) {
     throw new AdminZipImportError(400, 'IMPORT_SOURCE_NAME_INVALID', '文件名必须是 180 字符以内的 .zip 文件名')
   }
-  if (/[\u0000-\u001f\u007f/\\]/.test(normalized)) {
+  if (containsAsciiControlCharacter(normalized) || normalized.includes('/') || normalized.includes('\\')) {
     throw new AdminZipImportError(400, 'IMPORT_SOURCE_NAME_INVALID', 'ZIP 文件名含有不安全字符')
   }
   return normalized

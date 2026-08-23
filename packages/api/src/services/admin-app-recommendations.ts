@@ -1,4 +1,5 @@
 import { generateId } from '../utils/db'
+import { containsUnsafeInvisibleCharacter } from '../utils/text-safety'
 import {
   compareAppNumericVersions,
   normalizeAppNumericVersion,
@@ -2017,7 +2018,7 @@ function parseDryRun(value: string | null): null | {
 }
 
 function containsUnsafeText(value: string) {
-  return /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u.test(value)
+  return containsUnsafeInvisibleCharacter(value)
 }
 
 function assertActor(actor: AdminActor) {

@@ -109,11 +109,11 @@ watch(catalog, (value) => {
   if (!value.definitions.some(item => item.key === selectedKey.value)) {
     selectedKey.value = value.definitions[0]?.key ?? ''
   }
-  if (!editing && selectedKey.value) loadDefinitionIntoForm(selectedDefinition.value)
+  if (!editing.value && selectedKey.value) loadDefinitionIntoForm(selectedDefinition.value)
 }, { immediate: true })
 
 watch(selectedKey, async () => {
-  if (!editing) loadDefinitionIntoForm(selectedDefinition.value)
+  if (!editing.value) loadDefinitionIntoForm(selectedDefinition.value)
   await loadImpact()
 })
 

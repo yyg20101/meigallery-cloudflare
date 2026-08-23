@@ -4,6 +4,7 @@ import type {
 } from '@meigallery/shared'
 import { generateId } from '../utils/db'
 import { verifyPassword } from '../utils/password'
+import { containsAsciiControlCharacter } from '../utils/text-safety'
 import {
   AppAccountAccessError,
   type AppSessionPrincipal,
@@ -242,7 +243,7 @@ function normalizeNickname(value: unknown): string | null {
   }
   const nickname = value.replace(/\s+/gu, ' ').trim()
   if (!nickname) return null
-  if (nickname.length > 40 || /[\u0000-\u001F\u007F]/u.test(nickname)) {
+  if (nickname.length > 40 || containsAsciiControlCharacter(nickname)) {
     throw new AppAccountAccessError(400, 'ACCOUNT_PROFILE_INVALID', '私有昵称不能超过 40 个字符')
   }
   return nickname

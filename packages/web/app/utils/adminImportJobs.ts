@@ -1,5 +1,3 @@
-import type { AdminImportJobStatus } from '~/types/admin-import'
-
 export type AdminImportFigmaState = '正常' | '校验中' | '部分失败' | '已暂停' | '已完成'
 export type AdminImportStateTone = 'success' | 'warning' | 'danger'
 

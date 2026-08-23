@@ -1,4 +1,5 @@
 import type { Bindings } from '../index'
+import { containsUnsafeInvisibleCharacter } from '../utils/text-safety'
 
 export const APP_PERSON_SEARCH_POLICY_ID = 'sqp_app_1_0_search_2_dev_1'
 export const APP_PERSON_SEARCH_DEFAULT_PAGE_SIZE = 20
@@ -158,7 +159,7 @@ export function normalizeAppPersonSearchText(value: unknown, maxLength: number):
   if (
     !normalized
     || [...normalized].length > maxLength
-    || /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/u.test(normalized)
+    || containsUnsafeInvisibleCharacter(normalized)
   ) {
     throw new AppPersonSearchError(
       400,

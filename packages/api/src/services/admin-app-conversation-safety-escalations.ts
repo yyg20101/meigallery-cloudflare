@@ -8,6 +8,7 @@ import {
 } from './app-messaging'
 import { requireAdminConversationAssignment } from './admin-app-messaging'
 import { AppSafetyError } from './app-safety'
+import { containsForbiddenTextControlCharacter } from '../utils/text-safety'
 
 const ESCALATION_ID_PATTERN = /^cse_[A-Za-z0-9_-]{1,76}$/u
 const MESSAGE_ID_PATTERN = /^msg_[A-Za-z0-9_-]{1,76}$/u
@@ -1175,7 +1176,7 @@ function normalizeInternalText(value: unknown, label: string): string {
 }
 
 function hasControlCharacter(value: string) {
-  return /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(value)
+  return containsForbiddenTextControlCharacter(value)
 }
 
 function isResolved(value: string): boolean {

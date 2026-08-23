@@ -7,7 +7,6 @@ import {
   RECOMMENDATION_STATE_LABELS,
   formatRecommendationDate,
   recommendationApiError,
-  recommendationStateClass,
 } from '~/types/admin-app-recommendations'
 
 definePageMeta({ layout: 'admin' })

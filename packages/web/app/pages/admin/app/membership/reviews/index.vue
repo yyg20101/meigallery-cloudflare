@@ -123,7 +123,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
           <option value="revoke">撤销</option>
         </select>
       </label>
-      <button type="button" class="min-h-11 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:mt-6" @click="refresh">刷新队列</button>
+      <button type="button" class="min-h-11 rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:mt-6" @click="refresh()">刷新队列</button>
     </section>
 
     <p v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ errorMessage }}</p>

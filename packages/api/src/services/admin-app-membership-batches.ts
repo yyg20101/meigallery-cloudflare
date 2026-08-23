@@ -709,7 +709,7 @@ export async function cancelAdminAppMembershipBatch(
   }
 
   const timestamp = now.toISOString()
-  let cancelled = false
+  let cancelled: boolean
   try {
     const results = await db.batch([
       db.prepare(`
