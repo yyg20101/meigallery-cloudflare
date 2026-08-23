@@ -249,6 +249,34 @@
 .code-boxes span { height: 52px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 11px; font-size: 20px; font-weight: 700; }
 .security-meta { display: flex; justify-content: space-between; margin: 10px 18px; padding: 12px; border-radius: 10px; background: var(--surface-soft); font-size: 9px; }
 
+.challenge-screen { padding-bottom: 18px; background: #fff9f5; }
+.challenge-identity { display: flex; align-items: center; gap: 7px; width: 246px; height: 25px; margin: 8px 16px 10px; padding: 0 11px; border: 1px solid #f2ddd6; border-radius: 999px; background: #fff5f1; color: #6a5f5a; font-size: 8px; font-weight: 700; }
+.challenge-identity i { width: 5px; height: 5px; border-radius: 50%; background: #d63363; }
+.challenge-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 16px; }
+.challenge-heading h2 { margin: 0; color: #2c2421; font-size: 19px; line-height: 1.35; }
+.challenge-heading span { min-width: 61px; padding: 6px 9px; border-radius: 999px; background: #f6eef1; color: #6a5f5a; font-size: 8px; text-align: center; }
+.challenge-heading span.failed { background: #fff0f3; color: #c72555; }
+.challenge-description { margin: 10px 16px; color: #6a5f5a; font-size: 9px; line-height: 1.55; }
+.challenge-boundary { display: flex; gap: 10px; margin: 10px 16px; padding: 10px; border: 1px solid #f2ddd6; border-radius: 13px; background: #f6eef1; }
+.challenge-boundary.failed { background: #fff5f1; }
+.challenge-boundary > img { width: 18px; height: 18px; flex: none; }
+.challenge-boundary strong, .challenge-boundary span { display: block; }
+.challenge-boundary strong { color: #2c2421; font-size: 10px; }
+.challenge-boundary span { margin-top: 3px; color: #6a5f5a; font-size: 8px; line-height: 1.5; }
+.challenge-platform { margin: 10px 16px; padding: 10px; border: 1px solid #f2ddd6; border-radius: 13px; background: #fff; }
+.challenge-platform > small { color: #8d817b; font-size: 8px; }
+.challenge-platform > h3 { margin: 5px 0 8px; color: #2c2421; font-size: 13px; }
+.challenge-platform > div { min-height: 104px; display: grid; place-items: center; align-content: center; gap: 6px; padding: 10px; border: 1px solid #f2ddd6; border-radius: 12px; background: #f6eef1; text-align: center; }
+.challenge-platform > div img { width: 18px; height: 18px; }
+.challenge-platform > div strong { font-size: 12px; }
+.challenge-platform > div span { max-width: 245px; color: #6a5f5a; font-size: 8px; line-height: 1.45; }
+.challenge-meta { display: flex; align-items: center; justify-content: space-between; min-height: 36px; margin: 0 16px; color: #8d817b; font-size: 8px; }
+.challenge-meta strong { color: #c72555; font-size: 9px; }
+.challenge-primary { width: calc(100% - 32px); min-height: 42px; justify-content: center; margin: 0 16px; }
+.challenge-primary.disabled { opacity: .55; }
+.challenge-cancel { width: calc(100% - 32px); min-height: 38px; display: flex; align-items: center; justify-content: center; gap: 7px; margin: 4px 16px 0; border: 0; background: transparent; color: #6a5f5a; font-size: 9px; font-weight: 700; }
+.challenge-cancel img { width: 15px; height: 15px; }
+
 .preference-intro { padding: 18px 17px 8px; }
 .preference-intro > span { color: var(--brand); font-size: 9px; font-weight: 800; }
 .preference-intro h2 { margin: 8px 0 5px; font-size: 20px; }
@@ -274,13 +302,33 @@
 .choice-chip.selected,
 .region-pills button.selected { border-color: #ef9fba; background: var(--brand-soft); color: var(--brand-deep); font-weight: 700; }
 
-.document-screen { padding: 0 17px 25px; }
-.document-screen .library-mobile-header { margin: 0 -17px; }
-.document-meta { display: flex; justify-content: space-between; margin: 14px 0; padding: 9px; border-radius: 8px; background: var(--surface-soft); color: var(--muted); font-size: 8px; }
-.document-screen h2 { font-size: 18px; }
-.document-screen h3 { margin: 18px 0 5px; font-size: 12px; }
-.document-screen p { color: var(--ink-soft); font-size: 9px; line-height: 1.75; }
-.document-screen .page-primary-action { width: 100%; margin: 20px 0 0; }
+.legal-document-screen { padding: 0 17px 25px; background: #fff9f5; }
+.legal-document-screen .library-mobile-header { margin: 0 -17px 10px; }
+.legal-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
+.legal-title-row h2 { margin: 0; color: #2c2421; font-size: 20px; line-height: 1.35; }
+.legal-title-row > span { flex: 0 0 auto; min-width: 64px; padding: 6px 10px; border-radius: 999px; background: #fff0f3; color: #c72555; font-size: 9px; text-align: center; }
+.legal-description { margin: 4px 0 12px; color: #6a5f5a; font-size: 10px; line-height: 1.55; }
+.legal-document-notice { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 11px; border: 1px solid #f2ddd6; border-radius: 14px; background: #fff5f1; }
+.legal-document-notice img { width: 18px; height: 18px; }
+.legal-document-notice span { display: grid; gap: 3px; min-width: 0; }
+.legal-document-notice strong { color: #2c2421; font-size: 10px; }
+.legal-document-notice small { color: #6a5f5a; font-size: 8px; line-height: 1.45; }
+.legal-document-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 10px; margin-bottom: 12px; }
+.legal-document-tab { min-height: 38px; padding: 0 8px; border: 1px solid #f2ddd6; border-radius: 999px; background: #fff; color: #6a5f5a; font-size: 9px; }
+.legal-document-tab.active { border: 1.5px solid #d63363; background: #fff0f3; color: #c72555; font-weight: 700; }
+.legal-document-card { min-height: 270px; padding: 15px; overflow: hidden; border: 1px solid #f2ddd6; border-radius: 18px; background: #fff; }
+.legal-document-card h3 { margin: 0; color: #2c2421; font-size: 14px; }
+.legal-document-card > small { display: block; margin-top: 8px; color: #8d817b; font-size: 8px; }
+.legal-document-card p { margin: 14px 0 0; color: #6a5f5a; font-size: 9px; line-height: 1.75; }
+.legal-document-error { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.legal-document-error > img { width: 36px; height: 36px; }
+.legal-document-error h3 { margin-top: 12px; }
+.legal-document-error p { max-width: 230px; margin-top: 9px; }
+.legal-document-error .secondary-button { width: 100%; margin-top: 12px; }
+.legal-document-screen .page-primary-action { width: 100%; margin: 12px 0 0; }
+.legal-document-screen .page-primary-action.disabled { opacity: .55; }
+.legal-return-action { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 40px; border: 0; background: transparent; color: #6a5f5a; font-size: 9px; }
+.legal-return-action img { width: 16px; height: 16px; }
 
 .discover-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 15px 10px; }
 .discover-actions { display: flex; align-items: center; gap: 3px; }

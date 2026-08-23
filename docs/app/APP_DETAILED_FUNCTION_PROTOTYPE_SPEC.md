@@ -2,34 +2,38 @@
 
 App 版本：1.0
 
-更新日期：2026-07-30
+更新日期：2026-08-14
 
 状态：需求讨论中，待客户确认
 
 ## 1. 文档用途
 
-本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。
+本文是 99 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。
 
-Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 个需求状态，并建立 92 个流程预览与 2,284 个有效交互动作。客户文档继续保留 92 张默认状态、54 张 P0 关键状态和通知/金币 23 张逐状态本地导出图，共 169 个确定性图片映射；图片通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。
+Page ID、设计路由、Figma Node ID 和状态 key 是设计交付、实现映射与测试追踪元数据，不是真实产品 UI 文案；除非产品需求另行定义面向用户的业务编号，否则 KMP 与 Nuxt 页面不得可见渲染这些标注。
+
+Figma 最终设计已覆盖移动端 50 页、管理后台 49 页和全部 408 个正式需求状态，并建立 99 个流程预览。3,571 个有效交互动作是 APP-SET-08 增量六态前的历史基线，开发结束后统一重算。客户文档保留 99 张默认状态、57 张 P0 关键状态和通知/金币 23 张逐状态注册导出，共 179 个 manifest 确定性图片映射；APP-DSC-01 至 APP-DSC-09、APP-INT-06 与 ADM-PRI-01/02 的逐状态 Figma 图直接进入本 MD。图片均通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。
 
 ## 2. 覆盖统计
 
 | 指标 | 数量 |
 |---|---:|
-| 页面总数 | 92 |
-| 移动端页面 | 49 |
-| 管理后台页面 | 43 |
-| P0 页面 | 54 |
-| 默认状态原型 | 92 |
-| P0 关键状态原型 | 54 |
-| 基础逐页原型 | 146 |
-| Figma 最终设计页面 | 92 |
-| Figma 最终设计状态 | 349（移动端 186 / 后台 163） |
-| Figma 流程预览 | 92 |
-| Figma 有效交互动作 | 2284 |
+| 页面总数 | 99 |
+| 移动端页面 | 50 |
+| 管理后台页面 | 49 |
+| P0 页面 | 57 |
+| 默认状态原型 | 99 |
+| P0 关键状态原型 | 57 |
+| 基础逐页原型 | 156 |
+| Figma 最终设计页面 | 99 |
+| Figma 最终设计状态 | 408（移动端 208 / 后台 200） |
+| Figma 流程预览 | 99 |
+| Figma 有效交互动作（APP-SET-08 增量前历史基线） | 3571 |
 | 通知与金币逐状态本地导出 | 5 页 / 23 张 |
-| 客户文档图片映射总数 | 169 |
-| 已建立需求追踪的页面 | 92 |
+| 发现页逐状态 MD 直嵌 | 9 页 / 38 正式状态（16 张注册图 + 22 张补充图） |
+| 发现页交互支持稿 | 7 页 / 96 张（不新增正式需求状态） |
+| 客户文档图片映射总数 | 179 |
+| 已建立需求追踪的页面 | 99 |
 
 ## 3. 逐页详细设计
 
@@ -51,7 +55,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 品牌、会话恢复和系统门槛居中展示，最低版本、维护和离线状态优先于业务入口。
 
-**详细交互：** 用户从“冷启动、回到前台或深链唤起”进入。主要操作为“继续进入”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-AUTH-02「登录」。次要操作包括：重试、查看帮助。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“冷启动、回到前台或深链唤起”进入。主要操作为“继续进入”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-01「推荐首页」。次要操作包括：已有账号，直接登录、重试、查看帮助。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
 
 **业务规则：** 注册和登录只处理观看者账号，不创建公开真人资料。
 
@@ -67,7 +71,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“冷启动、回到前台或深链唤起”能够进入，页面明确显示 APP-AUTH-01、页面名称、设计路由和返回路径。
+- 从“冷启动、回到前台或深链唤起”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“继续进入”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“首次、恢复中、离线、升级、维护”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -93,7 +97,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **平台与模块：** 移动端 · 启动与认证　　**优先级：** P0　　**设计路由：** `/auth/login`
 
-**用户价值：** 让观看者使用服务端启用的方式安全登录，并明确条款与隐私入口。
+**用户价值：** 让观看者使用服务端启用的邮箱密码安全登录，并明确四类当前文档入口。
 
 **适用角色：** 游客、观看者
 
@@ -103,7 +107,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 采用单任务认证表单，输入错误就近呈现，观看者身份边界紧邻主操作。
 
-**详细交互：** 用户从“启动页、权限门槛或登录后回跳”进入。主要操作为“手机号登录”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-01「推荐首页」。次要操作包括：获取验证码、查看协议、帮助。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“启动页、权限门槛或登录后回跳”进入。主要操作为“登录并继续”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-01「推荐首页」。次要操作包括：注册观看者账号、查看协议、帮助。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
 
 **业务规则：** 注册和登录只处理观看者账号，不创建公开真人资料。
 
@@ -113,15 +117,15 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **模块 PRD：** [F-01 观看者注册、登录与设备安全](../ways-of-work/plan/real-person-discovery-platform/account-access-and-device-management/prd.md)（ACC-FR-*）
 
-**页面状态：** 正常、输入错误、验证中、频控、账号受限
+**页面状态：** 正常、输入错误、验证中、频控、账号受限、协议更新
 
-**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-02`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-AUTH-02`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
-- 从“启动页、权限门槛或登录后回跳”能够进入，页面明确显示 APP-AUTH-02、页面名称、设计路由和返回路径。
-- 主要操作“手机号登录”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、输入错误、验证中、频控、账号受限”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 从“启动页、权限门槛或登录后回跳”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“登录并继续”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 页面覆盖“正常、输入错误、验证中、频控、账号受限、协议更新”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 注册和登录只处理观看者账号，不创建公开真人资料。
 
@@ -171,7 +175,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“登录页选择注册”能够进入，页面明确显示 APP-AUTH-03、页面名称、设计路由和返回路径。
+- 从“登录页选择注册”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“创建观看者账号”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、标识占用、验证码失效、地区不可用”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -197,17 +201,17 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **平台与模块：** 移动端 · 启动与认证　　**优先级：** P1　　**设计路由：** `/auth/challenge`
 
-**用户价值：** 在敏感登录或账号操作前完成二次验证并解释触发原因。
+**用户价值：** 在认证写操作前完成 Cloudflare Turnstile 人机验证，不误述为身份认证。
 
 **适用角色：** 游客、观看者
 
 **前置条件：** 客户端已取得远程配置；涉及账号写操作时必须通过服务端验证、频控和风险校验。
 
-**进入路径：** 登录风险、设备变化或敏感操作
+**进入路径：** 登录、注册或邮箱验证码请求需要 Turnstile
 
 **页面结构：** 风险原因、验证目标、验证码输入和重试限制按任务顺序纵向组织。
 
-**详细交互：** 用户从“登录风险、设备变化或敏感操作”进入。主要操作为“完成验证”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-01「推荐首页」。次要操作包括：重新发送、退出账号。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“登录、注册或邮箱验证码请求需要 Turnstile”进入。主要操作为“等待验证完成”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-01「推荐首页」。次要操作包括：重新加载验证、取消并返回。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
 
 **业务规则：** 注册和登录只处理观看者账号，不创建公开真人资料。
 
@@ -223,8 +227,8 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“登录风险、设备变化或敏感操作”能够进入，页面明确显示 APP-AUTH-04、页面名称、设计路由和返回路径。
-- 主要操作“完成验证”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 从“登录、注册或邮箱验证码请求需要 Turnstile”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“等待验证完成”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“等待、失败、次数限制”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 注册和登录只处理观看者账号，不创建公开真人资料。
@@ -271,7 +275,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“首次注册成功”能够进入，页面明确显示 APP-AUTH-05、页面名称、设计路由和返回路径。
+- 从“首次注册成功”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“保存偏好”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、空目录、保存失败、非个性化说明”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -319,7 +323,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“登录、注册、设置与关于页”能够进入，页面明确显示 APP-AUTH-06、页面名称、设计路由和返回路径。
+- 从“登录、注册、设置与关于页”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“返回原页面”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、加载失败、版本更新”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -357,9 +361,9 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **进入路径：** 登录完成、底部推荐 Tab 或返回首页
 
-**页面结构：** 推荐范围、搜索、频道和真人卡片构成首屏，认证状态与推荐依据优先展示。
+**页面结构：** 44dp 地区、搜索和筛选入口位于顶部；推荐/地区/热门/最新频道、横向重点真人卡和双列推荐卡按 Figma 首屏顺序展开。
 
-**详细交互：** 用户从“登录完成、底部推荐 Tab 或返回首页”进入。主要操作为“查看真人详情”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-07「真人详情」。次要操作包括：搜索、筛选、切换频道、查看通知。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从登录完成、底部“推荐”或返回首页进入。顶部地区入口打开 APP-DSC-02；搜索和筛选分别进入 APP-DSC-04/05。推荐、热门、最新切换服务端排序，地区频道打开地区弹层；切换后重置游标并保留当前页面直到新请求进入明确加载态。卡片主体进入 APP-DSC-07，44dp 喜欢按钮与卡片点击区分离；允许乐观反馈，但服务端拒绝时必须回滚并显示原因。接近列表末尾自动分页，分页失败以非阻断浮层重试且保留已有卡片。只允许复用当前 sort、推荐模式和地区 code 完全一致的本次运行缓存；离线缓存禁用喜欢和筛选。推荐会话或规则版本变化时进入规则刷新态，不把旧排序继续标记为当前结果。
 
 **业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
@@ -375,17 +379,75 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“登录完成、底部推荐 Tab 或返回首页”能够进入，页面明确显示 APP-DSC-01、页面名称、设计路由和返回路径。
+- 从“登录完成、底部推荐 Tab 或返回首页”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看真人详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、首次空、骨架、分页、离线缓存、规则刷新”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
-![APP-DSC-01 推荐首页默认状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-01__default.png)
+**Figma 逐状态交付：** 本页 6 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 67 个有效动作，支持 Section `581:2` 含 11 张交互支持稿和 75 个有效动作，失效目标与不足 44dp 热区均为 0。
 
-**P0 关键状态：** 离线缓存
+- [打开 Figma 交互支持 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=581-2)
 
-![APP-DSC-01 推荐首页关键状态“离线缓存”原型](./assets/page-prototypes/mobile/app-dsc-01__state-05.png)
+**状态 1｜正常｜`159:61979`**
+
+- 触发条件：推荐目录、推荐会话和首屏数据同步成功。
+- 关键交互：可切换推荐、地区、热门、最新频道；点击地区、搜索、筛选、卡片主体或独立喜欢热区进入对应任务。
+- 预期结果：首屏按 Figma 顺序展示顶部入口、频道、横向重点真人和双列推荐卡，所有交互目标不小于 44dp。
+- 权威边界：卡片、推荐理由、排序和地区结果均来自服务端当前推荐投影。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-61979&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A61979&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-01 推荐首页 Figma 状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-01__default.png)
+
+**状态 2｜首次空｜`159:62126`**
+
+- 触发条件：当前推荐模式、排序和地区条件查询成功，但没有可展示真人。
+- 关键交互：保留顶部入口和底部导航，用户可切换频道、扩大地区范围或清除筛选。
+- 预期结果：空结果具有明确原因和恢复动作，不使用虚构真人或历史结果冒充当前结果。
+- 权威边界：空状态来自成功响应的空集合，不与网络失败或目录失效混淆。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-62126&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A62126&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-01 推荐首页 Figma 状态“首次空”原型](./assets/page-prototypes/mobile/app-dsc-01__state-02.png)
+
+**状态 3｜骨架｜`159:62283`**
+
+- 触发条件：首次进入或条件切换后尚未取得可展示的权威首屏。
+- 关键交互：地区、搜索和筛选入口保持可识别；骨架卡不响应资料或喜欢操作。
+- 预期结果：骨架尺寸与最终卡片一致，加载完成后不产生明显布局跳动。
+- 权威边界：骨架不承载真人、认证、推荐理由或互动状态等业务事实。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-62283&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A62283&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-01 推荐首页 Figma 状态“骨架”原型](./assets/page-prototypes/mobile/app-dsc-01__state-03.png)
+
+**状态 4｜分页｜`159:62441`**
+
+- 触发条件：接近列表末尾且服务端仍返回 nextCursor。
+- 关键交互：自动加载下一页并防重复请求；失败时保留已有卡片、当前位置和原游标，提供非阻断重试。
+- 预期结果：成功后按稳定 profileId 去重追加，nextCursor 为空后停止请求。
+- 权威边界：分页游标、排序和去重键均由当前服务端响应决定，客户端不推算页码。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-62441&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A62441&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-01 推荐首页 Figma 状态“分页”原型](./assets/page-prototypes/mobile/app-dsc-01__state-04.png)
+
+**状态 5｜离线缓存｜`159:62597`**
+
+- 触发条件：当前离线，且存在与 sort、推荐模式和地区 code 完全一致的本次运行缓存。
+- 关键交互：显示缓存时间与重试入口；允许只读浏览已缓存卡片，禁用喜欢和依赖联网的筛选提交。
+- 预期结果：明确结果并非最新；网络恢复后重新读取权威首屏并移除离线提示。
+- 权威边界：缓存只读且不得跨条件复用，不能证明真人、认证或授权仍然有效。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-62597&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A62597&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-01 推荐首页 Figma 状态“离线缓存”原型](./assets/page-prototypes/mobile/app-dsc-01__state-05.png)
+
+**状态 6｜规则刷新｜`159:62753`**
+
+- 触发条件：推荐会话、规则版本或目录版本变化，现有排序不再代表当前结果。
+- 关键交互：页面进入显式刷新态并重新请求首屏；刷新失败提供安全重试，不把旧排序继续标记为当前。
+- 预期结果：刷新成功后以新 session/version 原子替换列表、理由和游标。
+- 权威边界：推荐规则版本和会话由服务端签发，客户端不得拼接新旧页。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-62753&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A62753&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-01 推荐首页 Figma 状态“规则刷新”原型](./assets/page-prototypes/mobile/app-dsc-01__state-06.png)
 
 **客户确认：**
 
@@ -409,9 +471,9 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **进入路径：** 推荐页地区入口或筛选页
 
-**页面结构：** 搜索、当前选择、最近使用和完整目录分区组织，并明确不使用精确定位。
+**页面结构：** 460dp 底部弹层依次展示隐私说明、当前地区、地区范围、常用城市和应用动作；遮罩、关闭和所有选项均具有独立 44dp 热区。
 
-**详细交互：** 用户从“推荐页地区入口或筛选页”进入。主要操作为“应用地区”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-01「推荐首页」。次要操作包括：搜索地区、清除选择。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户点击推荐页顶部地区或“地区”频道后，以 460dp 底部弹层进入。点击范围或常用城市只修改弹层草稿，不立即刷新推荐；选项触控区统一为 44dp，列表超出首屏时横向滚动。选择更高范围时清除不兼容的城市选中，选择城市时只提交该城市稳定 code；“全国”提交 null。点击“应用地区”关闭弹层并以权威 code 重新请求 APP-DSC-01，重复选择当前值只关闭弹层。点击关闭或遮罩放弃草稿。页面不申请持续定位、不显示精确距离，也不得把“华东、杭州”等展示文案当作查询键；定位未使用、目录更新和无结果分别使用 Figma 独立状态提示。
 
 **业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
@@ -427,17 +489,55 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“推荐页地区入口或筛选页”能够进入，页面明确显示 APP-DSC-02、页面名称、设计路由和返回路径。
+- 从“推荐页地区入口或筛选页”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“应用地区”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、定位未使用、目录更新、无结果”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
-![APP-DSC-02 地区选择默认状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-02__default.png)
+**Figma 逐状态交付：** 本页 4 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 45 个有效动作，支持 Section `603:2326` 含 6 张交互支持稿和 60 个有效动作，失效目标与不足 44dp 热区均为 0。
 
-**P0 关键状态：** 无结果
+- [打开 Figma 交互支持 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=603-2326)
 
-![APP-DSC-02 地区选择关键状态“无结果”原型](./assets/page-prototypes/mobile/app-dsc-02__state-04.png)
+**状态 1｜正常｜`159:62911`**
+
+- 触发条件：用户点击推荐页顶部地区入口或“地区”频道，且地区目录可用。
+- 关键交互：在 460dp 底部弹层内选择地区范围或常用城市；选择只修改草稿，点击应用后才提交。
+- 预期结果：当前地区、范围、城市和主按钮按 Figma 层级展示，遮罩、关闭和每个选项均有独立 44dp 热区。
+- 权威边界：提交只使用服务端稳定地区 code；“全国”使用 null，展示名称不作为查询键。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-62911&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A62911&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-02 地区选择 Figma 状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-02__default.png)
+
+**状态 2｜定位未使用｜`159:63100`**
+
+- 触发条件：客户端未申请持续定位，用户仍通过目录手动选择模糊地区。
+- 关键交互：说明定位未使用后继续选择范围或城市；不触发系统定位授权，不显示精确距离。
+- 预期结果：用户可完整完成地区筛选，且清楚该选择仅用于内容范围。
+- 权威边界：地区偏好来自用户显式选择，不从设备定位或第三方画像推断。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-63100&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A63100&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-02 地区选择 Figma 状态“定位未使用”原型](./assets/page-prototypes/mobile/app-dsc-02__state-02.png)
+
+**状态 3｜目录更新｜`159:63298`**
+
+- 触发条件：已保存地区 code 在新目录版本中被重命名、合并、下线或失效。
+- 关键交互：展示目录更新说明并要求用户重新确认有效范围；不静默映射为同名字符串。
+- 预期结果：仅有效稳定 code 可被应用，失效选择不会继续影响推荐。
+- 权威边界：服务端目录版本、词条状态和替代关系是唯一权威。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-63298&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A63298&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-02 地区选择 Figma 状态“目录更新”原型](./assets/page-prototypes/mobile/app-dsc-02__state-03.png)
+
+**状态 4｜无结果｜`159:63496`**
+
+- 触发条件：当前地区条件有效，但推荐查询成功且没有可展示真人。
+- 关键交互：提示卡与弹层保持 24dp 间距；用户可选择更大范围、其他城市或全国后重新应用。
+- 预期结果：保留当前草稿和完整选择能力，不自动扩大范围或展示其他地区结果。
+- 权威边界：无结果不改变用户选择；只有用户点击应用后才提交新的地区 code。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-63496&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A63496&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-02 地区选择 Figma 状态“无结果”原型](./assets/page-prototypes/mobile/app-dsc-02__state-04.png)
 
 **客户确认：**
 
@@ -453,7 +553,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **平台与模块：** 移动端 · 发现与真人　　**优先级：** P1　　**设计路由：** `/discover/categories`
 
-**用户价值：** 按身份、职业、风格和内容类型组织可浏览主题。
+**用户价值：** 按身份、职业、风格、地区和内容类型组织可浏览主题。
 
 **适用角色：** 观看者
 
@@ -461,9 +561,9 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **进入路径：** 推荐频道或搜索入口
 
-**页面结构：** 分类入口按业务维度分组，空分类和目录失效均保留可恢复路径。
+**页面结构：** 顶部返回与页面标题下依次展示本周主题、内容主题、职业身份、风格特质、地区四个分类组和统一目录说明；空分类、加载与目录失效均使用独立 Figma 状态。
 
-**详细交互：** 用户从“推荐频道或搜索入口”进入。主要操作为“进入分类”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-01「推荐首页」。次要操作包括：收藏主题、查看全部。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从推荐频道或搜索入口进入。首次读取时展示 Figma 等高骨架；目录可用后展示本周主题和内容主题、职业身份、风格特质、地区四个分类组。点击本周主题使用服务端稳定 term ID 直接执行搜索；点击前三组进入 APP-DSC-05 对应类型筛选，点击地区进入 APP-DSC-02。空分类可重读或进入热门推荐。目录失效时仅按服务端重定向关系处理；无安全替代时停止使用旧 ID，并提供重读、返回分类和目录变化说明。
 
 **业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
@@ -479,13 +579,68 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“推荐频道或搜索入口”能够进入，页面明确显示 APP-DSC-03、页面名称、设计路由和返回路径。
-- 主要操作“进入分类”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 从“推荐频道或搜索入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“浏览分类结果”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、空分类、目录失效”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
-![APP-DSC-03 分类默认状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-03__default.png)
+**Figma 逐状态交付：** 本页 3 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 25 个有效动作，支持 Section `627:2770` 含 3 张交互支持稿和 21 个有效动作，失效目标与不足 44dp 热区均为 0。
+
+- [打开 Figma 交互支持 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=627-2770)
+
+**状态 1｜正常｜`159:63697`**
+
+- 触发条件：服务端分类目录版本有效，且存在当前可公开浏览的分类组与稳定词条。
+- 关键交互：点击本周主题直接以稳定 term ID 进入结果；内容主题、职业身份、风格特质进入对应筛选面板，地区进入 APP-DSC-02。
+- 预期结果：分类层级、推荐主题和统一目录说明按 Figma 展示，各卡片及返回、底部导航热区均不小于 44dp。
+- 权威边界：顺序、展示名、稳定 ID、目录版本和词条状态均由服务端目录决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-63697&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A63697&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-03 分类 Figma 状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-03__default.png)
+
+**状态 2｜空分类｜`159:63800`**
+
+- 触发条件：目录请求成功，但当前可用范围内没有可公开展示的分类或真人。
+- 关键交互：用户可重新读取分类，或进入热门推荐；页面不自动创建分类、扩大范围或伪造结果。
+- 预期结果：空状态明确区分“请求成功但无内容”与网络失败，主次恢复路径均可达。
+- 权威边界：可公开分类与可展示真人集合由服务端权威响应决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-63800&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A63800&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-03 分类 Figma 状态“空分类”原型](./assets/page-prototypes/mobile/app-dsc-03__state-02.png)
+
+**状态 3｜目录失效｜`159:63865`**
+
+- 触发条件：已保存的分类 stable ID 因合并、下线、重定向或目录版本变更而不再可用。
+- 关键交互：页面提供重新读取当前目录、返回分类页和查看目录变化说明；不按展示名猜测映射。
+- 预期结果：重读成功后只使用新版本有效 ID；无法安全重定向的词条停止使用并等待用户重选。
+- 权威边界：合并关系、替代 ID、下线状态和版本均以服务端目录为准。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-63865&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A63865&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-03 分类 Figma 状态“目录失效”原型](./assets/page-prototypes/mobile/app-dsc-03__state-03.png)
+
+**交互支持稿（不新增正式需求状态）：**
+
+**加载中｜`630:2770`**
+
+- 首次读取目录时的等高骨架，不承载分类、数量或真人事实。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=630-2770)
+
+![APP-DSC-03 分类 加载中交互支持稿](./assets/page-prototypes/mobile/app-dsc-03__loading.png)
+
+**目录变化说明｜`627:2771`**
+
+- 说明 stable ID、合并重定向、下线和未知词条的安全处理规则。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=627-2771)
+
+![APP-DSC-03 分类 目录变化说明交互支持稿](./assets/page-prototypes/mobile/app-dsc-03__catalog-explanation.png)
+
+**加载失败｜`634:2`**
+
+- 网络或服务暂不可用时保留页面与既有选择，提供重载、返回推荐和帮助中心三条安全路径。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=634-2)
+
+![APP-DSC-03 分类 加载失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-03__load-failed.png)
 
 **客户确认：**
 
@@ -501,7 +656,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **平台与模块：** 移动端 · 发现与真人　　**优先级：** P0　　**设计路由：** `/search`
 
-**用户价值：** 搜索展示名、地区、职业与标签，并明确无结果原因。
+**用户价值：** 搜索公开展示名、模糊地区、职业与已审核标签，并完整处理结果、失败、分页和账号历史。
 
 **适用角色：** 观看者
 
@@ -511,9 +666,9 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 搜索输入、历史、建议、结果和无结果解释围绕同一搜索任务组织。
 
-**详细交互：** 用户从“推荐页搜索框”进入，通过 POST 正文提交自由搜索词和可选稳定 taxonomy 条件；纯条件搜索默认热门，文本搜索默认相关度。条件、搜索词或排序变化后丢弃旧游标。服务端确认成功后刷新权威数据并可进入 APP-DSC-07「真人详情」。搜索读取不隐式写历史；只有历史已开启、存在自由搜索词且结果成功呈现后才显式记录。次要操作包括：清除历史、打开筛选。失败时保留输入与条件。
+**详细交互：** 用户从推荐页搜索入口进入。初始态可使用最近搜索、热门发现、全部分类、筛选或已保存条件；输入时仅使用公开索引建议，清空与提交具有独立 44dp 热区。提交后保留关键词和筛选并进入等高骨架，成功结果展示当前公开投影、匹配原因和认证标识，分页按服务端 nextCursor 与稳定 profileId 去重。成功空集合进入无结果态，不自动扩大筛选或用未认证资料补位；首屏或分页失败均保留当前任务与已有结果并提供定向重试。搜索历史由账号设置决定，可独立重读、清空或清空并关闭，关闭后不写入新的账号历史。
 
-**业务规则：** 自由文本只搜索审核展示名、公开地区和公开标签；结构化条件使用 stable ID，地区同组 OR、跨组 AND、父级包含后代。只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料；受限或失效条件不得被忽略。
+**业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
@@ -527,17 +682,151 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“推荐页搜索框”能够进入，页面明确显示 APP-DSC-04、页面名称、设计路由和返回路径。
+- 从“推荐页搜索框”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交搜索”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“初始、输入中、有结果、无结果、历史关闭”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
-![APP-DSC-04 搜索默认状态“初始”原型](./assets/page-prototypes/mobile/app-dsc-04__default.png)
+**Figma 逐状态交付：** 本页 5 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 56 个有效动作，支持 Section `645:2770` 含 12 张交互支持稿和 95 个有效动作，失效目标与不足 44dp 热区均为 0。
 
-**P0 关键状态：** 无结果
+- [打开 Figma 交互支持 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-2770)
 
-![APP-DSC-04 搜索关键状态“无结果”原型](./assets/page-prototypes/mobile/app-dsc-04__state-04.png)
+**状态 1｜初始｜`159:63946`**
+
+- 触发条件：用户从推荐页搜索入口进入，搜索能力可用且尚未提交本次查询。
+- 关键交互：可进入输入态、筛选、已保存条件、全部分类，复用最近搜索或热门发现，并通过“管理历史”进入逐条删除、清空全部或关闭记录。
+- 预期结果：搜索入口、最近搜索、热门发现和底部导航按 Figma 层级展示，所有可见操作均具有不小于 44dp 的独立热区。
+- 权威边界：最近搜索只来自当前账号的权威历史设置与记录；热门词仅作为显式搜索入口，不代表人物事实。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-63946&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A63946&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-04 搜索 Figma 状态“初始”原型](./assets/page-prototypes/mobile/app-dsc-04__default.png)
+
+**状态 2｜输入中｜`159:64061`**
+
+- 触发条件：用户聚焦搜索框并输入展示名、地区、职业或已审核标签。
+- 关键交互：可清空输入、进入筛选或已保存条件、选择公开索引建议，或提交规范化后的搜索词。
+- 预期结果：输入内容始终可见，清空和提交动作独立；建议不包含法定姓名、内部备注或其他非公开字段。
+- 权威边界：查询长度、可搜索字段、建议来源和可用排序由服务端 capability 与公开索引约束。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-64061&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A64061&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-04 搜索 Figma 状态“输入中”原型](./assets/page-prototypes/mobile/app-dsc-04__state-02.png)
+
+**状态 3｜有结果｜`159:64147`**
+
+- 触发条件：搜索请求成功并返回至少一条当前可公开展示的人物资料。
+- 关键交互：可修改搜索、调整筛选、打开已保存条件、进入人物详情或查看平台认证规则；接近末尾时使用服务端游标分页。
+- 预期结果：结果卡展示当前公开投影、命中原因和认证标识，加载更多按稳定 profileId 去重且不重排已有卡片。
+- 权威边界：结果集合、命中原因、认证状态、排序和 nextCursor 均以当前服务端响应为准。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-64147&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A64147&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-04 搜索 Figma 状态“有结果”原型](./assets/page-prototypes/mobile/app-dsc-04__state-03.png)
+
+**状态 4｜无结果｜`159:64252`**
+
+- 触发条件：关键词与筛选组合请求成功，但当前公开快照返回空集合。
+- 关键交互：保留关键词和条件，用户可修改搜索词、进入筛选主动放宽，或返回热门推荐。
+- 预期结果：明确区分成功空结果与请求失败，不自动扩大范围，也不用未认证资料补位。
+- 权威边界：空结果由当前公开快照决定；只有用户显式修改关键词或筛选后才执行新查询。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-64252&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A64252&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-04 搜索 Figma 状态“无结果”原型](./assets/page-prototypes/mobile/app-dsc-04__state-04.png)
+
+**状态 5｜历史关闭｜`159:64339`**
+
+- 触发条件：当前账号的搜索历史记录开关处于关闭状态。
+- 关键交互：页面不展示最近搜索，仍允许基础搜索、筛选和已保存条件，并提供显式“开启搜索历史”动作；不以历史关闭阻断搜索。
+- 预期结果：关闭状态具有明确隐私说明，后续成功搜索不写入账号历史，底部导航保持可用。
+- 权威边界：记录开关、保留天数和历史条目由服务端账号设置决定，客户端不私自创建本地历史。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-64339&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A64339&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-04 搜索 Figma 状态“历史关闭”原型](./assets/page-prototypes/mobile/app-dsc-04__state-05.png)
+
+**交互支持稿（不新增正式需求状态）：**
+
+**搜索中｜`645:2771`**
+
+- 提交后保留关键词与筛选，用等高骨架等待当前公开结果，不显示旧结果冒充本次查询。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-2771)
+
+![APP-DSC-04 搜索 搜索中交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__loading.png)
+
+**搜索失败｜`645:2876`**
+
+- 网络或服务失败时保留输入与筛选，提供重新搜索、修改搜索词和帮助入口。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-2876)
+
+![APP-DSC-04 搜索 搜索失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__load-failed.png)
+
+**分页中｜`645:2965`**
+
+- 已有结果保持可用，下一页返回后按稳定 profileId 去重追加。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-2965)
+
+![APP-DSC-04 搜索 分页中交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__pagination-loading.png)
+
+**分页失败｜`645:3069`**
+
+- 分页失败不清空或重排现有列表，用户可复用原 nextCursor 重新加载。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-3069)
+
+![APP-DSC-04 搜索 分页失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__pagination-failed.png)
+
+**历史加载中｜`645:3174`**
+
+- 只为账号最近搜索显示骨架，热门发现和基础搜索保持可用。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-3174)
+
+![APP-DSC-04 搜索 历史加载中交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__history-loading.png)
+
+**历史加载失败｜`645:3288`**
+
+- 历史读取失败不阻断搜索，提供独立重读动作且不伪造本地记录。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-3288)
+
+![APP-DSC-04 搜索 历史加载失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__history-load-failed.png)
+
+**历史为空｜`645:3403`**
+
+- 记录功能已开启但尚无成功搜索时，说明写入条件，并保留搜索与显式关闭记录入口。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-3403)
+
+![APP-DSC-04 搜索 历史为空交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__history-empty.png)
+
+**清空历史确认｜`645:3489`**
+
+- 模态确认区分“仅清空”和“清空并关闭记录”，遮罩下控件不可点击穿透。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-3489)
+
+![APP-DSC-04 搜索 清空历史确认交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__history-clear-confirm.png)
+
+**平台认证规则｜`645:3619`**
+
+- 解释搜索结果认证标识的核验范围、展示授权、发布安全状态与非本人运营边界。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=645-3619)
+
+![APP-DSC-04 搜索 平台认证规则交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__verification-rules.png)
+
+**历史管理｜`651:2`**
+
+- 独立管理当前账号的搜索历史，支持逐条删除、清空全部、关闭后续记录或返回搜索。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=651-2)
+
+![APP-DSC-04 搜索 历史管理交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__history-management.png)
+
+**历史删除中｜`651:157`**
+
+- 单条删除提交后只锁定本次操作，其他历史保持可见，不提前伪造删除成功。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=651-157)
+
+![APP-DSC-04 搜索 历史删除中交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__history-deleting.png)
+
+**历史删除失败｜`651:306`**
+
+- 删除失败时保留全部权威记录，并为失败条目提供定向重试，不影响其他记录。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=651-306)
+
+![APP-DSC-04 搜索 历史删除失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-04__history-delete-failed.png)
 
 **客户确认：**
 
@@ -563,9 +852,9 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 基础筛选、高级权益门槛、预计结果数和应用动作处于同一工作面。
 
-**详细交互：** 用户从“搜索页或推荐页筛选入口”进入，读取当前目录和本人筛选能力。基础条件直接选择，高级条件按 `none/basic/full` 显示开放或锁定状态；条件变化后防抖预估，展示重定向、失效、冗余、会员门槛和当前结果数。只有 `canApply=true` 时应用筛选并进入 APP-DSC-04；受限时进入权益说明，失效时要求移除，preview 失败不替换当前结果。次要操作包括：清空、保存条件。
+**详细交互：** 用户从“搜索页或推荐页筛选入口”进入。主要操作为“应用筛选”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-04「搜索」。次要操作包括：清空、保存条件。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
 
-**业务规则：** 地区三类同组 OR，不同逻辑组 AND；父级包含后代。同组父子重复时后代冗余。基础筛选登录可用，高级筛选由 `discovery.filter.advanced` 服务端判断；受限或失效条件不计算结果、不扩大范围。
+**业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
@@ -579,17 +868,120 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“搜索页或推荐页筛选入口”能够进入，页面明确显示 APP-DSC-05、页面名称、设计路由和返回路径。
+- 从“搜索页或推荐页筛选入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“应用筛选”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、权益门槛、目录冲突、无结果”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
-![APP-DSC-05 筛选默认状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-05__default.png)
+**Figma 逐状态交付：** 本页 4 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 67 个有效动作，支持 Section `666:2782` 含 9 张交互支持稿和 48 个有效动作，失效目标与不足 44dp 热区均为 0。
 
-**P0 关键状态：** 权益门槛
+- [打开 Figma 交互支持 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=666-2782)
 
-![APP-DSC-05 筛选关键状态“权益门槛”原型](./assets/page-prototypes/mobile/app-dsc-05__state-02.png)
+**状态 1｜正常｜`159:64428`**
+
+- 触发条件：筛选目录、当前账号筛选能力和当前条件预估均已成功读取。
+- 关键交互：以稳定 term ID 选择地区、风格、职业身份等条件；同组条件取并集、跨组取交集，400ms 防抖后更新预估；可清空、保存或应用。
+- 预期结果：弹层顶部提供保存与清空，底部同时展示已选数量、服务端预估和主操作；所有选项具有独立 44dp 热区。
+- 权威边界：目录版本、词条状态、会员门槛、预估数量和最终结果均来自服务端，展示名称不作为查询键。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-64428&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A64428&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-05 筛选 Figma 状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-05__default.png)
+
+**状态 2｜权益门槛｜`159:64628`**
+
+- 触发条件：当前账号选择了基础或完整会员等级才能使用的筛选条件。
+- 关键交互：保留所有已选条件；受限条件进入会员权益页，基础条件仍可调整；无权条件不得应用或保存。
+- 预期结果：明确说明风格、职业、场景等等级门槛，摘要不显示虚假人数，主操作改为查看会员权益。
+- 权威边界：客户端只解释 capability 与 requiredRank，是否可用仍由服务端 entitlement 校验。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-64628&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A64628&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-05 筛选 Figma 状态“权益门槛”原型](./assets/page-prototypes/mobile/app-dsc-05__state-02.png)
+
+**状态 3｜目录冲突｜`159:64837`**
+
+- 触发条件：catalogVersionId 变化，所选 term ID 被合并、重定向、下线或失效。
+- 关键交互：保留仍有效的选择和冲突上下文；重新加载目录后按服务端重定向结果等待用户确认，不按展示名猜测映射。
+- 预期结果：摘要明确保留数量与目录刷新要求，应用按钮改为重新加载目录，保存动作禁用。
+- 权威边界：有效词条、替代关系和新目录版本以服务端目录响应为唯一权威。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-64837&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A64837&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-05 筛选 Figma 状态“目录冲突”原型](./assets/page-prototypes/mobile/app-dsc-05__state-03.png)
+
+**状态 4｜无结果｜`159:65046`**
+
+- 触发条件：当前条件合法且预估请求成功，但可展示人物数量为 0。
+- 关键交互：保持当前条件不变；用户可逐项调整、清空后查看全部人物，或保存当前条件稍后使用。
+- 预期结果：状态卡、摘要和主按钮统一显示 0 结果语义，不使用旧人数、扩大范围或未认证资料补位。
+- 权威边界：0 结果来自当前服务端公开投影；只有用户主动修改条件后才重新预估。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-65046&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A65046&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-05 筛选 Figma 状态“无结果”原型](./assets/page-prototypes/mobile/app-dsc-05__state-04.png)
+
+**交互支持稿（不新增正式需求状态）：**
+
+**筛选加载中｜`667:2781`**
+
+- 首次读取目录和账号筛选能力时禁用条件与应用，加载完成后自动进入正常态。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=667-2781)
+
+![APP-DSC-05 筛选 筛选加载中交互支持稿](./assets/page-prototypes/mobile/app-dsc-05__loading.png)
+
+**筛选加载失败｜`667:2907`**
+
+- 目录读取失败时保留当前选择，提供重新加载和清空，不显示伪造目录。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=667-2907)
+
+![APP-DSC-05 筛选 筛选加载失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-05__load-failed.png)
+
+**结果预估中｜`667:3033`**
+
+- 选择变化经 400ms 防抖后进入预估态，期间保留条件并禁用应用与保存。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=667-3033)
+
+![APP-DSC-05 筛选 结果预估中交互支持稿](./assets/page-prototypes/mobile/app-dsc-05__preview-loading.png)
+
+**结果预估失败｜`668:3003`**
+
+- 预估失败不清空当前条件，可定向重试、继续调整或返回；重新验证前不得保存。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=668-3003)
+
+![APP-DSC-05 筛选 结果预估失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-05__preview-failed.png)
+
+**已清空｜`668:3129`**
+
+- 清空后所有条件恢复未选视觉，摘要显示全部人物，不保留旧预估。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=668-3129)
+
+![APP-DSC-05 筛选 已清空交互支持稿](./assets/page-prototypes/mobile/app-dsc-05__cleared.png)
+
+**应用中｜`668:3255`**
+
+- 应用时锁定当前条件并进入搜索加载态，防止重复提交或新旧条件混用。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=668-3255)
+
+![APP-DSC-05 筛选 应用中交互支持稿](./assets/page-prototypes/mobile/app-dsc-05__applying.png)
+
+**保存条件命名｜`669:3225`**
+
+- 仅保存结构化条件与排序，要求输入可识别名称，不保存自由搜索词和预估数量。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=669-3225)
+
+![APP-DSC-05 筛选 保存条件命名交互支持稿](./assets/page-prototypes/mobile/app-dsc-05__save-naming.png)
+
+**保存中｜`669:3351`**
+
+- 保存提交期间锁定名称和条件，成功后进入 APP-DSC-06 权威列表。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=669-3351)
+
+![APP-DSC-05 筛选 保存中交互支持稿](./assets/page-prototypes/mobile/app-dsc-05__saving.png)
+
+**保存失败｜`669:3477`**
+
+- 保存失败保留名称与当前条件，可重新保存或取消，不提前占用服务端额度。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=669-3477)
+
+![APP-DSC-05 筛选 保存失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-05__save-failed.png)
 
 **客户确认：**
 
@@ -615,9 +1007,9 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 已保存条件、额度、目录变化和管理动作按可恢复性组织。
 
-**详细交互：** 用户从“筛选页保存入口或我的页面”进入，顶部显示“已保存 X / Y”。创建只提交名称、stable taxonomy 条件和热门/最新排序，并复用稳定幂等键；不保存自由搜索词。使用前按当前目录和会员权益重新预估，只有可执行时进入 APP-DSC-04。次要操作包括：重命名、修改条件、删除；修改/删除携带当前版本，冲突时刷新单项，不静默覆盖。
+**详细交互：** 用户从筛选保存成功、搜索页或“我的”进入。列表先读取账号私有条件、当前 taxonomy 解释、会员权限与原子额度；卡片只显示名称、当前有效条件摘要和默认排序，不持久化或展示旧结果数。点击使用必须先以完整来源条件重新 preview，只有 canApply=true 才进入搜索；会员降级或失效项不会被忽略后扩大结果。编辑流程复用 APP-DSC-05，随后确认名称、热门/最新默认排序和当前结构化条件；更新与删除均携带乐观 version，删除先二次确认。409 时不覆盖另一设备版本，先读取最新条件再由用户重新确认。
 
-**业务规则：** 数量由 `discovery.saved_filter.max` 原子限制；会员降级不删除既有项，卡片显示不可用高级条件并允许改为基础条件或删除。目录合并显示更新提示，失效项保留为可移除错误，删除后旧幂等键不能复活。
+**业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
 **数据与权限：** 只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。
 
@@ -631,13 +1023,162 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“筛选页保存入口或我的页面”能够进入，页面明确显示 APP-DSC-06、页面名称、设计路由和返回路径。
+- 从“筛选页保存入口或我的页面”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“使用条件”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、空、额度满、标签已合并”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
-![APP-DSC-06 已保存条件默认状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-06__default.png)
+**Figma 逐状态交付：** 本页 4 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 44 个有效动作，支持 Section `696:3472` 含 15 张交互支持稿和 47 个有效动作，失效目标与不足 44dp 热区均为 0。
+
+- [打开 Figma 交互支持 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-3472)
+
+**状态 1｜正常｜`159:65258`**
+
+- 触发条件：当前账号保存条件列表、最新 taxonomy 解释、会员权限与额度均读取成功。
+- 关键交互：每张卡可先重新复核再使用、进入编辑条件流程或打开删除确认；底部导航和返回动作保持独立。
+- 预期结果：卡片只展示名称、当前有效条件摘要和默认排序，不展示持久化或过期的结果数量；顶部显示权威额度。
+- 权威边界：名称、版本、stable term ID、目录解释、默认排序和额度均来自本人账号的服务端响应。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-65258&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A65258&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-06 已保存条件 Figma 状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-06__default.png)
+
+**状态 2｜空｜`159:65411`**
+
+- 触发条件：列表请求成功且当前账号没有有效保存条件。
+- 关键交互：用户可返回搜索和筛选创建第一组条件，也可通过底部导航离开；页面不创建本地示例条件。
+- 预期结果：额度明确显示 0 / 当前上限，空态与加载失败可区分，主操作进入搜索而不是直接生成保存条件。
+- 权威边界：空集合和当前上限以服务端账号作用域列表为准。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-65411&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A65411&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-06 已保存条件 Figma 状态“空”原型](./assets/page-prototypes/mobile/app-dsc-06__state-02.png)
+
+**状态 3｜额度满｜`159:65477`**
+
+- 触发条件：创建新条件时服务端返回当前已用数量达到会员额度。
+- 关键交互：既有条件继续允许复核、编辑和删除；用户可删除不常用条件或查看会员权益，不在 App 内购买。
+- 预期结果：未成功创建的新条件不进入列表，现有条件保持不变，额度与会员授予边界清晰可见。
+- 权威边界：上限、已用数量和是否可创建由服务端 entitlement 与原子额度校验决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-65477&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A65477&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-06 已保存条件 Figma 状态“额度满”原型](./assets/page-prototypes/mobile/app-dsc-06__state-03.png)
+
+**状态 4｜标签已合并｜`159:65577`**
+
+- 触发条件：保存条件引用的 stable term ID 已被当前目录显式重定向到合并目标。
+- 关键交互：页面提示目录解释已更新；使用前仍重新 preview，编辑或删除均携带当前版本，不按展示名猜测替代项。
+- 预期结果：卡片显示新的安全展示名称但保留来源关系，合并不会扩大查询，也不自动覆盖另一设备修改。
+- 权威边界：重定向目标、当前目录版本和 canonical 条件由服务端 taxonomy closure 响应决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-65577&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A65577&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-06 已保存条件 Figma 状态“标签已合并”原型](./assets/page-prototypes/mobile/app-dsc-06__state-04.png)
+
+**交互支持稿（不新增正式需求状态）：**
+
+**列表加载中｜`696:3473`**
+
+- 读取账号私有条件、当前目录、会员权限与额度时禁用卡片操作，不展示缓存或示例业务事实。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-3473)
+
+![APP-DSC-06 已保存条件 列表加载中交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__loading.png)
+
+**列表加载失败｜`696:3625`**
+
+- 失败不会清除服务端条件，页面明确不展示本地缓存或示例条件，并提供重新加载。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-3625)
+
+![APP-DSC-06 已保存条件 列表加载失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__load-failed.png)
+
+**使用前复核中｜`696:3689`**
+
+- 点击使用后按当前目录、会员权限和默认排序重新 preview，期间锁定其他卡片操作。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-3689)
+
+![APP-DSC-06 已保存条件 使用前复核中交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__revalidating.png)
+
+**使用前复核失败｜`696:3841`**
+
+- 复核失败不应用任何条件，也不改变既有搜索结果；可定向重试或返回列表。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-3841)
+
+![APP-DSC-06 已保存条件 使用前复核失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__revalidation-failed.png)
+
+**会员降级｜`696:3938`**
+
+- 保存条件继续保留，但受限高级项不能被忽略后执行；可查看权益、编辑为基础条件或删除。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-3938)
+
+![APP-DSC-06 已保存条件 会员降级交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__membership-downgraded.png)
+
+**条件失效｜`696:4035`**
+
+- 已下线且无安全重定向的 stable term ID 明确标记失效，移除并重新预估前不能使用。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-4035)
+
+![APP-DSC-06 已保存条件 条件失效交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__invalid.png)
+
+**编辑条件｜`696:4132`**
+
+- 复用 APP-DSC-05 筛选组件编辑结构化条件，下一步才进入名称与默认排序确认。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-4132)
+
+![APP-DSC-06 已保存条件 编辑条件交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__editing.png)
+
+**确认更新｜`696:4273`**
+
+- 同一确认卡内复核名称、热门优先默认排序与结构化条件，并携带当前 version 提交。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-4273)
+
+![APP-DSC-06 已保存条件 确认更新交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__update-confirm.png)
+
+**确认更新｜最新优先｜`703:3555`**
+
+- 默认排序可在热门优先与最新优先间显式切换，不保存自由搜索词或预估结果数。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=703-3555)
+
+![APP-DSC-06 已保存条件 确认更新｜最新优先交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__update-latest-sort.png)
+
+**更新中｜`696:4425`**
+
+- 更新期间锁定名称、排序和条件，乐观版本未确认前不提前修改列表。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-4425)
+
+![APP-DSC-06 已保存条件 更新中交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__updating.png)
+
+**更新失败｜`696:4577`**
+
+- 普通失败保留全部输入并允许重新保存；列表仍显示最后一次服务端确认版本。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-4577)
+
+![APP-DSC-06 已保存条件 更新失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__update-failed.png)
+
+**删除确认｜`696:4729`**
+
+- 删除必须二次确认并明确目标名称，不改变当前已经应用的搜索结果。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-4729)
+
+![APP-DSC-06 已保存条件 删除确认交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__delete-confirm.png)
+
+**删除中｜`696:4881`**
+
+- 提交当前 version 后锁定确认卡，成功或 deleted=false 都收敛为列表移除终态。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-4881)
+
+![APP-DSC-06 已保存条件 删除中交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__deleting.png)
+
+**删除失败｜`696:5033`**
+
+- 失败时条件仍保留，可使用同一目标重新删除或取消，不伪造成功反馈。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-5033)
+
+![APP-DSC-06 已保存条件 删除失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__delete-failed.png)
+
+**版本冲突｜`696:5185`**
+
+- 另一设备已更新时禁止覆盖，先读取最新名称、排序、条件和 version，再由用户重新确认。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=696-5185)
+
+![APP-DSC-06 已保存条件 版本冲突交互支持稿](./assets/page-prototypes/mobile/app-dsc-06__version-conflict.png)
 
 **客户确认：**
 
@@ -663,7 +1204,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 媒体主视觉、认证事实、单向互动、平台维护披露和资料正文依次展开。
 
-**详细交互：** 用户从“推荐、搜索、关注、喜欢、收藏或历史”进入。主要操作为“发起话题”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-MSG-02「发起话题确认」。次要操作包括：喜欢、关注、收藏、查看认证、举报。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从推荐、搜索、关注、喜欢、收藏或浏览历史进入。页面先读取人物当前公开资格，再分别读取互动、收藏、安全与媒体状态；人物下架或受限时立即停止展示正文和缓存，网络暂不可用仅允许复用同一人物在本次会话内的最近安全摘要。喜欢、关注、收藏均为单向关系；发起话题前必须展示“由平台运营接收、并非本人收件箱、不保证回复”的持续披露。媒体失败只收敛媒体区并允许定向重试；分享在服务端尚无可验证资料链接时明确不可用。举报、屏蔽和解除屏蔽均等待服务端结果，举报成功可直接进入安全中心的举报记录。
 
 **业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
@@ -679,17 +1220,242 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“推荐、搜索、关注、喜欢、收藏或历史”能够进入，页面明确显示 APP-DSC-07、页面名称、设计路由和返回路径。
+- 从“推荐、搜索、关注、喜欢、收藏或历史”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“发起话题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、下架、受限、离线摘要、媒体不可用”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
-![APP-DSC-07 真人详情默认状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-07__default.png)
+**Figma 逐状态交付：** 本页 5 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 33 个有效动作，支持 Section `718:3555` 含 25 张交互支持稿和 144 个有效动作，失效目标与不足 44dp 热区均为 0。
 
-**P0 关键状态：** 受限
+- [打开 Figma 交互支持 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-3555)
 
-![APP-DSC-07 真人详情关键状态“受限”原型](./assets/page-prototypes/mobile/app-dsc-07__state-03.png)
+**状态 1｜正常｜`159:65741`**
+
+- 触发条件：人物仍为管理员认证并发布，当前账号可读取公开资料，相关 capability 已通过客户端契约校验。
+- 关键交互：顶部返回、分享和更多操作相互独立；资料正文、公开图库、平台接收披露和认证范围按当前权威数据展示；喜欢、关注、收藏为单向关系，发起话题前先展示平台运营接收说明。
+- 预期结果：只展示服务端当前公开投影，不暗示本人在线、本人回复或双方匹配；所有主要操作具有至少 44dp 热区，并在提交、失败与成功状态之间保持明确出口。
+- 权威边界：人物发布资格、认证标签、媒体可见性、互动状态、会员权益、平台接收主体和安全原因均由服务端响应决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-65741&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A65741&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-07 真人详情 Figma 状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-07__default.png)
+
+**状态 2｜下架｜`159:65841`**
+
+- 触发条件：人物被下架、撤回展示授权、暂停公开或已不存在，服务端不再返回可展示详情。
+- 关键交互：立即停止展示缓存资料、图片和互动入口；只保留返回发现、查看帮助和当前状态说明。
+- 预期结果：页面明确区分下架与网络失败，不使用历史缓存绕过当前服务端状态，也不保留可继续操作的热区。
+- 权威边界：下架原因和是否恢复公开完全由服务端状态决定，客户端不得自行猜测或延长缓存可见期。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-65841&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A65841&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-07 真人详情 Figma 状态“下架”原型](./assets/page-prototypes/mobile/app-dsc-07__state-02.png)
+
+**状态 3｜受限｜`159:65952`**
+
+- 触发条件：人物仍存在，但当前账号、地区或访问策略不允许读取该资料详情。
+- 关键交互：不展示资料正文和媒体，只提供返回发现、查看帮助与服务端访问限制说明。
+- 预期结果：受限状态不泄露被保护内容，不把登录、升级或客户端隐藏按钮当作绕过权限的方式。
+- 权威边界：访问资格由服务端按当前账号和策略校验；客户端仅解释结果，不硬编码会员名称或地区白名单。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-65952&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A65952&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-07 真人详情 Figma 状态“受限”原型](./assets/page-prototypes/mobile/app-dsc-07__state-03.png)
+
+**状态 4｜离线摘要｜`159:66063`**
+
+- 触发条件：本次运行曾安全读取同一人物资料，随后发生网络或服务暂不可用。
+- 关键交互：只展示本次会话内最近一次安全摘要与同步说明；喜欢、关注、收藏、分享、媒体和发起话题均暂停，用户可重新连接或查看帮助。
+- 预期结果：离线摘要带新鲜度说明且不落盘，不把旧资料标记为当前事实，不写入任何本地假互动。
+- 权威边界：仅网络或服务暂不可用可使用同 profileId 的会话内摘要；下架、受限或校验失败必须清除缓存。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66063&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A66063&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-07 真人详情 Figma 状态“离线摘要”原型](./assets/page-prototypes/mobile/app-dsc-07__state-04.png)
+
+**状态 5｜媒体不可用｜`159:66172`**
+
+- 触发条件：人物公开资料仍可读取，但公开图库 capability、媒体清单或短期访问授权暂不可用。
+- 关键交互：保留人物资料、认证、平台披露和允许的互动；媒体区单独显示错误与重试，不清空整页或复用旧媒体授权。
+- 预期结果：媒体失败与人物下架分离；重试只重新请求媒体，受保护媒体凭证不进入 UI、Domain 或持久化存储。
+- 权威边界：媒体清单、requiredRank、公开状态和短期访问授权均由 Media API 逐次校验。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66172&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A66172&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-07 真人详情 Figma 状态“媒体不可用”原型](./assets/page-prototypes/mobile/app-dsc-07__state-05.png)
+
+**交互支持稿（不新增正式需求状态）：**
+
+**资料加载中｜`718:3556`**
+
+- 读取当前公开资格、资料、认证、媒体与互动状态时只显示骨架，不回填示例人物或旧业务事实。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-3556)
+
+![APP-DSC-07 真人详情 资料加载中交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__loading.png)
+
+**资料加载失败｜`718:3655`**
+
+- 无法确认当前公开状态时不展示详情，提供重新加载和返回发现两条安全路径。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-3655)
+
+![APP-DSC-07 真人详情 资料加载失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__load-failed.png)
+
+**已喜欢｜`718:3754`**
+
+- 服务端确认单向喜欢后更新按钮状态，不创建匹配、互相喜欢或真人可见名单。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-3754)
+
+![APP-DSC-07 真人详情 已喜欢交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__liked.png)
+
+**已关注｜`718:3853`**
+
+- 服务端确认关注后更新按钮状态；关注只影响观看者账号的更新与列表。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-3853)
+
+![APP-DSC-07 真人详情 已关注交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__followed.png)
+
+**已收藏｜`718:3952`**
+
+- 默认收藏状态以服务端收藏关系为准，喜欢、关注和收藏彼此独立。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-3952)
+
+![APP-DSC-07 真人详情 已收藏交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__favorited.png)
+
+**单向动作处理中｜`718:4051`**
+
+- 喜欢、关注或收藏提交期间锁定相应动作并显示处理中反馈，避免重复提交。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4051)
+
+![APP-DSC-07 真人详情 单向动作处理中交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__action-processing.png)
+
+**单向动作失败｜`718:4150`**
+
+- 失败时恢复服务端确认前状态，保留详情并提供定向重试，不伪造已保存结果。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4150)
+
+![APP-DSC-07 真人详情 单向动作失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__action-failed.png)
+
+**分享面板｜`718:4249`**
+
+- 复制链接与系统分享都先要求服务端提供可验证的当前资料链接。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4249)
+
+![APP-DSC-07 真人详情 分享面板交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__share.png)
+
+**分享不可用｜`718:4348`**
+
+- 服务端没有安全链接时明确不可用，不由客户端拼接可能继续暴露下架内容的地址。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4348)
+
+![APP-DSC-07 真人详情 分享不可用交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__share-unavailable.png)
+
+**运营接收说明｜`718:4447`**
+
+- 发起话题前持续说明接收方是平台运营、并非本人收件箱，回复由平台决定且不保证。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4447)
+
+![APP-DSC-07 真人详情 运营接收说明交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__operation-disclosure.png)
+
+**更多操作｜`718:4546`**
+
+- 举报与屏蔽按独立 capability 展示；未开放能力保持不可操作，不通过隐藏状态绕过服务端。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4546)
+
+![APP-DSC-07 真人详情 更多操作交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__more.png)
+
+**举报原因选择｜`718:4645`**
+
+- 原因来自服务端安全目录，选择稳定 reason code 后才允许提交。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4645)
+
+![APP-DSC-07 真人详情 举报原因选择交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__report-reason.png)
+
+**举报提交中｜`718:4744`**
+
+- 提交期间锁定按钮并使用请求 token 防重，不提前生成本地举报记录。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4744)
+
+![APP-DSC-07 真人详情 举报提交中交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__report-submitting.png)
+
+**举报提交失败｜`718:4843`**
+
+- 失败保留原因选择，可重新提交或返回详情；会话失效时不继续重放旧请求。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4843)
+
+![APP-DSC-07 真人详情 举报提交失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__report-failed.png)
+
+**举报已提交｜`718:4942`**
+
+- 服务端确认后可完成或直接进入安全中心举报记录，处理状态不在客户端推断。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-4942)
+
+![APP-DSC-07 真人详情 举报已提交交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__report-submitted.png)
+
+**屏蔽确认｜`718:5041`**
+
+- 二次确认明确屏蔽将影响推荐、关系、历史和关联话题，取消不会提交。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-5041)
+
+![APP-DSC-07 真人详情 屏蔽确认交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__block-confirm.png)
+
+**屏蔽处理中｜`718:5140`**
+
+- 等待服务端完成屏蔽及关联清理；成功后退出当前详情，失败时保留可重试结果。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=718-5140)
+
+![APP-DSC-07 真人详情 屏蔽处理中交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__block-processing.png)
+
+**离线操作受限｜`728:3570`**
+
+- 离线点击互动、分享、媒体或话题入口时说明必须联网，不写入本地假状态。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=728-3570)
+
+![APP-DSC-07 真人详情 离线操作受限交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__offline-blocked.png)
+
+**媒体重试中｜`728:3670`**
+
+- 只重新请求当前人物的媒体清单与权限，资料正文和已确认互动保持可用。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=728-3670)
+
+![APP-DSC-07 真人详情 媒体重试中交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__media-retrying.png)
+
+**媒体重试失败｜`728:3768`**
+
+- 媒体失败继续收敛在媒体区，不把整个人物误判为下架，也不复用过期授权。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=728-3768)
+
+![APP-DSC-07 真人详情 媒体重试失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__media-retry-failed.png)
+
+**举报原因：隐私｜`729:3585`**
+
+- 隐私问题选中态与其他原因互斥，提交稳定 code 而非展示文案。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=729-3585)
+
+![APP-DSC-07 真人详情 举报原因：隐私交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__report-reason-privacy.png)
+
+**举报原因：不适宜内容｜`729:3707`**
+
+- 不适宜内容选中态使用服务端当前原因目录，不在客户端硬编码处置结论。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=729-3707)
+
+![APP-DSC-07 真人详情 举报原因：不适宜内容交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__report-reason-content.png)
+
+**举报原因：其他｜`729:3829`**
+
+- 其他原因仍使用服务端 reason code；首期不增加未设计的自由文本输入。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=729-3829)
+
+![APP-DSC-07 真人详情 举报原因：其他交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__report-reason-other.png)
+
+**关注处理中｜`729:3951`**
+
+- 关注动作单独锁定并等待服务端确认，不影响喜欢和收藏的权威状态。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=729-3951)
+
+![APP-DSC-07 真人详情 关注处理中交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__follow-processing.png)
+
+**收藏处理中｜`729:4059`**
+
+- 收藏动作单独锁定并等待服务端确认，失败时恢复原收藏关系。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=729-4059)
+
+![APP-DSC-07 真人详情 收藏处理中交互支持稿](./assets/page-prototypes/mobile/app-dsc-07__favorite-processing.png)
 
 **客户确认：**
 
@@ -715,7 +1481,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 媒体画布、页码、说明、缩放和举报动作保持清晰分层。
 
-**详细交互：** 用户从“真人详情媒体区域”进入。主要操作为“查看下一张”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-07「真人详情」。次要操作包括：缩放、查看说明、举报。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从 APP-DSC-07 公开图库进入。首次读取当前人物媒体清单；选择下一张时先保留当前内存图片并安全加载目标，最后一张存在 nextCursor 时进入分页。受保护图片只在内存显示，短期凭证到期后重新核验；登录、会员不足、单图失效和人物隐藏分别进入独立状态。媒体说明只披露授权与访问边界。举报原因使用服务端稳定 code，默认不预选，提交中防止重复操作，成功后可进入举报记录。
 
 **业务规则：** 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
@@ -731,17 +1497,190 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“真人详情媒体区域”能够进入，页面明确显示 APP-DSC-08、页面名称、设计路由和返回路径。
+- 从“真人详情媒体区域”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看下一张”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、凭证刷新、加载失败、内容隐藏”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
-![APP-DSC-08 媒体浏览默认状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-08__default.png)
+**Figma 逐状态交付：** 本页 4 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 14 个有效动作，支持 Section `750:3580` 含 19 张交互支持稿和 69 个有效动作，失效目标与不足 44dp 热区均为 0。
 
-**P0 关键状态：** 加载失败
+- [打开 Figma 交互支持 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=750-3580)
 
-![APP-DSC-08 媒体浏览关键状态“加载失败”原型](./assets/page-prototypes/mobile/app-dsc-08__state-03.png)
+**状态 1｜正常｜`159:66285`**
+
+- 触发条件：人物与当前图片仍满足公开资格，媒体字节已通过 Worker 安全返回并仅存在于当前页面内存。
+- 关键交互：用户可返回人物详情、查看媒体说明、双指或按钮缩放、查看下一张、举报当前图片和打开资料认证范围；最后一张存在 nextCursor 时先进入分页加载。
+- 预期结果：全屏图片、页码、标题、授权说明和底部动作与 Figma 一致；不虚构媒体总量、更新时间、会员名称或长期资源地址。
+- 权威边界：人物资格、媒体清单、访问类型、会员权限、短期凭证和图片内容均由服务端逐次校验。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66285&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A66285&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-08 媒体浏览 Figma 状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-08__default.png)
+
+**状态 2｜访问凭证刷新｜`159:66346`**
+
+- 触发条件：受保护图片的短期访问窗口到期，当前人物、账号和媒体仍停留在同一查看任务。
+- 关键交互：短暂保留当前内存图片并自动重新请求一次授权；刷新期间禁止重复翻页或把旧 URL 写入缓存，用户仍可返回。
+- 预期结果：刷新成功后恢复同一图片；会员、会话或资料资格变化时进入对应登录、权益不足或内容隐藏状态。
+- 权威边界：访问凭证、有效期、账号会话、会员 rank 和媒体可见性以服务端当前响应为准。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66346&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A66346&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-08 媒体浏览 Figma 状态“访问凭证刷新”原型](./assets/page-prototypes/mobile/app-dsc-08__state-02.png)
+
+**状态 3｜图片加载失败｜`159:66400`**
+
+- 触发条件：当前图片内容请求发生网络、服务、凭证或可重试响应错误，且尚未得到可安全展示的字节。
+- 关键交互：仅重新加载当前媒体，或返回人物详情、查看帮助；不会重放人物互动、改变会员或使用历史资源地址。
+- 预期结果：失败原因使用用户安全文案；重试只影响当前图片，既有列表和人物位置不被无关清空。
+- 权威边界：错误类型、是否可重试和重新授权结果由 Media API 返回，客户端未知错误安全拒绝。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66400&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A66400&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-08 媒体浏览 Figma 状态“图片加载失败”原型](./assets/page-prototypes/mobile/app-dsc-08__state-03.png)
+
+**状态 4｜内容隐藏｜`159:66437`**
+
+- 触发条件：人物暂停公开、授权撤回、安全隐藏或当前服务端资格谓词不再通过。
+- 关键交互：停止刷新并清理当前媒体状态，只保留返回人物详情、查看公开推荐、举报问题或帮助出口。
+- 预期结果：不展示历史图片、人物正文或内部下架原因，也不把登录或升级作为绕过方式。
+- 权威边界：是否可展示由服务端统一人物公开资格谓词决定；客户端只呈现通用不可用状态。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66437&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A66437&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-08 媒体浏览 Figma 状态“内容隐藏”原型](./assets/page-prototypes/mobile/app-dsc-08__state-04.png)
+
+**交互支持稿（不新增正式需求状态）：**
+
+**首次加载｜`750:3581`**
+
+- 首次进入时确认人物资格、媒体清单和授权状态，不回填旧图片或示例媒体。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=750-3581)
+
+![APP-DSC-08 媒体浏览 首次加载交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__loading.png)
+
+**暂无可查看媒体｜`750:3633`**
+
+- 当前权威清单为空时提供返回详情和公开推荐，不把空集合误报为网络失败。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=750-3633)
+
+![APP-DSC-08 媒体浏览 暂无可查看媒体交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__empty.png)
+
+**当前图片加载中｜`750:3667`**
+
+- 只加载当前媒体；受保护字节尚未返回前不显示模糊预览或历史 URL。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=750-3667)
+
+![APP-DSC-08 媒体浏览 当前图片加载中交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__image-loading.png)
+
+**登录后查看｜`750:3719`**
+
+- 受保护图片要求有效 App 会话；登录后重新请求，不创建匿名授权。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=750-3719)
+
+![APP-DSC-08 媒体浏览 登录后查看交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__sign-in-required.png)
+
+**会员权益不足｜`750:3753`**
+
+- 服务端拒绝当前 rank 时进入权益说明，不硬编码会员名称或提前展示图片。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=750-3753)
+
+![APP-DSC-08 媒体浏览 会员权益不足交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__membership-required.png)
+
+**访问凭证过期｜`750:3787`**
+
+- 短期凭证到期后仅刷新当前图片；旧凭证和 URL 不进入持久缓存。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=750-3787)
+
+![APP-DSC-08 媒体浏览 访问凭证过期交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__access-expired.png)
+
+**单张媒体不可用｜`751:3590`**
+
+- 单图停止公开只影响当前项，可继续下一张，不把整个人物误判为下架。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=751-3590)
+
+![APP-DSC-08 媒体浏览 单张媒体不可用交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__media-unavailable.png)
+
+**缩放查看｜`751:3624`**
+
+- 双指与显式按钮共用 1–5 倍内存缩放状态，切换媒体时复位。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=751-3624)
+
+![APP-DSC-08 媒体浏览 缩放查看交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__zoomed.png)
+
+**翻页加载中｜`751:3684`**
+
+- 短暂保留上一张内存图，下一张通过安全加载后才切换。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=751-3684)
+
+![APP-DSC-08 媒体浏览 翻页加载中交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__page-transition.png)
+
+**分页加载中｜`751:3736`**
+
+- 使用同一人物版本和 nextCursor 读取下一批，不混合两个查询版本。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=751-3736)
+
+![APP-DSC-08 媒体浏览 分页加载中交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__pagination-loading.png)
+
+**分页加载失败｜`751:3788`**
+
+- 保留当前图片、位置和已验证列表，可只重试分页或继续查看当前图片。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=751-3788)
+
+![APP-DSC-08 媒体浏览 分页加载失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__pagination-failed.png)
+
+**媒体说明｜`751:3822`**
+
+- 只说明授权来源、公开或实时权益核验以及内存缓存边界，不展示内部存储键。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=751-3822)
+
+![APP-DSC-08 媒体浏览 媒体说明交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__media-info.png)
+
+**举报原因选择｜`752:3596`**
+
+- 原因来自服务端 Safety 目录且默认不预选，选择稳定 code 后才允许提交。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=752-3596)
+
+![APP-DSC-08 媒体浏览 举报原因选择交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__report-reason.png)
+
+**举报提交中｜`752:3656`**
+
+- 提交期间锁定重复动作并等待服务端确认，不提前生成本地举报记录。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=752-3656)
+
+![APP-DSC-08 媒体浏览 举报提交中交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__report-submitting.png)
+
+**举报提交失败｜`752:3716`**
+
+- 失败保留原因选择，可定向重试或返回媒体；会话失效时进入登录。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=752-3716)
+
+![APP-DSC-08 媒体浏览 举报提交失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__report-failed.png)
+
+**举报已提交｜`752:3776`**
+
+- 服务端确认后提供完成和举报记录出口，处理状态不由客户端推断。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=752-3776)
+
+![APP-DSC-08 媒体浏览 举报已提交交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__report-submitted.png)
+
+**媒体列表已更新｜`752:3836`**
+
+- 游标失效时丢弃旧列表并从首批重新读取，不拼接新旧媒体版本。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=752-3836)
+
+![APP-DSC-08 媒体浏览 媒体列表已更新交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__list-updated.png)
+
+**当前图片加载失败｜`752:3870`**
+
+- 普通加载失败只重试当前图片，返回详情与帮助仍可用。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=752-3870)
+
+![APP-DSC-08 媒体浏览 当前图片加载失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__image-failed.png)
+
+**举报原因：隐私｜`760:3600`**
+
+- 隐私原因选中态与其他原因互斥，提交稳定 code 而不是展示文案。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=760-3600)
+
+![APP-DSC-08 媒体浏览 举报原因：隐私交互支持稿](./assets/page-prototypes/mobile/app-dsc-08__report-reason-privacy.png)
 
 **客户确认：**
 
@@ -783,17 +1722,138 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“真人详情认证标识”能够进入，页面明确显示 APP-DSC-09、页面名称、设计路由和返回路径。
+- 从“真人详情认证标识”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“返回真人详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、认证失效、资料变化”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 只展示认证有效、已发布、授权有效且未被安全隐藏的真人资料。
 
-![APP-DSC-09 认证说明默认状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-09__default.png)
+**Figma 逐状态交付：** 本页 3 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 12 个有效动作，支持 Section `783:3600` 含 13 张交互支持稿和 50 个有效动作，失效目标与不足 44dp 热区均为 0。
 
-**P0 关键状态：** 认证失效
+- [打开 Figma 交互支持 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=783-3600)
 
-![APP-DSC-09 认证说明关键状态“认证失效”原型](./assets/page-prototypes/mobile/app-dsc-09__state-02.png)
+**状态 1｜正常｜`159:66476`**
+
+- 触发条件：人物仍满足公开资格，认证记录与当前资料版本一致且四项公开核验完整有效。
+- 关键交互：展示认证范围、最近核验与资料版本；可返回真人详情、查看平台认证规则或举报认证问题。
+- 预期结果：四项核验和平台代运营边界按 Figma 完整展示；认证不被解释为本人运营、本人回复或平台背书。
+- 权威边界：认证范围、版本、时间、运营模式和责任边界均来自服务端当前认证说明。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66476&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A66476&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-09 认证说明 Figma 状态“正常”原型](./assets/page-prototypes/mobile/app-dsc-09__default.png)
+
+**状态 2｜认证失效｜`159:66553`**
+
+- 触发条件：进入说明后服务端确认人物已停止公开，或认证、授权、发布、安全门禁不再有效。
+- 关键交互：停止使用旧认证事实，只保留返回真人详情、查看规则和举报或申诉说明出口。
+- 预期结果：旧认证不再用于搜索、推荐、媒体凭证或新平台话题；页面不泄漏内部撤回原因。
+- 权威边界：认证是否仍有效和公开入口是否收敛由服务端当前资格谓词决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66553&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A66553&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-09 认证说明 Figma 状态“认证失效”原型](./assets/page-prototypes/mobile/app-dsc-09__state-02.png)
+
+**状态 3｜资料变化｜`159:66636`**
+
+- 触发条件：当前会话曾读取认证说明，后续服务端返回了不同的资料版本。
+- 关键交互：保留最近一次已知摘要并明确等待刷新；用户可重新读取认证信息、返回真人详情或查看规则。
+- 预期结果：刷新中、失败和成功都有独立状态；旧摘要不被继续标记为当前有效认证事实。
+- 权威边界：版本变化由稳定 profileId 与服务端 profileVersion 比较得出，展示文案不替代版本号。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66636&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A66636&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-DSC-09 认证说明 Figma 状态“资料变化”原型](./assets/page-prototypes/mobile/app-dsc-09__state-03.png)
+
+**交互支持稿（不新增正式需求状态）：**
+
+**认证说明加载中｜`784:3600`**
+
+- 首次进入只读取服务端当前认证说明，不显示旧认证详情或内部审核证据。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=784-3600)
+
+![APP-DSC-09 认证说明 认证说明加载中交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__loading.png)
+
+**认证说明加载失败｜`784:3697`**
+
+- 失败只重试认证说明；返回人物详情与帮助入口保持可用，不把网络失败误报为认证失效。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=784-3697)
+
+![APP-DSC-09 认证说明 认证说明加载失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__load-failed.png)
+
+**平台认证规则｜`784:3803`**
+
+- 弹层集中说明四项公开核验、失效条件和平台代运营边界，不披露证据或审核员。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=784-3803)
+
+![APP-DSC-09 认证说明 平台认证规则交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__verification-rules.png)
+
+**举报认证问题｜`784:3898`**
+
+- 原因来自服务端 Safety 目录且默认不预选；举报由平台管理员接收。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=784-3898)
+
+![APP-DSC-09 认证说明 举报认证问题交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__report-reason.png)
+
+**举报原因：资料不实｜`785:3605`**
+
+- 资料问题选中态与其他原因互斥，提交时使用服务端稳定 reason code。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=785-3605)
+
+![APP-DSC-09 认证说明 举报原因：资料不实交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__report-reason-false-info.png)
+
+**举报提交中｜`785:3707`**
+
+- 提交期间锁定重复操作并等待服务端确认，不提前创建本地成功记录。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=785-3707)
+
+![APP-DSC-09 认证说明 举报提交中交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__report-submitting.png)
+
+**举报提交失败｜`785:3798`**
+
+- 失败保留当前原因，可直接重试或返回认证说明；会话失效时由账号状态收敛。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=785-3798)
+
+![APP-DSC-09 认证说明 举报提交失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__report-failed.png)
+
+**举报已提交｜`785:3889`**
+
+- 服务端确认后提供完成和举报记录出口，处理结果仍以安全中心为准。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=785-3889)
+
+![APP-DSC-09 认证说明 举报已提交交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__report-submitted.png)
+
+**认证信息刷新中｜`786:3609`**
+
+- 资料版本变化后重新核验授权、资料一致性和素材权利；返回前保留当前已知摘要。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=786-3609)
+
+![APP-DSC-09 认证说明 认证信息刷新中交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__refreshing.png)
+
+**认证信息刷新失败｜`786:3666`**
+
+- 刷新失败不会覆盖最近已知记录，可定向重试、返回详情或查看认证规则。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=786-3666)
+
+![APP-DSC-09 认证说明 认证信息刷新失败交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__refresh-failed.png)
+
+**举报原因：授权问题｜`787:3613`**
+
+- 授权问题使用独立选中反馈，提交稳定 code，不在客户端推断审核结论。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=787-3613)
+
+![APP-DSC-09 认证说明 举报原因：授权问题交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__report-reason-authorization.png)
+
+**举报原因：隐私问题｜`787:3715`**
+
+- 隐私问题与其他原因互斥，仍由平台管理员按当前规则核查。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=787-3715)
+
+![APP-DSC-09 认证说明 举报原因：隐私问题交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__report-reason-privacy.png)
+
+**举报原因：其他｜`787:3817`**
+
+- 其他问题沿用服务端原因目录，不创建无契约的本地分类或处置结果。
+- [打开 Figma 设计节点](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=787-3817)
+
+![APP-DSC-09 认证说明 举报原因：其他交互支持稿](./assets/page-prototypes/mobile/app-dsc-09__report-reason-other.png)
 
 **客户确认：**
 
@@ -807,9 +1867,9 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 ## 移动端 · 互动与历史
 
-本组共 5 个页面，按 Page ID 逐页确认。
+本组共 6 个页面，按 Page ID 逐页确认。
 
-### APP-INT-01 关注更新
+### APP-INT-01 关注动态
 
 **平台与模块：** 移动端 · 互动与历史　　**优先级：** P0　　**设计路由：** `/following`
 
@@ -823,7 +1883,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 关注更新按时间组织，不使用匹配、在线或关系暗示。
 
-**详细交互：** 用户从“底部关注 Tab”进入。主要操作为“查看更新”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-07「真人详情」。次要操作包括：筛选更新、取消关注。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“底部关注 Tab”进入。主要操作为“查看更新”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-07「真人详情」。次要操作包括：筛选动态、取消关注。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
 
 **业务规则：** 喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。
 
@@ -839,17 +1899,17 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“底部关注 Tab”能够进入，页面明确显示 APP-INT-01、页面名称、设计路由和返回路径。
+- 从“底部关注 Tab”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看更新”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、首次空、无更新、资料下架”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。
 
-![APP-INT-01 关注更新默认状态“正常”原型](./assets/page-prototypes/mobile/app-int-01__default.png)
+![APP-INT-01 关注动态默认状态“正常”原型](./assets/page-prototypes/mobile/app-int-01__default.png)
 
 **P0 关键状态：** 资料下架
 
-![APP-INT-01 关注更新关键状态“资料下架”原型](./assets/page-prototypes/mobile/app-int-01__state-04.png)
+![APP-INT-01 关注动态关键状态“资料下架”原型](./assets/page-prototypes/mobile/app-int-01__state-04.png)
 
 **客户确认：**
 
@@ -871,11 +1931,11 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **前置条件：** 用户已登录；目标真人资料仍可访问；操作额度和对象状态由服务端重新校验。
 
-**进入路径：** 我的页面或互动入口
+**进入路径：** APP-SET-01 的‘我的喜欢’入口
 
 **页面结构：** 真人列表与移除、筛选或解除动作并列，资料不可用时解释原因。
 
-**详细交互：** 用户从“我的页面或互动入口”进入。主要操作为“查看真人”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-07「真人详情」。次要操作包括：取消喜欢、筛选。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“APP-SET-01 的‘我的喜欢’入口”进入。主要操作为“查看真人”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-DSC-07「真人详情」。次要操作包括：取消喜欢、筛选。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
 
 **业务规则：** 喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。
 
@@ -891,7 +1951,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面或互动入口”能够进入，页面明确显示 APP-INT-02、页面名称、设计路由和返回路径。
+- 从“APP-SET-01 的‘我的喜欢’入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看真人”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、空、资料不可用”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -943,7 +2003,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面或详情收藏动作”能够进入，页面明确显示 APP-INT-03、页面名称、设计路由和返回路径。
+- 从“我的页面或详情收藏动作”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“打开收藏夹”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、空、额度满、离线”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -991,7 +2051,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“收藏夹列表”能够进入，页面明确显示 APP-INT-04、页面名称、设计路由和返回路径。
+- 从“收藏夹列表”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看真人”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、文件夹已删除、资料下架”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1039,13 +2099,163 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面”能够进入，页面明确显示 APP-INT-05、页面名称、设计路由和返回路径。
+- 从“我的页面”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看历史详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、空、保留到期、清除失败”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。
 
 ![APP-INT-05 浏览历史默认状态“正常”原型](./assets/page-prototypes/mobile/app-int-05__default.png)
+
+**客户确认：**
+
+- [ ] 确认
+- [ ] 需修改
+- [ ] 暂缓
+
+意见：____________________________________________________________
+
+---
+
+### APP-INT-06 调整收藏夹
+
+**平台与模块：** 移动端 · 互动与历史　　**优先级：** P1　　**设计路由：** `/person/{profileId}/favorites`
+
+**用户价值：** 管理单个真人的收藏夹归属，每次选择均等待服务端确认。
+
+**适用角色：** 已登录观看者
+
+**前置条件：** 用户已登录；目标真人资料仍可访问；操作额度和对象状态由服务端重新校验。
+
+**进入路径：** 真人详情收藏入口或收藏夹详情
+
+**页面结构：** 固定标题、服务端事实说明、收藏夹归属列表、规则说明与完成操作；最后一项移出使用独立底部确认层。
+
+**详细交互：** 用户从真人详情收藏入口或收藏夹详情进入。页面并行读取当前人物收藏状态与收藏夹摘要，完整成功后才允许操作；每次选择只提交目标收藏夹的一次加入或移出请求，服务端确认前保留旧勾选并锁定其他操作。失败保留原权威状态并允许定向重试，成功后刷新收藏状态和文件夹摘要。资料不可用时只允许移出现有归属。移出唯一剩余收藏夹前必须二次确认，确认后独立显示处理中和已取消收藏结果；喜欢与关注始终不随收藏变化。
+
+**业务规则：** 喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。
+
+**数据与权限：** 只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。
+
+**需求追踪：** `APP-INT-06 → PRD-FR-040,PRD-FR-041,PRD-FR-042 → SCP-FR-003 → F-06/VIR-FR-*`
+
+**模块 PRD：** [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*）
+
+**页面状态：** 正常、加载中、读取失败、更新中、更新失败、成功反馈、资料不可用、移出最后收藏夹确认、移出最后一项中、已取消收藏
+
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-INT-06`，共 10 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
+**页面级验收：**
+
+- 从“真人详情收藏入口或收藏夹详情”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“选择收藏夹”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 页面覆盖“正常、加载中、读取失败、更新中、更新失败、成功反馈、资料不可用、移出最后收藏夹确认、移出最后一项中、已取消收藏”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
+- 喜欢、关注和收藏互相独立，不产生匹配、通知对方或双向关系。
+
+**Figma 逐状态交付：** 本页 10 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 36 个有效动作，位于正式页面 Section `159:66694`；失效目标与不足 44dp 热区均为 0。
+
+- [打开 Figma 正式页面 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-66694)
+
+**状态 1｜正常｜`894:3616`**
+
+- 触发条件：人物收藏状态与收藏夹摘要均已从服务端读取成功。
+- 关键交互：点击任意收藏夹立即提交单项归属变更；页面完成或返回时不再重复提交。
+- 预期结果：展示当前权威勾选、收藏夹人数和类型；喜欢与关注状态不受影响。
+- 权威边界：勾选状态、收藏状态和人数均以服务端响应为准。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=894-3616&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=894%3A3616&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“正常”原型](./assets/page-prototypes/mobile/app-int-06__default.png)
+
+**状态 2｜加载中｜`896:3614`**
+
+- 触发条件：首次进入或读取失败后重新加载收藏归属。
+- 关键交互：保持返回可用，禁用完成和收藏夹选择，不使用旧勾选冒充当前结果。
+- 预期结果：等高骨架保持布局稳定，读取完成后整体切换到权威结果。
+- 权威边界：加载态不承载收藏归属、人数或资料可用性事实。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=896-3614&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=896%3A3614&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“加载中”原型](./assets/page-prototypes/figma-final/phase15/app-int-06-loading.png)
+
+**状态 3｜读取失败｜`896:3677`**
+
+- 触发条件：收藏夹或当前人物收藏状态读取失败。
+- 关键交互：允许重新加载或安全返回，失败前不执行任何归属修改。
+- 预期结果：明确说明未修改数据，不展示不完整列表或缓存勾选。
+- 权威边界：只有完整读取成功后才允许编辑。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=896-3677&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=896%3A3677&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“读取失败”原型](./assets/page-prototypes/figma-final/phase15/app-int-06-load-failed.png)
+
+**状态 4｜更新中｜`896:3740`**
+
+- 触发条件：用户选择加入或移出某个收藏夹并已发起服务端请求。
+- 关键交互：只标记目标行并锁定其他选择、完成与返回后的重复提交。
+- 预期结果：服务端确认前保留旧勾选，不进行乐观更新。
+- 权威边界：归属变化只在服务端返回成功后生效。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=896-3740&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=896%3A3740&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“更新中”原型](./assets/page-prototypes/figma-final/phase15/app-int-06-updating.png)
+
+**状态 5｜更新失败｜`898:3616`**
+
+- 触发条件：单个收藏夹归属更新被网络、权限、版本或业务规则拒绝。
+- 关键交互：保留原权威勾选并标出失败目标，可只重试该行或完成返回。
+- 预期结果：失败不影响其他收藏夹，也不把本地意图显示为已保存。
+- 权威边界：失败后继续展示服务端旧结果。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=898-3616&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=898%3A3616&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“更新失败”原型](./assets/page-prototypes/figma-final/phase15/app-int-06-update-failed.png)
+
+**状态 6｜成功反馈｜`898:3679`**
+
+- 触发条件：服务端确认加入或移出某个非最后收藏夹。
+- 关键交互：刷新收藏状态和收藏夹摘要，继续允许下一次单项调整或完成返回。
+- 预期结果：成功提示指出具体结果，勾选和人数同步为最新权威值。
+- 权威边界：成功反馈来自本次响应与后续权威摘要，不由客户端推算。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=898-3679&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=898%3A3679&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“成功反馈”原型](./assets/page-prototypes/figma-final/phase15/app-int-06-success.png)
+
+**状态 7｜资料不可用｜`898:3746`**
+
+- 触发条件：人物资料已失效，但当前账号仍存在历史收藏归属。
+- 关键交互：只允许从已加入收藏夹移出，禁止新增到其他收藏夹。
+- 预期结果：最小披露资料不可用状态，不恢复历史封面、地区或标签。
+- 权威边界：资料资格与允许动作由服务端当前状态决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=898-3746&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=898%3A3746&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“资料不可用”原型](./assets/page-prototypes/figma-final/phase15/app-int-06-unavailable.png)
+
+**状态 8｜移出最后收藏夹确认｜`898:3809`**
+
+- 触发条件：用户尝试移出唯一剩余的收藏夹归属。
+- 关键交互：底部确认层阻止背景点击穿透；取消保留原值，确认才提交取消收藏。
+- 预期结果：明确说明将取消收藏，但喜欢与关注不会改变。
+- 权威边界：确认动作只提交移出请求，最终结果仍以服务端为准。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=898-3809&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=898%3A3809&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“移出最后收藏夹确认”原型](./assets/page-prototypes/figma-final/phase15/app-int-06-last-removal-confirm.png)
+
+**状态 9｜移出最后一项中｜`899:3616`**
+
+- 触发条件：用户确认移出唯一剩余的收藏夹。
+- 关键交互：关闭确认层并锁定所有重复操作，原勾选保留到服务端确认。
+- 预期结果：处理中明确提示原收藏状态尚未改变。
+- 权威边界：客户端不预先将 favorited 改为 false。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=899-3616&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=899%3A3616&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“移出最后一项中”原型](./assets/page-prototypes/figma-final/phase15/app-int-06-last-removal-processing.png)
+
+**状态 10｜已取消收藏｜`899:3681`**
+
+- 触发条件：服务端确认人物已不属于任何收藏夹。
+- 关键交互：显示取消收藏结果；用户仍可重新选择任意收藏夹或完成返回。
+- 预期结果：收藏状态变为未收藏，喜欢与关注维持各自权威状态。
+- 权威边界：favorited=false 与空 folderIds 必须来自服务端返回。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=899-3681&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=899%3A3681&show-proto-sidebar=1&page-id=145%3A57041)
+
+![APP-INT-06 调整收藏夹 Figma 状态“已取消收藏”原型](./assets/page-prototypes/figma-final/phase15/app-int-06-unfavorited.png)
 
 **客户确认：**
 
@@ -1091,7 +2301,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“底部消息 Tab”能够进入，页面明确显示 APP-MSG-01、页面名称、设计路由和返回路径。
+- 从“底部消息 Tab”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“打开话题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、首次空、离线、会话受限”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1143,7 +2353,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“真人详情“发起话题”按钮”能够进入，页面明确显示 APP-MSG-02、页面名称、设计路由和返回路径。
+- 从“真人详情“发起话题”按钮”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“确认发起话题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、无会员、额度尽、资料失效、已有话题”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1189,15 +2399,15 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
 
-**页面状态：** 正常、补拉、审核中、只读、冻结、关闭
+**页面状态：** 正常、补拉、审核中、只读、冻结、关闭、消息操作、举报消息
 
-**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-03`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-03`，共 8 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
-- 从“平台话题列表或发起确认”能够进入，页面明确显示 APP-MSG-03、页面名称、设计路由和返回路径。
+- 从“平台话题列表或发起确认”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“发送消息”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、补拉、审核中、只读、冻结、关闭”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 页面覆盖“正常、补拉、审核中、只读、冻结、关闭、消息操作、举报消息”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 话题由平台管理员接收与处理；只有有效会员可以新建和发送。
 
@@ -1241,15 +2451,15 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **模块 PRD：** [F-07、A-06 会员平台话题、实时会话与运营工作台](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)（MOP-FR-*）
 
-**页面状态：** 正常、操作失败、已关闭
+**页面状态：** 正常、操作失败、已关闭、举报话题、确认屏蔽、确认关闭
 
-**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-04`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-MSG-04`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
-- 从“会话页右上角菜单”能够进入，页面明确显示 APP-MSG-04、页面名称、设计路由和返回路径。
+- 从“会话页右上角菜单”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“保存会话设置”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、操作失败、已关闭”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 页面覆盖“正常、操作失败、已关闭、举报话题、确认屏蔽、确认关闭”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 话题由平台管理员接收与处理；只有有效会员可以新建和发送。
 
@@ -1299,7 +2509,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“推荐页铃铛或消息页通知入口”能够进入，页面明确显示 APP-MSG-05、页面名称、设计路由和返回路径。
+- 从“推荐页铃铛或消息页通知入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“打开通知”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、全部已读、首次空、分页失败、实时离线”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1397,7 +2607,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“通知列表”能够进入，页面明确显示 APP-MSG-06、页面名称、设计路由和返回路径。
+- 从“通知列表”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“前往相关页面”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、目标失效、无权限、需要升级”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1489,7 +2699,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“真人详情门槛或我的会员卡”能够进入，页面明确显示 APP-MBR-01、页面名称、设计路由和返回路径。
+- 从“真人详情门槛或我的会员卡”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交会员申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“免费、已有申请、待生效、同步失败”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1541,7 +2751,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的会员卡或会员目录”能够进入，页面明确显示 APP-MBR-02、页面名称、设计路由和返回路径。
+- 从“我的会员卡或会员目录”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看权益说明”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、即将到期、到期、撤销、受限”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1593,7 +2803,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“会员目录或权益页”能够进入，页面明确显示 APP-MBR-03、页面名称、设计路由和返回路径。
+- 从“会员目录或权益页”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交会员申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“未申请、已提交、处理中、待补充、已通过、已拒绝、已取消”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1645,7 +2855,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的金币卡”能够进入，页面明确显示 APP-WAL-01、页面名称、设计路由和返回路径。
+- 从“我的金币卡”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看金币明细”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、空钱包、离线缓存、同步失败”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1733,7 +2943,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“钱包页”能够进入，页面明确显示 APP-WAL-02、页面名称、设计路由和返回路径。
+- 从“钱包页”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看分录详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、增加筛选、扣减筛选、首次空、分页加载、对账维护”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1835,15 +3045,15 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **模块 PRD：** [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*）
 
-**页面状态：** 正常、业务单号已复制、分录不可用、冲正中
+**页面状态：** 正常、业务单号已复制、分录不可用、扣减
 
 **Figma 最终稿映射：** `10｜Mobile Pages` → `APP-WAL-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
-- 从“金币明细”能够进入，页面明确显示 APP-WAL-03、页面名称、设计路由和返回路径。
+- 从“金币明细”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交申诉”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、业务单号已复制、分录不可用、冲正中”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 页面覆盖“正常、业务单号已复制、分录不可用、扣减”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 金币不具现金价值；客户端只读余额和有效分录，不出现购买、充值、消费、兑换、转账或提现。
 
@@ -1879,15 +3089,15 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 ![APP-WAL-03 金币分录详情 Figma 最终状态“分录不可用”原型](./assets/page-prototypes/figma-final/phase14/phase14-22-entryUnavailable.png)
 
-**状态 4｜冲正中｜`145:56598`**
+**状态 4｜扣减｜`159:72195`**
 
-- 触发条件：原分录已关联待执行或已执行的冲正流程。
-- 关键交互：展示冲正状态与关联引用；允许查看冲正进度，但原分录继续保留。
-- 预期结果：冲正完成后追加反向分录并刷新关系，不修改或删除原记录。
-- 权威边界：冲正由申请—复核—执行状态机驱动，客户端只读。
-- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-56598&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A56598&show-proto-sidebar=1&page-id=9%3A8)
+- 触发条件：当前有效分录方向为扣减，且服务端已返回用户可见的完整分录事实。
+- 关键交互：展示扣减数量、调整原因、发生时间、安全业务单号、执行结果和冲正关系；用户可提出疑问或复制业务单号。
+- 预期结果：扣减方向与负向数量清晰呈现，原分录保持不可编辑删除；提出疑问只创建独立申诉，不直接修改余额。
+- 权威边界：分录方向、数量、原因、执行结果与冲正关系均以服务端有效账本返回为准。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-72195&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=159%3A72195&show-proto-sidebar=1&page-id=145%3A57041)
 
-![APP-WAL-03 金币分录详情 Figma 最终状态“冲正中”原型](./assets/page-prototypes/figma-final/phase14/phase14-23-entryReversing.png)
+![APP-WAL-03 金币分录详情 Figma 最终状态“扣减”原型](./assets/page-prototypes/figma-final/phase17/app-wal-03-debit.png)
 
 **客户确认：**
 
@@ -1907,7 +3117,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **平台与模块：** 移动端 · 我的与设置　　**优先级：** P0　　**设计路由：** `/me`
 
-**用户价值：** 汇总私有账号、会员、金币、设置、帮助和数据权利入口。
+**用户价值：** 汇总私有账号、会员、金币、我的喜欢、设置、帮助和数据权利入口。
 
 **适用角色：** 已登录观看者
 
@@ -1917,7 +3127,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 账号、会员、金币、帮助和数据权利以私有个人中心信息架构组织。
 
-**详细交互：** 用户从“底部我的 Tab”进入。主要操作为“查看账号资料”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-SET-02「账号资料」。次要操作包括：查看会员、查看钱包、进入设置。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“底部我的 Tab”进入。主要操作为“查看账号资料”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-SET-02「账号资料」。次要操作包括：查看会员、查看钱包、查看我的喜欢、进入设置。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
 
 **业务规则：** 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
 
@@ -1933,7 +3143,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“底部我的 Tab”能够进入，页面明确显示 APP-SET-01、页面名称、设计路由和返回路径。
+- 从“底部我的 Tab”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看账号资料”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、账号受限、摘要同步失败”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -1985,7 +3195,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面”能够进入，页面明确显示 APP-SET-02、页面名称、设计路由和返回路径。
+- 从“我的页面”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“保存账号资料”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、保存失败、需要重新验证”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2033,7 +3243,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面账号与安全”能够进入，页面明确显示 APP-SET-03、页面名称、设计路由和返回路径。
+- 从“我的页面账号与安全”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“退出其他设备”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、仅当前设备、撤销失败”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2081,7 +3291,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面隐私入口”能够进入，页面明确显示 APP-SET-04、页面名称、设计路由和返回路径。
+- 从“我的页面隐私入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“保存隐私设置”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、保存冲突、政策更新”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2129,7 +3339,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面通知设置”能够进入，页面明确显示 APP-SET-05、页面名称、设计路由和返回路径。
+- 从“我的页面通知设置”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“保存通知偏好”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、同步失败、策略变化”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2177,7 +3387,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面隐私与安全”能够进入，页面明确显示 APP-SET-06、页面名称、设计路由和返回路径。
+- 从“我的页面隐私与安全”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“解除拉黑”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、空、解除失败”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2229,7 +3439,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面帮助与安全”能够进入，页面明确显示 APP-SET-07、页面名称、设计路由和返回路径。
+- 从“我的页面帮助与安全”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看举报进度”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、空、状态延迟”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2255,7 +3465,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **平台与模块：** 移动端 · 我的与设置　　**优先级：** P0　　**设计路由：** `/me/appeals`
 
-**用户价值：** 创建申诉、说明证据并跟踪独立复核进度。
+**用户价值：** 对举报结论、账号限制或金币分录创建独立复核，并跟踪补充、升级和终态结果。
 
 **适用角色：** 已登录观看者
 
@@ -2265,7 +3475,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 申诉原因、说明、证据和独立复核进度围绕单一任务组织。
 
-**详细交互：** 用户从“账号受限、举报记录或分录详情”进入。主要操作为“提交申诉”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 APP-SET-07「举报记录」。次要操作包括：补充说明、查看进度。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从账号限制、举报记录或金币分录详情进入。页面只匹配入口对应的业务对象；无指定入口时按 updatedAt 展示最近更新案件。创建与补充使用幂等请求标识，显式重试复用同一标识；冲突时优先恢复服务端现有案件。处理中可补充必要说明，升级复核与终态禁止补充。维持原结论、申诉成立、已关闭分别进入独立结果页，展示服务端用户可见说明并通过“返回我的”退出；任何申诉结果都不直接改写原业务对象。
 
 **业务规则：** 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
 
@@ -2275,17 +3485,20 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-07 举报、拉黑与安全审核](../ways-of-work/plan/real-person-discovery-platform/report-blocking-and-moderation/prd.md)（MOD-FR-*）
 
-**页面状态：** 正常、已有处理中、提交失败
+**页面状态：** 正常、已有处理中、提交失败、补充说明、补充提交失败、升级处理中、维持原结论、申诉成立、已关闭
 
-**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-08`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-08`，共 9 个需求状态：正常 `159:73873`、已有处理中 `159:73925`、提交失败 `159:73978`、补充说明 `1118:3615`、补充提交失败 `1123:3616`、升级处理中 `1123:3668`、维持原结论 `1130:3617`、申诉成立 `1132:3618`、已关闭 `1132:3670`。
 
 **页面级验收：**
 
-- 从“账号受限、举报记录或分录详情”能够进入，页面明确显示 APP-SET-08、页面名称、设计路由和返回路径。
+- 从“账号受限、举报记录或分录详情”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交申诉”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
-- 页面覆盖“正常、已有处理中、提交失败”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 页面覆盖“正常、已有处理中、提交失败、补充说明、补充提交失败、升级处理中、维持原结论、申诉成立、已关闭”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 账号设置不改变公开真人资料；敏感操作需要服务端重新验证。
+- 创建与补充必须幂等；网络失败的显式重试复用请求标识，并发已创建案件恢复现有案件。
+- 举报结论、账号限制与金币分录按入口上下文隔离；无上下文时按 `updatedAt` 展示最新案件。
+- 升级复核与终态禁止补充；三个终态必须使用各自 Figma 结果页，申诉不会直接改写原业务对象。
 
 ![APP-SET-08 申诉默认状态“正常”原型](./assets/page-prototypes/mobile/app-set-08__default.png)
 
@@ -2333,7 +3546,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面数据权利”能够进入，页面明确显示 APP-SET-09、页面名称、设计路由和返回路径。
+- 从“我的页面数据权利”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“创建导出任务”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、处理中、失败、已过期、需要重新验证”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2381,7 +3594,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面数据权利”能够进入，页面明确显示 APP-SET-10、页面名称、设计路由和返回路径。
+- 从“我的页面数据权利”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交注销申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、存在阻塞项、处理中、失败”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2429,7 +3642,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“登录、设置、错误和业务说明入口”能够进入，页面明确显示 APP-SET-11、页面名称、设计路由和返回路径。
+- 从“登录、设置、错误和业务说明入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“打开帮助主题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、离线、无结果”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2481,7 +3694,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“我的页面”能够进入，页面明确显示 APP-SET-12、页面名称、设计路由和返回路径。
+- 从“我的页面”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看法律文档”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、文档不可用”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2533,7 +3746,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“启动检查或未知能力门槛”能够进入，页面明确显示 APP-SYS-01、页面名称、设计路由和返回路径。
+- 从“启动检查或未知能力门槛”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“更新 App”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“必须升级、商店不可用”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2581,7 +3794,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“启动或任意服务请求”能够进入，页面明确显示 APP-SYS-02、页面名称、设计路由和返回路径。
+- 从“启动或任意服务请求”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“重新尝试”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“维护中、部分恢复”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2629,7 +3842,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“登录、敏感操作或安全事件”能够进入，页面明确显示 APP-SYS-03、页面名称、设计路由和返回路径。
+- 从“登录、敏感操作或安全事件”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看限制详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“部分受限、全部受限”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2681,7 +3894,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“对象深链或状态刷新”能够进入，页面明确显示 APP-SYS-04、页面名称、设计路由和返回路径。
+- 从“对象深链或状态刷新”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“返回推荐”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“已下架、无权限、已删除”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2733,7 +3946,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“注册、登录或地区切换”能够进入，页面明确显示 APP-SYS-05、页面名称、设计路由和返回路径。
+- 从“注册、登录或地区切换”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看地区说明”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“未开放、政策变化”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2781,13 +3994,11 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面状态：** 正常、数据延迟、质量异常、部分无权限
 
-**当前开发实现（Operations-1）：** `/admin/app` 首期采用 App 全局范围，展示指标快照、数据质量、严重事件和五类安全控制。18 项指标只有 `known` 状态显示数值，未知、延迟、不完整、异常或未配置一律显示 `—`；Owner 可显式确认后生成人工快照和运行检测。页面不显示未来支付、礼物、装扮、系统推送、真人认领或个人级排行。
-
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-01`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
-- 从“后台登录后的默认首页”能够进入，页面明确显示 ADM-OV-01、页面名称、设计路由和返回路径。
+- 从“后台登录后的默认首页”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“进入专题”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、数据延迟、质量异常、部分无权限”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2831,13 +4042,11 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面状态：** 正常、P0/P1、未分配、已缓解
 
-**当前开发实现（Operations-1）：** `/admin/app/incidents` 已实现状态、严重级别、业务域、事件类型与负责人筛选、游标加载及响应式列表。每行进入 `ADM-OV-03`，认领操作留在详情页完成；空态不得把检测未运行解释为零异常。
-
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-02`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
-- 从“运营总览异常卡或全局任务入口”能够进入，页面明确显示 ADM-OV-02、页面名称、设计路由和返回路径。
+- 从“运营总览异常卡或全局任务入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“认领异常”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、P0/P1、未分配、已缓解”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2881,13 +4090,11 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面状态：** 正常、影响扩大、并发更新、证据不足
 
-**当前开发实现（Operations-1）：** `/admin/app/incidents/{incidentId}` 已实现领取、处置记录、状态机、固定 Runbook 版本、带证据关闭、关闭结论和不可变时间线。安全控制必须先展示阻断与不受影响动作，再由 Owner 提交；暂停只允许未关闭 P0/P1，恢复必须来自原事件并填写验证证据。普通管理员仅能处置本人领取事件，所有写入按事件/控制版本防止并发覆盖。
-
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-OV-03`，共 4 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
-- 从“异常中心”能够进入，页面明确显示 ADM-OV-03、页面名称、设计路由和返回路径。
+- 从“异常中心”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“添加处置记录”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、影响扩大、并发更新、证据不足”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2939,7 +4146,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“真人与内容导航”能够进入，页面明确显示 ADM-PER-01、页面名称、设计路由和返回路径。
+- 从“真人与内容导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“新建真人”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、草稿、待审、已发布、已暂停、争议”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -2991,7 +4198,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“真人列表主操作”能够进入，页面明确显示 ADM-PER-02、页面名称、设计路由和返回路径。
+- 从“真人列表主操作”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“保存草稿”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、缺少来源、重复候选、媒体失败”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3043,7 +4250,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“真人列表或导入结果”能够进入，页面明确显示 ADM-PER-03、页面名称、设计路由和返回路径。
+- 从“真人列表或导入结果”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“发起认证审核”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、认证待审、发布待审、授权过期”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3079,9 +4286,9 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面结构：** 上传、解析、逐项校验、部分成功和失败重试形成批量导入闭环。
 
-**详细交互：** 用户从“真人列表批量导入”进入。主要操作为“执行导入”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 ADM-PER-03「真人工作台」。次要操作包括：上传包、查看失败、重试失败项。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 管理员从真人列表的批量导入入口进入，但当前 ZIP schema 是 Gallery 内容包。选择 256 MiB 以内 ZIP 后，浏览器按服务端计划分片上传，原包完成前不允许执行；点击“执行导入”后进入服务端校验和 Queue 逐项处理，离开页面不终止任务。列表持续回读权威进度，单项失败保留其他成功结果；只有 retryable 失败可在原任务重试，修正原包的永久失败必须新建任务，运行时故障可从暂停态继续。成功项进入 Gallery 编辑，不自动生成真人身份、公开资料或推荐资格；若要进入 ADM-PER-03，管理员必须另行显式选择 Gallery 作为候选来源并完成授权、认证和发布流程。
 
-**业务规则：** 只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。
+**业务规则：** ZIP 只导入 Gallery 内容，不自动创建 Person/Profile 或推荐资格；真人候选必须由管理员显式关联来源并完成授权、认证和发布门禁。
 
 **数据与权限：** 管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。
 
@@ -3095,11 +4302,11 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“真人列表批量导入”能够进入，页面明确显示 ADM-PER-04、页面名称、设计路由和返回路径。
+- 从“真人列表批量导入”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“执行导入”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、校验中、部分失败、已暂停、已完成”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
-- 只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。
+- ZIP 只导入 Gallery 内容，不自动创建 Person/Profile 或推荐资格；真人候选必须由管理员显式关联来源并完成授权、认证和发布门禁。
 
 ![ADM-PER-04 导入任务默认状态“正常”原型](./assets/page-prototypes/admin/adm-per-04__default.png)
 
@@ -3147,7 +4354,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“真人工作台提交认证”能够进入，页面明确显示 ADM-PER-05、页面名称、设计路由和返回路径。
+- 从“真人工作台提交认证”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“通过认证”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、证据不足、版本冲突、需要复核”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3199,7 +4406,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“认证通过后发起发布”能够进入，页面明确显示 ADM-PER-06、页面名称、设计路由和返回路径。
+- 从“认证通过后发起发布”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“发布到 App”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、未认证、授权失效、投影失败”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3223,7 +4430,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 ## 管理后台 · 发现运营
 
-本组共 7 个页面，按 Page ID 逐页确认。
+本组共 8 个页面，按 Page ID 逐页确认。
 
 ### ADM-TAX-01 Taxonomy 目录树
 
@@ -3255,7 +4462,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“发现运营导航”能够进入，页面明确显示 ADM-TAX-01、页面名称、设计路由和返回路径。
+- 从“发现运营导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“新建词条”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、草稿目录、生效目录、归档目录”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3303,7 +4510,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“目录树选择词条”能够进入，页面明确显示 ADM-TAX-02、页面名称、设计路由和返回路径。
+- 从“目录树选择词条”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“保存词条草稿”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、被引用、合并冲突、版本过期”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3351,7 +4558,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“目录版本页”能够进入，页面明确显示 ADM-TAX-03、页面名称、设计路由和返回路径。
+- 从“目录版本页”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交目录发布”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、未知引用、客户端不兼容、待复核”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3399,7 +4606,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“发现运营导航”能够进入，页面明确显示 ADM-REC-01、页面名称、设计路由和返回路径。
+- 从“发现运营导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“创建规则草稿”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、当前生效、灰度中、已回滚”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3447,7 +4654,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“规则版本列表”能够进入，页面明确显示 ADM-REC-02、页面名称、设计路由和返回路径。
+- 从“规则版本列表”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交规则审核”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、Schema 错误、触碰安全过滤、并发冲突”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3495,7 +4702,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“规则编辑页”能够进入，页面明确显示 ADM-REC-03、页面名称、设计路由和返回路径。
+- 从“规则编辑页”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“运行对比”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、样本不足、数据延迟”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3543,13 +4750,61 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“发现运营导航”能够进入，页面明确显示 ADM-REC-04、页面名称、设计路由和返回路径。
+- 从“发现运营导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“创建排期”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、时间冲突、资料下架”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 ![ADM-REC-04 运营精选默认状态“正常”原型](./assets/page-prototypes/admin/adm-rec-04__default.png)
+
+**客户确认：**
+
+- [ ] 确认
+- [ ] 需修改
+- [ ] 暂缓
+
+意见：____________________________________________________________
+
+---
+
+### ADM-SRC-01 搜索运营核查
+
+**平台与模块：** 管理后台 · 发现运营　　**优先级：** P2　　**设计路由：** `/admin/app/search`
+
+**用户价值：** 只读核查搜索策略、跨域版本依赖、会员筛选权益与隐私数据健康，不在页面内启用运行配置。
+
+**适用角色：** Owner、搜索运营、数据治理人员
+
+**前置条件：** 管理员已登录，并同时满足角色 capability、对象范围、数据版本和必要的独立复核条件。
+
+**进入路径：** 后台搜索运营导航
+
+**页面结构：** 就绪指标、运行配置、跨域版本依赖和不可变策略版本共同构成只读核查工作区；页面不提供启用运行配置的捷径。
+
+**详细交互：** 管理员从“搜索运营”进入。页面并行读取运行配置、不可变搜索策略、Taxonomy 与会员目录稳定引用及隐私聚合健康；加载和失败时不展示残留快照。点击策略、隐私或阻断指标只进入只读解释，目录治理跳转 ADM-TAX-01。本页不存在一键启用搜索、迁移或生产切换动作。
+
+**业务规则：** 页面只核查权威配置和聚合健康，不展示搜索词、条件名称或用户明细，也不提供隐式启用入口。
+
+**数据与权限：** 只读取聚合就绪状态、不可变策略版本与稳定引用；不得返回用户搜索词、保存条件名称或账号明细。
+
+**需求追踪：** `ADM-SRC-01 → PRD-FR-020,PRD-FR-021,PRD-FR-022,PRD-FR-023,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-030 → F-02–F-05/DSP-FR-*,A-04/TAX-FR-*,A-13/OAU-FR-*`
+
+**模块 PRD：** [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）；[A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
+
+**页面状态：** 正常、加载中、加载失败、尚未就绪、无策略版本
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-SRC-01`，共 5 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
+**页面级验收：**
+
+- 从“后台搜索运营导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“刷新核查”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 页面覆盖“正常、加载中、加载失败、尚未就绪、无策略版本”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
+- 页面只核查权威配置和聚合健康，不展示搜索词、条件名称或用户明细，也不提供隐式启用入口。
+
+![ADM-SRC-01 搜索运营核查默认状态“正常”原型](./assets/page-prototypes/admin/adm-src-01__default.png)
 
 **客户确认：**
 
@@ -3595,7 +4850,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“互动与安全导航”能够进入，页面明确显示 ADM-MSG-01、页面名称、设计路由和返回路径。
+- 从“互动与安全导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“领取会话”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、待分配、待平台、待用户、安全审核”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3647,7 +4902,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“会话队列”能够进入，页面明确显示 ADM-MSG-02、页面名称、设计路由和返回路径。
+- 从“会话队列”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“以平台身份回复”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、租约冲突、只读、冻结、关闭”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3699,7 +4954,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“会话管理导航”能够进入，页面明确显示 ADM-MSG-03、页面名称、设计路由和返回路径。
+- 从“会话管理导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“保存分配规则”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、无值班、过载、配置冲突”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3751,7 +5006,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“平台话题运营组长质量入口”能够进入，页面明确显示 ADM-MSG-04、页面名称、设计路由和返回路径。
+- 从“平台话题运营组长质量入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“记录抽检结论”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、无正文授权、披露缺失”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3807,7 +5062,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“互动与安全导航或举报事件”能够进入，页面明确显示 ADM-SAF-01、页面名称、设计路由和返回路径。
+- 从“互动与安全导航或举报事件”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“领取案件”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、P0、超时、未分配”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3859,7 +5114,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“安全审核队列”能够进入，页面明确显示 ADM-SAF-02、页面名称、设计路由和返回路径。
+- 从“安全审核队列”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交处置”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、证据受限、并发冲突、已冻结”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3911,7 +5166,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“安全与申诉导航”能够进入，页面明确显示 ADM-SAF-03、页面名称、设计路由和返回路径。
+- 从“安全与申诉导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“分配申诉”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、原审核人隔离、逾期”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3963,7 +5218,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“申诉队列”能够进入，页面明确显示 ADM-SAF-04、页面名称、设计路由和返回路径。
+- 从“申诉队列”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交复核结论”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、证据不足、需要升级”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -3987,7 +5242,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 ## 管理后台 · 会员与金币
 
-本组共 12 个页面，按 Page ID 逐页确认。
+本组共 13 个页面，按 Page ID 逐页确认。
 
 ### ADM-MBR-01 五级会员目录
 
@@ -4019,7 +5274,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“会员与金币导航”能够进入，页面明确显示 ADM-MBR-01、页面名称、设计路由和返回路径。
+- 从“会员与金币导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“新建目录版本”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、草稿、生效、待回滚”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4067,7 +5322,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“会员目录或技术配置入口”能够进入，页面明确显示 ADM-MBR-02、页面名称、设计路由和返回路径。
+- 从“会员目录或技术配置入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“新建 Entitlement”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、未知客户端、合并冲突”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4115,7 +5370,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“会员与金币导航”能够进入，页面明确显示 ADM-MBR-03、页面名称、设计路由和返回路径。
+- 从“会员与金币导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“受理会员申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“待处理、处理中、待补充、已通过、已拒绝、直接发放”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4167,7 +5422,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“发放记录主操作”能够进入，页面明确显示 ADM-MBR-04、页面名称、设计路由和返回路径。
+- 从“发放记录主操作”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交发放申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、账号错误、高风险、重复业务单”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4219,7 +5474,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“复核任务队列”能够进入，页面明确显示 ADM-MBR-05、页面名称、设计路由和返回路径。
+- 从“复核任务队列”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“批准发放”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、发起人冲突、账号状态已变”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4271,13 +5526,65 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“迁移工作台”能够进入，页面明确显示 ADM-MBR-06、页面名称、设计路由和返回路径。
+- 从“迁移工作台”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“执行迁移”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、证据不足、映射冲突”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。
 
 ![ADM-MBR-06 旧会员映射默认状态“正常”原型](./assets/page-prototypes/admin/adm-mbr-06__default.png)
+
+**客户确认：**
+
+- [ ] 确认
+- [ ] 需修改
+- [ ] 暂缓
+
+意见：____________________________________________________________
+
+---
+
+### ADM-MBR-07 会员变更复核队列
+
+**平台与模块：** 管理后台 · 会员与金币　　**优先级：** P0　　**设计路由：** `/admin/app/membership/reviews`
+
+**用户价值：** 独立复核发放、续期与撤销，队列不展示受控备注正文，发起人不能自审。
+
+**适用角色：** 会员运营、独立复核人、Owner
+
+**前置条件：** 管理员已登录，并同时满足角色 capability、对象范围、数据版本和必要的独立复核条件。
+
+**进入路径：** 会员与金币导航或会员变更提交结果
+
+**页面结构：** 复核资格摘要、状态与类型筛选、最小化队列和职责分离提示共同组成会员变更复核入口。
+
+**详细交互：** 管理员从会员与金币导航或会员变更提交结果进入。页面按状态和变更类型读取最小化复核队列，并根据当前管理员与发起人关系计算 canReview；本人发起项只允许查看。进入 ADM-MBR-05 前再次读取账号与申请基线；账号变化后的申请保持失效，不允许继续批准。
+
+**业务规则：** 等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。
+
+**数据与权限：** 高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。
+
+**需求追踪：** `ADM-MBR-07 → PRD-FR-060,PRD-FR-061,PRD-FR-062,PRD-FR-063,PRD-FR-064,PRD-FR-065,PRD-FR-066,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-004,SCP-FR-005,SCP-FR-005B,SCP-FR-012,SCP-FR-030 → F-09、A-08/MBR-FR-*`
+
+**模块 PRD：** [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*）
+
+**页面状态：** 待复核、加载中、加载失败、空队列、仅本人发起、账号已变化
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-MBR-07`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
+**页面级验收：**
+
+- 从“会员与金币导航或会员变更提交结果”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“创建变更”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 页面覆盖“待复核、加载中、加载失败、空队列、仅本人发起、账号已变化”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
+- 等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。
+
+![ADM-MBR-07 会员变更复核队列默认状态“待复核”原型](./assets/page-prototypes/admin/adm-mbr-07__default.png)
+
+**P0 关键状态：** 加载失败
+
+![ADM-MBR-07 会员变更复核队列关键状态“加载失败”原型](./assets/page-prototypes/admin/adm-mbr-07__state-03.png)
 
 **客户确认：**
 
@@ -4319,7 +5626,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“会员与金币导航”能够进入，页面明确显示 ADM-WAL-01、页面名称、设计路由和返回路径。
+- 从“会员与金币导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看钱包”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、账号受限、对账异常”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4371,7 +5678,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“钱包查询”能够进入，页面明确显示 ADM-WAL-02、页面名称、设计路由和返回路径。
+- 从“钱包查询”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“新建调币申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、余额锁定、Sequence 异常”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4423,7 +5730,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“钱包详情”能够进入，页面明确显示 ADM-WAL-03、页面名称、设计路由和返回路径。
+- 从“钱包详情”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交调币申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、预计负余额、高风险、重复业务单”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4475,7 +5782,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“复核任务队列”能够进入，页面明确显示 ADM-WAL-04、页面名称、设计路由和返回路径。
+- 从“复核任务队列”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“批准并入账”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、余额已变化、发起人冲突”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4527,7 +5834,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“钱包运营工具”能够进入，页面明确显示 ADM-WAL-05、页面名称、设计路由和返回路径。
+- 从“钱包运营工具”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交批量复核”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、部分成功、重复项、总额异常”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4575,7 +5882,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“运营总览或钱包异常入口”能够进入，页面明确显示 ADM-WAL-06、页面名称、设计路由和返回路径。
+- 从“运营总览或钱包异常入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“认领差异”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、钱包冻结、差异未解释”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4599,7 +5906,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 ## 管理后台 · 通知与审计
 
-本组共 7 个页面，按 Page ID 逐页确认。
+本组共 9 个页面，按 Page ID 逐页确认。
 
 ### ADM-NTF-01 通知事件定义
 
@@ -4631,7 +5938,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“站内通知导航”能够进入，页面明确显示 ADM-NTF-01、页面名称、设计路由和返回路径。
+- 从“站内通知导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看事件版本”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、未登记、已停用”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4679,7 +5986,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“通知事件定义”能够进入，页面明确显示 ADM-NTF-02、页面名称、设计路由和返回路径。
+- 从“通知事件定义”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交模板审核”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、变量缺失、地区冲突、语言冲突”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4727,7 +6034,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“站内通知导航或异常卡”能够进入，页面明确显示 ADM-NTF-03、页面名称、设计路由和返回路径。
+- 从“站内通知导航或异常卡”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看生成详情”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、积压、模板失败、重复抑制”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4775,7 +6082,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“审计导航或业务对象审计入口”能够进入，页面明确显示 ADM-AUD-01、页面名称、设计路由和返回路径。
+- 从“审计导航或业务对象审计入口”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“执行审计查询”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、范围过大、完整性告警”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4827,7 +6134,7 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“审计查询结果”能够进入，页面明确显示 ADM-AUD-02、页面名称、设计路由和返回路径。
+- 从“审计查询结果”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“查看关联事件”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、关联缺失、敏感字段受限”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
@@ -4861,34 +6168,29 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **进入路径：** 审计导航或异常中心
 
-**页面结构：** sequence 缺口、无审计业务和校验结果按风险程度组织；Owner 可继续进入 Action 口径治理子流程。
+**页面结构：** sequence 缺口、无审计业务和校验结果按风险程度组织。
 
-**详细交互：** 用户从“审计导航或异常中心”进入。主要操作为“运行完整性校验”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 ADM-AUD-01「审计查询」。次要操作包括：查看异常、创建事件、进入 Owner Action 口径治理。口径治理先从真实事实发现 Action，再执行候选编辑、历史影响预览、独立复核申请和不同 Owner 终态决定；不存在页面直接发布。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
+**详细交互：** 用户从“审计导航或异常中心”进入。主要操作为“运行完整性校验”，执行时显示处理中状态；服务端确认成功后刷新权威数据并可进入 ADM-AUD-01「审计查询」。次要操作包括：查看异常、创建事件。失败时保留已输入内容，展示可理解原因，并提供重试、返回或帮助入口。
 
 **业务规则：** 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
-**数据与权限：** 仅允许具备审计 capability 的管理员按授权范围读取脱敏事件；导出必须申请、复核、短期授权并记录审计。Action 口径治理仅限有效 Owner，申请人与复核人必须不同；普通 admin 只能查询和导出本人范围内进入生产 Registry 且明确允许 `admin` 的 Action。
+**数据与权限：** 仅允许具备审计 capability 的管理员按授权范围读取脱敏事件；导出必须申请、复核、短期授权并记录审计。
 
-**需求追踪：** `ADM-AUD-03 → PRD-FR-090,PRD-FR-091,PRD-FR-092,PRD-FR-093,PRD-FR-094 → SCP-FR-012 → A-13/OAU-FR-001–048`
+**需求追踪：** `ADM-AUD-03 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
 
 **模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
 
-**页面状态：** 正常、Sequence 缺口、业务无审计；治理子流程包含未登记、观察冲突、治理引用未就绪、待独立复核、已批准、已驳回和基线变化失效
+**页面状态：** 正常、Sequence 缺口、业务无审计
 
 **Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-03`，共 3 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
 
 **页面级验收：**
 
-- 从“审计导航或异常中心”能够进入，页面明确显示 ADM-AUD-03、页面名称、设计路由和返回路径。
+- 从“审计导航或异常中心”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“运行完整性校验”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、Sequence 缺口、业务无审计”状态，并在空、错误、受限或冲突时提供安全下一步。
-- Owner 可从完整性页进入 `/admin/app/audit/registry`，逐项查看 Action 事实、当前版本和 production-ready 差异；未登记或治理引用未就绪不能显示为已完成。
-- 新建版本、重新激活或退休必须先预览再提交；提交人不能复核，复核时版本、观察摘要或治理策略变化会使申请安全失效。
-- `/admin/app/audit/registry/requests/{requestId}` 必须展示候选、提交基线、当前权威状态、职责分离和不可变时间线；不得提供原地编辑、删除或重开终态。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
-
-**当前开发扩展说明：** Action 口径治理沿用 `ADM-AUD-03` 的 Owner 完整性治理职责，不新增客户确认 Page ID，也不改变既有 Figma“3 个需求状态”计数；开发交互与安全状态以 [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md) 为准。若后续把该子流程升级为独立客户页面，必须先补充新的 Page ID、Figma 状态与追踪矩阵，不能静默改写现有映射。
 
 ![ADM-AUD-03 审计完整性状态默认状态“正常”原型](./assets/page-prototypes/admin/adm-aud-03__default.png)
 
@@ -4932,13 +6234,343 @@ Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 �
 
 **页面级验收：**
 
-- 从“审计查询”能够进入，页面明确显示 ADM-AUD-04、页面名称、设计路由和返回路径。
+- 从“审计查询”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
 - 主要操作“提交导出申请”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
 - 页面覆盖“正常、待批准、已过期、范围变化”状态，并在空、错误、受限或冲突时提供安全下一步。
 - 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
 - 后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。
 
 ![ADM-AUD-04 受控导出默认状态“正常”原型](./assets/page-prototypes/admin/adm-aud-04__default.png)
+
+**客户确认：**
+
+- [ ] 确认
+- [ ] 需修改
+- [ ] 暂缓
+
+意见：____________________________________________________________
+
+---
+
+### ADM-AUD-05 Action 口径治理
+
+**平台与模块：** 管理后台 · 通知与审计　　**优先级：** P2　　**设计路由：** `/admin/app/audit/registry`
+
+**用户价值：** 从真实审计事实识别未登记 Action，预览历史影响并提交独立复核，不自动登记或修改历史事实。
+
+**适用角色：** 审计员、Owner
+
+**前置条件：** 管理员已登录，并同时满足角色 capability、对象范围、数据版本和必要的独立复核条件。
+
+**进入路径：** 审计完整性页面或通知与审计导航
+
+**页面结构：** 观察事实、正式口径、治理阻断、候选编辑、历史影响预览和独立复核申请形成 Action 口径治理闭环。
+
+**详细交互：** 有效 Owner 从审计完整性或导航进入。页面对照真实审计事实、当前 Registry 与待复核申请，筛选未登记、冲突和未就绪 Action。登记或修订前填写稳定引用并预览历史影响；预览不会写入数据库，提交后必须由另一位 Owner 在 ADM-AUD-06 独立复核。加载、筛选或提交失败均不得自动登记、退休或修改历史事实。
+
+**业务规则：** 正式 Action 口径只能通过候选预览、职责分离和不可变复核结论追加；不得自动登记或改写历史事实。
+
+**数据与权限：** 仅有效 Owner 可读取候选、观察事实和治理引用；申请人不得复核本人操作，批准或驳回必须写入不可变时间线。
+
+**需求追踪：** `ADM-AUD-05 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
+
+**模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
+
+**页面状态：** 正常、加载中、加载失败、未登记 Action、治理阻断、候选编辑、提交失败
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-05`，共 7 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
+**页面级验收：**
+
+- 从“审计完整性页面或通知与审计导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“登记前置 Action”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 页面覆盖“正常、加载中、加载失败、未登记 Action、治理阻断、候选编辑、提交失败”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
+- 正式 Action 口径只能通过候选预览、职责分离和不可变复核结论追加；不得自动登记或改写历史事实。
+
+![ADM-AUD-05 Action 口径治理默认状态“正常”原型](./assets/page-prototypes/admin/adm-aud-05__default.png)
+
+**客户确认：**
+
+- [ ] 确认
+- [ ] 需修改
+- [ ] 暂缓
+
+意见：____________________________________________________________
+
+---
+
+### ADM-AUD-06 Action 口径申请复核
+
+**平台与模块：** 管理后台 · 通知与审计　　**优先级：** P2　　**设计路由：** `/admin/app/audit/registry/requests/{requestId}`
+
+**用户价值：** 重新核对候选定义、当前 Registry、观察事实与职责分离，再形成不可变结论。
+
+**适用角色：** 审计员、Owner
+
+**前置条件：** 管理员已登录，并同时满足角色 capability、对象范围、数据版本和必要的独立复核条件。
+
+**进入路径：** Action 口径治理待复核申请
+
+**页面结构：** 候选口径、提交时影响快照、当前 Registry、职责分离、复核说明和不可变结论双栏呈现。
+
+**详细交互：** 另一位有效 Owner 从 Action 口径治理的待复核申请进入。页面重新核对候选定义、提交时基线、当前 Registry、观察事实与职责分离；申请人本人只读等待，基线变化使原申请安全失效。批准后只追加正式版本，驳回或终态均形成不可变结论与时间线，不能改写历史申请。
+
+**业务规则：** 正式 Action 口径只能通过候选预览、职责分离和不可变复核结论追加；不得自动登记或改写历史事实。
+
+**数据与权限：** 仅有效 Owner 可读取候选、观察事实和治理引用；申请人不得复核本人操作，批准或驳回必须写入不可变时间线。
+
+**需求追踪：** `ADM-AUD-06 → PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012 → A-13/OAU-FR-*`
+
+**模块 PRD：** [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
+
+**页面状态：** 待复核、加载中、加载失败、申请人冲突、基线变化、终态只读
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-AUD-06`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
+**页面级验收：**
+
+- 从“Action 口径治理待复核申请”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“批准并追加”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 页面覆盖“待复核、加载中、加载失败、申请人冲突、基线变化、终态只读”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
+- 正式 Action 口径只能通过候选预览、职责分离和不可变复核结论追加；不得自动登记或改写历史事实。
+
+![ADM-AUD-06 Action 口径申请复核默认状态“待复核”原型](./assets/page-prototypes/admin/adm-aud-06__default.png)
+
+**客户确认：**
+
+- [ ] 确认
+- [ ] 需修改
+- [ ] 暂缓
+
+意见：____________________________________________________________
+
+---
+
+## 管理后台 · 数据权利
+
+本组共 2 个页面，按 Page ID 逐页确认。
+
+### ADM-PRI-01 数据权利队列
+
+**平台与模块：** 管理后台 · 数据权利　　**优先级：** P0　　**设计路由：** `/admin/app/data-rights`
+
+**用户价值：** 集中处理数据导出与账号注销申请，只展示最小必要信息，并明确当前 Privacy-1 治理门禁。
+
+**适用角色：** 隐私运营、合规管理员、Owner
+
+**前置条件：** 管理员已登录，并同时满足角色 capability、对象范围、数据版本和必要的独立复核条件。
+
+**进入路径：** 后台数据权利导航
+
+**页面结构：** 申请类型、脱敏账号、负责人、当前状态和策略时限构成最小化数据权利队列；加载、失败、空队列、治理门禁和逾期均使用独立状态。
+
+**详细交互：** 管理员从后台“数据权利”导航进入。页面先读取治理门禁、可见申请和负责人范围，再按类型、状态与负责人筛选；所有列表项只展示脱敏账号、稳定申请编号、当前状态和策略时限。首屏、筛选和刷新均具有独立加载、失败与空态；治理未批准时保持控制面只读，逾期只触发升级提示和详情核对，不自动完成申请。
+
+**业务规则：** Privacy-1 只交付数据权利控制面；没有真实导出包、删除执行器和不可变副作用证据时，不允许把申请标记为已完成。
+
+**数据与权限：** 仅展示脱敏账号、申请事实、策略快照和不可变时间线；领取与处置同时校验 capability、对象范围、版本、治理门禁和审计原因。
+
+**需求追踪：** `ADM-PRI-01 → PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-013 → F-13/PDR-FR-*,A-13/OAU-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
+
+**页面状态：** 正常、加载中、加载失败、空队列、治理门禁关闭、已逾期
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PRI-01`，共 6 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
+**页面级验收：**
+
+- 从“后台数据权利导航”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“刷新队列”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 页面覆盖“正常、加载中、加载失败、空队列、治理门禁关闭、已逾期”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
+- Privacy-1 只交付数据权利控制面；没有真实导出包、删除执行器和不可变副作用证据时，不允许把申请标记为已完成。
+
+**Figma 逐状态交付：** 本页 6 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 56 个有效动作，位于正式页面 Section `936:15995`；失效目标与不足 44dp 热区均为 0。
+
+- [打开 Figma 正式页面 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=936-15995)
+
+**状态 1｜正常｜`939:15995`**
+
+- 触发条件：服务端返回当前管理员有权查看的数据权利申请、负责人和策略时限。
+- 关键交互：可按类型、状态和负责人筛选，刷新权威队列或打开首条申请；列表不展示导出内容、私密正文或内部凭证。
+- 预期结果：显示脱敏账号、稳定申请编号、当前状态和时限；所有筛选与分页继续使用服务端结果。
+- 权威边界：申请状态、负责人、SLA 与可见范围均由服务端当前策略和对象范围决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=939-15995&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=939%3A15995&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-01 数据权利队列 Figma 状态“正常”原型](./assets/page-prototypes/admin/adm-pri-01__default.png)
+
+**状态 2｜加载中｜`942:16120`**
+
+- 触发条件：首次进入、切换筛选或重新加载队列。
+- 关键交互：保留侧栏和安全返回路径，禁用重复刷新，不使用旧统计或缓存列表冒充当前结果。
+- 预期结果：表格结构保持稳定，事实字段使用读取占位，完成后整体切换到服务端权威列表。
+- 权威边界：加载态不承载申请数量、负责人或处理时限事实。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=942-16120&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=942%3A16120&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-01 数据权利队列 Figma 状态“加载中”原型](./assets/page-prototypes/figma-final/phase16/adm-pri-01-loading.png)
+
+**状态 3｜加载失败｜`942:16342`**
+
+- 触发条件：队列或治理策略读取失败。
+- 关键交互：只允许重新加载、切换后台模块或安全返回；失败期间不执行领取和处置。
+- 预期结果：明确说明未执行任何处置，不展示过期队列或推断申请终态。
+- 权威边界：完整读取成功前所有写操作保持关闭。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=942-16342&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=942%3A16342&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-01 数据权利队列 Figma 状态“加载失败”原型](./assets/page-prototypes/figma-final/phase16/adm-pri-01-load-failure.png)
+
+**状态 4｜空队列｜`942:16556`**
+
+- 触发条件：当前筛选查询成功但没有可见申请。
+- 关键交互：可调整筛选、刷新或进入其他后台模块，不创建虚构待办。
+- 预期结果：空结果与加载失败严格区分，申请数量显示为零。
+- 权威边界：空队列来自成功响应的空集合。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=942-16556&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=942%3A16556&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-01 数据权利队列 Figma 状态“空队列”原型](./assets/page-prototypes/figma-final/phase16/adm-pri-01-empty.png)
+
+**状态 5｜治理门禁关闭｜`942:16770`**
+
+- 触发条件：Privacy-1 保留策略、负责人、SLA 或地区规则尚未全部获批。
+- 关键交互：允许查看策略和脱敏申请事实，但不允许开始真实数据导出或账号删除。
+- 预期结果：门禁原因、影响和安全下一步可理解，不以客户端开关绕过治理。
+- 权威边界：门禁由服务端已批准治理策略共同决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=942-16770&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=942%3A16770&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-01 数据权利队列 Figma 状态“治理门禁关闭”原型](./assets/page-prototypes/admin/adm-pri-01__state-02.png)
+
+**状态 6｜已逾期｜`942:16984`**
+
+- 触发条件：至少一条申请超过当前策略计算的处理时限。
+- 关键交互：突出逾期行和升级记录入口，可进入申请详情核对负责人和不可变时间线。
+- 预期结果：逾期只改变优先级与提示，不自动完成申请或执行不可逆动作。
+- 权威边界：逾期由服务端策略快照、提交时间和当前时间计算。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=942-16984&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=942%3A16984&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-01 数据权利队列 Figma 状态“已逾期”原型](./assets/page-prototypes/figma-final/phase16/adm-pri-01-overdue.png)
+
+**客户确认：**
+
+- [ ] 确认
+- [ ] 需修改
+- [ ] 暂缓
+
+意见：____________________________________________________________
+
+---
+
+### ADM-PRI-02 数据权利申请处置
+
+**平台与模块：** 管理后台 · 数据权利　　**优先级：** P0　　**设计路由：** `/admin/app/data-rights/{requestId}`
+
+**用户价值：** 核对脱敏账号、策略快照与不可变时间线，在服务端门禁内领取并执行受控动作。
+
+**适用角色：** 隐私运营、合规管理员、Owner
+
+**前置条件：** 管理员已登录，并同时满足角色 capability、对象范围、数据版本和必要的独立复核条件。
+
+**进入路径：** 数据权利队列
+
+**页面结构：** 脱敏申请事实、策略快照、不可变时间线和处置检查清单双栏呈现；领取、Privacy-2 门禁、失败与只读终态具有独立反馈。
+
+**详细交互：** 管理员从数据权利队列进入。页面读取申请当前版本、脱敏账号、策略快照与不可变时间线；未领取时先以条件更新建立负责人和审计原因。开始处置前重新校验 capability、对象范围、版本与 Privacy-2 门禁；当前阶段不得生成真实导出包或执行不可逆删除。操作失败保留原事实并记录失败事件；已取消等终态只读，不能从页面改写。
+
+**业务规则：** Privacy-1 只交付数据权利控制面；没有真实导出包、删除执行器和不可变副作用证据时，不允许把申请标记为已完成。
+
+**数据与权限：** 仅展示脱敏账号、申请事实、策略快照和不可变时间线；领取与处置同时校验 capability、对象范围、版本、治理门禁和审计原因。
+
+**需求追踪：** `ADM-PRI-02 → PRD-FR-080,PRD-FR-081,PRD-FR-082,PRD-FR-090,PRD-FR-091,PRD-FR-092 → SCP-FR-012,SCP-FR-013 → F-13/PDR-FR-*,A-13/OAU-FR-*`
+
+**模块 PRD：** [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*）
+
+**页面状态：** 正常、加载中、加载失败、待领取、Privacy-2 门禁关闭、操作失败、终态只读
+
+**Figma 最终稿映射：** `20｜Admin Pages` → `ADM-PRI-02`，共 7 个需求状态；在 [Figma 最终设计文件](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery) 中按 Page ID 定位。
+
+**页面级验收：**
+
+- 从“数据权利队列”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。
+- 主要操作“开始处置”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。
+- 页面覆盖“正常、加载中、加载失败、待领取、Privacy-2 门禁关闭、操作失败、终态只读”状态，并在空、错误、受限或冲突时提供安全下一步。
+- 服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。
+- Privacy-1 只交付数据权利控制面；没有真实导出包、删除执行器和不可变副作用证据时，不允许把申请标记为已完成。
+
+**Figma 逐状态交付：** 本页 7 个正式需求状态均已完成独立 Frame、交互和截图复核；正式稿共 69 个有效动作，位于正式页面 Section `936:15995`；失效目标与不足 44dp 热区均为 0。
+
+- [打开 Figma 正式页面 Section](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=936-15995)
+
+**状态 1｜正常｜`944:16747`**
+
+- 触发条件：申请已由当前管理员领取，权威事实、策略快照和时间线读取成功。
+- 关键交互：核对脱敏账号与检查清单后尝试开始受控处置；返回队列不改变申请状态。
+- 预期结果：当前仅呈现控制面事实，并明确真实导出包与不可逆删除仍由 Privacy-2 门禁控制。
+- 权威边界：领取人、版本、策略和允许动作由服务端重新校验。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=944-16747&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=944%3A16747&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-02 数据权利申请处置 Figma 状态“正常”原型](./assets/page-prototypes/admin/adm-pri-02__default.png)
+
+**状态 2｜加载中｜`945:16842`**
+
+- 触发条件：首次进入申请详情或失败后重新读取。
+- 关键交互：保留返回队列，禁用处置，不展示旧策略快照或过期 capability。
+- 预期结果：详情和检查清单保持等高结构，事实字段仅显示读取占位。
+- 权威边界：加载态不代表申请已领取、已完成或可执行。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=945-16842&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=945%3A16842&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-02 数据权利申请处置 Figma 状态“加载中”原型](./assets/page-prototypes/figma-final/phase16/adm-pri-02-loading.png)
+
+**状态 3｜加载失败｜`945:17043`**
+
+- 触发条件：申请事实、策略快照或时间线读取失败。
+- 关键交互：允许重新加载或返回队列，不开放领取、导出和删除动作。
+- 预期结果：保留最小脱敏标识，明确未发生任何写操作，也不推断申请终态。
+- 权威边界：只有完整读取成功后才允许进入下一状态。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=945-17043&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=945%3A17043&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-02 数据权利申请处置 Figma 状态“加载失败”原型](./assets/page-prototypes/figma-final/phase16/adm-pri-02-load-failure.png)
+
+**状态 4｜待领取｜`945:17245`**
+
+- 触发条件：申请仍未分配负责人，且当前管理员具备领取 capability 与对象范围。
+- 关键交互：领取时重新校验权限和申请版本，并写入负责人、原因与不可删除审计；领取本身不执行导出或删除。
+- 预期结果：页面明确区分领取控制面和真实数据处置。
+- 权威边界：领取结果只在服务端条件更新成功后生效。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=945-17245&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=945%3A17245&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-02 数据权利申请处置 Figma 状态“待领取”原型](./assets/page-prototypes/figma-final/phase16/adm-pri-02-unclaimed.png)
+
+**状态 5｜Privacy-2 门禁关闭｜`945:17448`**
+
+- 触发条件：管理员尝试进入真实导出或不可逆删除，但 Privacy-2 治理与执行器尚未开放。
+- 关键交互：只允许查看开放条件、策略快照和审计时间线，禁止生成导出包或删除账号。
+- 预期结果：不提供伪完成按钮，不以客户端状态模拟真实副作用。
+- 权威边界：Privacy-2 capability、治理策略和执行器状态由服务端共同决定。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=945-17448&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=945%3A17448&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-02 数据权利申请处置 Figma 状态“Privacy-2 门禁关闭”原型](./assets/page-prototypes/admin/adm-pri-02__state-02.png)
+
+**状态 6｜操作失败｜`945:17651`**
+
+- 触发条件：领取或受控动作未取得服务端事实变更确认。
+- 关键交互：保留失败事件、请求版本和原因，重新读取最新版本后才允许重试。
+- 预期结果：失败不显示为完成，不隐藏原申请，也不删除失败审计。
+- 权威边界：申请状态只有服务端确认更新后才变化。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=945-17651&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=945%3A17651&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-02 数据权利申请处置 Figma 状态“操作失败”原型](./assets/page-prototypes/figma-final/phase16/adm-pri-02-operation-failure.png)
+
+**状态 7｜终态只读｜`945:17853`**
+
+- 触发条件：用户在可取消窗口内撤回，或申请已进入当前策略定义的只读终态。
+- 关键交互：只允许查看脱敏事实、策略快照、审计时间线并返回队列，主操作保持禁用。
+- 预期结果：明确本例未生成导出包、未执行删除；终态事实不可由管理员在页面内改写。
+- 权威边界：终态、取消事实和副作用证据来自服务端不可变时间线。
+- [打开 Figma 交互原型](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=945-17853&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=945%3A17853&show-proto-sidebar=1&page-id=145%3A57042)
+
+![ADM-PRI-02 数据权利申请处置 Figma 状态“终态只读”原型](./assets/page-prototypes/figma-final/phase16/adm-pri-02-terminal-readonly.png)
 
 **客户确认：**
 

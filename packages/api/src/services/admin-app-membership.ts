@@ -99,6 +99,7 @@ interface UserRow {
   email: string
   status: string
   account_public_id: string | null
+  security_status: string
 }
 
 interface GrantRow {
@@ -497,14 +498,14 @@ async function buildGrantPreview(
 
 async function getActiveUser(db: D1Database, userId: number): Promise<UserRow> {
   const user = await db.prepare(`
-    SELECT u.id, u.email, u.status, s.account_public_id
+    SELECT u.id, u.email, u.status, s.account_public_id, s.status AS security_status
     FROM users u
-    LEFT JOIN app_account_security s ON s.user_id = u.id
+    JOIN app_account_security s ON s.account_id = u.id
     WHERE u.id = ?
     LIMIT 1
   `).bind(userId).first<UserRow>()
   if (!user) throw new AppMembershipError(404, 'ACCOUNT_NOT_FOUND', '目标账号不存在')
-  if (user.status !== 'active') {
+  if (user.status !== 'active' || user.security_status !== 'active') {
     throw new AppMembershipError(409, 'ACCOUNT_RESTRICTED', '目标账号当前不可发放会员')
   }
   return user

@@ -19,6 +19,8 @@ import {
   isAppFollowUpdateDeliveryEligible,
   type AppFollowUpdateRuntimeConfig,
 } from './app-follow-updates'
+import { isAppConversationMuted } from './app-conversation-settings'
+import { publishAppRealtimeRefresh } from './app-realtime'
 
 export const APP_NOTIFICATION_POLICY_ID = 'ntp_app_1_0_message_3_dev_1'
 export const APP_NOTIFICATION_MAX_PAGE_SIZE = 40
@@ -40,11 +42,16 @@ const NOTIFICATION_CATEGORIES = new Set<AppNotificationCategory>(
 const DEFAULT_PAGE_SIZE = 20
 const MAX_DELIVERY_ATTEMPTS = 5
 const PROCESSING_LEASE_MILLISECONDS = 5 * 60 * 1000
+const DEFAULT_NOTIFICATION_PURGE_LIMIT = 1000
+const MAX_NOTIFICATION_PURGE_LIMIT = 5000
+const DAY_MILLISECONDS = 24 * 60 * 60 * 1000
 
 export interface AppNotificationRuntimeConfig {
   enabled: boolean
   adminEnabled: boolean
+  conversationSettingsEnabled: boolean
   policyId: string
+  policyConfigured: boolean
   requireProductionReady: boolean
   followUpdates?: AppFollowUpdateRuntimeConfig
 }
@@ -58,6 +65,7 @@ export interface AppNotificationTargetCapabilities {
   safetyAppeals: boolean
   accountSecurity: boolean
   wallet: boolean
+  dataRights: boolean
 }
 
 export interface AppNotificationListQuery {
@@ -79,6 +87,14 @@ export interface UpdateAppNotificationPreferencesInput {
   marketing?: unknown
 }
 
+export interface AppNotificationPurgeResult {
+  skipped: boolean
+  reason: 'policy_not_configured' | 'policy_not_found' | 'retention_not_ready' | null
+  deletedNotificationCount: number
+  deletedReadEventCount: number
+  hasMore: boolean
+}
+
 export class AppNotificationError extends Error {
   constructor(
     public readonly status: 400 | 403 | 404 | 409 | 503,
@@ -98,6 +114,7 @@ type PolicyRow = {
   generation_enabled: number
   decision_status: string
   retention_days: number | null
+  purge_enabled: number
   effective_at: string | null
 }
 
@@ -117,6 +134,7 @@ type OutboxDeliveryRow = {
   minimum_client_version: string
   template_id: string
   template_version_code: string
+  variable_allowlist_json: string
   title_text: string
   summary_text: string
   body_text: string
@@ -155,6 +173,7 @@ export function getAppNotificationRuntimeConfig(env: Pick<Bindings,
   | 'APP_NOTIFICATIONS_ADMIN_ENABLED'
   | 'APP_NOTIFICATIONS_POLICY_VERSION'
   | 'APP_NOTIFICATIONS_PRODUCTION_READY'
+  | 'APP_CONVERSATION_SETTINGS_ENABLED'
   | 'APP_FOLLOW_UPDATES_ENABLED'
   | 'APP_FOLLOW_UPDATES_POLICY_VERSION'
   | 'APP_FOLLOW_UPDATES_PRODUCTION_READY'
@@ -173,7 +192,9 @@ export function getAppNotificationRuntimeConfig(env: Pick<Bindings,
     adminEnabled: env.APP_NOTIFICATIONS_ADMIN_ENABLED === 'true'
       && Boolean(configuredPolicy)
       && productionGateSatisfied,
+    conversationSettingsEnabled: env.APP_CONVERSATION_SETTINGS_ENABLED === 'true',
     policyId,
+    policyConfigured: Boolean(configuredPolicy),
     requireProductionReady,
     followUpdates: getAppFollowUpdateRuntimeConfig(env),
   }
@@ -445,7 +466,7 @@ export async function getAppNotificationPreferences(
   now = new Date(),
 ): Promise<AppNotificationPreferences> {
   requireAppNotificationsEnabled(config)
-  await requireNotificationPolicy(db, config)
+  const policy = await requireNotificationPolicy(db, config)
   await ensurePreferenceRow(db, accountId, config.policyId, now)
   const row = await readPreferenceRow(db, accountId)
   if (!row) throw new AppNotificationError(503, 'NOTIFICATION_PREFERENCES_UNAVAILABLE', '通知偏好暂不可用', true)
@@ -535,6 +556,10 @@ export async function recoverAppNotifications(
     | 'APP_NOTIFICATIONS_ADMIN_ENABLED'
     | 'APP_NOTIFICATIONS_POLICY_VERSION'
     | 'APP_NOTIFICATIONS_PRODUCTION_READY'
+    | 'APP_REALTIME_ENABLED'
+    | 'APP_REALTIME_POLICY_VERSION'
+    | 'APP_REALTIME_PRODUCTION_READY'
+    | 'APP_REALTIME_HUB'
   >,
   now = new Date(),
   limit = 100,
@@ -551,7 +576,26 @@ export async function recoverAppNotifications(
     now,
   )
   const delivery = await drainAppNotificationOutbox(env.DB, config, now, { limit })
-  return { skipped: false, expiredEnqueued, ...delivery }
+  await Promise.all(delivery.deliveredSignals.map(async (signal) => {
+    try {
+      await publishAppRealtimeRefresh(env, {
+        accountId: signal.accountId,
+        dedupeKey: `notification:${signal.notificationId}:delivered`,
+        scopes: ['notifications'],
+        occurredAt: now,
+      })
+    }
+    catch {
+      // 通知已由 D1 权威落库；实时刷新仅是尽力而为，失败不得回滚通知投递。
+    }
+  }))
+  return {
+    skipped: false,
+    expiredEnqueued,
+    delivered: delivery.delivered,
+    suppressed: delivery.suppressed,
+    failed: delivery.failed,
+  }
 }
 
 export async function drainAppNotificationOutbox(
@@ -559,8 +603,13 @@ export async function drainAppNotificationOutbox(
   config: AppNotificationRuntimeConfig,
   now = new Date(),
   options: { accountId?: number; limit?: number } = {},
-): Promise<{ delivered: number; suppressed: number; failed: number }> {
-  await requireNotificationPolicy(db, config)
+): Promise<{
+  delivered: number
+  suppressed: number
+  failed: number
+  deliveredSignals: Array<{ accountId: number; notificationId: string }>
+}> {
+  const policy = await requireNotificationPolicy(db, config)
   const nowIso = now.toISOString()
   const staleBefore = new Date(now.getTime() - PROCESSING_LEASE_MILLISECONDS).toISOString()
   await db.prepare(`
@@ -591,6 +640,7 @@ export async function drainAppNotificationOutbox(
   let delivered = 0
   let suppressed = 0
   let failed = 0
+  const deliveredSignals: Array<{ accountId: number; notificationId: string }> = []
   for (const pendingRow of pending.results) {
     const claimed = await db.prepare(`
       UPDATE app_notification_outbox
@@ -603,6 +653,12 @@ export async function drainAppNotificationOutbox(
     try {
       const row = await readOutboxDelivery(db, pendingRow.id, config.requireProductionReady)
       if (!row) throw new Error('NOTIFICATION_DEFINITION_UNAVAILABLE')
+      const expiresAt = resolveNotificationExpiresAt(row.created_at, policy)
+      if (expiresAt !== null && expiresAt <= nowIso) {
+        await suppressOutboxDelivery(db, row.outbox_id, nowIso)
+        suppressed += 1
+        continue
+      }
       if (
         row.event_type === APP_FOLLOW_UPDATE_EVENT_TYPE
         && !await isAppFollowUpdateDeliveryEligible(
@@ -615,6 +671,20 @@ export async function drainAppNotificationOutbox(
           config.followUpdates,
           now,
         )
+      ) {
+        await suppressOutboxDelivery(db, row.outbox_id, nowIso)
+        suppressed += 1
+        continue
+      }
+      if (
+        config.conversationSettingsEnabled
+        && [
+          'message.platform_reply',
+          'message.review_accepted',
+          'message.review_rejected',
+        ].includes(row.event_type)
+        && row.target_type === 'conversation'
+        && await isAppConversationMuted(db, row.account_id, row.target_id)
       ) {
         await suppressOutboxDelivery(db, row.outbox_id, nowIso)
         suppressed += 1
@@ -642,8 +712,8 @@ export async function drainAppNotificationOutbox(
           INSERT OR IGNORE INTO app_notifications (
             id, outbox_id, account_id, category, event_type, template_version_id,
             template_version_code, title_text, summary_text, body_text, target_type,
-            target_id, action, minimum_client_version, status, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?)
+            target_id, action, minimum_client_version, status, created_at, expires_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?)
         `).bind(
           notificationId,
           row.outbox_id,
@@ -660,6 +730,7 @@ export async function drainAppNotificationOutbox(
           row.action,
           row.minimum_client_version,
           row.created_at,
+          expiresAt,
         ),
         db.prepare(`
           UPDATE app_notification_outbox
@@ -668,8 +739,9 @@ export async function drainAppNotificationOutbox(
         `).bind(notificationId, nowIso, row.outbox_id),
       ])
       delivered += 1
+      deliveredSignals.push({ accountId: row.account_id, notificationId })
     }
-    catch {
+    catch (error) {
       failed += 1
       const attemptRow = await db.prepare(`
         SELECT attempts FROM app_notification_outbox WHERE id = ?
@@ -680,17 +752,92 @@ export async function drainAppNotificationOutbox(
       const nextAttemptAt = new Date(now.getTime() + backoffMinutes * 60 * 1000).toISOString()
       await db.prepare(`
         UPDATE app_notification_outbox
-        SET status = ?, next_attempt_at = ?, last_error_code = 'DELIVERY_FAILED', processed_at = ?
+        SET status = ?, next_attempt_at = ?, last_error_code = ?, processed_at = ?
         WHERE id = ? AND status = 'processing'
       `).bind(
         terminal ? 'dead_letter' : 'failed',
         nextAttemptAt,
+        notificationDeliveryErrorCode(error),
         nowIso,
         pendingRow.id,
       ).run()
     }
   }
-  return { delivered, suppressed, failed }
+  return { delivered, suppressed, failed, deliveredSignals }
+}
+
+export async function purgeExpiredAppNotifications(
+  db: D1Database,
+  config: AppNotificationRuntimeConfig,
+  now = new Date(),
+  limit = DEFAULT_NOTIFICATION_PURGE_LIMIT,
+): Promise<AppNotificationPurgeResult> {
+  if (!config.policyConfigured) return skippedNotificationPurge('policy_not_configured')
+  const policy = await db.prepare(`
+    SELECT decision_status, retention_days, purge_enabled
+    FROM app_notification_policies
+    WHERE id = ?
+    LIMIT 1
+  `).bind(config.policyId).first<Pick<
+    PolicyRow,
+    'decision_status' | 'retention_days' | 'purge_enabled'
+  >>()
+  if (!policy) return skippedNotificationPurge('policy_not_found')
+  if (
+    policy.decision_status !== 'approved'
+    || !isNotificationRetentionDays(policy.retention_days)
+    || policy.purge_enabled !== 1
+  ) return skippedNotificationPurge('retention_not_ready')
+
+  const timestamp = requireNotificationPurgeTimestamp(now)
+  const legacyCutoff = new Date(
+    now.getTime() - policy.retention_days * DAY_MILLISECONDS,
+  ).toISOString()
+  const safeLimit = normalizeNotificationPurgeLimit(limit)
+  const targetSubquery = `
+    SELECT notification.id
+    FROM app_notifications notification
+    WHERE (
+      notification.expires_at IS NOT NULL AND notification.expires_at <= ?
+    ) OR (
+      notification.expires_at IS NULL AND notification.created_at <= ?
+    )
+    ORDER BY
+      CASE WHEN notification.expires_at IS NULL THEN 1 ELSE 0 END ASC,
+      notification.expires_at ASC,
+      notification.created_at ASC,
+      notification.id ASC
+    LIMIT ?
+  `
+  const results = await db.batch([
+    db.prepare(`
+      DELETE FROM app_notification_read_events
+      WHERE notification_id IN (${targetSubquery})
+    `).bind(timestamp, legacyCutoff, safeLimit),
+    db.prepare(`
+      DELETE FROM app_notifications
+      WHERE id IN (${targetSubquery})
+    `).bind(timestamp, legacyCutoff, safeLimit),
+  ])
+  const remaining = await db.prepare(`
+    SELECT EXISTS (
+      SELECT 1
+      FROM app_notifications notification
+      WHERE (
+        notification.expires_at IS NOT NULL AND notification.expires_at <= ?
+      ) OR (
+        notification.expires_at IS NULL AND notification.created_at <= ?
+      )
+      LIMIT 1
+    ) AS has_more
+  `).bind(timestamp, legacyCutoff).first<{ has_more: number }>()
+  return {
+    skipped: false,
+    reason: null,
+    deletedReadEventCount: Number(results[0]?.meta?.changes ?? 0),
+    deletedNotificationCount: Number(results[1]?.meta?.changes ?? 0),
+    hasMore: remaining?.has_more === 1,
+  }
 }
 
 async function prepareViewerNotifications(
@@ -735,7 +882,7 @@ async function requireNotificationPolicy(
 ): Promise<PolicyRow> {
   const row = await db.prepare(`
     SELECT id, state, production_ready, generation_enabled, decision_status,
-           retention_days, effective_at
+           retention_days, purge_enabled, effective_at
     FROM app_notification_policies
     WHERE id = ?
     LIMIT 1
@@ -755,6 +902,59 @@ async function requireNotificationPolicy(
     throw new AppNotificationError(503, 'NOTIFICATION_POLICY_NOT_READY', '通知策略尚未通过生产门禁')
   }
   return row
+}
+
+function resolveNotificationExpiresAt(createdAt: string, policy: PolicyRow) {
+  if (policy.decision_status !== 'approved') return null
+  if (!isNotificationRetentionDays(policy.retention_days)) {
+    throw new AppNotificationError(
+      503,
+      'NOTIFICATION_RETENTION_POLICY_INVALID',
+      '通知保留策略无效',
+      true,
+    )
+  }
+  const createdAtMilliseconds = Date.parse(createdAt)
+  if (!Number.isFinite(createdAtMilliseconds)) {
+    throw new AppNotificationError(
+      503,
+      'NOTIFICATION_EVENT_TIME_INVALID',
+      '通知事件时间无效',
+      false,
+    )
+  }
+  return new Date(
+    createdAtMilliseconds + policy.retention_days * DAY_MILLISECONDS,
+  ).toISOString()
+}
+
+function isNotificationRetentionDays(value: number | null): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 1 && Number(value) <= 3650
+}
+
+function normalizeNotificationPurgeLimit(value: number) {
+  return Number.isSafeInteger(value) && value >= 1 && value <= MAX_NOTIFICATION_PURGE_LIMIT
+    ? value
+    : DEFAULT_NOTIFICATION_PURGE_LIMIT
+}
+
+function requireNotificationPurgeTimestamp(value: Date) {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    throw new Error('NOTIFICATION_PURGE_TIME_INVALID')
+  }
+  return value.toISOString()
+}
+
+function skippedNotificationPurge(
+  reason: NonNullable<AppNotificationPurgeResult['reason']>,
+): AppNotificationPurgeResult {
+  return {
+    skipped: true,
+    reason,
+    deletedNotificationCount: 0,
+    deletedReadEventCount: 0,
+    hasMore: false,
+  }
 }
 
 async function enqueueExpiredMembershipNotifications(
@@ -820,6 +1020,7 @@ async function readOutboxDelivery(
            definition.category, definition.necessity, definition.preference_key,
            definition.action, definition.minimum_client_version,
            template.id AS template_id, template.version_code AS template_version_code,
+           template.variable_allowlist_json,
            template.title_text, template.summary_text, template.body_text
     FROM app_notification_outbox outbox
     JOIN app_notification_event_definitions definition
@@ -867,6 +1068,76 @@ async function ensurePreferenceRow(
       version, created_at, updated_at
     ) VALUES (?, ?, 1, 1, 0, 1, ?, ?)
   `).bind(accountId, policyId, nowIso, nowIso).run()
+
+  // 偏好记录按账号唯一，策略升级时不能依赖 INSERT OR IGNORE 自动换绑。
+  // 保留用户既有选择，并用 version + 不可变事件把旧/新策略边界显式记录下来。
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await readPreferenceRow(db, accountId)
+    if (!current) {
+      throw new AppNotificationError(503, 'NOTIFICATION_PREFERENCES_UNAVAILABLE', '通知偏好暂不可用', true)
+    }
+    if (current.policy_id === policyId) return
+
+    const currentVersion = Number(current.version)
+    if (!Number.isSafeInteger(currentVersion) || currentVersion < 1) {
+      throw new AppNotificationError(503, 'NOTIFICATION_PREFERENCES_UNAVAILABLE', '通知偏好版本暂不可用', true)
+    }
+    const nextVersion = currentVersion + 1
+    const previousPolicyId = current.policy_id
+    await db.batch([
+      db.prepare(`
+        INSERT OR IGNORE INTO app_notification_preference_events (
+          id, account_id, policy_id, version, message_enabled, interaction_enabled,
+          marketing_enabled, device_id, request_id, created_at
+        )
+        SELECT ?, account_id, policy_id, version, message_enabled, interaction_enabled,
+               marketing_enabled, NULL, ?, ?
+        FROM app_notification_preferences
+        WHERE account_id = ? AND policy_id = ? AND version = ?
+      `).bind(
+        randomId('npe'),
+        preferencePolicyRebindRequestId('baseline'),
+        nowIso,
+        accountId,
+        previousPolicyId,
+        currentVersion,
+      ),
+      db.prepare(`
+        UPDATE app_notification_preferences
+        SET policy_id = ?, version = ?, updated_at = ?
+        WHERE account_id = ? AND policy_id = ? AND version = ?
+      `).bind(
+        policyId,
+        nextVersion,
+        nowIso,
+        accountId,
+        previousPolicyId,
+        currentVersion,
+      ),
+      db.prepare(`
+        INSERT OR IGNORE INTO app_notification_preference_events (
+          id, account_id, policy_id, version, message_enabled, interaction_enabled,
+          marketing_enabled, device_id, request_id, created_at
+        )
+        SELECT ?, account_id, policy_id, version, message_enabled, interaction_enabled,
+               marketing_enabled, NULL, ?, ?
+        FROM app_notification_preferences
+        WHERE account_id = ? AND policy_id = ? AND version = ?
+      `).bind(
+        randomId('npe'),
+        preferencePolicyRebindRequestId('applied'),
+        nowIso,
+        accountId,
+        policyId,
+        nextVersion,
+      ),
+    ])
+  }
+
+  const rebound = await readPreferenceRow(db, accountId)
+  if (!rebound || rebound.policy_id !== policyId) {
+    throw new AppNotificationError(503, 'NOTIFICATION_PREFERENCES_UNAVAILABLE', '通知偏好策略正在同步，请重试', true)
+  }
 }
 
 function readPreferenceRow(db: D1Database, accountId: number) {
@@ -966,6 +1237,7 @@ function targetCapabilityEnabled(
   if (type === 'safety_appeal') return capabilities.safetyAppeals
   if (type === 'account_security') return capabilities.accountSecurity
   if (type === 'wallet_entry') return capabilities.wallet
+  if (type === 'data_task') return capabilities.dataRights
   return false
 }
 
@@ -983,6 +1255,7 @@ async function targetBelongsToAccount(
   if (type === 'safety_appeal') query = 'SELECT 1 AS found FROM app_safety_appeals WHERE id = ? AND account_id = ?'
   if (type === 'account_security') query = 'SELECT 1 AS found FROM app_account_security_events WHERE id = ? AND account_id = ?'
   if (type === 'wallet_entry') query = 'SELECT 1 AS found FROM app_wallet_entries WHERE id = ? AND account_id = ? AND status = \'posted\''
+  if (type === 'data_task') query = 'SELECT 1 AS found FROM app_data_rights_requests WHERE id = ? AND account_id = ?'
   if (type === 'person_profile') {
     query = `
       SELECT 1 AS found
@@ -1000,9 +1273,45 @@ async function notificationCopyForDelivery(
   db: D1Database,
   row: OutboxDeliveryRow,
 ): Promise<{ title: string; summary: string; body: string }> {
-  if (row.event_type !== 'wallet.entry_posted') {
-    return { title: row.title_text, summary: row.summary_text, body: row.body_text }
+  if (row.event_type === 'wallet.entry_posted') return walletNotificationCopy(db, row)
+
+  const allowlist = parseTemplateVariableAllowlist(row.variable_allowlist_json)
+  if (allowlist.length === 0) return validateRenderedNotificationCopy({
+    title: row.title_text,
+    summary: row.summary_text,
+    body: row.body_text,
+  })
+  if (row.event_type !== 'membership.granted') {
+    throw new Error('NOTIFICATION_TEMPLATE_VARIABLE_EVENT_UNSUPPORTED')
   }
+  const grant = await db.prepare(`
+    SELECT tier_name_snapshot, expires_at
+    FROM app_membership_grants
+    WHERE id = ? AND user_id = ?
+    LIMIT 1
+  `).bind(row.target_id, row.account_id).first<{
+    tier_name_snapshot: string
+    expires_at: string
+  }>()
+  if (!grant) throw new Error('NOTIFICATION_TEMPLATE_SOURCE_UNAVAILABLE')
+  const values: Record<string, string> = {
+    membership_level: grant.tier_name_snapshot,
+    expires_at: grant.expires_at.slice(0, 10),
+  }
+  if (allowlist.some(variable => !(variable in values))) {
+    throw new Error('NOTIFICATION_TEMPLATE_VARIABLE_UNSUPPORTED')
+  }
+  return validateRenderedNotificationCopy({
+    title: renderNotificationTemplate(row.title_text, allowlist, values),
+    summary: renderNotificationTemplate(row.summary_text, allowlist, values),
+    body: renderNotificationTemplate(row.body_text, allowlist, values),
+  })
+}
+
+async function walletNotificationCopy(
+  db: D1Database,
+  row: OutboxDeliveryRow,
+) {
   const entry = await db.prepare(`
     SELECT direction, amount, reason_code
     FROM app_wallet_entries
@@ -1024,11 +1333,63 @@ async function notificationCopyForDelivery(
   if (!direction) throw new Error('WALLET_NOTIFICATION_ENTRY_INVALID')
   const reason = walletNotificationReasonLabel(entry.reason_code)
   const summary = `金币已${direction} ${entry.amount} · ${reason}`
-  return {
+  return validateRenderedNotificationCopy({
     title: `金币已${direction}`,
     summary,
     body: `${summary}。打开金币明细可核对权威余额、业务编号与冲正关系。金币当前不可购买、消费、转赠、兑换或提现。`,
+  })
+}
+
+function parseTemplateVariableAllowlist(value: string) {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
   }
+  catch {
+    throw new Error('NOTIFICATION_TEMPLATE_VARIABLE_CATALOG_INVALID')
+  }
+  if (
+    !Array.isArray(parsed)
+    || parsed.length > 20
+    || parsed.some(item => typeof item !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/u.test(item))
+    || new Set(parsed).size !== parsed.length
+  ) {
+    throw new Error('NOTIFICATION_TEMPLATE_VARIABLE_CATALOG_INVALID')
+  }
+  return parsed as string[]
+}
+
+function renderNotificationTemplate(
+  value: string,
+  allowlist: string[],
+  variables: Record<string, string>,
+) {
+  const allowed = new Set(allowlist)
+  return value.replace(/\{([a-z][a-z0-9_]*)\}/gu, (_match, variable: string) => {
+    if (!allowed.has(variable) || variables[variable] === undefined) {
+      throw new Error('NOTIFICATION_TEMPLATE_VARIABLE_MISSING')
+    }
+    return variables[variable]
+  })
+}
+
+function validateRenderedNotificationCopy(copy: { title: string; summary: string; body: string }) {
+  const entries = [
+    [copy.title, 80],
+    [copy.summary, 160],
+    [copy.body, 500],
+  ] as const
+  if (entries.some(([value, max]) => !value.trim() || value.length > max || /[{}]/u.test(value))) {
+    throw new Error('NOTIFICATION_TEMPLATE_RENDER_INVALID')
+  }
+  return copy
+}
+
+function notificationDeliveryErrorCode(error: unknown) {
+  if (error instanceof Error && /^[A-Z][A-Z0-9_]{2,79}$/u.test(error.message)) {
+    return error.message
+  }
+  return 'DELIVERY_FAILED'
 }
 
 function walletNotificationReasonLabel(value: string) {
@@ -1139,6 +1500,10 @@ function notificationNotFound() {
 
 function randomId(prefix: 'nre' | 'npe') {
   return `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`
+}
+
+function preferencePolicyRebindRequestId(stage: 'baseline' | 'applied') {
+  return `policy-rebind-${stage}-${crypto.randomUUID().replaceAll('-', '')}`
 }
 
 async function stableNotificationId(outboxId: string) {

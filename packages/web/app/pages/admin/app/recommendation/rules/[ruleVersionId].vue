@@ -191,18 +191,13 @@ function toIso(value: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <NuxtLink to="/admin/app/recommendation/rules" class="text-sm font-medium text-blue-600 hover:underline">返回推荐规则</NuxtLink>
-        <h1 class="mt-2 break-words text-xl font-bold text-gray-950">{{ rule?.name || '推荐规则工作台' }}</h1>
-        <p class="mt-1 break-all font-mono text-xs text-gray-500">{{ ruleVersionId }}</p>
-      </div>
-      <div v-if="rule" class="flex flex-wrap items-center gap-2">
-        <span class="inline-flex rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset" :class="recommendationStateClass(rule.state)">{{ RECOMMENDATION_STATE_LABELS[rule.state] || rule.state }}</span>
+    <AdminAppPageHeader page-id="ADM-REC-02" :route="`/admin/app/recommendation/rules/${ruleVersionId}`" title="推荐规则编辑" :description="rule ? `${rule.name} · 编辑锁 v${rule.version}` : '配置候选、排序、多样性与灰度，并提交独立审核。'" :state="error ? '加载失败' : status === 'pending' ? '加载中' : rule ? (RECOMMENDATION_STATE_LABELS[rule.state] || rule.state) : '正常'" :figma-state="error ? 'Schema 错误' : '正常'" :state-tone="error ? 'danger' : status === 'pending' ? 'warning' : 'success'">
+      <template #actions>
+        <NuxtLink to="/admin/app/recommendation/rules" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700">返回规则列表</NuxtLink>
         <NuxtLink :to="`/admin/app/recommendation/rules/${ruleVersionId}/preview`" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Dry-run 预览</NuxtLink>
-        <button class="min-h-10 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50" :disabled="Boolean(operation)" @click="copyRule">复制新版本</button>
-      </div>
-    </div>
+        <button v-if="rule" class="min-h-10 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50" :disabled="Boolean(operation)" @click="copyRule">复制新版本</button>
+      </template>
+    </AdminAppPageHeader>
 
     <div v-if="error" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{{ recommendationApiError(error, '推荐规则加载失败。') }} <button class="ml-2 font-semibold underline" @click="refresh()">重试</button></div>
     <div v-if="status === 'pending'" class="rounded-xl border border-gray-200 bg-white px-5 py-14 text-center text-sm text-gray-500">正在加载规则工作台…</div>

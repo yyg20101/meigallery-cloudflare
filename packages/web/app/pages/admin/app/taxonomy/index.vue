@@ -287,17 +287,12 @@ function toIso(value: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">ADM-TAX-01</p>
-        <h1 class="mt-1 text-xl font-bold text-gray-950">Taxonomy 分类目录</h1>
-        <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-500">维护稳定词条、不可变目录快照和 legacy 显式映射。展示名称与 slug 只用于显示，跨模块引用必须使用稳定 ID。</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
+    <AdminAppPageHeader page-id="ADM-TAX-01" route="/admin/app/taxonomy" title="Taxonomy 目录树" description="维护稳定词条、不可变目录快照和 legacy 显式映射；跨模块引用必须使用稳定 ID。" figma-state="正常">
+      <template #actions>
         <button type="button" class="min-h-10 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" @click="Promise.all([refreshTerms(), refreshCatalogs(), refreshMappings()])">刷新工作区</button>
-        <button type="button" class="min-h-10 rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white" @click="activeTab = 'terms'; showCreateTerm = !showCreateTerm">新建词条</button>
-      </div>
-    </header>
+        <button type="button" class="min-h-10 rounded-[10px] bg-[#d63363] px-4 py-2 text-sm font-medium text-white hover:bg-[#bd2756]" @click="activeTab = 'terms'; showCreateTerm = !showCreateTerm">新建词条</button>
+      </template>
+    </AdminAppPageHeader>
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
       <span class="font-semibold">开发边界：</span>目录发布不会自动切换 App 当前目录；运行开关、目录选择和 production-ready 配置仍保持关闭，统一在全部开发完成后处理。

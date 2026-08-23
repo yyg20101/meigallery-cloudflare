@@ -1,4 +1,5 @@
 import { generateId } from '../utils/db'
+import type { Bindings } from '../index'
 import {
   APP_DATA_RIGHTS_POLICY_ID,
   AppDataRightsError,
@@ -9,6 +10,18 @@ import {
   type AppDataRightsRequestRow,
   type AppDataRightsRuntimeConfig,
 } from './app-data-rights'
+import {
+  dispatchAppDataRightsExport,
+  getAdminAppDataRightsExportState,
+  prepareAppDataRightsExportStart,
+  resolveAppDataRightsExportExecutorReadiness,
+} from './app-data-rights-exports'
+import {
+  dispatchAppDataRightsDeletion,
+  getAdminAppDataRightsDeletionState,
+  prepareAppDataRightsDeletionStart,
+  resolveAppDataRightsDeletionExecutorReadiness,
+} from './app-data-rights-deletions'
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{16,128}$/u
 const REQUEST_ID = /^drr_[A-Za-z0-9_-]{1,92}$/u
@@ -19,6 +32,18 @@ const DEFAULT_PAGE_SIZE = 40
 
 const ADMIN_ACTIONS = ['begin_processing', 'fail', 'retry', 'cancel_verified'] as const
 type AdminDataRightsAction = typeof ADMIN_ACTIONS[number]
+
+type AdminDataRightsEnvironment = Pick<
+  Bindings,
+  | 'DB'
+  | 'R2'
+  | 'DATA_RIGHTS_EXPORT_QUEUE'
+  | 'DATA_RIGHTS_DELETION_QUEUE'
+  | 'DATA_RIGHTS_RETENTION_MASTER_KEY_CURRENT'
+  | 'DATA_RIGHTS_RETENTION_MASTER_KEY_PREVIOUS'
+  | 'APP_REALTIME_HUB'
+  | 'SESSION_SECRET'
+>
 
 export type AdminDataRightsActor = {
   adminId: number
@@ -214,25 +239,50 @@ export async function listAdminAppDataRightsRequests(
 }
 
 export async function getAdminAppDataRightsRequest(
-  db: D1Database,
+  env: AdminDataRightsEnvironment,
   requestIdValue: unknown,
   actor?: AdminDataRightsActor,
   now = new Date(),
 ) {
+  const db = env.DB
   const requestId = requireRequestId(requestIdValue)
   const request = await requireAdminRequest(db, requestId)
-  const events = await db.prepare(`
-    SELECT event.id, event.sequence, event.request_version, event.status_snapshot,
-           event.event_type, event.visibility, event.actor_type, event.actor_id,
-           actor.email AS actor_email, actor.nickname AS actor_nickname, actor.role AS actor_role,
-           event.reason_code, event.user_message, event.internal_note,
-           event.safe_summary_json, event.created_at
-    FROM app_data_rights_request_events event
-    LEFT JOIN users actor ON actor.id = event.actor_id
-    WHERE event.request_id = ?
-    ORDER BY event.sequence ASC
-  `).bind(requestId).all<AdminTimelineRow>()
+  const [events, exportArtifact, exportExecutor, deletionExecution, deletionExecutor] = await Promise.all([
+    db.prepare(`
+      SELECT event.id, event.sequence, event.request_version, event.status_snapshot,
+             event.event_type, event.visibility, event.actor_type, event.actor_id,
+             actor.email AS actor_email, actor.nickname AS actor_nickname, actor.role AS actor_role,
+             event.reason_code, event.user_message, event.internal_note,
+             event.safe_summary_json, event.created_at
+      FROM app_data_rights_request_events event
+      LEFT JOIN users actor ON actor.id = event.actor_id
+      WHERE event.request_id = ?
+      ORDER BY event.sequence ASC
+    `).bind(requestId).all<AdminTimelineRow>(),
+    request.request_type === 'export'
+      ? getAdminAppDataRightsExportState(db, requestId)
+      : Promise.resolve(null),
+    request.request_type === 'export'
+      ? resolveAppDataRightsExportExecutorReadiness(env, request.policy_id)
+      : Promise.resolve(null),
+    request.request_type === 'deletion'
+      ? getAdminAppDataRightsDeletionState(db, requestId)
+      : Promise.resolve(null),
+    request.request_type === 'deletion'
+      ? resolveAppDataRightsDeletionExecutorReadiness(env, request.policy_id)
+      : Promise.resolve(null),
+  ])
   const mapped = mapAdminRequest(request, now)
+  if (exportExecutor && !exportExecutor.ready) {
+    mapped.availableActions = mapped.availableActions.filter(
+      action => !['begin_processing', 'retry'].includes(action),
+    )
+  }
+  if (deletionExecutor && !deletionExecutor.ready) {
+    mapped.availableActions = mapped.availableActions.filter(
+      action => !['begin_processing', 'retry'].includes(action),
+    )
+  }
   return {
     ...mapped,
     timeline: events.results.map(event => ({
@@ -256,6 +306,10 @@ export async function getAdminAppDataRightsRequest(
       safeSummary: safeJsonObject(event.safe_summary_json),
       createdAt: event.created_at,
     })),
+    exportArtifact,
+    exportExecutor,
+    deletionExecution,
+    deletionExecutor,
     permissions: {
       canClaim: actor?.role === 'owner' && request.assigned_to === null && !isTerminal(request.status),
       canAct: actor?.role === 'owner' && request.assigned_to === actor.adminId && !isTerminal(request.status),
@@ -264,7 +318,7 @@ export async function getAdminAppDataRightsRequest(
 }
 
 export async function claimAdminAppDataRightsRequest(
-  db: D1Database,
+  env: AdminDataRightsEnvironment,
   config: AppDataRightsRuntimeConfig,
   requestIdValue: unknown,
   actor: AdminDataRightsActor,
@@ -272,6 +326,7 @@ export async function claimAdminAppDataRightsRequest(
   input: AdminDataRightsClaimInput,
   now = new Date(),
 ) {
+  const db = env.DB
   requireAdminControlEnabled(config, actor)
   const requestId = requireRequestId(requestIdValue)
   const expectedVersion = positiveInteger(input.expectedVersion, 'expectedVersion')
@@ -281,7 +336,7 @@ export async function claimAdminAppDataRightsRequest(
   const operation = 'admin_claim'
   const actorScope = `admin:${actor.adminId}`
   const replay = await findCommand(db, actorScope, operation, idempotencyHash)
-  if (replay) return adminReplay(db, replay, requestHash, actor, now)
+  if (replay) return adminReplay(env, replay, requestHash, actor, now)
 
   const current = await requireAdminRequest(db, requestId)
   if (current.version !== expectedVersion) throw versionConflict()
@@ -343,11 +398,11 @@ export async function claimAdminAppDataRightsRequest(
   ])
   const stored = await findCommand(db, actorScope, operation, idempotencyHash)
   if (!stored) throw new AdminAppDataRightsError(409, 'REQUEST_CLAIM_CONFLICT', '申请已被领取，请刷新后重试')
-  return { request: await getAdminAppDataRightsRequest(db, requestId, actor, now), replayed: false }
+  return { request: await getAdminAppDataRightsRequest(env, requestId, actor, now), replayed: false }
 }
 
 export async function actOnAdminAppDataRightsRequest(
-  db: D1Database,
+  env: AdminDataRightsEnvironment,
   config: AppDataRightsRuntimeConfig,
   requestIdValue: unknown,
   actor: AdminDataRightsActor,
@@ -355,6 +410,7 @@ export async function actOnAdminAppDataRightsRequest(
   input: AdminDataRightsActionInput,
   now = new Date(),
 ) {
+  const db = env.DB
   requireAdminControlEnabled(config, actor)
   const requestId = requireRequestId(requestIdValue)
   const action = requireAction(input.action)
@@ -376,7 +432,25 @@ export async function actOnAdminAppDataRightsRequest(
   const operation = `admin_${action}`
   const actorScope = `admin:${actor.adminId}`
   const replay = await findCommand(db, actorScope, operation, idempotencyHash)
-  if (replay) return adminReplay(db, replay, requestHash, actor, now)
+  if (replay) {
+    const result = await adminReplay(env, replay, requestHash, actor, now)
+    if (
+      action === 'begin_processing'
+      && result.request.type === 'export'
+      && result.request.status === 'collecting'
+    ) {
+      await dispatchAppDataRightsExport(env, requestId)
+    }
+    if (
+      action === 'begin_processing'
+      || (action === 'retry' && result.request.type === 'deletion')
+    ) {
+      if (result.request.type === 'deletion' && result.request.status === 'processing') {
+        await dispatchAppDataRightsDeletion(env, requestId)
+      }
+    }
+    return result
+  }
 
   const current = await requireAdminRequest(db, requestId)
   if (current.version !== expectedVersion) throw versionConflict()
@@ -475,6 +549,38 @@ export async function actOnAdminAppDataRightsRequest(
       timestamp),
     auditContextStatement(db, auditId, actor, reasonCode, requestId, current.policy_version_snapshot, idempotencyHash, timestamp),
   ]
+  let exportArtifactId: string | null = null
+  let deletionExecutionId: string | null = null
+  if (
+    current.request_type === 'export'
+    && action === 'begin_processing'
+    && transition.status === 'collecting'
+  ) {
+    const preparedExport = await prepareAppDataRightsExportStart(
+      env,
+      current,
+      nextVersion,
+      mutationToken,
+      timestamp,
+    )
+    exportArtifactId = preparedExport.artifactId
+    statements.push(...preparedExport.statements)
+  }
+  if (
+    current.request_type === 'deletion'
+    && ['begin_processing', 'retry'].includes(action)
+    && transition.status === 'processing'
+  ) {
+    const preparedDeletion = await prepareAppDataRightsDeletionStart(
+      env,
+      current,
+      nextVersion,
+      mutationToken,
+      timestamp,
+    )
+    deletionExecutionId = preparedDeletion.executionId
+    statements.push(...preparedDeletion.statements)
+  }
   if (transition.status === 'cancelled') {
     statements.push(
       db.prepare(`
@@ -502,7 +608,9 @@ export async function actOnAdminAppDataRightsRequest(
   await db.batch(statements)
   const stored = await findCommand(db, actorScope, operation, idempotencyHash)
   if (!stored) throw new AdminAppDataRightsError(409, 'REQUEST_ACTION_CONFLICT', '申请状态已变化，请刷新后重试')
-  return { request: await getAdminAppDataRightsRequest(db, requestId, actor, now), replayed: false }
+  if (exportArtifactId) await dispatchAppDataRightsExport(env, requestId)
+  if (deletionExecutionId) await dispatchAppDataRightsDeletion(env, requestId)
+  return { request: await getAdminAppDataRightsRequest(env, requestId, actor, now), replayed: false }
 }
 
 function resolveActionTransition(
@@ -531,7 +639,7 @@ function resolveActionTransition(
   if (action === 'fail') {
     const allowed = current.request_type === 'export'
       ? ['requested', 'collecting'].includes(current.status)
-      : ['scheduled', 'processing'].includes(current.status)
+      : current.status === 'scheduled'
     if (!allowed) throw invalidTransition()
     return { status: 'failed' as const, statusMessageCode: 'processing_failed', eventType: 'processing_failed' }
   }
@@ -546,7 +654,10 @@ function resolveActionTransition(
     if (policy.deletion_processing_enabled !== 1 || policy.production_ready !== 1) {
       throw new AdminAppDataRightsError(503, 'DELETION_PROCESSING_NOT_READY', '注销执行器尚未通过生产门禁', true)
     }
-    return { status: 'scheduled' as const, statusMessageCode: 'deletion_retry_scheduled', eventType: 'retry_scheduled' }
+    if (!current.scheduled_for || Date.parse(current.scheduled_for) > now.getTime()) {
+      throw new AdminAppDataRightsError(409, 'DELETION_COOLING_OFF_ACTIVE', '注销仍在原可取消等待期内')
+    }
+    return { status: 'processing' as const, statusMessageCode: 'deletion_processing', eventType: 'retry_scheduled' }
   }
   const cancellable = current.request_type === 'export'
     ? ['requested', 'collecting'].includes(current.status)
@@ -677,7 +788,8 @@ function availableActions(row: AppDataRightsRequestRow, now: Date): AdminDataRig
       else actions.push('cancel_verified')
       actions.push('fail')
     }
-    else if (row.status === 'processing') actions.push('fail')
+    // 不可逆处理开始后仅由执行器写失败或完成，后台不能与正在运行的检查点竞争。
+    else if (row.status === 'processing') return []
     else if (
       row.status === 'failed'
       && row.policy_production_ready === 1
@@ -894,7 +1006,7 @@ async function findCommand(db: D1Database, actorScope: string, operation: string
 }
 
 async function adminReplay(
-  db: D1Database,
+  env: AdminDataRightsEnvironment,
   command: CommandRow,
   requestHash: string,
   actor: AdminDataRightsActor,
@@ -904,7 +1016,7 @@ async function adminReplay(
     throw new AdminAppDataRightsError(409, 'IDEMPOTENCY_CONFLICT', '该幂等键已用于不同请求')
   }
   return {
-    request: await getAdminAppDataRightsRequest(db, command.result_request_id, actor, now),
+    request: await getAdminAppDataRightsRequest(env, command.result_request_id, actor, now),
     replayed: true,
   }
 }

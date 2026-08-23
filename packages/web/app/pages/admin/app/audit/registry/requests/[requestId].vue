@@ -116,14 +116,9 @@ function eventLabel(value: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="min-w-0">
-      <NuxtLink to="/admin/app/audit/registry" class="text-sm font-medium text-gray-600 hover:text-gray-950">← 返回 Action 口径治理</NuxtLink>
-      <div class="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-        <h1 class="break-words text-xl font-bold text-gray-950">Action 口径申请</h1>
-        <span v-if="request" class="rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset" :class="auditRegistryRequestStatusClass(request.status)">{{ auditRegistryRequestStatusLabel(request.status) }}</span>
-      </div>
-      <p class="mt-1 break-all font-mono text-xs text-gray-500">{{ requestId }}</p>
-    </header>
+    <AdminAppPageHeader page-id="ADM-AUD-06" :route="`/admin/app/audit/registry/requests/${requestId}`" title="Action 口径申请复核" :description="`核对候选定义、当前 Registry、观察事实与职责分离 · ${requestId}`" :state="errorMessage ? '加载失败' : loading ? '加载中' : request ? auditRegistryRequestStatusLabel(request.status) : '待复核'" :figma-state="errorMessage ? '加载失败' : loading ? '加载中' : request?.status === 'stale' ? '基线变化' : request && request.status !== 'pending_review' ? '终态只读' : '待复核'" :state-tone="errorMessage ? 'danger' : loading || request?.status === 'pending_review' ? 'warning' : request?.status === 'approved' ? 'success' : 'neutral'">
+      <template #actions><NuxtLink to="/admin/app/audit/registry" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">返回 Action 口径治理</NuxtLink></template>
+    </AdminAppPageHeader>
 
     <p v-if="errorMessage" class="break-words rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ errorMessage }}</p>
     <p v-if="successMessage" class="break-words rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-700">{{ successMessage }}</p>

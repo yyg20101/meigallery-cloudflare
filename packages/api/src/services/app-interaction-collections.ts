@@ -2,7 +2,7 @@ import type { Bindings } from '../index'
 
 export const APP_INTERACTION_COLLECTION_POLICY_ID = 'icp_app_1_0_interaction_2_dev_1'
 export const APP_FAVORITE_DEFAULT_FOLDER_LABEL = '默认收藏' as const
-export const APP_FAVORITE_MAX_FOLDER_NAME_LENGTH = 30
+export const APP_FAVORITE_MAX_FOLDER_NAME_LENGTH = 20
 export const APP_FAVORITE_MAX_ITEMS_PER_FOLDER = 500
 export const APP_INTERACTION_COLLECTION_MAX_PAGE_SIZE = 40
 
@@ -13,6 +13,7 @@ const FOLDER_ID_PATTERN = /^ff_[A-Za-z0-9_-]{1,93}$/u
 export interface AppInteractionCollectionRuntimeConfig {
   enabled: boolean
   policyId: string
+  policyConfigured: boolean
   requireProductionReady: boolean
 }
 
@@ -71,6 +72,7 @@ export function getAppInteractionCollectionRuntimeConfig(env: Pick<Bindings,
       && Boolean(configuredPolicyId)
       && productionGateSatisfied,
     policyId: configuredPolicyId ?? APP_INTERACTION_COLLECTION_POLICY_ID,
+    policyConfigured: Boolean(configuredPolicyId),
     requireProductionReady,
   }
 }

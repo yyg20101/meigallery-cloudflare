@@ -20,6 +20,8 @@ describe('Web API 代理头部白名单', () => {
       'X-Audit-Step-Up': ' step-up-secret ',
       'X-Audit-Download-Ticket': ' download-secret ',
       'X-Forwarded-For': '203.0.113.10, 198.51.100.2',
+      'X-Import-Part-Size': ' 8388608 ',
+      'X-Import-Upload-Session': ' 11111111-1111-4111-8111-111111111111 ',
       'X-Real-IP': '203.0.113.10',
       'User-Agent': 'Mozilla/5.0',
     })).toEqual({
@@ -35,6 +37,8 @@ describe('Web API 代理头部白名单', () => {
       'x-audit-download-ticket': 'download-secret',
       'x-audit-step-up': 'step-up-secret',
       'x-forwarded-for': '203.0.113.10, 198.51.100.2',
+      'x-import-part-size': '8388608',
+      'x-import-upload-session': '11111111-1111-4111-8111-111111111111',
       'x-real-ip': '203.0.113.10',
     })
   })
@@ -47,7 +51,7 @@ describe('Web API 代理头部白名单', () => {
       Connection: 'keep-alive',
       'Keep-Alive': 'timeout=5',
       'Transfer-Encoding': 'chunked',
-      'Content-Length': '42',
+      'Content-Length': '8388608',
       'Accept-Encoding': 'br, gzip',
       'Sec-Fetch-Site': 'same-origin',
       'X-Nuxt-Data': '1',

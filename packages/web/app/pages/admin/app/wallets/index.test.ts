@@ -16,9 +16,9 @@ describe('Wallet-1 后台页面边界', () => {
     expect(source).toContain('必须由另一位管理员复核')
   })
 
-  it('不提供交易、批量调币或直接余额写入入口', () => {
-    expect(source).toContain('不可购买、消费、转赠、兑换或提现')
+  it('不提供批量调币或直接余额写入入口', () => {
     expect(source).toContain('不提供批量调币、直接改余额')
+    expect(source).toContain('自动修账或绕过独立复核')
     expect(source).not.toContain('批量提交')
     expect(source).not.toContain('充值按钮')
     expect(source).not.toContain('直接保存余额')

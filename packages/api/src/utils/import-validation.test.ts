@@ -24,6 +24,16 @@ const basePayload = {
   ],
 }
 
+function expectValidationError(payload: unknown) {
+  try {
+    validateTelegramImportPayload(payload)
+  } catch (error) {
+    expect(error).toMatchObject({ code: 'IMPORT_VALIDATION_FAILED', status: 400 })
+    return
+  }
+  throw new Error('预期 payload 被导入校验拒绝')
+}
+
 describe('validateTelegramImportPayload', () => {
   it('标准化有效图库导入 payload', () => {
     const result = validateTelegramImportPayload(basePayload)
@@ -129,5 +139,61 @@ describe('validateTelegramImportPayload', () => {
     })
 
     expect(result).toThrow('sourceBotKey 只能包含小写字母、数字和下划线')
+  })
+
+  it('把畸形字段稳定拒绝为校验错误，而不是触发运行时类型异常', () => {
+    for (const payload of [
+      { ...basePayload, metadata: { ...basePayload.metadata, title: 42 } },
+      { ...basePayload, metadata: { ...basePayload.metadata, tags: '多伦多' } },
+      { ...basePayload, telegram: { ...basePayload.telegram, sourceChatId: 10001 } },
+      { ...basePayload, files: [null] },
+      { ...basePayload, files: [{ ...basePayload.files[0], filename: { path: '001.jpg' } }] },
+    ]) {
+      expectValidationError(payload)
+    }
+  })
+
+  it('拒绝空白必填字段、超长 Telegram 标识和多个封面', () => {
+    expect(() => validateTelegramImportPayload({
+      ...basePayload,
+      metadata: { ...basePayload.metadata, title: '   ' },
+    })).toThrow('标题长度必须为 1-80 字符')
+
+    expect(() => validateTelegramImportPayload({
+      ...basePayload,
+      telegram: { ...basePayload.telegram, sourceMessageId: 'x'.repeat(129) },
+    })).toThrow('sourceMessageId长度必须为 1-128 字符')
+
+    expect(() => validateTelegramImportPayload({
+      ...basePayload,
+      files: [
+        basePayload.files[0],
+        { ...basePayload.files[0], fileId: 'AgACAg2', sortOrder: 1 },
+      ],
+    })).toThrow('最多只能指定一张封面图片')
+  })
+
+  it('只返回白名单字段并规范化外部标识与标签', () => {
+    const result = validateTelegramImportPayload({
+      ...basePayload,
+      unexpected: 'drop-me',
+      metadata: {
+        ...basePayload.metadata,
+        externalMessageId: '  -1001234567890:456  ',
+        tags: ['  多伦多  城区  ', '多伦多 城区'],
+        unexpected: 'drop-me',
+      },
+      telegram: { ...basePayload.telegram, unexpected: 'drop-me' },
+      files: [{ ...basePayload.files[0], unexpected: 'drop-me' }],
+    }) as unknown as Record<string, unknown>
+
+    expect(result).not.toHaveProperty('unexpected')
+    expect(result.metadata).not.toHaveProperty('unexpected')
+    expect(result.telegram).not.toHaveProperty('unexpected')
+    expect(result.files).toEqual([
+      expect.not.objectContaining({ unexpected: 'drop-me' }),
+    ])
+    expect((result.metadata as Record<string, unknown>).externalMessageId).toBe('-1001234567890:456')
+    expect((result.metadata as Record<string, unknown>).tags).toEqual(['多伦多 城区'])
   })
 })

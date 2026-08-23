@@ -1,4 +1,9 @@
 import type { Bindings } from '../index'
+import {
+  normalizeAppNumericVersion,
+  supportsAppMinimumVersion,
+} from './app-client-version'
+import { recommendationRuleMatchesRegion } from './app-recommendation-region'
 import { getAppOperationalControl } from './app-operational-safety'
 
 export const APP_RECOMMENDATION_POLICY_ID = 'rcp_app_1_0_recommendation_1_dev_1'
@@ -117,27 +122,49 @@ export function getAppRecommendationRuntimeConfig(env: Pick<Bindings,
 export async function resolveAppRecommendationCapabilities(
   db: D1Database,
   config: AppRecommendationRuntimeConfig,
+  clientVersionValue: string | undefined,
   now = new Date(),
 ): Promise<AppRecommendationCapabilities> {
   if (!config.enabled) return closedCapabilities()
+  const clientVersion = normalizeAppNumericVersion(clientVersionValue)
+  if (!clientVersion) return closedCapabilities()
   try {
     const operationalControl = await getAppOperationalControl(db, 'recommendation_delivery')
     if (operationalControl.state !== 'available') return closedCapabilities()
     const policy = await loadAppRecommendationPolicy(db, config, now)
     if (!policy.feedEnabled) return { ...closedCapabilities(), policy }
+    if (!supportsAppMinimumVersion(clientVersion, policy.minimumClientVersion)) {
+      return { ...closedCapabilities(), policy }
+    }
     const activeRule = await findActiveRecommendationRule(
       db,
       'non_personalized',
+      clientVersion,
+      undefined,
+      undefined,
       config.requireProductionReady,
       now,
     )
     if (!activeRule) return { ...closedCapabilities(), policy }
+    const activePersonalizedRule = policy.personalizationEnabled
+      && policy.personalizationDecisionStatus === 'approved'
+      ? await findActiveRecommendationRule(
+          db,
+          'personalized',
+          clientVersion,
+          undefined,
+          undefined,
+          config.requireProductionReady,
+          now,
+        )
+      : null
     return {
       feed: true,
       preferences: policy.preferenceEnabled,
       personalization: policy.preferenceEnabled
         && policy.personalizationEnabled
-        && policy.personalizationDecisionStatus === 'approved',
+        && policy.personalizationDecisionStatus === 'approved'
+        && Boolean(activePersonalizedRule),
       editorial: true,
       policy,
       activeRuleVersionId: activeRule.rule_version_id,
@@ -153,6 +180,7 @@ export async function requireAppRecommendationPolicy(
   config: AppRecommendationRuntimeConfig,
   capability: 'feed' | 'preferences' | 'admin',
   now = new Date(),
+  clientVersionValue?: string,
 ): Promise<AppRecommendationPolicy> {
   if (capability === 'admin' && !config.adminEnabled) {
     throw new AppRecommendationError(403, 'RECOMMENDATION_ADMIN_DISABLED', '推荐运营后台当前保持关闭')
@@ -170,41 +198,258 @@ export async function requireAppRecommendationPolicy(
   if (capability === 'admin' && !policy.adminOperationsEnabled) {
     throw new AppRecommendationError(403, 'RECOMMENDATION_ADMIN_DISABLED', '推荐运营后台当前保持关闭')
   }
+  if (capability !== 'admin') {
+    const clientVersion = normalizeAppNumericVersion(clientVersionValue)
+    if (!clientVersion) {
+      throw new AppRecommendationError(
+        400,
+        'APP_CLIENT_VERSION_INVALID',
+        'X-Client-Version 必须为两段或三段数字版本',
+      )
+    }
+    if (!supportsAppMinimumVersion(clientVersion, policy.minimumClientVersion)) {
+      throw new AppRecommendationError(
+        403,
+        'RECOMMENDATION_CLIENT_VERSION_UNSUPPORTED',
+        '当前客户端版本尚不支持此推荐策略，请先更新 App',
+      )
+    }
+  }
   return policy
 }
 
 export async function findActiveRecommendationRule(
   db: D1Database,
   mode: AppRecommendationMode,
+  clientVersion: string,
+  regionCode: string | null | undefined,
+  taxonomyCatalogId: string | null | undefined,
   requireProductionReady: boolean,
   now = new Date(),
 ) {
-  return db.prepare(`
-    SELECT rule_version_id
-    FROM app_recommendation_rule_versions
-    WHERE entry_point = 'discovery_home'
-      AND mode = ?
+  const compatible = await listCompatibleRecommendationRules(
+    db,
+    mode,
+    clientVersion,
+    regionCode,
+    taxonomyCatalogId,
+    requireProductionReady,
+    now,
+  )
+  return compatible[0] ?? null
+}
+
+export async function listCompatibleRecommendationRules(
+  db: D1Database,
+  mode: AppRecommendationMode,
+  clientVersion: string,
+  regionCode: string | null | undefined,
+  taxonomyCatalogId: string | null | undefined,
+  requireProductionReady: boolean,
+  now = new Date(),
+) {
+  const candidates = await db.prepare(`
+    SELECT rule.rule_version_id, rule.entry_point, rule.mode, rule.state,
+           rule.taxonomy_catalog_id, rule.minimum_client_version,
+           rule.target_region_codes_json, rule.rollback_rule_version_id,
+           rule.rollout_percent, rule.guardrail_policy_id,
+           policy.state AS guardrail_policy_state,
+           policy.production_ready AS guardrail_policy_production_ready,
+           policy.source_key AS guardrail_policy_source_key,
+           EXISTS (
+             SELECT 1
+             FROM app_recommendation_guardrail_controls control
+             WHERE control.control_id = 'recommendation_guardrails'
+               AND control.evaluation_enabled = 1
+               AND control.source_decision_status = 'approved'
+               AND control.retention_decision_status = 'approved'
+               AND control.retention_days IS NOT NULL
+               AND control.purge_enabled = 1
+               AND control.source_key = policy.source_key
+           ) AS guardrail_control_ready,
+           COALESCE((
+             SELECT control.production_ready
+             FROM app_recommendation_guardrail_controls control
+             WHERE control.control_id = 'recommendation_guardrails'
+             LIMIT 1
+           ), 0) AS guardrail_control_production_ready,
+           EXISTS (
+             SELECT 1
+             FROM app_recommendation_guardrail_blocks block
+             WHERE block.rule_version_id = rule.rule_version_id
+           ) AS guardrail_blocked
+    FROM app_recommendation_rule_versions rule
+    LEFT JOIN app_recommendation_guardrail_policies policy
+      ON policy.policy_id = rule.guardrail_policy_id
+    WHERE rule.entry_point = 'discovery_home'
+      AND rule.mode = ?
       AND (
-        state = 'active'
-        OR (state = 'scheduled' AND effective_at IS NOT NULL AND datetime(effective_at) <= datetime(?))
+        rule.state = 'active'
+        OR (rule.state = 'scheduled' AND rule.effective_at IS NOT NULL AND datetime(rule.effective_at) <= datetime(?))
       )
-      AND rollout_percent > 0
-      AND (effective_at IS NULL OR datetime(effective_at) <= datetime(?))
-      AND (expires_at IS NULL OR datetime(expires_at) > datetime(?))
-      AND (? = 0 OR production_ready = 1)
+      AND rule.rollout_percent > 0
+      AND (rule.effective_at IS NULL OR datetime(rule.effective_at) <= datetime(?))
+      AND (rule.expires_at IS NULL OR datetime(rule.expires_at) > datetime(?))
+      AND (? = 0 OR rule.production_ready = 1)
     ORDER BY
-      CASE state WHEN 'scheduled' THEN 0 ELSE 1 END ASC,
-      COALESCE(effective_at, activated_at) DESC,
-      activated_at DESC,
-      rule_version_id ASC
-    LIMIT 1
+      CASE rule.state WHEN 'scheduled' THEN 0 ELSE 1 END ASC,
+      COALESCE(rule.effective_at, rule.activated_at) DESC,
+      rule.activated_at DESC,
+      rule.rule_version_id ASC
+    LIMIT 2
   `).bind(
     mode,
     now.toISOString(),
     now.toISOString(),
     now.toISOString(),
     requireProductionReady ? 1 : 0,
-  ).first<{ rule_version_id: string }>()
+  ).all<{
+    rule_version_id: string
+    entry_point: string
+    mode: string
+    state: string
+    taxonomy_catalog_id: string | null
+    minimum_client_version: string
+    target_region_codes_json: string
+    rollback_rule_version_id: string | null
+    rollout_percent: number
+    guardrail_policy_id: string | null
+    guardrail_policy_state: string | null
+    guardrail_policy_production_ready: number | null
+    guardrail_policy_source_key: string | null
+    guardrail_control_ready: number
+    guardrail_control_production_ready: number
+    guardrail_blocked: number
+  }>()
+
+  const compatible: Array<{ rule_version_id: string }> = []
+  const selectedIds = new Set<string>()
+  for (const candidate of candidates.results) {
+    if (
+      recommendationRuleMatchesRegion(candidate.target_region_codes_json, regionCode)
+      && supportsAppMinimumVersion(clientVersion, candidate.minimum_client_version)
+      && recommendationRuleMatchesTaxonomy(mode, candidate.taxonomy_catalog_id, taxonomyCatalogId)
+      && recommendationGuardrailAllowsDelivery(candidate, requireProductionReady)
+    ) {
+      compatible.push({ rule_version_id: candidate.rule_version_id })
+      selectedIds.add(candidate.rule_version_id)
+    }
+  }
+
+  for (const candidate of candidates.results) {
+    if (!candidate.rollback_rule_version_id) continue
+    const fallback = await db.prepare(`
+      SELECT rule.rule_version_id, rule.taxonomy_catalog_id, rule.minimum_client_version,
+             rule.target_region_codes_json, rule.rollout_percent, rule.guardrail_policy_id,
+             policy.state AS guardrail_policy_state,
+             policy.production_ready AS guardrail_policy_production_ready,
+             policy.source_key AS guardrail_policy_source_key,
+             EXISTS (
+               SELECT 1
+               FROM app_recommendation_guardrail_controls control
+               WHERE control.control_id = 'recommendation_guardrails'
+                 AND control.evaluation_enabled = 1
+                 AND control.source_decision_status = 'approved'
+                 AND control.retention_decision_status = 'approved'
+                 AND control.retention_days IS NOT NULL
+                 AND control.purge_enabled = 1
+                 AND control.source_key = policy.source_key
+             ) AS guardrail_control_ready,
+             COALESCE((
+               SELECT control.production_ready
+               FROM app_recommendation_guardrail_controls control
+               WHERE control.control_id = 'recommendation_guardrails'
+               LIMIT 1
+             ), 0) AS guardrail_control_production_ready,
+             EXISTS (
+               SELECT 1
+               FROM app_recommendation_guardrail_blocks block
+               WHERE block.rule_version_id = rule.rule_version_id
+             ) AS guardrail_blocked
+      FROM app_recommendation_rule_versions rule
+      LEFT JOIN app_recommendation_guardrail_policies policy
+        ON policy.policy_id = rule.guardrail_policy_id
+      WHERE rule.rule_version_id = ?
+        AND rule.entry_point = ?
+        AND rule.mode = ?
+        AND rule.rollout_percent = 100
+        AND rule.state IN ('active', 'paused', 'retired', 'rolled_back')
+        AND rule.activated_at IS NOT NULL
+        AND (rule.effective_at IS NULL OR datetime(rule.effective_at) <= datetime(?))
+        AND (rule.expires_at IS NULL OR datetime(rule.expires_at) > datetime(?))
+        AND (? = 0 OR rule.production_ready = 1)
+      LIMIT 1
+    `).bind(
+      candidate.rollback_rule_version_id,
+      candidate.entry_point,
+      candidate.mode,
+      now.toISOString(),
+      now.toISOString(),
+      requireProductionReady ? 1 : 0,
+    ).first<{
+      rule_version_id: string
+      taxonomy_catalog_id: string | null
+      minimum_client_version: string
+      target_region_codes_json: string
+      rollout_percent: number
+      guardrail_policy_id: string | null
+      guardrail_policy_state: string | null
+      guardrail_policy_production_ready: number | null
+      guardrail_policy_source_key: string | null
+      guardrail_control_ready: number
+      guardrail_control_production_ready: number
+      guardrail_blocked: number
+    }>()
+    if (
+      fallback
+      && !selectedIds.has(fallback.rule_version_id)
+      && recommendationRuleMatchesRegion(fallback.target_region_codes_json, regionCode)
+      && supportsAppMinimumVersion(clientVersion, fallback.minimum_client_version)
+      && recommendationRuleMatchesTaxonomy(mode, fallback.taxonomy_catalog_id, taxonomyCatalogId)
+      && recommendationGuardrailAllowsDelivery(fallback, requireProductionReady)
+    ) {
+      compatible.push({ rule_version_id: fallback.rule_version_id })
+      selectedIds.add(fallback.rule_version_id)
+    }
+  }
+
+  return compatible
+}
+
+function recommendationGuardrailAllowsDelivery(
+  rule: {
+    rollout_percent: number
+    guardrail_policy_id: string | null
+    guardrail_policy_state: string | null
+    guardrail_policy_production_ready: number | null
+    guardrail_policy_source_key: string | null
+    guardrail_control_ready: number
+    guardrail_control_production_ready: number
+    guardrail_blocked: number
+  },
+  requireProductionReady: boolean,
+) {
+  if (rule.guardrail_blocked === 1) return false
+  if (rule.rollout_percent >= 100) return true
+  return rule.rollout_percent > 0
+    && Boolean(rule.guardrail_policy_id)
+    && rule.guardrail_policy_state === 'approved'
+    && rule.guardrail_policy_source_key === 'recommendation_aggregate_v1'
+    && rule.guardrail_control_ready === 1
+    && (!requireProductionReady || (
+      rule.guardrail_policy_production_ready === 1
+      && rule.guardrail_control_production_ready === 1
+    ))
+}
+
+function recommendationRuleMatchesTaxonomy(
+  mode: AppRecommendationMode,
+  ruleCatalogId: string | null,
+  requestedCatalogId: string | null | undefined,
+) {
+  return mode !== 'personalized'
+    || requestedCatalogId === undefined
+    || ruleCatalogId === requestedCatalogId
 }
 
 export function normalizeRecommendationExpectedVersion(value: unknown) {
@@ -322,6 +567,7 @@ function validatePolicyRow(row: PolicyRow) {
     || !Number.isSafeInteger(row.max_editorial_items)
     || row.max_editorial_items < 0
     || row.max_editorial_items > 10
+    || normalizeAppNumericVersion(row.minimum_client_version) === null
     || !['unresolved', 'approved'].includes(row.personalization_decision_status)
     || !['unresolved', 'approved'].includes(row.evidence_retention_decision_status)
     || (row.personalization_enabled === 1 && row.personalization_decision_status !== 'approved')

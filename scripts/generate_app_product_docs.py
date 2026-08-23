@@ -102,10 +102,10 @@ SPECS = (
         source=ROOT / "docs/app/APP_PAGE_LEVEL_PRODUCT_DESIGN.md",
         output=DELIVERABLES / "MeiGallery_App_1.0_逐页交互设计确认册.docx",
         title="MeiGallery App 1.0\n逐页交互设计确认册",
-        subtitle="移动端 49 页 + 管理后台 43 页，共 92 个页面级设计对象",
+        subtitle="移动端 50 页 + 管理后台 49 页，共 99 个页面级设计对象",
         running_label="MeiGallery App 1.0｜逐页交互设计确认册",
         purpose="用于按 Page ID 逐页确认页面目标、入口、操作、异常状态、出口和验收条件。",
-        scope="Android/iOS 移动端与 Nuxt 管理后台；92 页是完整需求覆盖，不等于首批同时开发。",
+        scope="Android/iOS 移动端与 Nuxt 管理后台；99 页是完整需求覆盖，不等于首批同时开发。",
         review_path=(
             "先确认全局交互规则与不可变产品边界。",
             "按 P0 关键旅程评审移动端，再评审后台闭环。",
@@ -582,7 +582,7 @@ def add_cover(doc: Document, spec: DocumentSpec) -> None:
     for item in (
         "产品需求确认书：确认产品范围、业务闭环、业务规则与验收。",
         "逐页交互设计确认册：按 Page ID 确认每一页的目标、状态与操作。",
-        "可交互原型：现场演示关键旅程和 92 页独立页面设计。",
+        "可交互原型：现场演示关键旅程和 99 页独立页面设计。",
     ):
         p = doc.add_paragraph()
         add_inline_content(p, item)
@@ -946,37 +946,68 @@ def load_page_manifest() -> dict[str, Any]:
     manifest = json.loads(PAGE_MANIFEST.read_text(encoding="utf-8"))
     counts = manifest.get("counts", {})
     expected = {
-        "pages": 92,
-        "mobilePages": 49,
-        "adminPages": 43,
-        "p0Pages": 54,
-        "p1Pages": 31,
-        "p2Pages": 7,
-        "defaultCaptures": 92,
-        "keyStateCaptures": 54,
-        "totalCaptures": 146,
+        "pages": 99,
+        "mobilePages": 50,
+        "adminPages": 49,
+        "p0Pages": 57,
+        "p1Pages": 32,
+        "p2Pages": 10,
+        "defaultCaptures": 99,
+        "keyStateCaptures": 57,
+        "totalCaptures": 156,
         "detailedFigmaPages": 5,
         "detailedFigmaStateCaptures": 23,
-        "documentPrototypeMappings": 169,
-        "figmaDesignedPages": 92,
-        "figmaDesignedStates": 349,
-        "figmaMobileStates": 186,
-        "figmaAdminStates": 163,
-        "figmaFlowPreviews": 92,
-        "figmaPageActions": 1790,
-        "figmaFlowActions": 494,
-        "figmaTotalActions": 2284,
+        "documentPrototypeMappings": 179,
+        "figmaDesignedPages": 99,
+        "figmaDesignedStates": 408,
+        "figmaMobileStates": 208,
+        "figmaAdminStates": 200,
+        "figmaFlowPreviews": 99,
+        "figmaHistoricalPageActionBaseline": 2957,
+        "figmaHistoricalFlowActionBaseline": 614,
+        "figmaHistoricalActionBaseline": 3571,
     }
     for key, value in expected.items():
         if counts.get(key) != value:
             raise ValueError(
                 f"逐页原型清单计数异常：{key}={counts.get(key)!r}，应为 {value}"
             )
+    pages = manifest.get("pages", [])
+    state_totals = {"mobile": 0, "admin": 0}
+    for page in pages:
+        states = page.get("states")
+        if not isinstance(states, list) or not states:
+            raise ValueError(f"{page.get('pageId', '未知页面')} 缺少正式状态")
+        if any(
+            not isinstance(state, str) or not state or state.strip() != state
+            for state in states
+        ):
+            raise ValueError(
+                f"{page.get('pageId', '未知页面')} 存在空白或未规范化的正式状态名称"
+            )
+        if len(states) != len(set(states)):
+            raise ValueError(f"{page['pageId']} 存在重复正式状态")
+        platform = page.get("platform")
+        if platform not in state_totals:
+            raise ValueError(f"{page['pageId']} 平台类型无效：{platform!r}")
+        state_totals[platform] += len(states)
+    derived = {
+        "figmaDesignedPages": len(pages),
+        "figmaDesignedStates": sum(state_totals.values()),
+        "figmaMobileStates": state_totals["mobile"],
+        "figmaAdminStates": state_totals["admin"],
+    }
+    for key, value in derived.items():
+        if counts.get(key) != value:
+            raise ValueError(
+                f"逐页原型清单 {key} 与页面状态明细不一致："
+                f"清单 {counts.get(key)!r}，实际 {value}"
+            )
     if manifest.get("status") != "verified":
         raise ValueError("逐页原型清单尚未完成校验，拒绝生成客户文档")
     if int(manifest.get("schemaVersion", 0)) < 4:
         raise ValueError("逐页原型清单缺少 Figma 全量最终交付与需求追踪 schema")
-    for page in manifest.get("pages", []):
+    for page in pages:
         requirements = page.get("requirements", {})
         if not requirements.get("traceKey"):
             raise ValueError(f"{page.get('pageId', '未知页面')} 缺少需求追踪键")
@@ -1058,7 +1089,7 @@ def preferred_capture(
 ) -> dict[str, Any]:
     """用已审计的 Figma 最终图替换同 Page ID、同状态的基础占位图。
 
-    基础映射的 alt 和 variant 继续保留，以便 146 个既有追踪键不失效；
+    基础映射的 alt 和 variant 继续保留，以便 156 个基础图片映射不失效；
     图片、Frame 和交互链接来自最终状态，避免客户看到过时原型。
     """
     final = final_states.get((capture["pageId"], capture["state"]))
@@ -1183,7 +1214,7 @@ def add_page_catalog_appendix(
 ) -> None:
     defaults, _ = capture_maps(manifest)
     final_states = figma_capture_map(manifest)
-    heading = doc.add_paragraph("附录 A：92 页详细需求与默认原型", style="Heading 1")
+    heading = doc.add_paragraph("附录 A：99 页详细需求与默认原型", style="Heading 1")
     heading.paragraph_format.page_break_before = True
     set_keep_with_next(heading)
     paragraph = doc.add_paragraph()
@@ -1191,7 +1222,7 @@ def add_page_catalog_appendix(
         paragraph,
         "本附录以 Page ID 为唯一映射键。每个页面均包含用途、入口、角色、"
         "结构、交互、规则、权限、需求追踪、状态、验收标准、对应默认原型和客户确认栏；"
-        "移动端 49 页、管理后台 43 页，共 92 个独立确认单元。",
+        "移动端 50 页、管理后台 49 页，共 99 个独立确认单元。",
         base_size=10,
     )
     paragraph = doc.add_paragraph()
@@ -1280,14 +1311,14 @@ def add_key_state_appendix(
         )
     captures.sort(key=lambda item: pages_by_id[item["pageId"]]["order"])
 
-    heading = doc.add_paragraph("附录 B：54 个 P0 关键状态原型", style="Heading 1")
+    heading = doc.add_paragraph("附录 B：57 个 P0 关键状态原型", style="Heading 1")
     heading.paragraph_format.page_break_before = True
     set_keep_with_next(heading)
     paragraph = doc.add_paragraph()
     add_inline_content(
         paragraph,
         "P0 页面除默认状态外，另提供一个对开发与验收最关键的异常、受限、"
-        "冲突或完成状态。以下 54 张原型与附录 A 使用同一 Page ID 映射。",
+        "冲突或完成状态。以下 56 张原型与附录 A 使用同一 Page ID 映射。",
         base_size=10,
     )
 
@@ -1426,7 +1457,7 @@ def add_detailed_figma_state_appendix(
     paragraph = doc.add_paragraph()
     add_inline_content(
         paragraph,
-        "Figma 最终设计已覆盖 92 页、349 个需求状态；本附录另外保留通知列表、"
+        "Figma 最终设计已覆盖 99 页、408 个需求状态；本附录另外保留通知列表、"
         "通知详情、金币钱包、金币明细和金币分录详情 5 个页面的 23 张逐状态本地导出图。"
         "每个导出状态均绑定 Page ID、状态名、"
         "Figma Frame ID、触发条件、关键交互、预期结果与服务端权威边界。",
@@ -1435,9 +1466,10 @@ def add_detailed_figma_state_appendix(
     paragraph = doc.add_paragraph()
     add_inline_content(
         paragraph,
-        "最终交互审计结果：移动端 49 页/186 状态、后台 43 页/163 状态全部覆盖；"
-        "页面内与流程动作共 2,284 个，缺失目标 0，移动端不足 44dp 的关键热区 0，"
-        "文字溢出 0。附录 A/B 中这 5 个页面的同名状态已自动使用逐状态导出图。",
+        "最终设计覆盖移动端 50 页/208 状态、后台 49 页/200 状态；"
+        "3,571 个页面内与流程交互源、缺失目标 0、移动端不足 44dp 的关键热区 0 和"
+        "文字溢出 0 均为 APP-SET-08 增量六态前历史审计基线，新增六态已完成定向 QA，"
+        "当前全量动作与 QA 统计待开发结束后统一重算。附录 A/B 中这 5 个页面的同名状态已自动使用逐状态导出图。",
         base_size=9.5,
         base_color=BRAND_DARK,
         base_bold=True,
@@ -1465,7 +1497,8 @@ def add_final_delivery_confirmation(
         f"默认原型与关键状态合计 {counts['totalCaptures']} 张。",
         f"Figma 最终设计覆盖 {counts['figmaDesignedPages']} 页、"
         f"{counts['figmaDesignedStates']} 个需求状态和 "
-        f"{counts['figmaTotalActions']:,} 个有效交互动作；"
+        f"APP-SET-08 增量前历史基线为 {counts['figmaHistoricalActionBaseline']:,} 个有效交互动作，"
+        "当前动作总数待全部开发完成后统一重算；"
         f"移动端/后台状态分别为 {counts['figmaMobileStates']}/"
         f"{counts['figmaAdminStates']}。",
         f"通知与金币 {counts['detailedFigmaPages']} 个页面另保留 "
@@ -1542,9 +1575,9 @@ def build_document(spec: DocumentSpec) -> None:
     doc.core_properties.comments = (
         "版式：standard_business_brief；首页：customer_pack；"
         "命名覆盖：MeiGallery 品牌粉色标题层级、Arial Unicode MS 中文字体；"
-        "逐页原型：92 张默认状态 + 54 张 P0 关键状态；"
-        "Figma 最终设计：92 页、349 个状态、2,284 个有效动作；"
-        "客户文档图片映射：169 个。"
+        "逐页原型：99 张默认状态 + 57 张 P0 关键状态；"
+        "Figma 最终设计：99 页、408 个状态；3,571 个有效交互源为增量前历史基线，待开发结束后统一重算；"
+        "客户文档图片映射：179 个。"
     )
     doc.core_properties.last_modified_by = "MeiGallery 产品团队"
 

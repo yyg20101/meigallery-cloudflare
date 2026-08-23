@@ -34,7 +34,7 @@ export interface AppWalletEntryListQuery {
   }
 }
 
-type WalletPolicyRow = {
+export type AppWalletPolicyRow = {
   id: string
   state: string
   production_ready: number
@@ -128,7 +128,7 @@ export async function requireAppWalletPolicy(
   db: D1Database,
   config: AppWalletRuntimeConfig,
   options: { writable?: boolean } = {},
-): Promise<WalletPolicyRow> {
+): Promise<AppWalletPolicyRow> {
   const row = await db.prepare(`
     SELECT id, state, production_ready, adjustments_enabled,
            risk_decision_status, retention_decision_status, data_location_decision_status,
@@ -136,7 +136,7 @@ export async function requireAppWalletPolicy(
     FROM app_wallet_policies
     WHERE id = ?
     LIMIT 1
-  `).bind(config.policyId).first<WalletPolicyRow>()
+  `).bind(config.policyId).first<AppWalletPolicyRow>()
   const stateReady = row?.state === 'development' || row?.state === 'published'
   const productionReady = !config.requireProductionReady || (
     row?.state === 'published'

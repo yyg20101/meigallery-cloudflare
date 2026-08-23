@@ -16,6 +16,10 @@ const SUPPLY_MIGRATION = readFileSync(
   new URL('../../migrations/0068_app_person_supply_workflow.sql', import.meta.url),
   'utf8',
 )
+const TAXONOMY_MIGRATION = readFileSync(
+  new URL('../../migrations/0081_app_taxonomy_catalog.sql', import.meta.url),
+  'utf8',
+)
 const NOW = new Date('2026-08-02T00:00:00.000Z')
 
 let miniflare: Miniflare
@@ -30,6 +34,9 @@ beforeAll(async () => {
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(executableSql(`
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY
+    );
     CREATE TABLE galleries (
       id TEXT PRIMARY KEY,
       cover_key TEXT,
@@ -44,6 +51,7 @@ beforeAll(async () => {
   `))
   await db.exec(executableSql(MIGRATION))
   await db.exec(executableSql(SUPPLY_MIGRATION))
+  await db.exec(executableSql(TAXONOMY_MIGRATION))
 })
 
 beforeEach(async () => {

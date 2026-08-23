@@ -309,17 +309,12 @@ function definitionAvailability(item: MembershipEntitlementDefinition) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-      <div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-2 text-xs font-medium text-gray-500"><span class="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">ADM-MBR-02</span><span>Typed contract · 安全默认值</span></div>
-          <h1 class="mt-3 text-xl font-semibold text-gray-950 sm:text-2xl">Entitlement 定义</h1>
-          <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">维护稳定能力键、Schema 版本、客户端 capability 和五级显式值。未知能力可以保持 planned，但不能直接成为可执行权限。</p>
-        </div>
-        <button :disabled="!canEdit" class="w-full rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto" @click="startNew">新建 Entitlement</button>
-      </div>
+    <section class="rounded-2xl border border-[#eaded8] bg-white p-4 shadow-sm sm:p-6">
+      <AdminAppPageHeader page-id="ADM-MBR-02" route="/admin/app/entitlements" title="Entitlement 定义" description="维护稳定能力键、Schema 版本、客户端 capability 和五级显式值；未知能力不能直接成为可执行权限。" figma-state="正常">
+        <template #actions><button :disabled="!canEdit" class="min-h-10 rounded-[10px] bg-[#d63363] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40" @click="startNew">新建 Entitlement</button></template>
+      </AdminAppPageHeader>
       <nav class="mt-5 flex min-w-0 gap-2 overflow-x-auto pb-1 text-sm"><NuxtLink :to="`/admin/app/membership/catalogs?catalog=${selectedCatalogId}`" class="shrink-0 rounded-full bg-gray-100 px-3 py-1.5 text-gray-700 hover:bg-gray-200">目录版本</NuxtLink><span class="shrink-0 rounded-full bg-gray-950 px-3 py-1.5 text-white">Entitlement 定义</span><NuxtLink class="shrink-0 rounded-full bg-gray-100 px-3 py-1.5 text-gray-700 hover:bg-gray-200" to="/admin/app/membership/applications">会员申请</NuxtLink><NuxtLink class="shrink-0 rounded-full bg-gray-100 px-3 py-1.5 text-gray-700 hover:bg-gray-200" to="/admin/app/membership/grants/new">会员发放</NuxtLink></nav>
-    </header>
+    </section>
 
     <div v-if="operationMessage" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">{{ operationMessage }}</div>
     <div v-if="operationError" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-800">{{ operationError }}</div>

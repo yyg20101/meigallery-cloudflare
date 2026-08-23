@@ -4,15 +4,15 @@ App 版本：1.0
 
 文档状态：需求讨论中
 
-更新时间：2026-07-30
+更新时间：2026-08-14
 
 ## 1. 文档目标
 
-本文把 App 1.0 的产品范围落实到可独立评审的页面级设计对象，覆盖移动端 49 页与管理后台 43 页，共 92 页。每个 Page ID 都有唯一设计路由、页面目标、入口、主操作、次要操作、必备状态、下一页面、不可变规则、需求追踪键和页面级验收标准。92 页代表完整需求覆盖，不代表全部页面同时进入首批开发。
+本文把 App 1.0 的产品范围落实到可独立评审的页面级设计对象，覆盖移动端 50 页与管理后台 49 页，共 99 页。每个 Page ID 都有唯一设计路由、页面目标、入口、主操作、次要操作、必备状态、下一页面、不可变规则、需求追踪键和页面级验收标准。99 页代表完整需求覆盖，不代表全部页面同时进入首批开发。
 
-[打开 92 页逐页交互设计库](./interactive-prototype/pages.html)
+[打开 99 页逐页交互设计库](./interactive-prototype/pages.html)
 
-[查看 92 页详细功能、349 个 Figma 最终状态与 169 个客户文档图片映射](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)
+[查看 99 页详细功能、408 个 Figma 最终状态与 179 个客户文档图片映射](./APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md)
 
 [查看产品需求、发布范围、Feature PRD 与 Page ID 追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)
 
@@ -26,7 +26,7 @@ App 版本：1.0
 - 操作页面内主按钮、标签、筛选、开关、前后页和关键跨页入口。
 - 在右侧同步查看页面目标、入口、路由、主次操作、状态、不可变规则和验收条件。
 
-Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，其中移动端 49 页/186 状态、管理后台 43 页/163 状态；`30｜Prototype Flows` 提供 92 个流程预览。客户文档另保留 92 张默认状态与 54 张 P0 关键状态（共 146 张基础原型），以及通知/金币 23 张逐状态本地导出图，共 169 个确定性图片映射。页面优先级为 P0 54 页、P1 31 页、P2 7 页。
+Figma 最终设计已经覆盖 99 个 Page ID 和全部 408 个正式需求状态，其中移动端 50 页/208 状态、管理后台 49 页/200 状态；`30｜Prototype Flows` 提供 99 个流程预览。客户文档下一次生成的映射基线包含 99 张默认状态与 57 张 P0 关键状态（共 156 张基础原型），以及通知/金币 23 张逐状态本地导出图，共 179 个确定性图片映射。页面优先级为 P0 57 页、P1 32 页、P2 10 页。3,571 个有效动作是 `APP-SET-08` 六个增量状态前的历史基线，开发结束后统一重算。
 
 本文、[需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)、[移动端页面与交互规格](./MOBILE_APP_INTERACTION_SPEC.md)、[管理后台页面与交互规格](./ADMIN_CONSOLE_INTERACTION_SPEC.md) 与逐页设计库共同构成页面设计基线；研发统一从 [App 1.0 开发需求规格](./MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md) 进入。出现冲突时，客户 DOCX 的已确认结论决定产品边界，产品总需求和发布范围决定功能边界，Feature PRD 决定模块规则，页面规格决定详细交互，服务端契约决定最终业务事实。
 
@@ -38,10 +38,10 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 
 | 设计区域 | 页面 | 状态/动作 | 验收结果 |
 |---|---:|---:|---|
-| `10｜Mobile Pages` | 49 | 186 状态、382 页面动作 | 缺页 0、缺状态 0、缺目标 0、文字溢出 0、关键热区不足 0 |
-| `20｜Admin Pages` | 43 | 163 状态、1,408 页面动作 | 缺页 0、缺状态 0、缺目标 0、文字溢出 0 |
-| `30｜Prototype Flows` | 92 个预览 | 494 个流程动作 | 缺目标 0 |
-| 全量 | 92 | 349 状态、2,284 个有效动作 | 已达到设计交付门禁 |
+| `10｜Mobile Pages` | 50 | 208 状态、914 页面动作（历史基线） | 缺页 0、缺状态 0；`APP-SET-08` 九态定向 QA 问题 0 |
+| `20｜Admin Pages` | 49 | 200 状态、2,043 页面动作 | 缺页 0、缺状态 0、缺目标 0、文字溢出 0 |
+| `30｜Prototype Flows` | 99 个预览 | 614 个流程动作 | 缺目标 0 |
+| 全量 | 99 | 408 状态、3,571 个有效动作（历史基线） | 增量状态已定向 QA，全量交互待重算 |
 
 每个 Page ID 在 `10｜Mobile Pages` 或 `20｜Admin Pages` 中具有独立页面分组和完整状态；`40｜Delivery Index` 用于从 Page ID 定位设计、需求和模块，`50｜QA & Handoff` 固化视觉、交互、边界与交付门禁。开发、测试和客户意见统一引用 Page ID 与状态名称。
 
@@ -55,9 +55,9 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 | `APP-MSG-06` 通知详情 | 正常、目标失效、无权限、需要升级 | 4 | [打开正常态](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-53849&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A53849&show-proto-sidebar=1&page-id=9%3A8) |
 | `APP-WAL-01` 金币钱包 | 正常、空钱包、离线缓存、同步失败 | 4 | [打开正常态](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-54433&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A54433&show-proto-sidebar=1&page-id=9%3A8) |
 | `APP-WAL-02` 金币明细 | 正常、增加筛选、扣减筛选、首次空、分页加载、对账维护 | 6 | [打开正常态](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-55148&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A55148&show-proto-sidebar=1&page-id=9%3A8) |
-| `APP-WAL-03` 金币分录详情 | 正常、业务单号已复制、分录不可用、冲正中 | 4 | [打开正常态](https://www.figma.com/proto/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=145-56138&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=145%3A56138&show-proto-sidebar=1&page-id=9%3A8) |
+| `APP-WAL-03` 金币分录详情 | 正常、业务单号已复制、分录不可用、扣减 | 4 | [打开正式正常态](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=159-71999) |
 
-全量审计结果：92/92 页面、349/349 状态和 92/92 流程预览全部覆盖；页面内与流程动作合计 2,284 个，缺失目标 0；移动端关键点击热区不足 0；未绑定文字样式、原始填充/描边、缺失字体和文字溢出均为 0。权限、未读、余额、分录和目标状态仍以服务端契约为权威。
+设计登记结果：99/99 页面、408/408 正式状态和 99/99 流程预览全部覆盖；3,571 个动作与缺失目标 0 是增量前历史基线。`APP-SET-08` 新增六态已完成定向排版、边界和目标检查；全量动作与视觉统计将在开发结束后统一复核。权限、未读、余额、分录和目标状态仍以服务端契约为权威。
 
 ## 2. 页面级设计记录标准
 
@@ -78,6 +78,7 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 
 ### 3.1 移动端
 
+- 所有用户可见页面、弹层、状态和跨页流程遵循 Figma-first：先在正式 Figma 页面完成独立 Frame、Prototype 连接、Delivery Index 映射和设计 QA，再开始 KMP 实现；代码不得自行补造未设计的可见状态。
 - 一级导航固定为“推荐、关注、消息、我的”，四个 Tab 分别保存返回栈与滚动位置。
 - 主操作使用粉色实心按钮；次操作使用描边、文字或图标按钮；危险操作使用红色并二次确认。
 - 页面切换采用短距离淡入或共享元素过渡，建议 180–260ms；加载骨架不使用强闪烁。
@@ -103,18 +104,18 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 - App 1.0 不展示支付、充值、礼物、头像框、皮肤、媒体消息、系统推送或真人认领入口。
 - 金币只展示管理员调整产生的追加式账本；不得直接修改余额、删除历史分录或允许用户转账提现。
 
-## 4. 移动端逐页设计目录（49 页）
+## 4. 移动端逐页设计目录（50 页）
 
 表中每个 Page ID 均可直接打开独立页面设计；进入页面后可切换该页全部必备状态并查看完整交互说明。
 
 | Page ID / 独立原型 | 页面 | 页面目标 | 主操作 | 必备状态 |
 |---|---|---|---|---|
 | [APP-AUTH-01](./interactive-prototype/pages.html?page=APP-AUTH-01) | 启动与会话恢复 | 进入业务前恢复配置、会话和最低版本约束 | 继续进入 | 首次、恢复中、离线、升级、维护 |
-| [APP-AUTH-02](./interactive-prototype/pages.html?page=APP-AUTH-02) | 登录 | 让观看者安全登录并明确条款与隐私入口 | 手机号登录 | 正常、输入错误、验证中、频控、账号受限 |
+| [APP-AUTH-02](./interactive-prototype/pages.html?page=APP-AUTH-02) | 登录 | 让观看者安全登录并明确四类当前文档入口 | 邮箱密码登录 | 正常、输入错误、验证中、频控、账号受限、协议更新 |
 | [APP-AUTH-03](./interactive-prototype/pages.html?page=APP-AUTH-03) | 注册 | 只创建观看者账号，不创建公开真人资料 | 创建观看者账号 | 正常、标识占用、验证码失效、地区不可用 |
-| [APP-AUTH-04](./interactive-prototype/pages.html?page=APP-AUTH-04) | 风险验证 | 在敏感操作前完成二次验证并解释原因 | 完成验证 | 等待、失败、次数限制 |
+| [APP-AUTH-04](./interactive-prototype/pages.html?page=APP-AUTH-04) | 风险验证 | 在认证写操作前完成 Cloudflare Turnstile 人机验证，不误述为身份认证 | 等待自动完成 / 失败时重载 | 等待、失败、次数限制 |
 | [APP-AUTH-05](./interactive-prototype/pages.html?page=APP-AUTH-05) | 初始偏好 | 收集可跳过的地区和内容偏好 | 保存偏好 | 正常、空目录、保存失败、非个性化说明 |
-| [APP-AUTH-06](./interactive-prototype/pages.html?page=APP-AUTH-06) | 条款与隐私文档 | 展示生效版本、更新时间和完整正文 | 返回原页面 | 正常、加载失败、版本更新 |
+| [APP-AUTH-06](./interactive-prototype/pages.html?page=APP-AUTH-06) | 条款与隐私文档 | 在同页切换四类当前文档并展示服务端生效版本与完整正文 | 返回原页面（真实返回栈） | 正常、加载中支持稿、加载失败、版本更新 |
 | [APP-DSC-01](./interactive-prototype/pages.html?page=APP-DSC-01) | 推荐首页 | 按地区、热度和偏好展示合格真人资料 | 查看真人详情 | 正常、首次空、骨架、分页、离线缓存、规则刷新 |
 | [APP-DSC-02](./interactive-prototype/pages.html?page=APP-DSC-02) | 地区选择 | 以模糊地区层级控制内容范围 | 应用地区 | 正常、定位未使用、目录更新、无结果 |
 | [APP-DSC-03](./interactive-prototype/pages.html?page=APP-DSC-03) | 分类 | 按身份、职业、风格和内容类型浏览 | 进入分类 | 正常、空分类、目录失效 |
@@ -122,17 +123,17 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 | [APP-DSC-05](./interactive-prototype/pages.html?page=APP-DSC-05) | 筛选 | 配置基础与会员高级条件并反馈结果数 | 应用筛选 | 正常、权益门槛、目录冲突、无结果 |
 | [APP-DSC-06](./interactive-prototype/pages.html?page=APP-DSC-06) | 已保存条件 | 管理常用筛选条件和目录变化 | 使用条件 | 正常、空、额度满、标签已合并 |
 | [APP-DSC-07](./interactive-prototype/pages.html?page=APP-DSC-07) | 真人详情 | 呈现授权资料、认证范围和平台维护说明 | 发起话题 | 正常、下架、受限、离线摘要、媒体不可用 |
-| [APP-DSC-08](./interactive-prototype/pages.html?page=APP-DSC-08) | 媒体浏览 | 安全浏览已授权图片并支持说明与举报 | 查看下一张 | 正常、凭证刷新、加载失败、内容隐藏 |
 | [APP-DSC-09](./interactive-prototype/pages.html?page=APP-DSC-09) | 认证说明 | 解释核验范围、更新时间和失效条件 | 返回真人详情 | 正常、认证失效、资料变化 |
-| [APP-INT-01](./interactive-prototype/pages.html?page=APP-INT-01) | 关注更新 | 聚合已关注真人的新公开内容 | 查看更新 | 正常、首次空、无更新、资料下架 |
-| [APP-INT-02](./interactive-prototype/pages.html?page=APP-INT-02) | 喜欢 | 保存和撤销用户喜欢过的真人 | 查看真人 | 正常、空、资料不可用 |
+| [APP-INT-01](./interactive-prototype/pages.html?page=APP-INT-01) | 关注动态 | 聚合已关注真人的新公开内容 | 查看更新 | 正常、首次空、无更新、资料下架；另有 15 张交互支持稿 |
+| [APP-INT-02](./interactive-prototype/pages.html?page=APP-INT-02) | 喜欢 | 独立管理本人喜欢记录，支持搜索、地区/风格筛选与服务端确认撤销 | 查看真人 | 正常、空、资料不可用；另有 16 张交互支持稿 |
 | [APP-INT-03](./interactive-prototype/pages.html?page=APP-INT-03) | 收藏夹 | 用文件夹管理收藏的真人资料 | 打开收藏夹 | 正常、空、额度满、离线 |
 | [APP-INT-04](./interactive-prototype/pages.html?page=APP-INT-04) | 收藏夹详情 | 查看、移动或移除文件夹内真人 | 查看真人 | 正常、文件夹已删除、资料下架 |
 | [APP-INT-05](./interactive-prototype/pages.html?page=APP-INT-05) | 浏览历史 | 按时间查看并清理浏览记录 | 查看历史详情 | 正常、空、保留到期、清除失败 |
+| [APP-INT-06](./interactive-prototype/pages.html?page=APP-INT-06) | 调整收藏夹 | 管理单个真人的收藏夹归属并即时保存 | 选择收藏夹 | 正常、加载中、读取失败、更新中、更新失败、成功反馈、资料不可用、移出最后收藏夹确认、移出最后一项中、已取消收藏 |
 | [APP-MSG-01](./interactive-prototype/pages.html?page=APP-MSG-01) | 平台话题列表 | 展示平台代运营话题、未读和限制状态 | 打开话题 | 正常、首次空、离线、会话受限 |
 | [APP-MSG-02](./interactive-prototype/pages.html?page=APP-MSG-02) | 发起话题确认 | 创建前披露接收主体、会员资格和额度 | 确认发起话题 | 正常、无会员、额度尽、资料失效、已有会话 |
-| [APP-MSG-03](./interactive-prototype/pages.html?page=APP-MSG-03) | 平台会话 | 让有效会员发送文本并持续披露平台运营 | 发送消息 | 正常、补拉、审核中、只读、冻结、关闭 |
-| [APP-MSG-04](./interactive-prototype/pages.html?page=APP-MSG-04) | 会话设置 | 管理静音、举报、拉黑和关闭 | 保存会话设置 | 正常、操作失败、已关闭 |
+| [APP-MSG-03](./interactive-prototype/pages.html?page=APP-MSG-03) | 平台会话 | 让有效会员发送文本并持续披露平台运营 | 发送消息 | 正常、补拉、审核中、只读、冻结、关闭、消息操作、举报消息 |
+| [APP-MSG-04](./interactive-prototype/pages.html?page=APP-MSG-04) | 会话设置 | 管理静音、举报、拉黑和关闭 | 保存会话设置 | 正常、操作失败、已关闭、举报话题、确认屏蔽、确认关闭 |
 | [APP-MSG-05](./interactive-prototype/pages.html?page=APP-MSG-05) | 通知列表 | 按类别展示站内通知和未读状态 | 打开通知 | 正常、全部已读、首次空、分页失败、实时离线 |
 | [APP-MSG-06](./interactive-prototype/pages.html?page=APP-MSG-06) | 通知详情 | 展示安全正文、事件时间和当前目标状态 | 前往相关页面 | 正常、目标失效、无权限、需要升级 |
 | [APP-MBR-01](./interactive-prototype/pages.html?page=APP-MBR-01) | 五级会员目录 | 展示五级会员差异和人工获取方式 | 提交会员申请 | 免费、已提交、处理中、同步失败 |
@@ -140,15 +141,15 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 | [APP-MBR-03](./interactive-prototype/pages.html?page=APP-MBR-03) | 会员申请与进度 | 提交申请并查看人工处理状态 | 提交会员申请 | 未申请、已提交、处理中、待补充、已通过、已拒绝 |
 | [APP-WAL-01](./interactive-prototype/pages.html?page=APP-WAL-01) | 金币钱包 | 只读展示余额、同步时间和调整规则 | 查看金币明细 | 正常、空钱包、离线缓存、同步失败 |
 | [APP-WAL-02](./interactive-prototype/pages.html?page=APP-WAL-02) | 金币明细 | 按方向查看不可覆盖的有效分录 | 查看分录详情 | 正常、增加筛选、扣减筛选、首次空、分页加载、对账维护 |
-| [APP-WAL-03](./interactive-prototype/pages.html?page=APP-WAL-03) | 金币分录详情 | 展示数量、原因、业务单号和冲正关系 | 提交申诉 | 正常、业务单号已复制、分录不可用、冲正中 |
-| [APP-SET-01](./interactive-prototype/pages.html?page=APP-SET-01) | 我的 | 汇总私有账号、会员、金币和设置入口 | 查看账号资料 | 正常、账号受限、摘要同步失败 |
+| [APP-WAL-03](./interactive-prototype/pages.html?page=APP-WAL-03) | 金币分录详情 | 展示数量、原因、业务单号和冲正关系 | 提交申诉 | 正常、业务单号已复制、分录不可用、扣减 |
+| [APP-SET-01](./interactive-prototype/pages.html?page=APP-SET-01) | 我的 | 汇总私有账号、会员、金币、我的喜欢和设置入口 | 查看账号资料 | 正常、账号受限、摘要同步失败 |
 | [APP-SET-02](./interactive-prototype/pages.html?page=APP-SET-02) | 账号资料 | 编辑私有昵称头像且不生成真人资料 | 保存账号资料 | 正常、保存失败、需要重新验证 |
 | [APP-SET-03](./interactive-prototype/pages.html?page=APP-SET-03) | 设备管理 | 查看设备并远程退出其他会话 | 退出其他设备 | 正常、仅当前设备、撤销失败 |
 | [APP-SET-04](./interactive-prototype/pages.html?page=APP-SET-04) | 隐私与推荐 | 管理个性化推荐、历史和可选分析 | 保存隐私设置 | 正常、保存冲突、政策更新 |
 | [APP-SET-05](./interactive-prototype/pages.html?page=APP-SET-05) | 站内通知偏好 | 管理可选通知并保留必要通知 | 保存通知偏好 | 正常、同步失败、策略变化 |
 | [APP-SET-06](./interactive-prototype/pages.html?page=APP-SET-06) | 拉黑名单 | 查看影响并解除拉黑 | 解除拉黑 | 正常、空、解除失败 |
 | [APP-SET-07](./interactive-prototype/pages.html?page=APP-SET-07) | 举报记录 | 查看举报对象、时间和用户可见进度 | 查看举报进度 | 正常、空、状态延迟 |
-| [APP-SET-08](./interactive-prototype/pages.html?page=APP-SET-08) | 申诉 | 创建申诉并跟踪独立复核 | 提交申诉 | 正常、已有处理中、提交失败 |
+| [APP-SET-08](./interactive-prototype/pages.html?page=APP-SET-08) | 申诉 | 对举报结论、账号限制和金币分录创建独立复核 | 提交申诉 | 正常、已有处理中、提交失败、补充说明、补充提交失败、升级处理中、维持原结论、申诉成立、已关闭 |
 | [APP-SET-09](./interactive-prototype/pages.html?page=APP-SET-09) | 数据导出 | 创建任务并在重新验证后下载 | 创建导出任务 | 正常、处理中、失败、已过期、需要重新验证 |
 | [APP-SET-10](./interactive-prototype/pages.html?page=APP-SET-10) | 注销账号 | 解释不可逆影响、阻塞项和取消阶段 | 提交注销申请 | 正常、存在阻塞项、处理中、失败 |
 | [APP-SET-11](./interactive-prototype/pages.html?page=APP-SET-11) | 帮助中心 | 搜索常见问题并联系平台 | 打开帮助主题 | 正常、离线、无结果 |
@@ -159,7 +160,7 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 | [APP-SYS-04](./interactive-prototype/pages.html?page=APP-SYS-04) | 对象不可用 | 对象失效时提供安全返回 | 返回推荐 | 已下架、无权限、已删除 |
 | [APP-SYS-05](./interactive-prototype/pages.html?page=APP-SYS-05) | 地区不可用 | 说明当前地区未开放并停止业务入口 | 查看地区说明 | 未开放、政策变化 |
 
-## 5. 管理后台逐页设计目录（43 页）
+## 5. 管理后台逐页设计目录（49 页）
 
 | Page ID / 独立原型 | 页面 | 页面目标 | 主操作 | 必备状态 |
 |---|---|---|---|---|
@@ -179,6 +180,7 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 | [ADM-REC-02](./interactive-prototype/pages.html?page=ADM-REC-02) | 推荐规则编辑 | 配置规则且安全过滤不可关闭 | 提交规则审核 | 正常、Schema 错误、触碰安全过滤、并发冲突 |
 | [ADM-REC-03](./interactive-prototype/pages.html?page=ADM-REC-03) | 推荐 Dry-run | 以合成场景比较新旧规则结果 | 运行对比 | 正常、样本不足、数据延迟 |
 | [ADM-REC-04](./interactive-prototype/pages.html?page=ADM-REC-04) | 运营精选 | 配置精选位置、时间和披露 | 创建排期 | 正常、时间冲突、资料下架 |
+| [ADM-SRC-01](./interactive-prototype/pages.html?page=ADM-SRC-01) | 搜索运营核查 | 只读核查搜索策略、跨域版本、会员筛选权益和隐私数据健康 | 刷新核查 | 正常、加载中、加载失败、尚未就绪、无策略版本 |
 | [ADM-MSG-01](./interactive-prototype/pages.html?page=ADM-MSG-01) | 会话队列 | 按组、地区、等待时间和安全状态分配会话 | 领取会话 | 正常、待分配、待平台、待用户、安全审核 |
 | [ADM-MSG-02](./interactive-prototype/pages.html?page=ADM-MSG-02) | 会话工作台 | 以固定平台身份回复并支持备注、转派和升级 | 以平台身份回复 | 正常、租约冲突、只读、冻结、关闭 |
 | [ADM-MSG-03](./interactive-prototype/pages.html?page=ADM-MSG-03) | 分组与班次 | 配置运营组、班次、容量和自动分配 | 保存分配规则 | 正常、无值班、过载、配置冲突 |
@@ -193,6 +195,7 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 | [ADM-MBR-04](./interactive-prototype/pages.html?page=ADM-MBR-04) | 会员发放申请 | 填写等级、有效期、来源和业务原因 | 提交发放申请 | 正常、账号错误、高风险、重复业务单 |
 | [ADM-MBR-05](./interactive-prototype/pages.html?page=ADM-MBR-05) | 会员发放复核 | 独立比较前后权益并批准或拒绝 | 批准发放 | 正常、发起人冲突、账号状态已变 |
 | [ADM-MBR-06](./interactive-prototype/pages.html?page=ADM-MBR-06) | 旧会员映射 | 对 legacy 证据 Dry-run、复核和迁移 | 执行迁移 | 正常、证据不足、映射冲突 |
+| [ADM-MBR-07](./interactive-prototype/pages.html?page=ADM-MBR-07) | 会员变更复核队列 | 独立复核发放、续期与撤销，且发起人不得自审 | 创建变更 | 待复核、加载中、加载失败、空队列、仅本人发起、账号已变化 |
 | [ADM-WAL-01](./interactive-prototype/pages.html?page=ADM-WAL-01) | 钱包查询 | 按稳定账号查询余额、分录和对账 | 查看钱包 | 正常、账号受限、对账异常 |
 | [ADM-WAL-02](./interactive-prototype/pages.html?page=ADM-WAL-02) | 钱包详情 | 展示余额、sequence 和冲正关系 | 新建调币申请 | 正常、余额锁定、Sequence 异常 |
 | [ADM-WAL-03](./interactive-prototype/pages.html?page=ADM-WAL-03) | 调币申请 | 填写加扣币、原因、说明、备注和业务单号 | 提交调币申请 | 正常、预计负余额、高风险、重复业务单 |
@@ -206,6 +209,10 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 | [ADM-AUD-02](./interactive-prototype/pages.html?page=ADM-AUD-02) | 审计详情 | 展示事件时间线、脱敏差异和审批关系 | 查看关联事件 | 正常、关联缺失、敏感字段受限 |
 | [ADM-AUD-03](./interactive-prototype/pages.html?page=ADM-AUD-03) | 审计完整性状态 | 检查 sequence 缺口和高风险无审计 | 运行完整性校验 | 正常、Sequence 缺口、业务无审计 |
 | [ADM-AUD-04](./interactive-prototype/pages.html?page=ADM-AUD-04) | 受控导出 | 通过申请、复核和短期凭证导出 | 提交导出申请 | 正常、待批准、已过期、范围变化 |
+| [ADM-AUD-05](./interactive-prototype/pages.html?page=ADM-AUD-05) | Action 口径治理 | 从真实审计事实识别未登记 Action，预览影响并提交独立复核 | 登记前置 Action | 正常、加载中、加载失败、未登记 Action、治理阻断、候选编辑、提交失败 |
+| [ADM-AUD-06](./interactive-prototype/pages.html?page=ADM-AUD-06) | Action 口径申请复核 | 核对候选定义、当前 Registry、观察事实与职责分离并形成不可变结论 | 批准并追加 | 待复核、加载中、加载失败、申请人冲突、基线变化、终态只读 |
+| [ADM-PRI-01](./interactive-prototype/pages.html?page=ADM-PRI-01) | 数据权利队列 | 在最小必要信息范围内筛选、领取并追踪导出/注销申请 | 刷新队列 | 正常、加载中、加载失败、空队列、治理门禁关闭、已逾期 |
+| [ADM-PRI-02](./interactive-prototype/pages.html?page=ADM-PRI-02) | 数据权利申请处置 | 核对策略快照和不可变时间线，并在服务端门禁内受控处置 | 开始处置 | 正常、加载中、加载失败、待领取、Privacy-2 门禁关闭、操作失败、终态只读 |
 
 ### 5.1 页面交付优先级
 
@@ -221,9 +228,9 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 
 管理后台 P0：
 
-`ADM-PER-01` 至 `ADM-PER-06`、`ADM-MSG-01` 至 `ADM-MSG-04`、`ADM-SAF-01` 至 `ADM-SAF-04`、`ADM-MBR-03` 至 `ADM-MBR-05`、`ADM-WAL-01` 至 `ADM-WAL-04`、`ADM-WAL-06`、`ADM-AUD-01` 至 `ADM-AUD-02`。
+`ADM-PER-01` 至 `ADM-PER-06`、`ADM-MSG-01` 至 `ADM-MSG-04`、`ADM-SAF-01` 至 `ADM-SAF-04`、`ADM-MBR-03` 至 `ADM-MBR-05`、`ADM-MBR-07`、`ADM-WAL-01` 至 `ADM-WAL-04`、`ADM-WAL-06`、`ADM-AUD-01` 至 `ADM-AUD-02`、`ADM-PRI-01` 至 `ADM-PRI-02`。
 
-其余页面默认属于 P1。`ADM-OV-02`、`ADM-OV-03`、`ADM-REC-03`、`ADM-WAL-05`、`ADM-NTF-03`、`ADM-AUD-03`、`ADM-AUD-04` 属于 P2；审计完整性的最小自动校验与告警属于 P0 后端门禁，但不改变 `ADM-AUD-03` 完整可视化页面的 P2 优先级。
+除下列 P2 页面外，其余页面属于 P1。`ADM-OV-02`、`ADM-OV-03`、`ADM-REC-03`、`ADM-SRC-01`、`ADM-WAL-05`、`ADM-NTF-03`、`ADM-AUD-03`、`ADM-AUD-04`、`ADM-AUD-05`、`ADM-AUD-06` 属于 P2；审计完整性的最小自动校验与告警属于 P0 后端门禁，但不改变 `ADM-AUD-03` 完整可视化页面的 P2 优先级。
 
 ## 6. 重点跨页旅程
 
@@ -261,6 +268,14 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 - 会员和高风险调币采用申请、独立复核、执行、通知和审计链路。
 - 金币错误通过新增冲正分录修复，原分录不可编辑或删除。
 
+### 6.5 数据权利控制面
+
+`APP-SET-09/10 → ADM-PRI-01 → ADM-PRI-02`
+
+- 前台数据导出或注销申请进入统一后台队列，管理员只查看完成当前任务所需的脱敏字段。
+- Privacy-1 仅提供申请、领取、门禁、时间线和失败事实控制面；真实导出包和不可逆删除必须等待 Privacy-2 执行器与治理策略开放。
+- 没有服务端副作用证据时不得把申请伪标为已完成；终态不可在页面内改写。
+
 ## 7. 页面状态与反馈规范
 
 | 状态 | 页面行为 |
@@ -297,15 +312,15 @@ Figma 最终设计已经覆盖 92 个 Page ID 和全部 349 个需求状态，�
 9. 移动端可完成键盘、返回、滚动和无障碍操作；后台可完成键盘焦点和高风险确认。
 10. 埋点不采集消息正文、认证证据、内部备注或非必要敏感字段。
 11. 页面具有唯一需求追踪键，产品需求编号、发布范围编号和 Feature PRD 与 [需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md) 一致。
-12. 92 个 Page ID 的 349 个状态必须在 Figma 最终页按同名状态复现；92 个流程预览和 2,284 个有效动作不得出现失效目标。
+12. 99 个 Page ID 的 408 个正式状态必须在 Figma 最终页按同名状态复现；全量动作统计更新前，任何新增状态均需单独记录 Prototype 目标与定向 QA 证据。
 13. 通知与金币 5 页的 23 张逐状态导出图必须与 Frame ID、触发条件、交互结果、权威边界和原型清单一致。
 
 ## 10. 客户逐页确认方法
 
-建议按下列顺序评审，而不是一次浏览 92 页：
+建议按下列顺序评审，而不是一次浏览 99 页：
 
 1. 先评审移动端关键闭环：`APP-DSC-01`、`APP-DSC-07`、`APP-MSG-02`、`APP-MSG-03`、`APP-MBR-01`、`APP-WAL-01`。
-2. 再评审后台关键闭环：`ADM-PER-05`、`ADM-PER-06`、`ADM-MSG-02`、`ADM-MBR-05`、`ADM-WAL-04`、`ADM-AUD-02`。
+2. 再评审后台关键闭环：`ADM-PER-05`、`ADM-PER-06`、`ADM-MSG-02`、`ADM-MBR-05`、`ADM-WAL-04`、`ADM-AUD-02`、`ADM-PRI-01/02`。
 3. 对每页确认页面目标、主操作、必备状态、身份披露、需求编号和下一页面。
 4. 意见必须引用 Page ID；若改变业务规则，还需引用对应 PRD/SCP 编号。例如“APP-MSG-02 / PRD-FR-050 的无会员状态需调整”，避免只使用截图位置描述。
 5. 先在第 1.1 节的 Figma 最终文件中按 Page ID 评审全量页面和状态，再按第 1.2 节逐一确认通知与金币 23 张本地导出图。

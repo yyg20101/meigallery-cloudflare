@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""校验 App 1.0 需求冻结准备清单与客户确认 DOCX。"""
+"""校验 App 1.0 历史需求冻结准备快照与客户确认 DOCX。"""
 
 from __future__ import annotations
 
@@ -72,11 +72,13 @@ def verify_source_fingerprints(markdown: str) -> str:
 def verify_markdown(markdown: str) -> str:
     fingerprint = verify_source_fingerprints(markdown)
     required = (
-        "状态：冻结准备中，尚未授权开发",
-        "92 个 Page ID",
-        "349 个 Figma 最终状态",
-        "2,284 个有效交互动作",
-        "169 个确定性图片映射",
+        "状态：历史快照",
+        "99 个 Page ID",
+        "402 个 Figma 最终状态",
+        "99 页/408 个正式状态",
+        "移动端 50 页/208 状态",
+        "3,571 个有效交互动作",
+        "179 个确定性图片映射",
         "全量像素级视觉设计已完成",
         "功能/交互冻结",
         "像素级视觉冻结",
@@ -115,12 +117,14 @@ def verify_docx(fingerprint: str) -> tuple[int, int]:
     doc = Document(gen.DOCX_OUTPUT)
     text = document_text(doc)
     required = (
-        "冻结准备中",
+        "历史快照",
         "尚未授权开发",
-        "92 个 Page ID",
-        "349 个 Figma 最终状态",
-        "2,284 个有效交互动作",
-        "169/169 已校验",
+        "99 个 Page ID",
+        "402 个 Figma 最终状态",
+        "99 页/408 个正式状态",
+        "移动端 50 页/208 状态",
+        "3,571 个有效交互动作",
+        "179/179 已建立",
         "已完成，待签署",
         fingerprint,
     )
@@ -188,15 +192,17 @@ def verify_manifest_counts() -> None:
     manifest = json.loads(gen.PAGE_MANIFEST.read_text(encoding="utf-8"))
     counts = manifest.get("counts", {})
     expected = {
-        "pages": 92,
-        "totalCaptures": 146,
+        "pages": 99,
+        "totalCaptures": 156,
         "detailedFigmaPages": 5,
         "detailedFigmaStateCaptures": 23,
-        "documentPrototypeMappings": 169,
-        "figmaDesignedPages": 92,
-        "figmaDesignedStates": 349,
-        "figmaFlowPreviews": 92,
-        "figmaTotalActions": 2284,
+        "documentPrototypeMappings": 179,
+        "figmaDesignedPages": 99,
+        "figmaDesignedStates": 408,
+        "figmaMobileStates": 208,
+        "figmaAdminStates": 200,
+        "figmaFlowPreviews": 99,
+        "figmaHistoricalActionBaseline": 3571,
     }
     for key, value in expected.items():
         if counts.get(key) != value:

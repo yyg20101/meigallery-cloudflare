@@ -1,10 +1,10 @@
 # Operations-1 运营总览、事件处置与跨域安全控制开发基线
 
-更新时间：2026-08-10
+更新时间：2026-08-20
 
 App 版本：1.0
 
-状态：开发闭环完成；配置、migration 执行与专项测试后置
+状态：Operations-1 开发闭环完成；Operations-2/3 检测与 Operations-4 账户级指标增量已接入；配置、migration 执行与专项测试后置
 
 ## 1. 本阶段结论
 
@@ -15,6 +15,8 @@ Operations-1 已完成 `ADM-OV-01/02/03` 的 Cloudflare 与 Nuxt 开发闭环：
 - `/admin/app/incidents/{incidentId}`：领取、追加记录、状态迁移、Runbook 关联、关闭证据和安全控制影响确认。
 - `/api/admin/app/operations/*`：总览、快照、检测、事件、Runbook 与安全控制管理 API。
 - `0092_app_operations_and_incidents.sql`：版本化指标、不可变快照、检测运行、事件工作流、Runbook、五类安全控制和管理员幂等命令。
+
+在初始 Operations-1 之后，Privacy-1 已接入数据权利逾期检测，Operations-2 通过 `0106_app_operations_membership_expiry_detector.sql` 补齐会员到期后的权限泄漏反向检测，Operations-3 又以 `operations-detectors-v3 + 0108` 接入 Cloudflare 官方公共状态；Operations-4 进一步以 `operations-metrics-v2` 接入账户级 Workers、D1 与 R2 GraphQL Analytics。当前可执行 10 类 D1 权威检测和 1 类官方平台状态检测，18 项指标采集器也已齐备；详细增量见 [Operations-2 会员到期权限完整性检测开发基线](./OPERATIONS_2_MEMBERSHIP_EXPIRY_INTEGRITY.md)、[Operations-3 Cloudflare 官方平台状态检测开发基线](./OPERATIONS_3_CLOUDFLARE_STATUS_INTEGRATION.md)与 [Operations-4 Cloudflare 账户级可观测指标开发基线](./OPERATIONS_4_CLOUDFLARE_ANALYTICS_INTEGRATION.md)。
 
 本阶段没有扩展 App API v2，也没有向 KMP 暴露运营数据。`admin_audit_logs` 继续是唯一管理员审计事实源；运营表只保存指标快照、检测结果、事件工作流与安全控制业务事实。
 
@@ -58,7 +60,7 @@ Operations-1 已完成 `ADM-OV-01/02/03` 的 Cloudflare 与 Nuxt 开发闭环：
 | `app_operational_metric_runs` | 一次人工快照运行及质量摘要 |
 | `app_operational_metric_snapshots` | 每个运行、定义和范围的不可变值与质量状态 |
 
-`0092` 登记 18 项首批指标，覆盖人物供给、发现推荐、平台话题、会员、钱包、通知、安全、审计和平台健康。所有定义的保留决策仍为 `unresolved`、`production_ready=0`；界面会显式显示“生产口径未就绪”。Cloudflare Worker、D1 和 R2 技术指标当前为 `unconfigured`，不伪造数据。
+`0092` 登记 18 项首批指标，覆盖人物供给、发现推荐、平台话题、会员、钱包、通知、安全、审计和平台健康。所有定义的保留决策仍为 `unresolved`、`production_ready=0`；界面会显式显示“生产口径未就绪”。Operations-4 已为 Cloudflare Worker、D1 和 R2 三项技术指标补齐采集器：目标环境未配置时为 `unconfigured`，来源失败/空样本为 `unknown`，载荷违约为 `invalid`，只有有效观测才返回 `known` 数值。
 
 ### 3.2 Runbook 与事件
 
@@ -108,7 +110,7 @@ resolved / false_positive → open（新检测信号重新打开）
 | 通知 | 待投递站内通知、通知死信 |
 | 安全 | 待处理举报、待处理申诉 |
 | 审计 | 最近一次审计完整性检查发现 |
-| 平台 | Worker 错误率、D1 P95 延迟、R2 错误率（均未配置） |
+| 平台 | Worker 错误率、D1 P95 延迟、R2 错误率（采集器已接入；按目标环境配置与来源质量决定状态） |
 
 ### 4.2 已接入检测器
 
@@ -116,24 +118,23 @@ resolved / false_positive → open（新检测信号重新打开）
 |------|----------|----------|
 | 仍可见人物不满足授权/认证/发布/来源资格 | P0 | 创建/刷新事件 |
 | 平台运营消息缺少实际操作员事实 | P1 | 创建/刷新事件 |
+| 会员授权到期后仍产生新话题或观看者消息事实 | P1 | 创建/刷新聚合事件；不自动改 grant 或消息 |
 | 完全重复的有效会员 grant 区间 | P1 | 创建/刷新事件 |
 | 钱包快照与不可变账本末条不一致 | P1 | 创建独立钱包事件并冻结对应 active 钱包 |
 | 已生效金币调整缺少独立复核 | P1 | 创建/刷新事件 |
 | 最近审计完整性检查存在发现 | P1 | 创建按检查 ID 区分的事件 |
 | 审计载荷发现敏感字段 | P1 | 创建按检查 ID 区分的事件 |
 | 通知 dead letter 或超出恢复窗口 | P2 | 创建/刷新事件 |
+| 数据权利申请超过策略期限且仍非终态 | P1 | 创建/刷新聚合事件；不展示申请人信息 |
+| Cloudflare 相关公共组件降级、故障或维护 | P0–P2 | 创建/刷新平台事件；不自动暂停业务 |
 
 钱包检测只执行保护性冻结，不自动补账、不改写分录、不推测正确余额。恢复和修复必须回到钱包受控流程。
 
-### 4.3 明确未接入的检测器
+### 4.3 平台健康外部检测器
 
-当前运行固定报告 3 类未接入检测器：
+初始 Operations-1 曾报告会员到期、数据权利逾期和 Cloudflare 平台健康 3 类未接入检测器。Privacy-1、Operations-2 与 Operations-3 已依次完成源码接入。Cloudflare 官方状态可读且结构完整时，当前 11 类检测全部可执行，运行写为 `completed`、`unavailableDetectorCount=0`。
 
-- 会员到期未撤权。
-- 数据权利请求逾期。
-- Cloudflare 平台健康异常。
-
-这些范围不会显示为零；检测运行状态保持 `partial`，直到后续阶段接入稳定来源。
+官方源超时、网络失败、非 2xx、超限或载荷不合法时，不创建虚假平台事故，运行写为 `partial`、`unavailableDetectorCount=1`。这项公共状态检测不替代账户级 Worker 错误率、D1 P95 延迟和 R2 错误率；后者已由 Operations-4 独立接入，未配置、来源失败、空样本或非法结果仍不能显示为零。
 
 ## 5. 五类跨域安全控制
 
@@ -206,7 +207,7 @@ resolved / false_positive → open（新检测信号重新打开）
 
 ## 9. Runbook
 
-以下 Runbook 是 `0092` 初始版本的文档目标。版本升级必须新增数据库版本并指向新文档锚点，不能原地改变历史事件依据。
+以下七份 Runbook 是 `0092` 初始版本的文档目标；Operations-3 的第八份平台 Runbook 由 `0108` 追加并记录在 [Operations-3](./OPERATIONS_3_CLOUDFLARE_STATUS_INTEGRATION.md#runbook-cloudflare-platform-health)。版本升级必须新增数据库版本并指向新文档锚点，不能原地改变历史事件依据。
 
 <a id="runbook-publication-safety"></a>
 ### 9.1 人物发布异常处置
@@ -244,7 +245,7 @@ resolved / false_positive → open（新检测信号重新打开）
 3. 暂停 `wallet_adjustments` 时只阻断创建与批准，拒绝和只读对账仍可用。
 4. 不直接改余额，不删除或改写分录，不用自动补账掩盖差异。
 5. 通过新的受控冲正/补偿流程恢复事实一致，独立复核后再次核对余额、sequence 与末条分录。
-6. 保存对账证据后恢复控制并关闭事件；钱包解冻必须由后续正式恢复流程明确实现。
+6. 使用 Wallet-3 恢复预览重验全部案件和不可变分录链，保存证据后原子重建快照并解冻；再恢复控制并关闭事件。不得先手工解冻。
 
 <a id="runbook-audit-integrity"></a>
 ### 9.5 审计完整性缺口处置
@@ -277,11 +278,11 @@ resolved / false_positive → open（新检测信号重新打开）
 
 当前明确后置，不在本阶段执行：
 
-- 在目标环境执行 `0092_app_operations_and_incidents.sql` 与 Audit-3 `0093_app_audit_action_registry_governance.sql`，并核对 `0090/0091/0092/0093` 顺序。
+- 在目标环境按顺序执行 `0092_app_operations_and_incidents.sql`、Audit-3 `0093_app_audit_action_registry_governance.sql`、Operations-2 `0106_app_operations_membership_expiry_detector.sql`、Wallet-3 `0107_app_wallet_snapshot_recovery.sql` 及 Operations-3 `0108_app_operations_cloudflare_status_runbook.sql`，并核对完整 migration 记录。
 - 通过 Audit-3 受控工作区由不同 Owner 逐项批准正式 Action；另行批准治理策略、指标、可见角色、保留和物理清理政策，不做自动批量发布。
-- 接入 Cloudflare Workers、D1、R2 可观测数据，并消除对应 `unconfigured`。
+- 在目标环境配置最小只读 Cloudflare Analytics Token 与精确 Worker/D1/R2 资源，并通过 GraphQL introspection 和异常场景验证后消除对应 `unconfigured`；采集器源码已由 Operations-4 完成。
 - 为快照、检测和恢复验证配置受控调度；运行期事件不得成为紧急修复部署门禁。
-- 设计钱包解冻、会员到期、数据权利逾期和平台健康检测器。
+- Wallet-3 钱包快照重建与正式解冻、会员到期权限泄漏、数据权利逾期、Cloudflare 官方平台状态检测及账户级指标采集源码均已完成；后续执行 `0106–0108`、凭据配置、恢复演练和外部来源异常演练。
 - 执行 migration 验证、D1 状态机/并发/幂等测试、五个真实写路径的暂停/恢复测试、HTTP 权限测试、Nuxt 响应式与无障碍验收。
 - 完成 dev 远端联调、恢复演练和 production 发布决策。
 

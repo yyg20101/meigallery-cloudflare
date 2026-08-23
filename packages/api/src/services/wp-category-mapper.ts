@@ -10,6 +10,14 @@ export interface MappedTag {
   slug: string       // 生成的 slug
   wpId: number       // 原始 WP ID
   wpSource: 'category' | 'tag'
+  existingId?: string // 来源显式映射到既有权威标签时使用
+}
+
+export interface ExistingMappedTag {
+  id: string
+  type: string
+  name: string
+  slug: string
 }
 
 export interface MappingResult {
@@ -53,11 +61,27 @@ const REGION_GROUP_MAP: Record<number, string> = {
 /**
  * 映射 WordPress 分类到新站标签
  */
-export function mapWpCategories(categories: WpCategory[], postCategoryIds: number[]): MappingResult {
+export function mapWpCategories(
+  categories: WpCategory[],
+  postCategoryIds: number[],
+  overrides?: ReadonlyMap<number, ExistingMappedTag>,
+): MappingResult {
   const tags: MappedTag[] = []
   const reviewFlags: string[] = []
 
   for (const catId of postCategoryIds) {
+    const override = overrides?.get(catId)
+    if (override) {
+      tags.push({
+        type: override.type,
+        name: override.name,
+        slug: override.slug,
+        wpId: catId,
+        wpSource: 'category',
+        existingId: override.id,
+      })
+      continue
+    }
     const cat = categories.find(c => c.id === catId)
     if (!cat) continue
 
@@ -104,11 +128,27 @@ export function mapWpCategories(categories: WpCategory[], postCategoryIds: numbe
 /**
  * 映射 WordPress 标签到新站标签
  */
-export function mapWpTags(wpTags: WpTag[], postTagIds: number[]): MappingResult {
+export function mapWpTags(
+  wpTags: WpTag[],
+  postTagIds: number[],
+  overrides?: ReadonlyMap<number, ExistingMappedTag>,
+): MappingResult {
   const tags: MappedTag[] = []
   const reviewFlags: string[] = []
 
   for (const tagId of postTagIds) {
+    const override = overrides?.get(tagId)
+    if (override) {
+      tags.push({
+        type: override.type,
+        name: override.name,
+        slug: override.slug,
+        wpId: tagId,
+        wpSource: 'tag',
+        existingId: override.id,
+      })
+      continue
+    }
     const wpTag = wpTags.find(t => t.id === tagId)
     if (!wpTag) continue
 

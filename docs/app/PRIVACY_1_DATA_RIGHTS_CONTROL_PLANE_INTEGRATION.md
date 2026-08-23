@@ -6,6 +6,8 @@ App 版本：1.0
 
 状态：开发闭环完成；配置、migration 执行与专项测试后置
 
+> 历史模块基线：本文记录 Privacy-1 在 App API `1.17.0` 时的控制面边界。Privacy-2A 已在累计 `1.24.0` 实现默认关闭的私有导出制品与一次性下载链路，详见 [Privacy-2A 私有数据导出制品跨仓交付基线](./PRIVACY_2A_PRIVATE_EXPORT_INTEGRATION.md)；Privacy-2B 后续已完成默认关闭的不可逆注销源码，详见 [Privacy-2B 账号不可逆注销跨仓交付基线](./PRIVACY_2B_IRREVERSIBLE_DELETION_INTEGRATION.md)。Membership-7 后仓库当前累计契约为 `1.26.0`。
+
 ## 1. 本阶段结论
 
 Privacy-1 已完成 App、API、D1、Nuxt 管理后台和运营告警之间的“可登记、可追踪、可取消”控制面：
@@ -140,6 +142,15 @@ scheduled ──等待期结束且处理门禁开放──→ processing → com
 - `ADM-PRI-01` `/admin/app/data-rights`：治理门禁、状态指标、类型/状态/分配筛选和响应式队列。
 - `ADM-PRI-02` `/admin/app/data-rights/{requestId}`：账号脱敏摘要、策略快照、时间线、领取和受门禁动作。
 
+Figma 正式交付位于 `20｜Admin Pages` 的 Section `936:15995`，并已同步 `30｜Prototype Flows`、`40｜Delivery Index` 与 `50｜QA & Handoff`：
+
+| Page ID | 正式状态 | Figma 正常态 |
+|---|---|---|
+| `ADM-PRI-01` | 正常、加载中、加载失败、空队列、治理门禁关闭、已逾期 | [`939:15995`](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=939-15995) |
+| `ADM-PRI-02` | 正常、加载中、加载失败、待领取、Privacy-2 门禁关闭、操作失败、终态只读 | [`944:16747`](https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery?node-id=944-16747) |
+
+两页共 13 个正式状态、125 个页面动作和 17 个流程动作；失效目标、文字溢出、缺失字体、原始色值和边界越界均为 0。代码只能复现这些已确认状态；后续新增真实下载、删除完成、批量处置或新门禁页面时，必须先补 Figma Page ID/Frame/Prototype/Delivery Index/QA，再进入实现。
+
 桌面使用结构化行，窄屏自动单列；长申请 ID、策略、Owner、状态文案和动作按钮允许换行且不越界。页面只反映服务端 `availableActions`，前端隐藏按钮不构成授权。
 
 ## 7. KMP App 页面与交互
@@ -151,6 +162,7 @@ scheduled ──等待期结束且处理门禁开放──→ processing → com
 - App 重启或普通会话恢复失败时，先恢复系统安全区中的待确认注销操作；只有服务端证明原命令已创建，才换回申请级状态凭证。旧 Access Token 在此分支仅作原 session 证明，不能访问其他产品 API。
 - 当 processing capability 关闭时，页面明确说明“当前只登记申请”，不显示虚假的下载或删除完成状态。
 - `open_data_task` 站内通知目标进入数据权利页面后重新读取权威申请，不直接信任通知正文。
+- 后续 Message-5 已由 `0109` 激活导出就绪与注销取消恢复两类既有通知定义，并在服务端补齐 data task capability/归属复核；Privacy-1 的页面、DTO 和申请状态不因此扩展。
 
 ## 8. Operations-1 接入
 

@@ -130,18 +130,12 @@ function itemParentLabel(item: TaxonomyCatalogItem) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <NuxtLink to="/admin/app/taxonomy" class="text-sm font-medium text-blue-600 hover:underline">返回 Taxonomy 目录</NuxtLink>
-        <p class="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">ADM-TAX-03</p>
-        <h1 class="mt-1 break-words text-xl font-bold text-gray-950">目录发布 · {{ catalog?.versionCode || '加载中' }}</h1>
-        <p class="mt-1 break-all font-mono text-xs text-gray-500">{{ catalogId }}</p>
-      </div>
-      <div v-if="catalog" class="flex flex-wrap items-center gap-2">
-        <span class="rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset" :class="taxonomyStatusClass(catalog.state)">{{ TAXONOMY_CATALOG_STATE_LABELS[catalog.state] }}</span>
-        <span class="rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset" :class="catalog.productionReady ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-amber-200'">{{ catalog.productionReady ? 'Production Ready' : '开发版本' }}</span>
-      </div>
-    </header>
+    <AdminAppPageHeader page-id="ADM-TAX-03" :route="route.path" :title="`目录发布 · ${catalog?.versionCode || '加载中'}`" :description="`校验目录变更对资料、筛选和客户端兼容性的影响 · ${catalogId}`" :state="status === 'pending' ? '加载中' : error ? '加载失败' : catalog ? TAXONOMY_CATALOG_STATE_LABELS[catalog.state] : '正常'" :figma-state="error ? '未知引用' : catalog && !catalog.productionReady ? '待复核' : '正常'" :state-tone="error ? 'danger' : status === 'pending' ? 'warning' : catalog?.productionReady ? 'success' : 'info'">
+      <template #actions>
+        <span v-if="catalog" class="inline-flex min-h-10 items-center rounded-full px-3 text-xs font-medium ring-1 ring-inset" :class="catalog.productionReady ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-amber-200'">{{ catalog.productionReady ? 'Production Ready' : '开发版本' }}</span>
+        <NuxtLink to="/admin/app/taxonomy" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#eaded8] bg-white px-4 text-sm font-medium text-stone-700 hover:bg-[#fff7f2]">返回 Taxonomy 目录</NuxtLink>
+      </template>
+    </AdminAppPageHeader>
 
     <div v-if="error" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{{ taxonomyApiError(error, '目录快照加载失败。') }} <button type="button" class="ml-2 font-semibold underline" @click="refresh()">重试</button></div>
     <div v-if="status === 'pending'" class="rounded-xl border border-gray-200 bg-white px-5 py-14 text-center text-sm text-gray-500">正在读取不可变目录快照…</div>

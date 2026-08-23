@@ -221,6 +221,7 @@ export async function autoAssignConversationIfEligible(
              SELECT 1 FROM app_conversation_messages message
              WHERE message.conversation_id = conversation.id
                AND message.sender_type = 'platform_operator'
+               AND message.status = 'accepted'
            ) AS has_operator_response,
            assignment.status AS assignment_status,
            assignment.version AS assignment_version,

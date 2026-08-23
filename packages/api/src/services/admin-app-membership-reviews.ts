@@ -1184,7 +1184,7 @@ function changeRequestSelect() {
            target_revocation.revoked_at AS target_grant_revoked_at
     FROM app_membership_change_requests request
     JOIN users account ON account.id = request.target_user_id
-    LEFT JOIN app_account_security security ON security.user_id = account.id
+    LEFT JOIN app_account_security security ON security.account_id = account.id
     JOIN users requester ON requester.id = request.requested_by
     LEFT JOIN users reviewer ON reviewer.id = request.reviewed_by
     LEFT JOIN app_membership_grants target_grant ON target_grant.id = request.target_grant_id

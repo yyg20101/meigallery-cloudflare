@@ -14,7 +14,7 @@ Figma File Key：`LaNSwwGsznwcpV8msj7BQC`
 
 本阶段把多批次设计混放的 Figma 文件重构为“正式交付区 + 历史归档区”，建立 92 个 Page ID 的 Delivery Index、统一命名和 Spec Card 规则。历史节点不删除，原型目标 ID 不重建，以避免已存在的交互连接失效。
 
-> 后续状态：Phase 3–6 已完成移动端 49 页/186 状态、管理后台 43 页/163 状态、92 个 Prototype Flow 预览和最终 QA。本文保留 Phase 2 当时的结构验收记录；当前最终状态以 [Figma 最终交付审计与实施记录](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) 为准。
+> 后续状态：截至 2026-08-19，实时 Figma 为移动端 50 页/208 状态、管理后台 49 页/200 状态，共 99 页/408 个正式状态和 99 个 Prototype Flow 预览。本文其余数字仅保留 Phase 2 当时的结构验收历史快照；当前事实以 [Figma 最终交付审计与实施记录](./FIGMA_FINAL_DELIVERY_AUDIT_AND_PLAN.md) 为准。
 
 执行前已创建 Figma 回滚版本：
 

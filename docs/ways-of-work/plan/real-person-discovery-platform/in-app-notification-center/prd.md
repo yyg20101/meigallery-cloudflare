@@ -8,7 +8,7 @@ App 版本：1.0
 
 状态：需求讨论中
 
-当前实现记录（Message-3 + Wallet-1 + Interaction-3，2026-08-09）：已完成 production/dev 默认关闭的保守 Cloudflare 代码闭环，KMP 已接入五类通知中心、Wallet-1 目标跳转和 Interaction-3 关注更新页/人物目标跳转；服务端采用 D1 原子 Outbox、固定安全模板、HTTP pull、服务端未读/已读、五类偏好和受控目标复核。当前代码覆盖平台回复、会员申请与权益、举报/申诉结果、账号安全、Wallet-1 已生效分录，以及关注对象已审核公开发布更新。`0077` 激活金币分录事件；`0079` 激活关注更新事件并增加 development 模板，关注提醒在用户拉取通知时按当前关系惰性投影并投递前复核，不在发布事务同步枚举关注者。通知总策略、Wallet-1、Message-3 与 Interaction-3 运行时开关均关闭，因此 migration 本身不会生成或展示通知。数据权利与营销仍为 inactive 未来事件；实时刷新信号、系统推送、模板写后台、生产策略和自动清理均未实现。`0076`～`0079` 尚未统一执行，OQ-020 尚未关闭，migration 不回填历史、不创建通知或钱包业务 seed，保留天数继续为空且 `purge_enabled=0`。完整边界见 [Message-3 跨仓交付基线](../../../../app/MESSAGE_3_NOTIFICATION_INTEGRATION.md)、[Wallet-1 跨仓交付基线](../../../../app/WALLET_1_LEDGER_INTEGRATION.md) 与 [Interaction-3 关注更新流与站内通知开发基线](../../../../app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)。本记录不改变本文“需求讨论中”状态，也不构成生产发布授权。
+当前实现记录（Message-3/4/5/6/7/8/9 + Wallet-1 + Interaction-3，2026-08-20）：已完成 production/dev 默认关闭的保守 Cloudflare 代码闭环，KMP 已接入五类通知中心、Wallet-1 目标跳转、Interaction-3 关注更新页/人物目标跳转和 Message-4 实时刷新；服务端采用 D1 原子 Outbox、版本化安全模板、HTTP pull、服务端未读/已读、五类偏好和受控目标复核。当前代码覆盖平台回复、消息审核通过/拒绝、管理员会话限制与后续关闭、会员申请与权益、举报/申诉结果、账号安全、Wallet-1 已生效分录、关注对象已审核公开发布更新，以及数据导出就绪/失败与注销取消恢复。`0097` 已补齐模板草稿、变量 allowlist、提交审核、另一位 Owner 不可变发布/拒绝、重复抑制事实和 Nuxt 运营工作台；Message-4 只经一次性票据与 Hibernation WebSocket 发送刷新作用域，HTTP 事实仍是唯一权威；Message-5/6/7 分别补齐数据权利结果、策略换绑和导出失败必要通知；Message-8 只在权威审核/会话状态转换后写安全摘要 Outbox；Message-9 以 `0115` 补齐批准策略下的不可变到期边界、延迟事件抑制和 explicit/legacy 有界物理清理，并保留不含正文的 Outbox 去重墓碑。所有运行时开关仍关闭，OQ-020 未关闭，保留天数继续为空且 `purge_enabled=0`，所以 migration 不会自行生成、展示或删除通知。App 1.0 明确不接入 APNs/FCM 等系统推送，营销写入口仍未开放。`0076`～`0079/0097/0105/0109/0110/0112/0115` 尚未统一执行，migration 不回填历史、不创建通知或钱包业务 seed。完整边界见 [Message-3 跨仓交付基线](../../../../app/MESSAGE_3_NOTIFICATION_INTEGRATION.md)、[Message-4 实时刷新基线](../../../../app/MESSAGE_4_REALTIME_REFRESH_INTEGRATION.md)、[Message-5 数据权利结果通知基线](../../../../app/MESSAGE_5_DATA_RIGHTS_NOTIFICATION_INTEGRATION.md)、[Message-6 通知偏好策略换绑基线](../../../../app/MESSAGE_6_NOTIFICATION_POLICY_REBIND_INTEGRATION.md)、[Message-7 数据导出失败通知基线](../../../../app/MESSAGE_7_DATA_EXPORT_FAILURE_NOTIFICATION_INTEGRATION.md)、[Message-8 文本审核与结果通知基线](../../../../app/MESSAGE_8_TEXT_MODERATION_INTEGRATION.md)、[Message-9 通知内容生命周期基线](../../../../app/MESSAGE_9_NOTIFICATION_CONTENT_LIFECYCLE_INTEGRATION.md)、[Wallet-1 跨仓交付基线](../../../../app/WALLET_1_LEDGER_INTEGRATION.md) 与 [Interaction-3 关注更新流与站内通知开发基线](../../../../app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)。本记录不改变本文“需求讨论中”状态，也不构成生产发布授权。
 
 ## 2. Epic
 
@@ -182,7 +182,7 @@ App 1.0 暂不接入 APNs、FCM 或其他系统推送，但平台话题回复、
 | 门禁 | 对应决策 | 未关闭时允许继续 | 未关闭时禁止 |
 |------|----------|------------------|------------|
 | 首发地区/必要通知政策 | OQ-002 | 定义分类、事件和模板 schema | 发布生产模板策略 |
-| 数据保留期 | OQ-020 | 设计 `expiresAt` 和状态机 | 冻结通知清理 migration |
+| 数据保留期 | OQ-020 | 实现默认关闭的 `expiresAt`、状态机和有界清理源码 | 批准真实保留天数、执行 production 清理或承诺期限 |
 | 数据权利负责人/SLA | OQ-025 | 设计任务结果通知 | 对外承诺处理时限 |
 | 客户端构建/渠道 | OQ-026、OQ-030 | 契约和原型 | 冻结深链与发版配置 |
 
@@ -198,6 +198,7 @@ App 1.0 暂不接入 APNs、FCM 或其他系统推送，但平台话题回复、
 - **NTF-AC-008**：Given 模板变量不满足 schema，When 消费业务事件，Then 不生成拼接错误通知，任务进入可告警的失败状态且补发保持防重。
 - **NTF-AC-009**：Given 管理员调币成功，When 用户打开金币通知，Then 页面重新读取权威余额和分录，而不是直接信任通知中的历史余额。
 - **NTF-AC-010**：Given 客服查询通知争议，When 获得工单授权，Then 可查看用户可见文案、事件引用和状态，但不能查看平台话题正文或伪造已读。
+- **NTF-AC-011**：Given 保留策略已批准并开启 purge，When 通知正文到期，Then 服务端按稳定有界批次删除正文与对应单条已读事件、保留最小 Outbox 去重墓碑；能力关闭或任务重试不得延长到期边界。
 
 ## 8. Out of Scope
 

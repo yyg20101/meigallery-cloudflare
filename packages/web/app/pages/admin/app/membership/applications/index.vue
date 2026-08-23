@@ -356,19 +356,15 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-bold text-gray-900">App 会员申请</h1>
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-500">申请、独立复核与正式 grant 分离。发起人与复核人必须不同；只有复核通过且 grant 原子写入后才产生会员权限。</p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
+    <AdminAppPageHeader page-id="ADM-MBR-03" route="/admin/app/membership/applications" title="会员申请与发放队列" description="处理用户申请、搜索账号并查看发放时间线；批准后仍进入独立复核。" :state="listError ? '加载失败' : listStatus === 'pending' ? '加载中' : '待处理'" figma-state="待处理" :state-tone="listError ? 'danger' : listStatus === 'pending' ? 'warning' : 'success'">
+      <template #actions>
         <span v-if="catalog" class="rounded-full px-3 py-1 text-xs font-medium" :class="catalog.productionReady ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'">
           {{ catalog.productionReady ? '生产目录' : '开发目录 · 禁止上线' }}
         </span>
         <NuxtLink to="/admin/app/membership/reviews" class="inline-flex min-h-10 items-center rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100">独立复核队列</NuxtLink>
         <NuxtLink to="/admin/app/membership/grants/new" class="inline-flex min-h-10 items-center rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-black">创建会员变更</NuxtLink>
-      </div>
-    </div>
+      </template>
+    </AdminAppPageHeader>
 
     <div class="flex flex-wrap gap-3 rounded-xl border border-gray-200 bg-white p-4">
       <select v-model="statusFilter" class="min-w-36 rounded-lg border border-gray-300 px-3 py-2 text-sm">

@@ -1,5 +1,6 @@
 import type {
   AppDataRightsMutationResult,
+  AppDataRightsExportArtifactSummary,
   AppDataRightsRequestDetail,
   AppDataRightsRequestStatus,
   AppDataRightsRequestSummary,
@@ -191,6 +192,17 @@ type EventRow = {
   event_type: string
   user_message: string | null
   created_at: string
+}
+
+type ExportArtifactSummaryRow = {
+  id: string
+  status: 'queued' | 'collecting' | 'finalizing' | 'ready' | 'failed' | 'expired' | 'superseded' | 'purging' | 'purged'
+  export_schema_version: number
+  record_count: number
+  archive_size: number | null
+  manifest_sha256: string | null
+  generated_at: string | null
+  expires_at: string | null
 }
 
 type SecuritySnapshotRow = {
@@ -900,6 +912,15 @@ async function createRequest(
           )
       `).bind(timestamp, timestamp, principal.accountInternalId, requestId, mutationToken),
       env.DB.prepare(`
+        UPDATE app_realtime_tickets
+        SET cancelled_at = ?, cancellation_reason = 'account_deletion_requested'
+        WHERE account_id = ? AND consumed_at IS NULL AND cancelled_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM app_data_rights_requests request
+            WHERE request.id = ? AND request.mutation_token = ? AND request.status = 'scheduled'
+          )
+      `).bind(timestamp, principal.accountInternalId, requestId, mutationToken),
+      env.DB.prepare(`
         DELETE FROM sessions
         WHERE user_id = ?
           AND EXISTS (
@@ -1487,12 +1508,24 @@ async function mapRequestDetail(
   statusTokenUsed: boolean,
   now: Date,
 ): Promise<AppDataRightsRequestDetail> {
-  const events = await db.prepare(`
-    SELECT sequence, request_version, status_snapshot, event_type, user_message, created_at
-    FROM app_data_rights_request_events
-    WHERE request_id = ? AND visibility = 'user'
-    ORDER BY sequence ASC
-  `).bind(row.id).all<EventRow>()
+  const [events, exportArtifact] = await Promise.all([
+    db.prepare(`
+      SELECT sequence, request_version, status_snapshot, event_type, user_message, created_at
+      FROM app_data_rights_request_events
+      WHERE request_id = ? AND visibility = 'user'
+      ORDER BY sequence ASC
+    `).bind(row.id).all<EventRow>(),
+    row.request_type === 'export'
+      ? db.prepare(`
+          SELECT id, status, export_schema_version, record_count, archive_size,
+                 manifest_sha256, generated_at, expires_at
+          FROM app_data_rights_export_artifacts
+          WHERE request_id = ?
+          ORDER BY request_version DESC, id DESC
+          LIMIT 1
+        `).bind(row.id).first<ExportArtifactSummaryRow>()
+      : Promise.resolve(null),
+  ])
   return {
     ...mapRequestSummary(row, now),
     requiresStatusToken: statusTokenUsed || row.account_current_status === 'deletion_pending',
@@ -1503,7 +1536,49 @@ async function mapRequestDetail(
       message: event.user_message ?? STATUS_MESSAGES[event.status_snapshot],
       createdAt: event.created_at,
     })),
+    exportArtifact: mapExportArtifactSummary(exportArtifact, row.status, now),
   }
+}
+
+function mapExportArtifactSummary(
+  row: ExportArtifactSummaryRow | null,
+  requestStatus: AppDataRightsRequestStatus,
+  now: Date,
+): AppDataRightsExportArtifactSummary | null {
+  if (!row) return null
+  const expired = row.status === 'ready'
+    && (!row.expires_at || Date.parse(row.expires_at) <= now.getTime())
+  const status: AppDataRightsExportArtifactSummary['status'] = expired
+    ? 'expired'
+    : mapStoredExportArtifactStatus(row.status)
+  const canDownload = status === 'ready'
+    && requestStatus === 'ready'
+    && Boolean(row.archive_size && row.manifest_sha256 && row.expires_at)
+  return {
+    artifactId: row.id,
+    status,
+    format: 'tar',
+    fileName: 'meigallery-data-export.tar',
+    schemaVersion: row.export_schema_version,
+    recordCount: Number(row.record_count),
+    sizeBytes: row.archive_size === null ? null : Number(row.archive_size),
+    manifestSha256: row.manifest_sha256,
+    generatedAt: row.generated_at,
+    expiresAt: row.expires_at,
+    canDownload,
+    downloadRequiresStepUp: true,
+  }
+}
+
+function mapStoredExportArtifactStatus(
+  status: ExportArtifactSummaryRow['status'],
+): AppDataRightsExportArtifactSummary['status'] {
+  if (status === 'queued') return 'queued'
+  if (status === 'collecting') return 'collecting'
+  if (status === 'finalizing') return 'finalizing'
+  if (status === 'ready') return 'ready'
+  if (status === 'failed' || status === 'superseded') return 'failed'
+  return 'expired'
 }
 
 function mapRequestSummary(row: AppDataRightsRequestRow, now: Date): AppDataRightsRequestSummary {

@@ -152,7 +152,7 @@ flowchart LR
 | [移动端页面与交互规格](../../../app/MOBILE_APP_INTERACTION_SPEC.md) | 将 F-01–F-13 映射为 Screen ID、设计路由、页面状态、关键旅程和移动端低保真结构 |
 | [Nuxt 管理后台交互与低保真规格](../../../app/ADMIN_CONSOLE_INTERACTION_SPEC.md) | 将 A-01–A-13 映射为 Page ID、角色权限、工作台、审批阶段、并发和后台低保真结构 |
 | [统一 UI 状态、文案与埋点目录](../../../app/UI_STATE_COPY_AND_ANALYTICS_CATALOG.md) | 统一错误映射、平台代运营/会员/金币文案、状态 key、事件 key 和组件状态矩阵 |
-| [App 1.0 需求追踪矩阵](../../../app/APP_REQUIREMENTS_TRACEABILITY.md) | 把产品总需求、发布范围、Feature PRD、92 个 Page ID 与 146 张原型建立确定性映射 |
+| [App 1.0 需求追踪矩阵](../../../app/APP_REQUIREMENTS_TRACEABILITY.md) | 把产品总需求、发布范围、Feature PRD、99 个 Page ID 与 156 张基础原型建立确定性映射 |
 | [详细功能与逐页原型说明](../../../app/APP_DETAILED_FUNCTION_PROTOTYPE_SPEC.md) | 按 Page ID 给出角色、前置条件、交互、状态、数据权限、需求追踪、验收与对应原型 |
 
 页面级文档是 Feature PRD 到高保真、技术设计和测试用例之间的可追溯桥梁。未来 Feature 不得提前混入 App 1.0 可点击原型。

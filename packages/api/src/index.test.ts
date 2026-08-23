@@ -33,6 +33,19 @@ describe('统一 Queue 与 Cron 入口', () => {
     expect(acknowledged).toBe(true)
   })
 
+  it('Telegram 导入 Queue 由专用消费者识别并安全确认无效消息', async () => {
+    let acknowledged = false
+    await app.queue({
+      queue: 'meigallery-import-telegram',
+      messages: [{ body: { kind: 'unknown' }, attempts: 1, ack() { acknowledged = true }, retry() {} }],
+    } as unknown as MessageBatch<unknown>, {
+      APP_ENV: 'production',
+      DB: emptyDb(),
+      R2: {},
+    } as unknown as Bindings)
+    expect(acknowledged).toBe(true)
+  })
+
   it('每 15 分钟 Cron 执行统一 Outbox 恢复，午夜继续执行每日维护', async () => {
     const sql: string[] = []
     let work: Promise<unknown> | undefined

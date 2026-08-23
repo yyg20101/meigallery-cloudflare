@@ -15,8 +15,8 @@ function app(role: string | null = 'admin') {
 }
 
 describe('后台外部导入记录 API', () => {
-  it('does not expose Telegram token or download URL', async () => {
-    const db = { prepare: () => ({ bind() { return this }, first: async () => ({ id: 'eir_1', source_bot_key: 'ops_gallery_bot', metadata_json: '{}', error_json: '{"message":"失败"}' }), all: async () => ({ results: [{ filename: '001.jpg', status: 'failed' }] }) }) }
+  it('不暴露 Telegram token 或下载 URL', async () => {
+    const db = { prepare: () => ({ bind() { return this }, first: async () => ({ id: 'eir_1', source_bot_key: 'ops_gallery_bot', metadata_json: '{}', error_json: '{"code":"UNKNOWN","message":"https://api.telegram.org/file/bot123:secret/private.jpg"}' }), all: async () => ({ results: [{ filename: '001.jpg', status: 'failed', error_message: 'D1 private failure' }] }) }) }
     const res = await app().request('/api/admin/external-import-records/eir_1', {}, { DB: db } as unknown as Bindings)
     const text = await res.text()
     expect(res.status).toBe(200)
@@ -31,11 +31,18 @@ describe('后台外部导入记录 API', () => {
       token_id: 'iat_1',
       target_type: 'gallery',
       target_id: null,
+      processing_target_id: null,
+      processing_token: null as string | null,
       status: 'failed',
       retry_count: 0,
       source_bot_key: 'ops_gallery_bot',
     }
     const db = {
+      async batch(statements: Array<{ run(): Promise<D1Result<unknown>> }>) {
+        const results: D1Result<unknown>[] = []
+        for (const statement of statements) results.push(await statement.run())
+        return results
+      },
       prepare(sql: string) {
         const params: unknown[] = []
         return {
@@ -52,37 +59,47 @@ describe('后台外部导入记录 API', () => {
             if (sql.includes('FROM external_import_records') && sql.includes('WHERE id = ? AND token_id = ?')) {
               return record.id === params[0] && record.token_id === params[1] ? record as T : null as T
             }
-            if (sql.includes('FROM external_import_files') && sql.includes('r2_key IS NOT NULL')) return null as T
+            if (sql.includes('SELECT status, processing_token')) return record as T
             if (sql.includes('iat.created_by as token_created_by')) return null as T
             return null as T
           },
           async all<T>() { return { results: [] as T[] } },
           async run() {
+            if (sql.includes('SET processing_token = ?')) {
+              record.processing_token = params[0]
+            }
             if (sql.includes("SET status = 'pending_media_fetch'")) {
               record.status = 'pending_media_fetch'
+              record.processing_token = null
             }
-            if (sql.includes('INSERT INTO admin_audit_logs')) auditRows.push(String(params[6] ?? ''))
+            if (sql.includes('INSERT INTO admin_audit_logs')) auditRows.push(String(params[4] ?? ''))
             return { success: true, meta: { changes: 1 } }
           },
         }
       },
     }
-    const waitUntil = vi.fn()
+    const send = vi.fn(async () => undefined)
     const res = await app().request('/api/admin/external-import-records/eir_1/retry', { method: 'POST' }, {
       DB: db,
       R2: { put: async () => undefined, delete: async () => undefined },
-    } as unknown as Bindings, { waitUntil } as unknown as ExecutionContext)
+      TELEGRAM_IMPORT_QUEUE: { send },
+    } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(202)
     expect(body.status).toBe('pending_media_fetch')
     expect(record.status).toBe('pending_media_fetch')
-    expect(waitUntil).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(auditRows)).toContain('pending_media_fetch')
   })
 
   it('后台重试非 failed 导入时返回 409', async () => {
     const db = {
+      async batch(statements: Array<{ run(): Promise<D1Result<unknown>> }>) {
+        const results: D1Result<unknown>[] = []
+        for (const statement of statements) results.push(await statement.run())
+        return results
+      },
       prepare(sql: string) {
         const params: unknown[] = []
         return {
@@ -111,7 +128,10 @@ describe('后台外部导入记录 API', () => {
         }
       },
     }
-    const res = await app().request('/api/admin/external-import-records/eir_1/retry', { method: 'POST' }, { DB: db } as unknown as Bindings)
+    const res = await app().request('/api/admin/external-import-records/eir_1/retry', { method: 'POST' }, {
+      DB: db,
+      TELEGRAM_IMPORT_QUEUE: { send: async () => undefined },
+    } as unknown as Bindings)
     const body = await res.json()
 
     expect(res.status).toBe(409)

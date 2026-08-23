@@ -37,6 +37,27 @@ export function useApi() {
     return typeof FormData !== 'undefined' && body instanceof FormData
   }
 
+  function isRawRequestBody(body: unknown): body is BodyInit {
+    return (typeof Blob !== 'undefined' && body instanceof Blob)
+      || (typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer)
+      || (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(body))
+      || (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams)
+      || (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream)
+  }
+
+  function applyRequestBody(init: RequestInit, body: unknown, headers: Record<string, string> = {}): void {
+    if (body === undefined || body === null) return
+    if (isFormDataBody(body) || isRawRequestBody(body)) {
+      init.body = body
+      if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) {
+        ;(init as RequestInit & { duplex?: 'half' }).duplex = 'half'
+      }
+      return
+    }
+    init.headers = { ...headers, 'Content-Type': 'application/json' }
+    init.body = typeof body === 'string' ? body : JSON.stringify(body)
+  }
+
   function shouldConfirmDevAdminWrite(path: string, method: string): boolean {
     return import.meta.client
       && appEnv === 'dev'
@@ -78,12 +99,7 @@ export function useApi() {
         keepalive: options?.keepalive,
         headers: options?.headers,
       }
-      if (isFormDataBody(options?.body)) {
-        init.body = options.body
-      } else if (options?.body) {
-        (init as any).headers = { ...(init.headers as Record<string, string> || {}), 'Content-Type': 'application/json' }
-        init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
-      }
+      applyRequestBody(init, options?.body, options?.headers)
       // 转发原始请求的 cookie（用于认证场景）
       if (requestHeaders.cookie) {
         (init as any).headers = { ...(init.headers as Record<string, string> || {}), cookie: requestHeaders.cookie }
@@ -99,12 +115,7 @@ export function useApi() {
       keepalive: options?.keepalive,
       headers: options?.headers,
     }
-    if (isFormDataBody(options?.body)) {
-      fetchOpts.body = options.body
-    } else if (options?.body) {
-      fetchOpts.headers = { ...(options?.headers || {}), 'Content-Type': 'application/json' }
-      fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
-    }
+    applyRequestBody(fetchOpts, options?.body, options?.headers)
     if (requestHeaders.cookie) {
       fetchOpts.headers = { ...(fetchOpts.headers as Record<string, string> || {}), cookie: requestHeaders.cookie }
     }
@@ -129,10 +140,11 @@ export function useApi() {
       query?: Record<string, string | number | undefined>
       keepalive?: boolean
       headers?: Record<string, string>
+      devAdminWriteConfirmation?: 'already-confirmed'
     },
   ): Promise<T> {
     const method = options?.method || 'GET'
-    confirmDevAdminWrite(path, method)
+    if (options?.devAdminWriteConfirmation !== 'already-confirmed') confirmDevAdminWrite(path, method)
 
     const fullPath = buildFullPath(path, options?.query)
 
@@ -148,12 +160,7 @@ export function useApi() {
       keepalive: options?.keepalive,
       headers: options?.headers,
     }
-    if (isFormDataBody(options?.body)) {
-      fetchOptions.body = options.body
-    } else if (options?.body) {
-      fetchOptions.headers = { ...(options?.headers || {}), 'Content-Type': 'application/json' }
-      fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
-    }
+    applyRequestBody(fetchOptions as RequestInit, options?.body, options?.headers)
     return $fetch<T>(fullPath, fetchOptions as any)
   }
 
@@ -169,11 +176,12 @@ export function useApi() {
       query?: Record<string, string | number | undefined>
       keepalive?: boolean
       headers?: Record<string, string>
+      devAdminWriteConfirmation?: 'already-confirmed'
     },
   ): Promise<Response> {
     if (import.meta.server) throw new Error('apiResponse 仅允许在浏览器交互中调用')
     const method = options?.method || 'GET'
-    confirmDevAdminWrite(path, method)
+    if (options?.devAdminWriteConfirmation !== 'already-confirmed') confirmDevAdminWrite(path, method)
     const fullPath = buildFullPath(path, options?.query)
     const headers: Record<string, string> = { ...(options?.headers || {}) }
     const init: RequestInit = {
@@ -182,12 +190,7 @@ export function useApi() {
       keepalive: options?.keepalive,
       headers,
     }
-    if (isFormDataBody(options?.body)) {
-      init.body = options.body
-    } else if (options?.body) {
-      headers['Content-Type'] = 'application/json'
-      init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
-    }
+    applyRequestBody(init, options?.body, headers)
     const response = await fetch(fullPath, init)
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '')

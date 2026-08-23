@@ -31,6 +31,10 @@ const WALLET_MIGRATION = readFileSync(
   new URL('../../migrations/0077_app_wallet_ledger.sql', import.meta.url),
   'utf8',
 )
+const TEMPLATE_GOVERNANCE_MIGRATION = readFileSync(
+  new URL('../../migrations/0097_app_notification_template_governance.sql', import.meta.url),
+  'utf8',
+)
 const NOW = new Date('2026-08-08T08:00:00.000Z')
 const CONFIG: AppWalletRuntimeConfig = {
   enabled: true,
@@ -41,7 +45,9 @@ const CONFIG: AppWalletRuntimeConfig = {
 const NOTIFICATION_CONFIG: AppNotificationRuntimeConfig = {
   enabled: true,
   adminEnabled: true,
+  conversationSettingsEnabled: false,
   policyId: APP_NOTIFICATION_POLICY_ID,
+  policyConfigured: true,
   requireProductionReady: false,
 }
 const NOTIFICATION_CAPABILITIES: AppNotificationTargetCapabilities = {
@@ -53,6 +59,7 @@ const NOTIFICATION_CAPABILITIES: AppNotificationTargetCapabilities = {
   safetyAppeals: false,
   accountSecurity: false,
   wallet: true,
+  dataRights: false,
 }
 
 let miniflare: Miniflare
@@ -69,6 +76,7 @@ beforeEach(async () => {
   await db.exec(executableSql(BASE_SCHEMA))
   await db.exec(executableSql(NOTIFICATION_MIGRATION))
   await db.exec(executableSql(WALLET_MIGRATION))
+  await db.exec(executableSql(TEMPLATE_GOVERNANCE_MIGRATION))
   await db.exec(executableSql(`
     INSERT INTO users (id, email, nickname, status, created_at) VALUES
       (1, 'viewer-one@example.com', '观看者一号', 'active', '2026-08-08T00:00:00.000Z'),
@@ -78,6 +86,11 @@ beforeEach(async () => {
     INSERT INTO app_account_security (account_id, account_public_id) VALUES
       (1, 'acc_viewer_one'),
       (2, 'acc_viewer_two');
+    INSERT INTO app_operational_safety_controls (
+      control_key, display_name, state, version, changed_at
+    ) VALUES (
+      'wallet_adjustments', '金币调整', 'available', 1, '2026-08-08T00:00:00.000Z'
+    );
   `))
 }, 30_000)
 
@@ -332,6 +345,17 @@ const BASE_SCHEMA = `
   CREATE TABLE app_account_security (
     account_id INTEGER PRIMARY KEY,
     account_public_id TEXT NOT NULL UNIQUE
+  );
+  CREATE TABLE app_operational_safety_controls (
+    control_key TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    state TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    incident_id TEXT,
+    reason_code TEXT,
+    reason_summary TEXT,
+    changed_by INTEGER,
+    changed_at TEXT NOT NULL
   );
   CREATE TABLE admin_audit_logs (
     id TEXT PRIMARY KEY,

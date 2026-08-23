@@ -5,6 +5,7 @@
   "figmaFileName": "Peachmote UI 借鉴审查板 - MeiGallery",
   "phase": "P1",
   "status": "completed",
+  "snapshotNote": "历史快照：本文件只记录 2026-07-30 Phase 1 Design System 验收，不作为当前页面或状态数量口径；当前事实见 figma-final-delivery-state.json（99 页、408 个正式状态，其中移动端 208、后台 200）。",
   "rollbackVersion": {
     "title": "App 1.0｜Phase 1 前基线",
     "versionId": "2381931297467463900"

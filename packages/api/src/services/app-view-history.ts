@@ -76,6 +76,13 @@ export interface ClearAppViewHistoryInput {
   disableRecording?: unknown
 }
 
+export interface AppViewHistoryPurgeResult {
+  skipped: boolean
+  reason: 'policy_not_configured' | 'policy_not_found' | 'retention_not_ready' | null
+  deletedCount: number
+  hasMore: boolean
+}
+
 export function parseAppViewHistoryListQuery(input: {
   limit?: string
   cursor?: string
@@ -453,6 +460,56 @@ export async function clearAppViewHistory(
   }
 }
 
+export async function purgeExpiredAppViewHistory(
+  db: D1Database,
+  config: AppInteractionCollectionRuntimeConfig,
+  now = new Date(),
+  limit = 1000,
+): Promise<AppViewHistoryPurgeResult> {
+  if (!config.policyConfigured) return skippedViewHistoryPurge('policy_not_configured')
+  const policy = await db.prepare(`
+    SELECT history_retention_decision_status, purge_enabled
+    FROM app_interaction_collection_policies
+    WHERE id = ?
+    LIMIT 1
+  `).bind(config.policyId).first<{
+    history_retention_decision_status: string
+    purge_enabled: number
+  }>()
+  if (!policy) return skippedViewHistoryPurge('policy_not_found')
+  if (
+    policy.history_retention_decision_status !== 'approved'
+    || policy.purge_enabled !== 1
+  ) return skippedViewHistoryPurge('retention_not_ready')
+
+  const timestamp = requirePurgeTimestamp(now)
+  const safeLimit = normalizeViewHistoryPurgeLimit(limit)
+  const result = await db.prepare(`
+    DELETE FROM app_profile_view_history
+    WHERE rowid IN (
+      SELECT rowid
+      FROM app_profile_view_history
+      WHERE expires_at <= ?
+      ORDER BY expires_at ASC, account_id ASC, profile_id ASC
+      LIMIT ?
+    )
+  `).bind(timestamp, safeLimit).run()
+  const remaining = await db.prepare(`
+    SELECT EXISTS (
+      SELECT 1
+      FROM app_profile_view_history
+      WHERE expires_at <= ?
+      LIMIT 1
+    ) AS has_more
+  `).bind(timestamp).first<{ has_more: number }>()
+  return {
+    skipped: false,
+    reason: null,
+    deletedCount: Number(result.meta.changes ?? 0),
+    hasMore: remaining?.has_more === 1,
+  }
+}
+
 async function resolveHistoryEntitlement(
   db: D1Database,
   accountId: number,
@@ -583,6 +640,23 @@ function requireNonNegativeCount(value: number | undefined): number {
     throw new AppInteractionCollectionError(503, 'VIEW_HISTORY_DATA_INVALID', '浏览历史数量数据异常')
   }
   return count
+}
+
+function skippedViewHistoryPurge(
+  reason: NonNullable<AppViewHistoryPurgeResult['reason']>,
+): AppViewHistoryPurgeResult {
+  return { skipped: true, reason, deletedCount: 0, hasMore: false }
+}
+
+function normalizeViewHistoryPurgeLimit(value: number) {
+  return Number.isSafeInteger(value) && value >= 1 && value <= 5000 ? value : 1000
+}
+
+function requirePurgeTimestamp(value: Date) {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    throw new Error('VIEW_HISTORY_PURGE_TIME_INVALID')
+  }
+  return value.toISOString()
 }
 
 function encodeHistoryCursor(cursor: HistoryCursor): string {

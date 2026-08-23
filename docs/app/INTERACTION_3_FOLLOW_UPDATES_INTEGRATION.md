@@ -150,7 +150,7 @@ APP_FOLLOW_UPDATES_PRODUCTION_READY
 - App API/OpenAPI/共享类型累计版本 `1.12.0`；
 - Message-3 惰性 Outbox 投影、事件去重和投递前资格复核；
 - KMP 独立 `FollowUpdateCapability`、领域模型和 `KtorFollowUpdateRepository`；
-- 底部“关注”页的“更新 / 已关注 / 喜欢”三段结构，以及首次无关注、暂无更新、事件列表、分页和失败状态；
+- 底部“关注”页按 Figma 使用“全部 / 有更新 / 最近关注”筛选，喜欢由独立 `APP-INT-02` 承载；同时覆盖首次无关注、暂无更新、事件列表、分页和失败状态；
 - 更新卡当前资料非历史快照披露、取消关注后的事件回收、人物详情返回刷新，以及 Message-3 互动通知直达当前人物详情；
 - Android Debug APK 与 iOS Simulator Kotlin/Native 编译验证；
 - 产品、技术、契约与项目状态文档同步。
@@ -162,4 +162,4 @@ APP_FOLLOW_UPDATES_PRODUCTION_READY
 3. 覆盖账号隔离、跨账号游标、取消/重新关注、资料下架、授权/认证到期、通知偏好关闭、重复拉取去重和目标失效回收。
 4. 独立评审 production 策略、模板审批、通知保留期与上线授权；不得由 development 策略直接推导生产启用。
 
-KMP 交付提交为 `meigallery-client@5d3cae7`，客户端详细边界见同级仓库 `docs/INTERACTION_3_DELIVERY.md`。该提交不改变任何环境 capability，也不代表 `0079` 已执行。
+历史 KMP 基线提交为 `meigallery-client@5d3cae7`；当前页面结构已继续按最终 Figma 增量收敛，客户端详细边界见同级仓库 `docs/INTERACTION_3_DELIVERY.md`。该提交和后续 UI 增量都不改变任何环境 capability，也不代表 `0079` 已执行。

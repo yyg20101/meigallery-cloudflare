@@ -1,5 +1,10 @@
 import { Hono } from 'hono'
 import type { AdPlatformQueueMessage } from '@meigallery/shared'
+import type { ZipImportQueueMessage } from './services/admin-zip-import'
+import type { AppDataRightsExportQueueMessage } from './services/app-data-rights-exports'
+import type { AppDataRightsDeletionQueueMessage } from './services/app-data-rights-deletions'
+import type { TelegramImportQueueMessage } from './services/telegram-file-id-import'
+import type { AppRealtimeHub } from './durable-objects/app-realtime-hub'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { secureHeaders } from 'hono/secure-headers'
@@ -37,9 +42,22 @@ import {
 import { recoverAttributionOutbox } from './services/ad-platform/recovery'
 import { recoverRegistrationConversionFacts } from './services/registration-conversion-recovery'
 import { reconcileGoogleDeliveryDiagnostics } from './services/ad-platform/google-diagnostics-service'
-import { recoverAppNotifications } from './services/app-notifications'
+import {
+  getAppNotificationRuntimeConfig,
+  purgeExpiredAppNotifications,
+  recoverAppNotifications,
+} from './services/app-notifications'
+import { getAppInteractionCollectionRuntimeConfig } from './services/app-interaction-collections'
 import { getAppPersonSearchRuntimeConfig } from './services/app-person-search-policy'
+import { getAppRecommendationRuntimeConfig } from './services/app-recommendation-policy'
 import { purgeExpiredAppSearchHistory } from './services/app-search-history'
+import { purgeExpiredAppViewHistory } from './services/app-view-history'
+import { purgeExpiredAppRecommendationEvidence } from './services/app-recommendation-evidence'
+import {
+  purgeExpiredAppDataRightsExports,
+  recoverAppDataRightsExports,
+} from './services/app-data-rights-exports'
+import { recoverAppDataRightsDeletions } from './services/app-data-rights-deletions'
 
 /** Hono 应用绑定类型 */
 export type Bindings = {
@@ -63,9 +81,17 @@ export type Bindings = {
   AD_META_QUEUE?: Queue<AdPlatformQueueMessage>
   AD_TIKTOK_QUEUE?: Queue<AdPlatformQueueMessage>
   AD_GOOGLE_QUEUE?: Queue<AdPlatformQueueMessage>
+  IMPORT_QUEUE?: Queue<ZipImportQueueMessage>
+  DATA_RIGHTS_EXPORT_QUEUE?: Queue<AppDataRightsExportQueueMessage>
+  DATA_RIGHTS_DELETION_QUEUE?: Queue<AppDataRightsDeletionQueueMessage>
+  TELEGRAM_IMPORT_QUEUE?: Queue<TelegramImportQueueMessage>
+  DATA_RIGHTS_RETENTION_MASTER_KEY_CURRENT?: string
+  DATA_RIGHTS_RETENTION_MASTER_KEY_PREVIOUS?: string
   RELEASE_COMMIT?: string
   APP_AUTH_ENABLED?: string
   APP_AUTH_REGISTRATION_ENABLED?: string
+  APP_ACCOUNT_PROFILE_ENABLED?: string
+  APP_INITIAL_PREFERENCES_ENABLED?: string
   APP_AUTH_TERMS_VERSION?: string
   APP_AUTH_PRIVACY_VERSION?: string
   APP_AUTH_PLATFORM_NOTICE_VERSION?: string
@@ -80,10 +106,13 @@ export type Bindings = {
   APP_MEMBERSHIP_APPLICATIONS_ENABLED?: string
   APP_MEMBERSHIP_CATALOG_VERSION?: string
   APP_MEMBERSHIP_PRODUCTION_READY?: string
+  APP_MEMBERSHIP_EXPIRING_SOON_DAYS?: string
   APP_MESSAGING_ENABLED?: string
   APP_MESSAGING_ADMIN_ENABLED?: string
+  APP_CONVERSATION_SETTINGS_ENABLED?: string
   APP_MESSAGING_DISCLOSURE_VERSION?: string
   APP_MESSAGING_PRODUCTION_READY?: string
+  APP_MESSAGE_MODERATION_POLICY_VERSION?: string
   APP_SAFETY_ENABLED?: string
   APP_SAFETY_ADMIN_ENABLED?: string
   APP_SAFETY_REASON_CATALOG_VERSION?: string
@@ -96,6 +125,10 @@ export type Bindings = {
   APP_NOTIFICATIONS_ADMIN_ENABLED?: string
   APP_NOTIFICATIONS_POLICY_VERSION?: string
   APP_NOTIFICATIONS_PRODUCTION_READY?: string
+  APP_REALTIME_ENABLED?: string
+  APP_REALTIME_POLICY_VERSION?: string
+  APP_REALTIME_PRODUCTION_READY?: string
+  APP_REALTIME_HUB?: DurableObjectNamespace<AppRealtimeHub>
   APP_WALLET_ENABLED?: string
   APP_WALLET_ADMIN_ENABLED?: string
   APP_WALLET_POLICY_VERSION?: string
@@ -135,7 +168,15 @@ export type Bindings = {
   APP_RUNTIME_RETRY_AFTER_SECONDS?: string
   APP_RUNTIME_ALLOWED_COUNTRIES?: string
   APP_RUNTIME_REGION_UNAVAILABLE_REASON?: string
+  APP_OPERATIONS_CLOUDFLARE_ACCOUNT_ID?: string
+  APP_OPERATIONS_CLOUDFLARE_ANALYTICS_TOKEN?: string
+  APP_OPERATIONS_CLOUDFLARE_WORKER_SCRIPTS?: string
+  APP_OPERATIONS_CLOUDFLARE_D1_DATABASE_ID?: string
+  APP_OPERATIONS_CLOUDFLARE_R2_BUCKETS?: string
 }
+
+// Durable Object 类必须由 Worker 入口导出；binding 与 migration 配置在开发全部完成后统一落地。
+export { AppRealtimeHub } from './durable-objects/app-realtime-hub'
 
 /** 应用级变量 */
 export type Variables = {
@@ -194,9 +235,11 @@ app.use('*', cors({
     'Idempotency-Key',
     'X-Step-Up-Token',
     'X-Data-Rights-Token',
+    'X-Data-Rights-Download-Ticket',
     'X-Media-Access-Token',
   ],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  exposeHeaders: ['Content-Disposition', 'X-Data-Rights-Manifest-SHA256'],
   maxAge: 86400,
 }))
 app.use('*', async (c, next) => {
@@ -436,6 +479,36 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
       catch {
         console.error('[cron] App 站内通知恢复失败:', { errorCode: 'app_notification_recovery_failed' })
       }
+      try {
+        const recovery = await recoverAppDataRightsExports(env, new Date(event.scheduledTime), 100)
+        if (!recovery.skipped) console.log('[cron] App 数据导出任务恢复完成:', recovery)
+      }
+      catch {
+        console.error('[cron] App 数据导出任务恢复失败:', { errorCode: 'app_data_rights_export_recovery_failed' })
+      }
+      try {
+        const recovery = await recoverAppDataRightsDeletions(env, new Date(event.scheduledTime), 100)
+        if (!recovery.skipped) console.log('[cron] App 账号注销任务恢复完成:', recovery)
+      }
+      catch {
+        console.error('[cron] App 账号注销任务恢复失败:', { errorCode: 'app_data_rights_deletion_recovery_failed' })
+      }
+      try {
+        const purge = await purgeExpiredAppRecommendationEvidence(
+          db,
+          getAppRecommendationRuntimeConfig(env),
+          new Date(event.scheduledTime),
+          1000,
+        )
+        if (!purge.skipped && (purge.deletedSessionCount > 0 || purge.hasMore)) {
+          console.log('[cron] App 推荐解释证据到期清理完成:', purge)
+        }
+      }
+      catch {
+        console.error('[cron] App 推荐解释证据到期清理失败:', {
+          errorCode: 'app_recommendation_evidence_purge_failed',
+        })
+      }
     }
     if (!shouldRunDailyMaintenance(event)) return
   }
@@ -522,6 +595,57 @@ async function handleScheduled(event: ScheduledEvent, env: Bindings): Promise<vo
     })
   }
 
+  // 5. 浏览历史物理清理只由独立保留决策允许；能力关闭后仍履行已批准的删除义务。
+  try {
+    const purge = await purgeExpiredAppViewHistory(
+      db,
+      getAppInteractionCollectionRuntimeConfig(env),
+      new Date(event.scheduledTime),
+      1000,
+    )
+    if (!purge.skipped && (purge.deletedCount > 0 || purge.hasMore)) {
+      console.log('[cron] App 浏览历史到期清理完成:', purge)
+    }
+  }
+  catch {
+    console.error('[cron] App 浏览历史到期清理失败:', {
+      errorCode: 'app_view_history_purge_failed',
+    })
+  }
+
+  // 6. 站内通知正文按已批准策略清理；generation 关闭后仍履行既有到期义务。
+  try {
+    const purge = await purgeExpiredAppNotifications(
+      db,
+      getAppNotificationRuntimeConfig(env),
+      new Date(event.scheduledTime),
+      1000,
+    )
+    if (!purge.skipped && (purge.deletedNotificationCount > 0 || purge.hasMore)) {
+      console.log('[cron] App 站内通知到期清理完成:', purge)
+    }
+  }
+  catch {
+    console.error('[cron] App 站内通知到期清理失败:', {
+      errorCode: 'app_notification_purge_failed',
+    })
+  }
+
+  // 7. 私有数据副本按制品自身有效期清理；不依赖功能开关继续履行既有到期义务。
+  try {
+    const purge = await purgeExpiredAppDataRightsExports(
+      env,
+      new Date(event.scheduledTime),
+      25,
+    )
+    if (purge.purged > 0) console.log('[cron] App 私有数据副本到期清理完成:', purge)
+  }
+  catch {
+    console.error('[cron] App 私有数据副本到期清理失败:', {
+      errorCode: 'app_data_rights_export_purge_failed',
+    })
+  }
+
 }
 
 function shouldRunDailyMaintenance(event: ScheduledEvent) {
@@ -562,8 +686,37 @@ export default {
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
     ctx.waitUntil(handleScheduled(event, env))
   },
-  queue: async (batch: MessageBatch<AdPlatformQueueMessage>, env: Bindings) => {
+  queue: async (batch: MessageBatch<AdPlatformQueueMessage | ZipImportQueueMessage | AppDataRightsExportQueueMessage | AppDataRightsDeletionQueueMessage | TelegramImportQueueMessage>, env: Bindings) => {
+    const zipImport = await import('./services/admin-zip-import')
+    if (batch.queue === zipImport.ZIP_IMPORT_QUEUE_NAME) {
+      await zipImport.handleZipImportQueueBatch(batch as MessageBatch<ZipImportQueueMessage>, env)
+      return
+    }
+    const dataRightsExport = await import('./services/app-data-rights-exports')
+    if (batch.queue === dataRightsExport.APP_DATA_RIGHTS_EXPORT_QUEUE_NAME) {
+      await dataRightsExport.handleAppDataRightsExportQueueBatch(
+        batch as MessageBatch<AppDataRightsExportQueueMessage>,
+        env,
+      )
+      return
+    }
+    const dataRightsDeletion = await import('./services/app-data-rights-deletions')
+    if (batch.queue === dataRightsDeletion.APP_DATA_RIGHTS_DELETION_QUEUE_NAME) {
+      await dataRightsDeletion.handleAppDataRightsDeletionQueueBatch(
+        batch as MessageBatch<AppDataRightsDeletionQueueMessage>,
+        env,
+      )
+      return
+    }
+    const telegramImport = await import('./services/telegram-file-id-import')
+    if (batch.queue === telegramImport.TELEGRAM_IMPORT_QUEUE_NAME) {
+      await telegramImport.handleTelegramImportQueueBatch(
+        batch as MessageBatch<TelegramImportQueueMessage>,
+        env,
+      )
+      return
+    }
     const { handleAttributionQueueBatch } = await import('./services/ad-platform/queue-runtime')
-    await handleAttributionQueueBatch(batch, env)
+    await handleAttributionQueueBatch(batch as MessageBatch<AdPlatformQueueMessage>, env)
   },
 }

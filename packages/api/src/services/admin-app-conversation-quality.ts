@@ -380,6 +380,7 @@ type QualityMessageRow = {
   sequence: number
   sender_type: string
   actor_admin_id: number | null
+  status: string
   body_text: string
   body_sha256: string
 }
@@ -627,6 +628,7 @@ export async function createAdminConversationQualitySelectionRun(
       AND datetime(fact.created_at) >= datetime(?)
       AND datetime(fact.created_at) < datetime(?)
       AND message.sender_type = 'platform_operator'
+      AND message.status = 'accepted'
       AND message.actor_admin_id = fact.actual_operator_admin_id
       AND NOT EXISTS (
         SELECT 1 FROM app_conversation_quality_samples sample WHERE sample.message_id = fact.message_id
@@ -648,20 +650,36 @@ export async function createAdminConversationQualitySelectionRun(
     JOIN app_conversation_messages message ON message.id = fact.message_id
     JOIN app_conversations conversation ON conversation.id = fact.conversation_id
     LEFT JOIN app_conversation_messages before_message
-      ON before_message.conversation_id = message.conversation_id
-     AND before_message.sequence = message.sequence - 1
+      ON before_message.id = (
+        SELECT candidate.id
+        FROM app_conversation_messages candidate
+        WHERE candidate.conversation_id = message.conversation_id
+          AND candidate.sequence < message.sequence
+          AND candidate.status = 'accepted'
+        ORDER BY candidate.sequence DESC
+        LIMIT 1
+      )
     LEFT JOIN app_conversation_messages after_message
-      ON after_message.conversation_id = message.conversation_id
-     AND after_message.sequence = message.sequence + 1
+      ON after_message.id = (
+        SELECT candidate.id
+        FROM app_conversation_messages candidate
+        WHERE candidate.conversation_id = message.conversation_id
+          AND candidate.sequence > message.sequence
+          AND candidate.status = 'accepted'
+        ORDER BY candidate.sequence ASC
+        LIMIT 1
+      )
     LEFT JOIN app_conversation_messages disclosure
       ON disclosure.conversation_id = conversation.id
      AND disclosure.sequence = 1
      AND disclosure.sender_type = 'system'
+     AND disclosure.status = 'accepted'
      AND disclosure.client_message_id = 'system.' || conversation.disclosure_version
     WHERE ${scopeSql}
       AND datetime(fact.created_at) >= datetime(?)
       AND datetime(fact.created_at) < datetime(?)
       AND message.sender_type = 'platform_operator'
+      AND message.status = 'accepted'
       AND message.actor_admin_id = fact.actual_operator_admin_id
       AND NOT EXISTS (
         SELECT 1 FROM app_conversation_quality_samples sample WHERE sample.message_id = fact.message_id
@@ -1053,7 +1071,7 @@ export async function getAdminConversationQualitySample(
   const evidence = await requireQualityEvidence(db, sampleId)
   const byId = await loadQualityEvidenceMessages(db, current.conversation_id, evidence)
   const target = byId.get(evidence.target_message_id)
-  if (!target) {
+  if (!target || target.status !== 'accepted') {
     throw new AppMessagingError(409, 'QUALITY_EVIDENCE_UNAVAILABLE', '抽检目标正文不可用，请将样本作废并保留审计')
   }
 
@@ -2537,7 +2555,7 @@ function pushEvidenceMessage(
 ) {
   if (!messageId || !expectedHash) return
   const message = byId.get(messageId)
-  if (!message) return
+  if (!message || message.status !== 'accepted') return
   output.push({
     messageId: message.id,
     sequence: Number(message.sequence),
@@ -2561,7 +2579,7 @@ async function loadQualityEvidenceMessages(
     evidence.disclosure_message_id,
   ].filter((value): value is string => Boolean(value))
   const result = await db.prepare(`
-    SELECT id, sequence, sender_type, actor_admin_id, body_text, body_sha256
+    SELECT id, sequence, sender_type, actor_admin_id, status, body_text, body_sha256
     FROM app_conversation_messages
     WHERE conversation_id = ? AND id IN (${ids.map(() => '?').join(', ')})
     ORDER BY sequence ASC, id ASC
@@ -2583,12 +2601,14 @@ function qualityEvidenceSnapshotMatches(
   for (const [messageId, bodySha256] of references) {
     if (Boolean(messageId) !== Boolean(bodySha256)) return false
     if (!messageId || !bodySha256) continue
-    if (messages.get(messageId)?.body_sha256 !== bodySha256) return false
+    const message = messages.get(messageId)
+    if (message?.status !== 'accepted' || message.body_sha256 !== bodySha256) return false
   }
   const target = messages.get(evidence.target_message_id)
   return Boolean(
     target
     && target.sender_type === 'platform_operator'
+    && target.status === 'accepted'
     && target.actor_admin_id === sample.actual_operator_admin_id,
   )
 }
@@ -2598,7 +2618,7 @@ function mapDisclosureEvidence(
   snapshotHash: string | null,
   expectedHash: string | null,
 ): NonNullable<NonNullable<AdminConversationQualitySampleDetail['evidence']>['disclosure']> | null {
-  if (!message || !snapshotHash) return null
+  if (!message || message.status !== 'accepted' || !snapshotHash) return null
   return {
     messageId: message.id,
     sequence: Number(message.sequence),

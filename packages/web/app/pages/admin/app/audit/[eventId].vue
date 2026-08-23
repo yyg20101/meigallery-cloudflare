@@ -15,6 +15,7 @@ definePageMeta({ layout: 'admin' })
 
 const route = useRoute()
 const { api } = useApi()
+const eventId = computed(() => String(route.params.eventId || ''))
 const allowedPurposes: AdminAppAuditPurpose[] = [
   'operational_investigation',
   'security_review',
@@ -63,17 +64,9 @@ function renderPayload(value: unknown) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <NuxtLink to="/admin/app/audit" class="text-sm font-medium text-gray-600 hover:text-gray-950">← 返回审计查询</NuxtLink>
-        <div class="mt-2 flex flex-wrap items-center gap-2">
-          <h1 class="text-xl font-bold text-gray-950">审计事件详情</h1>
-          <span v-if="detail" class="rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset" :class="adminAuditRiskClass(detail.riskLevel)">{{ adminAuditRiskLabel(detail.riskLevel) }}风险</span>
-        </div>
-        <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">只展示字段级脱敏差异和受控引用。详情读取本身会新增审计事件，不会修改原事件或触发任何业务重放。</p>
-      </div>
-      <p v-if="detail" class="max-w-full break-all font-mono text-xs text-gray-500">{{ detail.eventId }}</p>
-    </header>
+    <AdminAppPageHeader page-id="ADM-AUD-02" :route="`/admin/app/audit/${eventId}`" title="审计详情" :description="`展示事件时间线、脱敏差异和审批关系 · ${eventId}`" :state="errorMessage ? '读取失败' : loading ? '读取中' : detail ? `${adminAuditRiskLabel(detail.riskLevel)}风险` : '待确认用途'" figma-state="正常" :state-tone="errorMessage ? 'danger' : loading || !detail ? 'warning' : detail.riskLevel === 'high' ? 'danger' : 'neutral'">
+      <template #actions><NuxtLink to="/admin/app/audit" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">返回审计查询</NuxtLink></template>
+    </AdminAppPageHeader>
 
     <section v-if="!detail" class="rounded-xl border border-amber-200 bg-amber-50 p-5">
       <h2 class="text-sm font-semibold text-amber-950">读取前确认业务用途</h2>

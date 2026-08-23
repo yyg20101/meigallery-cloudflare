@@ -222,7 +222,7 @@ Search-2 不得改变 Search-1 的公开资格、账号屏蔽、默认不记录�
 - 搜索策略、capability、隐私请求规范化、相关度排序和账号绑定游标；
 - 人物搜索与搜索历史六组服务端路由；
 - 与 capability 解耦、受策略门禁的到期历史分批清理任务；
-- Search-1 引入版本为 `1.13.0`；当前 App API/OpenAPI/共享类型累计版本已由 Recommendation-1 兼容提升到 `1.16.0`；
+- Search-1 引入版本为 `1.13.0`，Recommendation-1 交付时累计提升到 `1.16.0`；Membership-7 后仓库当前 App API/OpenAPI/共享类型累计版本为 `1.26.0`；
 - `meigallery-client` 已按累计 `1.16.0` 接入严格 DTO/Repository、人物搜索页、排序分页、搜索历史设置/记录/逐条删除/版本化清空和隐私状态；Android Debug APK 与 iOS Simulator Kotlin/Native 编译通过；
 - 产品、技术、契约与项目状态文档同步。
 

@@ -110,17 +110,9 @@ function findingClass(value: AdminAppAuditIntegrityFinding['severity']) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <NuxtLink to="/admin/app/audit" class="text-sm font-medium text-gray-600 hover:text-gray-950">← 返回审计查询</NuxtLink>
-        <div class="mt-2 flex flex-wrap items-center gap-2">
-          <h1 class="text-xl font-bold text-gray-950">审计完整性</h1>
-          <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">Owner 专属</span>
-        </div>
-        <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">检查稳定序号、事实索引、JSON 载荷、敏感字段、Action 登记、关键业务事实反向审计覆盖和同范围 SHA-256 清单。检查只追加结果，不自动修补或重写历史。</p>
-      </div>
-      <NuxtLink to="/admin/app/audit/registry" class="inline-flex min-h-10 max-w-full shrink-0 items-center justify-center whitespace-normal rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">治理 Action 口径</NuxtLink>
-    </header>
+    <AdminAppPageHeader page-id="ADM-AUD-03" route="/admin/app/audit/integrity" title="审计完整性状态" description="检查 sequence 缺口、反向审计覆盖和同范围 SHA-256 清单；只追加结果。" :state="errorMessage ? '检查失败' : loading || running ? '检查中' : overview?.productionReady ? '正常' : '完整性告警'" :figma-state="overview && !overview.productionReady ? 'Sequence 缺口' : '正常'" :state-tone="errorMessage ? 'danger' : loading || running ? 'warning' : overview?.productionReady ? 'success' : 'danger'">
+      <template #actions><NuxtLink to="/admin/app/audit" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">返回审计查询</NuxtLink><NuxtLink to="/admin/app/audit/registry" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">治理 Action 口径</NuxtLink></template>
+    </AdminAppPageHeader>
 
     <p v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ errorMessage }}</p>
     <p v-if="successMessage" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-700">{{ successMessage }}</p>

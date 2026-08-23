@@ -378,20 +378,9 @@ function minuteLabel(value: number) {
 
 <template>
   <div class="mx-auto flex w-full max-w-[1500px] min-w-0 flex-col gap-5">
-    <header class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div class="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-2 text-xs font-semibold text-rose-600">
-            <span>ADM-MSG-03</span>
-            <span aria-hidden="true">·</span>
-            <span>/admin/app/conversation-groups</span>
-          </div>
-          <h1 class="mt-2 text-2xl font-bold tracking-tight text-gray-950">运营组、班次与自动分配</h1>
-          <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">
-            维护平台话题的受控路由。规则只决定运营租约，不改变平台接收身份，也不会自动生成或发送任何用户消息。
-          </p>
-        </div>
-        <div class="flex shrink-0 flex-wrap gap-2">
+    <section class="rounded-2xl border border-[#eaded8] bg-white p-5 shadow-sm">
+      <AdminAppPageHeader page-id="ADM-MSG-03" route="/admin/app/conversation-groups" title="分组与班次" description="维护平台话题的受控路由；规则只决定运营租约，不改变平台接收身份，也不会自动生成消息。" :state="pageError ? '配置冲突' : status === 'pending' ? '加载中' : '正常'" :figma-state="pageError ? '配置冲突' : '正常'" :state-tone="pageError ? 'danger' : status === 'pending' ? 'warning' : 'info'">
+        <template #actions>
           <NuxtLink to="/admin/app/conversation-quality" class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             质量与抽检
           </NuxtLink>
@@ -401,9 +390,9 @@ function minuteLabel(value: number) {
           <button class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50" :disabled="status === 'pending'" @click="refresh()">
             刷新权威状态
           </button>
-        </div>
-      </div>
-    </header>
+        </template>
+      </AdminAppPageHeader>
+    </section>
 
     <div v-if="pageError" role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800 [overflow-wrap:anywhere]">
       {{ pageError }}

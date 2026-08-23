@@ -63,14 +63,18 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="min-w-0 max-w-4xl space-y-5">
-    <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-      <div class="min-w-0">
-        <h1 class="text-xl font-bold text-gray-950">新建人物候选</h1>
-        <p class="mt-1 text-sm leading-6 text-gray-600">创建后仍是不可见草稿，必须逐步完成用途授权、认证和发布复核。</p>
-      </div>
-      <NuxtLink to="/admin/app/persons" class="shrink-0 text-sm font-medium text-blue-600 hover:underline">返回人物供给</NuxtLink>
-    </div>
+  <div class="min-w-0 max-w-5xl space-y-5">
+    <AdminAppPageHeader
+      page-id="ADM-PER-02"
+      route="/admin/app/persons/new"
+      title="手动新建真人"
+      description="创建带来源、授权、主体和媒体信息的不可见真人草稿。"
+      :state="loading ? '保存中' : message ? '保存失败' : '正常'"
+      :figma-state="galleryStatus !== 'pending' && !galleries.length ? '缺少来源' : message ? '媒体失败' : '正常'"
+      :state-tone="message ? 'danger' : loading ? 'warning' : 'success'"
+    >
+      <template #actions><NuxtLink to="/admin/app/persons" class="inline-flex min-h-9 items-center rounded-[10px] border border-[#f2ddd6] bg-white px-4 text-sm font-medium text-[#6a5f5a] hover:bg-[#fff5f1]">返回真人列表</NuxtLink></template>
+    </AdminAppPageHeader>
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
       <span class="font-semibold">不得直接录入宣传性认证结论。</span>

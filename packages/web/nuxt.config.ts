@@ -1,5 +1,8 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { fileURLToPath } from 'node:url'
 import { WEB_SECURITY_HEADERS } from './app/utils/securityHeaders'
+
+const adminPageFile = (relativePath: string) => fileURLToPath(new URL(relativePath, import.meta.url))
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-05-26',
@@ -59,6 +62,85 @@ export default defineNuxtConfig({
   modules: [
     '@nuxt/ui',
   ],
+
+  hooks: {
+    'pages:extend'(pages) {
+      // Figma 以 Page ID 定义独立验收 URL；同一业务域继续复用唯一权威工作台，
+      // 避免为认证、会话、安全、钱包和通知复制第二套可写实现。
+      pages.push(
+        {
+          name: 'admin-app-imports',
+          path: '/admin/app/imports',
+          file: adminPageFile('./app/pages/admin/import/index.vue'),
+        },
+        {
+          name: 'admin-app-import-detail',
+          path: '/admin/app/imports/:id',
+          file: adminPageFile('./app/pages/admin/import/[id].vue'),
+        },
+        {
+          name: 'admin-app-verification-review',
+          path: '/admin/app/verifications/:personId',
+          file: adminPageFile('./app/pages/admin/app/persons/[personId].vue'),
+        },
+        {
+          name: 'admin-app-publication-review',
+          path: '/admin/app/publications/:personId',
+          file: adminPageFile('./app/pages/admin/app/persons/[personId].vue'),
+        },
+        {
+          name: 'admin-app-conversation-detail',
+          path: '/admin/app/conversations/:conversationId',
+          file: adminPageFile('./app/pages/admin/app/conversations/index.vue'),
+        },
+        {
+          name: 'admin-app-safety-reviews',
+          path: '/admin/app/reviews',
+          file: adminPageFile('./app/pages/admin/app/safety/index.vue'),
+        },
+        {
+          name: 'admin-app-safety-review-detail',
+          path: '/admin/app/reviews/:caseId',
+          file: adminPageFile('./app/pages/admin/app/safety/index.vue'),
+        },
+        {
+          name: 'admin-app-wallet-detail',
+          path: '/admin/app/wallets/:accountId',
+          file: adminPageFile('./app/pages/admin/app/wallets/index.vue'),
+        },
+        {
+          name: 'admin-app-wallet-adjustment-new',
+          path: '/admin/app/coin-adjustments/new',
+          file: adminPageFile('./app/pages/admin/app/wallets/index.vue'),
+        },
+        {
+          name: 'admin-app-wallet-adjustment-review',
+          path: '/admin/app/coin-adjustments/:adjustmentId/review',
+          file: adminPageFile('./app/pages/admin/app/wallets/index.vue'),
+        },
+        {
+          name: 'admin-app-notification-events',
+          path: '/admin/app/notifications/events',
+          file: adminPageFile('./app/pages/admin/app/notifications/index.vue'),
+        },
+        {
+          name: 'admin-app-notification-templates',
+          path: '/admin/app/notifications/templates',
+          file: adminPageFile('./app/pages/admin/app/notifications/index.vue'),
+        },
+        {
+          name: 'admin-app-notification-template',
+          path: '/admin/app/notifications/templates/:templateId',
+          file: adminPageFile('./app/pages/admin/app/notifications/index.vue'),
+        },
+        {
+          name: 'admin-app-notification-deliveries',
+          path: '/admin/app/notifications/deliveries',
+          file: adminPageFile('./app/pages/admin/app/notifications/index.vue'),
+        },
+      )
+    },
+  },
 
   // TypeScript
   typescript: {

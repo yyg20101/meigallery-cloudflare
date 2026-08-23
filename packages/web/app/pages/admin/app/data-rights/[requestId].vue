@@ -52,6 +52,8 @@ const selectedActionBlocked = computed(() => {
   if (!request || !selectedAction.value || !policy) return false
   if (!['begin_processing', 'retry'].includes(selectedAction.value)) return false
   return !policy.productionReady
+    || (request.type === 'export' && request.exportExecutor?.ready !== true)
+    || (request.type === 'deletion' && request.deletionExecutor?.ready !== true)
     || (request.type === 'export' ? !policy.capabilities.exportProcessing : !policy.capabilities.deletionProcessing)
 })
 
@@ -169,6 +171,11 @@ function eventTypeLabel(value: string) {
     retry_scheduled: '重新排入处理',
     cancelled: '申请已取消',
     internal_note_added: '追加内部处置说明',
+    export_ready: '私有数据副本已就绪',
+    export_download_ticket_issued: '创建一次性下载凭证',
+    export_download_started: '安全下载已开始',
+    export_expired: '私有数据副本已过期',
+    deletion_completed: '账号注销已完成',
   } as Record<string, string>)[value] ?? value
 }
 
@@ -181,13 +188,9 @@ function safeSummary(event: AdminDataRightsTimelineEvent) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2"><h1 class="text-xl font-bold text-gray-950">数据权利申请处置</h1><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">ADM-PRI-02</span></div>
-        <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-500">{{ requestId }}</p>
-      </div>
-      <NuxtLink to="/admin/app/data-rights" class="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto">返回申请队列</NuxtLink>
-    </header>
+    <AdminAppPageHeader page-id="ADM-PRI-02" :route="route.path" title="数据权利申请处置" :description="`核对脱敏账号、策略快照与不可变时间线 · ${requestId}`" :state="status === 'pending' ? '加载中' : detailError ? '加载失败' : detail ? adminDataRightsStatusLabel(detail.status) : '正常'" :figma-state="status === 'pending' ? '加载中' : detailError ? '加载失败' : detail?.overdue ? '终态只读' : detail && !detail.assignee ? '待领取' : '正常'" :state-tone="detailError ? 'danger' : status === 'pending' ? 'warning' : detail?.overdue ? 'danger' : 'info'">
+      <template #actions><NuxtLink to="/admin/app/data-rights" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#eaded8] bg-white px-4 text-sm font-medium text-stone-700 hover:bg-[#fff7f2]">返回申请队列</NuxtLink></template>
+    </AdminAppPageHeader>
 
     <p v-if="actionError" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ actionError }}</p>
     <p v-if="successMessage" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">{{ successMessage }}</p>
@@ -219,8 +222,24 @@ function safeSummary(event: AdminDataRightsTimelineEvent) {
       </section>
 
       <section class="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
-        <h2 class="text-sm font-semibold text-amber-950">不可逆动作保持封闭</h2>
-        <p class="mt-1 text-sm leading-6 text-amber-800">Privacy-1 不显示或生成用户导出内容，也不提供“完成导出”或“执行删除”动作。开始处理与失败重试还会由服务端复核策略、生产门禁和执行器开关。</p>
+        <h2 class="text-sm font-semibold text-amber-950">执行器与不可逆动作</h2>
+        <p v-if="detail.type === 'export'" class="mt-1 text-sm leading-6 text-amber-800">Privacy-2A 只在保留、责任人、地区、策略与私有制品 profile 全部通过门禁后运行。导出正文只写入私有 R2，不会在后台页面、通用审计或分析事件中展示。</p>
+        <p v-else class="mt-1 text-sm leading-6 text-amber-800">Privacy-2B 只有在保留、备份、第三方、身份复用和证据策略全部批准后才可运行。当前 development profile 默认关闭；执行开始后只允许从检查点前向修复，后台不能手工伪造失败或完成证明。</p>
+        <dl v-if="detail.type === 'export'" class="mt-3 grid gap-3 border-t border-amber-200 pt-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
+          <div><dt class="text-amber-700">执行器门禁</dt><dd class="mt-1 font-medium text-amber-950">{{ detail.exportExecutor?.ready ? '已就绪' : '保持关闭' }}</dd></div>
+          <div><dt class="text-amber-700">制品状态</dt><dd class="mt-1 font-medium text-amber-950">{{ detail.exportArtifact?.status || '尚未创建' }}</dd></div>
+          <div><dt class="text-amber-700">分类进度</dt><dd class="mt-1 font-medium text-amber-950">{{ detail.exportArtifact ? `${detail.exportArtifact.progress.completedCategories} / ${detail.exportArtifact.progress.totalCategories}` : '—' }}</dd></div>
+          <div><dt class="text-amber-700">记录 / 文件</dt><dd class="mt-1 font-medium text-amber-950">{{ detail.exportArtifact ? `${detail.exportArtifact.progress.records} / ${detail.exportArtifact.progress.parts}` : '—' }}</dd></div>
+        </dl>
+        <dl v-else class="mt-3 grid gap-3 border-t border-amber-200 pt-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
+          <div><dt class="text-amber-700">执行器门禁</dt><dd class="mt-1 font-medium text-amber-950">{{ detail.deletionExecutor?.ready ? '已就绪' : '保持关闭' }}</dd></div>
+          <div><dt class="text-amber-700">执行任务</dt><dd class="mt-1 font-medium text-amber-950">{{ detail.deletionExecution?.status || '尚未创建' }}</dd></div>
+          <div><dt class="text-amber-700">检查点进度</dt><dd class="mt-1 font-medium text-amber-950">{{ detail.deletionExecution ? `${detail.deletionExecution.progress.completedSteps} / ${detail.deletionExecution.progress.totalSteps}` : `0 / ${detail.deletionExecutor?.expectedSteps || 9}` }}</dd></div>
+          <div><dt class="text-amber-700">当前步骤</dt><dd class="mt-1 break-all font-medium text-amber-950">{{ detail.deletionExecution?.progress.currentStep || '—' }}</dd></div>
+        </dl>
+        <p v-if="detail.exportArtifact?.manifestSha256" class="mt-3 break-all font-mono text-[10px] leading-5 text-amber-700">manifest SHA-256：{{ detail.exportArtifact.manifestSha256 }}</p>
+        <p v-if="detail.deletionExecutor?.reasonCode && !detail.deletionExecutor.ready" class="mt-3 break-all font-mono text-[10px] leading-5 text-amber-700">门禁原因：{{ detail.deletionExecutor.reasonCode }}</p>
+        <p v-if="detail.deletionExecution?.evidence" class="mt-3 break-all font-mono text-[10px] leading-5 text-amber-700">完成证据根 SHA-256：{{ detail.deletionExecution.evidence.rootSha256 }} · 隔离域 {{ detail.deletionExecution.evidence.retainedDomainCount }}</p>
       </section>
 
       <section class="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">

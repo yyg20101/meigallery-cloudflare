@@ -2,13 +2,13 @@
 
 App 版本：1.0
 
-更新时间：2026-07-30
+更新时间：2026-08-14
 
 状态：需求讨论中，待客户确认
 
 ## 1. 文档目的
 
-本文把产品总需求、App 1.0 发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终设计状态与 169 个客户文档图片映射建立确定性关系，并作为开发需求规格的追踪索引。任何页面或原型不得脱离需求编号单独成为实现依据；任何 App 1.0 用户可见需求也不得在没有 Page ID、明确非 UI 验收或未来范围说明的情况下进入开发。
+本文把产品总需求、App 1.0 发布范围、Feature PRD、99 个 Page ID、408 个 Figma 最终设计状态与 179 个客户文档图片映射建立确定性关系，并作为开发需求规格的追踪索引。任何页面或原型不得脱离需求编号单独成为实现依据；任何 App 1.0 用户可见需求也不得在没有 Page ID、明确非 UI 验收或未来范围说明的情况下进入开发。
 
 ## 2. 基线与冲突处理
 
@@ -21,19 +21,19 @@ App 版本：1.0
 
 | 指标 | 数量 |
 |---|---:|
-| 产品页面 | 92 |
-| 移动端页面 | 49 |
-| 管理后台页面 | 43 |
-| P0 / P1 / P2 | 54 / 31 / 7 |
-| 默认状态原型 | 92 |
-| P0 关键状态原型 | 54 |
-| 基础逐页原型 | 146 |
-| Figma 最终设计页面 | 92 |
-| Figma 最终设计状态 | 349 |
-| Figma 流程预览 / 有效动作 | 92 / 2284 |
+| 产品页面 | 99 |
+| 移动端页面 | 50 |
+| 管理后台页面 | 49 |
+| P0 / P1 / P2 | 57 / 32 / 10 |
+| 默认状态原型 | 99 |
+| P0 关键状态原型 | 57 |
+| 基础逐页原型 | 156 |
+| Figma 最终设计页面 | 99 |
+| Figma 最终设计状态 | 408 |
+| Figma 流程预览 / 历史动作基线 | 99 / 3571（APP-SET-08 增量前） |
 | 通知与金币逐状态本地导出 | 5 页 / 23 张 |
-| 客户文档图片映射总数 | 169 |
-| 已建立需求追踪的页面 | 92 |
+| 客户文档图片映射总数 | 179 |
+| 已建立需求追踪的页面 | 99 |
 
 ## 4. App 1.0 无页面范围
 
@@ -74,11 +74,12 @@ App 版本：1.0
 
 | Page ID | 页面 | 优先级 | 产品总需求 | 发布范围 | Feature PRD |
 |---|---|---|---|---|---|
-| APP-INT-01 | 关注更新 | P0 | PRD-FR-040、PRD-FR-041、PRD-FR-042 | SCP-FR-003 | [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*） |
+| APP-INT-01 | 关注动态 | P0 | PRD-FR-040、PRD-FR-041、PRD-FR-042 | SCP-FR-003 | [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*） |
 | APP-INT-02 | 喜欢 | P0 | PRD-FR-040、PRD-FR-041、PRD-FR-042 | SCP-FR-003 | [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*） |
 | APP-INT-03 | 收藏夹 | P1 | PRD-FR-040、PRD-FR-041、PRD-FR-042 | SCP-FR-003 | [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*） |
 | APP-INT-04 | 收藏夹详情 | P1 | PRD-FR-040、PRD-FR-041、PRD-FR-042 | SCP-FR-003 | [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*） |
 | APP-INT-05 | 浏览历史 | P1 | PRD-FR-040、PRD-FR-041、PRD-FR-042 | SCP-FR-003 | [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*） |
+| APP-INT-06 | 调整收藏夹 | P1 | PRD-FR-040、PRD-FR-041、PRD-FR-042 | SCP-FR-003 | [F-06 喜欢、关注、收藏与浏览历史](../ways-of-work/plan/real-person-discovery-platform/viewer-interactions-and-history/prd.md)（VIR-FR-*） |
 
 ### 移动端 · 平台话题与通知
 
@@ -119,8 +120,6 @@ App 版本：1.0
 | APP-SET-11 | 帮助中心 | P0 | PRD-FR-080、PRD-FR-081、PRD-FR-082 | SCP-FR-013 | [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*） |
 | APP-SET-12 | 关于与法律 | P1 | PRD-FR-080、PRD-FR-081、PRD-FR-082 | SCP-FR-013 | [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*） |
 
-实现状态（2026-08-10）：`APP-SET-11/12` 已由 App Core-1 完成 Cloudflare 只读内容契约和 KMP 页面开发；环境配置、构建、专项测试与联调后置。
-
 ### 移动端 · 系统状态
 
 | Page ID | 页面 | 优先级 | 产品总需求 | 发布范围 | Feature PRD |
@@ -130,8 +129,6 @@ App 版本：1.0
 | APP-SYS-03 | 账号受限 | P0 | PRD-FR-001、PRD-FR-002、PRD-FR-082 | SCP-FR-031、SCP-FR-032、SCP-FR-033 | [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*） |
 | APP-SYS-04 | 对象不可用 | P0 | PRD-FR-013、PRD-FR-032 | SCP-FR-031、SCP-FR-032、SCP-FR-033 | [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*） |
 | APP-SYS-05 | 地区不可用 | P1 | PRD-FR-020、PRD-FR-022 | SCP-FR-031、SCP-FR-032、SCP-FR-033 | [App 1.0 范围 发布范围与能力启用策略](../ways-of-work/plan/real-person-discovery-platform/app-1-0-release-scope/prd.md)（SCP-FR-*） |
-
-实现状态（2026-08-10）：`APP-SYS-01～05` 已由 App Core-1 完成服务端稳定策略与 KMP 全局门禁/安全返回路径开发；对象不可用当前覆盖人物详情，其他未来深链目标继续复用同一安全状态模型。
 
 ### 管理后台 · 总览与异常
 
@@ -163,6 +160,7 @@ App 版本：1.0
 | ADM-REC-02 | 推荐规则编辑 | P1 | PRD-FR-020、PRD-FR-021、PRD-FR-022、PRD-FR-023、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012、SCP-FR-030 | [A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*） |
 | ADM-REC-03 | 推荐 Dry-run | P2 | PRD-FR-020、PRD-FR-021、PRD-FR-022、PRD-FR-023、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012、SCP-FR-030 | [A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*） |
 | ADM-REC-04 | 运营精选 | P1 | PRD-FR-020、PRD-FR-021、PRD-FR-022、PRD-FR-023、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012、SCP-FR-030 | [A-05 推荐位、排序规则与热度运营](../ways-of-work/plan/real-person-discovery-platform/recommendation-and-popularity-operations/prd.md)（ROP-FR-*） |
+| ADM-SRC-01 | 搜索运营核查 | P2 | PRD-FR-020、PRD-FR-021、PRD-FR-022、PRD-FR-023、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012、SCP-FR-030 | [F-02–F-05 真人发现、搜索与资料浏览](../ways-of-work/plan/real-person-discovery-platform/person-discovery-and-profile-experience/prd.md)（DSP-FR-*）；[A-04 标签、地区与分类目录管理](../ways-of-work/plan/real-person-discovery-platform/taxonomy-region-and-category-management/prd.md)（TAX-FR-*）；[A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
 
 ### 管理后台 · 平台话题运营
 
@@ -192,6 +190,7 @@ App 版本：1.0
 | ADM-MBR-04 | 会员发放申请 | P0 | PRD-FR-060、PRD-FR-061、PRD-FR-062、PRD-FR-063、PRD-FR-064、PRD-FR-065、PRD-FR-066、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-004、SCP-FR-005、SCP-FR-005B、SCP-FR-012、SCP-FR-030 | [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*） |
 | ADM-MBR-05 | 会员发放复核 | P0 | PRD-FR-060、PRD-FR-061、PRD-FR-062、PRD-FR-063、PRD-FR-064、PRD-FR-065、PRD-FR-066、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-004、SCP-FR-005、SCP-FR-005B、SCP-FR-012、SCP-FR-030 | [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*） |
 | ADM-MBR-06 | 旧会员映射 | P1 | PRD-FR-060、PRD-FR-061、PRD-FR-062、PRD-FR-063、PRD-FR-064、PRD-FR-065、PRD-FR-066、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-004、SCP-FR-005、SCP-FR-005B、SCP-FR-012、SCP-FR-030 | [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*） |
+| ADM-MBR-07 | 会员变更复核队列 | P0 | PRD-FR-060、PRD-FR-061、PRD-FR-062、PRD-FR-063、PRD-FR-064、PRD-FR-065、PRD-FR-066、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-004、SCP-FR-005、SCP-FR-005B、SCP-FR-012、SCP-FR-030 | [F-09、A-08 心享会员、Entitlement 与管理员手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)（MBR-FR-*） |
 | ADM-WAL-01 | 钱包查询 | P0 | PRD-FR-070、PRD-FR-071、PRD-FR-074、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-010、SCP-FR-012 | [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*） |
 | ADM-WAL-02 | 钱包详情 | P0 | PRD-FR-070、PRD-FR-071、PRD-FR-074、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-010、SCP-FR-012 | [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*） |
 | ADM-WAL-03 | 调币申请 | P0 | PRD-FR-070、PRD-FR-071、PRD-FR-074、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-010、SCP-FR-012 | [F-10、A-10 金币钱包与管理员调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md)（WAL-FR-*） |
@@ -208,18 +207,26 @@ App 版本：1.0
 | ADM-NTF-03 | 通知生成结果 | P2 | PRD-FR-080、PRD-FR-081、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-009、SCP-FR-012 | [F-12 站内通知中心与通知偏好](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)（NTF-FR-*） |
 | ADM-AUD-01 | 审计查询 | P0 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
 | ADM-AUD-02 | 审计详情 | P0 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
-| ADM-AUD-03 | 审计完整性状态（含 Owner Action 口径治理子流程） | P2 | PRD-FR-090、PRD-FR-091、PRD-FR-092、PRD-FR-093、PRD-FR-094 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-001–048） |
+| ADM-AUD-03 | 审计完整性状态 | P2 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
 | ADM-AUD-04 | 受控导出 | P2 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
+| ADM-AUD-05 | Action 口径治理 | P2 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
+| ADM-AUD-06 | Action 口径申请复核 | P2 | PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012 | [A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
+
+### 管理后台 · 数据权利
+
+| Page ID | 页面 | 优先级 | 产品总需求 | 发布范围 | Feature PRD |
+|---|---|---|---|---|---|
+| ADM-PRI-01 | 数据权利队列 | P0 | PRD-FR-080、PRD-FR-081、PRD-FR-082、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012、SCP-FR-013 | [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
+| ADM-PRI-02 | 数据权利申请处置 | P0 | PRD-FR-080、PRD-FR-081、PRD-FR-082、PRD-FR-090、PRD-FR-091、PRD-FR-092 | SCP-FR-012、SCP-FR-013 | [F-13 我的、隐私设置与数据权利](../ways-of-work/plan/real-person-discovery-platform/privacy-settings-and-data-rights/prd.md)（PDR-FR-*）；[A-13 运营看板、审计日志与异常追踪](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md)（OAU-FR-*） |
 
 ## 6. 逐页同步验收
 
 - 每个 Page ID 必须同时存在页面目录、详细功能说明、默认状态原型和需求追踪键。
-- 54 个 P0 页面必须额外存在一张关键异常、受限、冲突或处理中状态原型。
-- 92 个 Page ID 的 349 个需求状态必须全部存在于 Figma 最终页，并按 Page ID、状态名称、模块和需求追踪键定位；`30｜Prototype Flows` 必须覆盖 92 个流程预览。
-- Figma 页面内与流程动作合计必须为 2,284 个，缺失目标为 0；移动端关键点击热区不得小于 44dp。
+- 57 个 P0 页面必须额外存在一张关键异常、受限、冲突或处理中状态原型。
+- 99 个 Page ID 的 408 个需求状态必须全部存在于 Figma 最终页，并按 Page ID、状态名称、模块和需求追踪键定位；`30｜Prototype Flows` 必须覆盖 99 个流程预览。
+- 3,571 个页面内与流程动作是 APP-SET-08 增量六态前的历史基线；开发结束后必须重算，增量期间每个新增状态单独核对缺失目标和 44dp 移动端关键热区。
 - `APP-MSG-05`、`APP-MSG-06`、`APP-WAL-01`、`APP-WAL-02`、`APP-WAL-03` 另外保留 23 张逐状态本地导出图；每张图都具备唯一 Frame ID、触发条件、关键交互、预期结果和权威边界。
 - Page ID、页面名称、优先级、默认状态、关键状态、图片文件名和需求追踪键由同一清单生成并自动校验。
 - `ADM-AUD-03` 的完整可视化页面属于 P2；审计完整性的最小自动校验与告警属于 P0 后端门禁，两者不得混为同一页面优先级。
-- Audit-3 的 `/admin/app/audit/registry` 与申请详情沿用 `ADM-AUD-03` Owner 治理职责，不新增 Page ID 或改写既有 Figma 349 状态计数；若未来升级为独立客户页面，必须先新增 Page ID、原型状态和追踪关系。
 - 客户意见、设计修改、研发任务和测试用例必须引用 Page ID；涉及业务规则变化时还必须引用对应 PRD/SCP 需求编号。
 - 最终开发入口为 `MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md`；其 Page ID、需求追踪和原型引用必须与本矩阵及 `manifest.json` 完全一致。

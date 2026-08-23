@@ -24,6 +24,10 @@ const SUPPLY_MIGRATION = readFileSync(
   new URL('../../migrations/0068_app_person_supply_workflow.sql', import.meta.url),
   'utf8',
 )
+const TAXONOMY_MIGRATION = readFileSync(
+  new URL('../../migrations/0081_app_taxonomy_catalog.sql', import.meta.url),
+  'utf8',
+)
 const PUBLIC_QUERY_NOW = new Date('2027-01-01T00:00:00.000Z')
 
 let miniflare: Miniflare
@@ -58,10 +62,27 @@ beforeAll(async () => {
       after_value TEXT,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE app_operational_safety_controls (
+      control_key TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      state TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      incident_id TEXT,
+      reason_code TEXT,
+      reason_summary TEXT,
+      changed_by INTEGER,
+      changed_at TEXT NOT NULL
+    );
   `))
   await db.exec(executableSql(PUBLIC_PROJECTION_MIGRATION))
   await db.exec(executableSql(SUPPLY_MIGRATION))
+  await db.exec(executableSql(TAXONOMY_MIGRATION))
   await db.prepare("INSERT INTO users (id, email) VALUES (1, 'owner@example.com')").run()
+  await db.prepare(`
+    INSERT INTO app_operational_safety_controls (
+      control_key, display_name, state, version, changed_at
+    ) VALUES ('person_publication', '人物发布', 'available', 1, '2026-08-06T00:00:00.000Z')
+  `).run()
 })
 
 beforeEach(async () => {

@@ -114,10 +114,12 @@ erDiagram
 | `app_recommendation_admin_requests` | `admin_id`, 幂等键摘要、请求摘要和结果引用 | 规则创建/复制与精选创建幂等事实 |
 | `notification_event_definitions` | `event_type`, `category`, `necessity`, `schema_version`, `status` | 事件、必要性、去重和 action 契约 |
 | `notification_templates` | `id`, `event_type`, `locale`, `version`, `status`, `effective_at` | 不可变站内模板版本 |
-| `notifications` | `id`, `account_id`, `category`, `event_ref`, `template_version`, `target_ref`, `status`, `read_at`, `created_at` | App 1.0 站内通知、目标和未读状态 |
+| `notifications` | `id`, `account_id`, `category`, `event_ref`, `template_version`, `target_ref`, `status`, `read_at`, `created_at`, `expires_at` | App 1.0 站内通知、目标、未读状态和批准后的不可变到期边界 |
 | `notification_preferences` | `account_id`, `category`, `enabled`, `updated_at` | 站内通知偏好；必要安全通知不可关闭 |
 
 `viewer_interactions` 不存在 reciprocal/matched 状态。
+
+Interaction-4 不新增表或 migration，复用 `0078_app_favorites_and_view_history.sql` 的 `app_profile_view_history.expires_at` 与 `(expires_at, account_id)` 索引。每日清理只有在环境显式选择策略、保留决策批准且 purge 开启时，才按到期时间、账号与人物稳定顺序有限删除；历史 capability 或记录开关关闭后仍继续履行已批准义务。偏好版本、收藏关系和会员 entitlement 不被清理器改写。完整边界见 [Interaction-4 浏览历史到期生命周期开发基线](./INTERACTION_4_VIEW_HISTORY_LIFECYCLE_INTEGRATION.md)。
 
 #### 3.3.1 M0 公开投影实施边界
 
@@ -142,6 +144,28 @@ erDiagram
 - 当前 API 仅支持管理员单笔创建候选，不从 legacy 图库自动生成人物。未来批量候选导入必须是独立任务、默认草稿、逐项失败和人工复核，不得复用公开投影作为写主。
 - M1 migration 尚未执行 production，且没有任何真实人物、证据、seed 或回填数据。
 
+#### 3.3.2A Legacy Import-2 Gallery 迁移边界
+
+`0116_legacy_import_operational_integrity.sql` 与 `0117_legacy_import_processing_lease_guards.sql` 只增强既有 WordPress → Gallery 迁移链，不创建 Person/Profile 或公开投影：
+
+- 同一来源任务串行执行，来源内旧 `post_id` 与 Gallery slug 双重去重；单篇 Gallery、标签、媒体、legacy 条目、redirect 和审计在一个 D1 batch 中提交。
+- `source_snapshot_json` 私有冻结旧分类/标签 ID、经安全校验的媒体描述与原 HTML，最大 512 KiB；列表读取不返回快照，单条管理员详情才显式读取。失败时原子保存 `error_code/error_message` 和安全失败快照，超限原 HTML 只记录显式省略证据。
+- Gallery 正文只保存清洗文本，不保留源站图片/视频嵌入；图片必须进入 R2 下载流程，视频在 Stream 接入前保持待处理。
+- 审核终态保存管理员、时间和备注并保持不可改写，但只确认迁移条目，不发布 Gallery，也不授予推荐资格。
+- 任务列表、媒体下载、失败重置、状态和封面辅助写入都反向限定到 legacy 任务；Owner 查看全部，Admin 仅查看和操作本人任务。
+- `0116` 先扩展处理租约列；兼容代码按页和按条续租、以 token 条件收敛并只回收过期任务；`0117` 再强制 processing 与租约字段一致。
+- `0116/0117`、历史审核证据覆盖率检查、构建与定向测试均按当前要求统一后置；正式顺序固定为 `0116 → 兼容代码 → 0117`。详见 [Legacy Import-2 旧站迁移运行完整性开发基线](./LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md)。
+
+### Telegram 外部导入运行完整性增量
+
+`0118_external_import_queue_integrity.sql` 只为既有 `external_import_records` 追加 processing token、开始/心跳/租约时间、处理中目标 ID 和过期恢复索引，不改写既有 `gallery` / `case` 草稿，也不创建 Bot、真实导入或公开人物：
+
+- 接收主记录与文件行使用 D1 batch 原子写入，既有唯一幂等键不变。
+- 新运行时只通过 `TELEGRAM_IMPORT_QUEUE` 处理媒体；每个文件预先保存本次尝试的确定性 R2 key，Queue 重投复用同一 key。
+- 30 分钟租约和一次性 token 阻止旧执行器覆盖恢复后的任务；升级前 `fetching_media` 行的租约为空时只允许经显式恢复端点认领。
+- failed 重试和过期恢复都先按持久化 key/处理中目标清理；清理未完成时保留引用和稳定 warning code，不能丢失定位证据后强行重跑。
+- 正式顺序固定为 `0118 → 新运行时 → TELEGRAM_IMPORT_QUEUE 配置/启用`；migration、Queue 配置、构建和专项验证统一后置。详见 [External Import-2 Telegram 队列与运行完整性开发基线](./EXTERNAL_IMPORT_2_QUEUE_INTEGRITY.md)。
+
 #### 3.3.3 Recommendation-1 推荐数据实施边界
 
 `0083_app_recommendation_rules_and_editorial.sql` 只建立默认关闭的 development 数据骨架：
@@ -153,6 +177,33 @@ erDiagram
 - `app_recommendation_sessions` 只预留最小化证据结构。只有策略同时批准证据保留天数并开启 purge 时运行时才允许写入；账号只保存基于服务端密钥、与游标签名分用途隔离的 HMAC 摘要。推荐游标短期有效，不能在证据清理后重建旧会话并延长保留期。
 - 热度公式、样本量和反刷方案未批准前，规则热度权重必须为 `0`；既有公开投影的 legacy 分数不自动升级为正式热度事实。
 - migration 不修改 Wrangler、不切换 capability、不导入真实数据；配置、migration 执行与验证在全部开发完成后的统一阶段处理。
+
+#### 3.3.4 Recommendation-5 灰度守护数据实施边界
+
+`0113_app_recommendation_guardrails.sql` 在 `0083` 规则版本之上增加默认关闭的守护链：
+
+- 单行 control 固定聚合来源键，但来源与保留决策均为 `unresolved`，不 seed 保留天数、真实阈值、评估或阻断。
+- 守护策略按 draft、pending_review、approved、retired 管理，创建人与复核人分离；approved/retired 内容、策略事件、评估、指标结果、阻断与幂等结果均不可修改或删除。
+- `app_recommendation_rule_versions.guardrail_policy_id` 只允许草稿绑定；部分灰度进入 active/scheduled 前必须引用 approved 策略。被阻断的任何比例规则不能重新进入投放。
+- 评估只保存规则/策略、内部聚合快照引用与 SHA-256、时间窗、样本数、整数指标和结论，不保存账号、会话、真人资料或逐用户样本。
+- `rule + snapshotRef` 与 `rule + policy + observationOrdinal` 唯一；关键数据缺失或 stop 指标达到连续条件后，每个规则版本只形成一个不可变 block，并登记 100% 回退版本。
+- runtime 不改写规则状态，而是排除 blocked/守护链不完整的目标并使用显式完整回退；没有安全回退时 fail closed。
+
+`0113` 未执行，真实来源作业、阈值、保留期、purge 证明、production-ready、配置和验证均在全部开发完成后且相应 OQ 关闭后处理。详见 [Recommendation-5 灰度目标、反指标与自动停止开发基线](./RECOMMENDATION_5_GUARDRAIL_AND_AUTOMATIC_STOP_INTEGRATION.md)。
+
+#### 3.3.5 Recommendation-6 推荐证据生命周期实施边界
+
+`0114_app_recommendation_evidence_lifecycle.sql` 不新增推荐事实，只为 `0083` 已有证据表补齐账号摘要定位索引和 UPDATE 不可变约束。物理清理器复用既有 15 分钟调度，并且只有显式策略 ID、已批准保留天数与 `purge_enabled=1` 同时有效时，才按到期时间有界删除会话及其级联条目。
+
+Privacy-2B 的 `purge_discovery_activity` 使用与推荐写入相同的分用途 HMAC 复算账号摘要，把命中的会话与条目同时纳入初始/最终计数；最终仍有任何残留时，注销步骤不能完成。匿名或未关联账号的非个性化证据仍只按普通到期生命周期清理。`SESSION_SECRET` 在证据存续期间必须稳定，注销开始/重试前会验证其至少 16 字符；轮换前必须先完成旧摘要清理与零残留核验。
+
+`0114`、真实保留决策、策略配置、密钥生命周期、migration 执行和验证均后置。完整边界见 [Recommendation-6 推荐解释证据生命周期开发基线](./RECOMMENDATION_6_EVIDENCE_LIFECYCLE_INTEGRATION.md)。
+
+#### 3.3.6 Privacy-2C 个人数据副本覆盖实施边界
+
+Privacy-2C 不新增表或 migration，只扩充 `app-data-rights-exports.ts` 的显式字段白名单：前 35 个分类及其持久化 ordinal 保持不变，末尾追加推荐偏好、人物拉黑状态/事件、旧版图库点赞和推荐会话/条目 6 类。新 artifact 创建 41 个 scope；执行器以该 artifact 实际保存的 scope 数量作为完成边界，因此升级前的 35-scope artifact 仍能原序恢复和完成。
+
+推荐会话/条目 scope 使用 `0114` 的账号摘要索引，并以集中 HMAC 实现从 `accountPublicId` 定位；scope 快照和后续分页都必须使用稳定 `SESSION_SECRET`。`account_hash`、`context_hash`、内部账号 ID、mutation token 和原始推荐上下文不进入 NDJSON。密钥不可用时 export readiness、开始处理或分页 fail closed，不得把定位失败当作空分类后生成 ready 制品。完整边界见 [Privacy-2C 个人数据副本覆盖补全开发基线](./PRIVACY_2C_DATA_COPY_COVERAGE_INTEGRATION.md)。
 
 ### 3.4 会话与代运营
 
@@ -209,6 +260,22 @@ Audit-1 当前实现不新建第二套 `audit_events_v2` 事实，而以既有 `
 Audit-2 同样不复制审计事实。`0091_app_audit_controlled_exports.sql` 只新增导出工作流表族：不可变范围申请、追加时间线、独立复核决定、强认证 Token 摘要、下载票据摘要和幂等命令。申请保存规范查询、权限指纹、事件数量、首末 sequence 和范围摘要；文件只保存固定私有 R2 key、ETag、SHA-256、大小、行数与有效期，不保存公开 URL。触发器限制请求前向迁移，并只允许强认证凭证和票据从未消费变为已消费一次。`0091` 不创建真实申请或对象，不 seed 保留策略，不执行 R2 清理；migration 执行、正式保留/物理清理和专项测试统一后置。详见 [Audit-2 受控审计导出开发基线](./AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md)。
 
 Operations-1 使用 `0092_app_operations_and_incidents.sql` 落地上述 `metric_definitions / metric_snapshots / operational_incidents` 规划，但保持 `admin_audit_logs` 为唯一审计事实。指标定义、快照、检测运行/finding、Runbook 版本、事件时间线、安全控制事件和管理员命令均为追加式或受版本 trigger 约束；事件与安全控制当前态允许通过 `version + mutation_token` 条件更新。首批指标全部保留 `retention_decision_status=unresolved`、`production_ready=0`，不会启动物理清理或技术指标采集；五个安全控制初始 `available` 只代表未因事件暂停，不会切换任何现有 capability。`0092` 不创建真实事件或快照，不运行检测、不配置调度。详见 [Operations-1 运营总览、事件处置与跨域安全控制开发基线](./OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md)。
+
+Operations-2 使用 `0106_app_operations_membership_expiry_detector.sql` 为 `sender_type='viewer'` 的消息新增局部覆盖索引，不增加业务表或修复 trigger。`operations-detectors-v2` 只读 `app_conversation_quota_consumptions`、会员 grant/撤销/entitlement 和观看者消息，反向发现会员自然到期后仍产生新话题或发送事实的权限泄漏；正常自然到期无需追加撤销行。检测只保存聚合数量并复用既有 Incident/Runbook。该阶段形成 10 类 D1 检测、平台健康尚未接入的历史快照，后续已由 Operations-3 续接。`0106` 执行、调度和专项验证统一后置。详见 [Operations-2 会员到期权限完整性检测开发基线](./OPERATIONS_2_MEMBERSHIP_EXPIRY_INTEGRITY.md)。
+
+Wallet-3 使用 `0107_app_wallet_snapshot_recovery.sql` 增加不可变恢复命令与案件关联，并收紧 `app_wallets`：`frozen -> active` 只允许精确匹配的 executing 恢复命令。命令把查询快照恢复为当前不可变分录末态，不创建、修改或删除分录；同一 D1 batch 关闭全部由当前 Owner 认领的案件、追加案件事件和通用审计，再由 trigger 验证分录数量、sequence、前后余额链、案件集合与钱包末态。任何断点或并发变化均整体回滚。`0107` 执行和恢复演练统一后置。详见 [Wallet-3 钱包快照重建与受控解冻交付基线](./WALLET_3_SNAPSHOT_RECOVERY_INTEGRATION.md)。
+
+Wallet-4 使用 `0111_app_wallet_legacy_migrations.sql` 为仓库外显式旧余额快照建立独立治理链，不从 legacy 用户、会员或图库事实猜测余额，也不在 migration 中生成账号或分录。输入逐行冻结来源系统/记录、`opaque:` 账号引用、提取时间、映射规则、目标稳定账号、整数余额和 SHA-256；另一位 Owner 逐项复核后，默认关闭的执行门禁才允许复用 Wallet-1 普通双人申请与不可变分录。`legacy:<itemId>` 和不可变 link 只负责分类，不建立第二套余额；目标账本变化时先拒绝冻结申请再收敛 `stale`，已形成分录则通过租约恢复补齐结果。`0111` 执行、真实来源决策和专项验证统一后置。详见 [Wallet-4 旧余额显式迁移交付基线](./WALLET_4_LEGACY_BALANCE_MIGRATION_INTEGRATION.md)。
+
+Message-8 使用 `0112_app_message_moderation.sql` 为既有 `app_conversation_messages.status` 补齐默认关闭的服务端文本审核事实，不复制或迁移正文。策略 seed 为 `unresolved + evaluation_enabled=0`，规则表为空；评估只保存消息引用、策略/规则、结论、正文 SHA-256 与长度，待审案件保存版本、10 分钟租约、复核人和原因，案件事件与命令结果追加写。待审/拒绝消息只推进内部 sequence 分配，不推进会话业务活跃时间；普通工作台、未读、质检和队列只消费 accepted/recalled。人工通过会把消息重排到当前末尾再形成接收方交付，观看者与运营摘要使用各自可见投影；本人导出排除从未交付的运营待审/拒绝正文。Privacy-2B 关闭话题前把未完成案件收敛为 `cancelled`，清租约和审核幂等命令，并把评估/案件/事件计入 `messaging_evidence` 合规隔离。migration 只扩充 Message-3 固定模板与事实 trigger，不回填历史消息、不生成 Outbox、不开放召回，也不新增 Page/Figma 状态。`0112`、真实规则/策略、配置和专项验证统一后置。详见 [Message-8 文本消息审核与结果通知开发基线](./MESSAGE_8_TEXT_MODERATION_INTEGRATION.md)。
+
+Message-9 使用 `0115_app_notification_content_lifecycle.sql` 为 `0076` 既有 `app_notifications.expires_at` 增加 explicit/legacy 清理索引和时间/不可变触发器，不新增通知事实。策略 approved 且保留天数有效时，新投递以原始事件时间计算到期，处理时已经过期的 Outbox 只收敛为 suppressed；每日清理还要求环境显式策略 ID 与 `purge_enabled=1`，按稳定顺序有界删除通知正文及其单条已读事件。分类全部已读事件和不含正文的 Outbox 去重墓碑保留，能力/generation 关闭不取消已批准删除义务。Migration 不回填、不删除、不改配置；OQ-020、`0115` 执行和专项验证统一后置。详见 [Message-9 站内通知内容生命周期开发基线](./MESSAGE_9_NOTIFICATION_CONTENT_LIFECYCLE_INTEGRATION.md)。
+
+Operations-3 使用 `0108_app_operations_cloudflare_status_runbook.sql` 只追加 `oprb_cloudflare_platform_health_v1`，不创建运行事实、不增加 secret/binding，也不改写 `0092` 的指标定义。`operations-detectors-v3` 在运行时读取官方公共 Summary，严格过滤当前 9 个相关组件；有效响应进入检测运行证据，来源失败只增加 `unavailableDetectorCount`。相关异常复用既有平台事件表，运行、finding、事件和审计仍遵守 `0092` 的追加式/版本约束。在该阶段，`0108` 执行、调度、异常演练与账户级遥测接入统一后置；其中账户级采集器现已由 Operations-4 完成。Operations-2 文档中的“平台来源未接入”是当时阶段快照；当前公共状态口径见 [Operations-3 Cloudflare 官方平台状态检测开发基线](./OPERATIONS_3_CLOUDFLARE_STATUS_INTEGRATION.md)。
+
+Operations-4 不新增 migration，也不改写 `0092` 的 18 项指标定义。`operations-metrics-v2` 只在既有 Owner 刷新命令中读取账户级 Cloudflare GraphQL Analytics，并把三项结果连同 D1 业务指标写入同一 `app_operational_metric_runs / app_operational_metric_snapshots` 追加批次；安全详情不保存 Token、account ID 或资源名称。未配置、来源失败、空样本和 schema/数值违约分别保留 `unconfigured / unknown / invalid`，不写虚假 0。Operations-3 文档中的“三项继续未配置”是当时阶段快照；采集器当前口径见 [Operations-4 Cloudflare 账户级可观测指标开发基线](./OPERATIONS_4_CLOUDFLARE_ANALYTICS_INTEGRATION.md)，目标环境配置与验证仍后置。
+
+Message-5 使用 `0109_app_data_rights_notifications.sql` 只激活 `0076` 已冻结的两项数据权利事件、增加固定 development 模板和两个事实驱动 trigger，不创建新业务表、不回填历史事件，也不开启 notification generation。导出 trigger 只接受同一申请版本的用户可见 `export_ready` 事件；注销 trigger 只在 `app_account_security` 从 `deletion_pending` 恢复且找到同版本取消事件后写 Outbox。`0103` 对待注销账号的通知抑制继续优先，避免已经清理的账号事实被异步生产者重建。`0109` 执行、模板审批、配置和专项验证统一后置，详见 [Message-5 数据权利结果通知跨仓交付基线](./MESSAGE_5_DATA_RIGHTS_NOTIFICATION_INTEGRATION.md)。
 
 Audit-3 使用 `0093_app_audit_action_registry_governance.sql` 补齐 Action 口径治理，但不改变 `admin_audit_logs` 唯一事实源。`app_audit_governance_policy_registry` 保存不可变 retention/quality 策略版本；`app_audit_current_governance_policies` 只选择每个稳定引用的最高 active 版本；`app_audit_production_action_registry` 仅暴露当前 active、两类策略均已批准且 production-ready、并包含 Owner 可见角色的 Action。发布/退休申请保存候选定义、最新版本基线、观察业务域/风险/缺索引摘要、申请原因和独立复核终态；事件和命令只追加，单 Action 同时最多一项待复核申请。`0093` 不 seed 策略、不创建真实申请、不自动发布 Action，也不设置保留天数或清理任务；migration 执行、正式策略/Action 和专项测试统一后置。详见 [Audit-3 Action 口径治理与独立发布开发基线](./AUDIT_3_ACTION_REGISTRY_GOVERNANCE_INTEGRATION.md)。
 

@@ -19,6 +19,7 @@ import { requireAppOperationalControlAvailable } from './app-operational-safety'
 const ACCOUNT_PUBLIC_ID = /^acc_[A-Za-z0-9_-]{1,76}$/u
 const ENTRY_ID = /^wle_[A-Za-z0-9_-]{1,92}$/u
 const ADJUSTMENT_ID = /^wad_[A-Za-z0-9_-]{1,92}$/u
+const LEGACY_MIGRATION_ITEM_ID = /^wlmi_[A-Za-z0-9_-]{1,91}$/u
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,128}$/u
 const BUSINESS_REFERENCE = /^[A-Za-z0-9._:/-]{3,80}$/u
 
@@ -44,6 +45,10 @@ export interface AdminWalletAdjustmentInput {
 export interface AdminWalletReviewInput {
   expectedVersion?: unknown
   reviewNote?: unknown
+}
+
+export interface AdminWalletAdjustmentWorkflowOptions {
+  legacyMigrationItemId?: string
 }
 
 export interface AdminWalletAccountSummary {
@@ -121,7 +126,7 @@ type AccountRow = {
   last_entry_at: string | null
 }
 
-type PreparedAdjustment = {
+export type PreparedAdminWalletAdjustment = {
   account: AccountRow
   actionType: AppWalletEntryType
   direction: AppWalletDirection
@@ -236,7 +241,7 @@ export async function previewAdminAppWalletAdjustment(
   config: AppWalletRuntimeConfig,
 ): Promise<AdminWalletAdjustmentPreview> {
   const policy = await requireAppWalletPolicy(db, config, { writable: true })
-  const prepared = await prepareAdjustment(db, input, policy)
+  const prepared = await prepareAdminWalletAdjustment(db, input, policy)
   return toPreview(prepared)
 }
 
@@ -247,6 +252,7 @@ export async function createAdminAppWalletAdjustment(
   input: AdminWalletAdjustmentInput,
   config: AppWalletRuntimeConfig,
   now = new Date(),
+  workflow: AdminWalletAdjustmentWorkflowOptions = {},
 ): Promise<{ adjustment: AdminWalletAdjustmentView; replayed: boolean }> {
   const key = requireIdempotencyKey(idempotencyKey)
   const policy = await requireAppWalletPolicy(db, config, { writable: true })
@@ -259,10 +265,12 @@ export async function createAdminAppWalletAdjustment(
   `).bind(adminId, key).first<{ id: string; request_hash: string }>()
   if (replay) {
     if (replay.request_hash !== requestHash) throw idempotencyConflict()
+    await requireAdjustmentWorkflowLink(db, replay.id, workflow)
     return { adjustment: await requireAdjustment(db, replay.id), replayed: true }
   }
   await requireWalletAdjustmentControl(db)
-  const prepared = await prepareAdjustment(db, input, policy)
+  const prepared = await prepareAdminWalletAdjustment(db, input, policy)
+  validateAdjustmentWorkflow(prepared.businessReference, workflow)
   const blockingRisk = prepared.riskCodes.find(code => code !== 'POLICY_UNRESOLVED_ALL_REVIEW')
   if (blockingRisk) throw blockingRiskError(blockingRisk)
   const duplicateBusinessReference = await db.prepare(`
@@ -277,7 +285,7 @@ export async function createAdminAppWalletAdjustment(
   const eventId = randomId('wae')
   const auditId = randomId('log')
   try {
-    await db.batch([
+    const statements: D1PreparedStatement[] = [
       db.prepare(`
         INSERT INTO app_wallet_adjustments (
           id, policy_id, account_id, action_type, direction, amount, reason_code,
@@ -311,6 +319,18 @@ export async function createAdminAppWalletAdjustment(
         timestamp,
         timestamp,
       ),
+    ]
+    if (workflow.legacyMigrationItemId) {
+      statements.push(db.prepare(`
+        INSERT INTO app_wallet_legacy_migration_links (
+          item_id, adjustment_id, created_at
+        )
+        SELECT ?, id, ?
+        FROM app_wallet_adjustments
+        WHERE id = ? AND status = 'pending_review'
+      `).bind(workflow.legacyMigrationItemId, timestamp, adjustmentId))
+    }
+    statements.push(
       db.prepare(`
         INSERT INTO app_wallet_adjustment_events (
           id, adjustment_id, sequence, event_type, actor_id, result_code, created_at
@@ -336,7 +356,9 @@ export async function createAdminAppWalletAdjustment(
         balanceAfter: prepared.balanceAfter,
         status: 'pending_review',
       }), timestamp, adjustmentId),
-    ])
+    )
+    await db.batch(statements)
+    await requireAdjustmentWorkflowLink(db, adjustmentId, workflow)
   }
   catch (error) {
     const raced = await db.prepare(`
@@ -346,6 +368,7 @@ export async function createAdminAppWalletAdjustment(
       LIMIT 1
     `).bind(adminId, key).first<{ id: string; request_hash: string }>()
     if (raced?.request_hash === requestHash) {
+      await requireAdjustmentWorkflowLink(db, raced.id, workflow)
       return { adjustment: await requireAdjustment(db, raced.id), replayed: true }
     }
     if (raced) throw idempotencyConflict()
@@ -389,6 +412,7 @@ export async function reviewAdminAppWalletAdjustment(
   input: AdminWalletReviewInput,
   config: AppWalletRuntimeConfig,
   now = new Date(),
+  workflow: AdminWalletAdjustmentWorkflowOptions = {},
 ): Promise<{ adjustment: AdminWalletAdjustmentView; replayed: boolean }> {
   validateAdjustmentId(adjustmentId)
   const key = requireIdempotencyKey(idempotencyKey)
@@ -396,6 +420,8 @@ export async function reviewAdminAppWalletAdjustment(
   const reviewNote = requireText(input.reviewNote, 'reviewNote', 2, 300)
   const policy = await requireAppWalletPolicy(db, config, { writable: true })
   const requestHash = await sha256Hex(JSON.stringify({ adjustmentId, decision, expectedVersion, reviewNote }))
+  const current = await requireAdjustment(db, adjustmentId)
+  await requireAdjustmentWorkflowLink(db, adjustmentId, workflow, current.businessReference)
   const replay = await findReviewRequest(db, reviewerId, key)
   if (replay) {
     if (replay.adjustment_id !== adjustmentId || replay.request_hash !== requestHash) {
@@ -403,7 +429,6 @@ export async function reviewAdminAppWalletAdjustment(
     }
     return { adjustment: await requireAdjustment(db, adjustmentId), replayed: true }
   }
-  const current = await requireAdjustment(db, adjustmentId)
   if (current.requestedBy.id === reviewerId) {
     throw new AppWalletError(403, 'SELF_REVIEW_FORBIDDEN', '调币发起人不能复核自己的申请')
   }
@@ -743,11 +768,11 @@ async function rejectAdjustment(
   return { adjustment: await requireAdjustment(db, current.adjustmentId), replayed: false }
 }
 
-async function prepareAdjustment(
+export async function prepareAdminWalletAdjustment(
   db: D1Database,
   input: AdminWalletAdjustmentInput,
   policy: PolicyRow,
-): Promise<PreparedAdjustment> {
+): Promise<PreparedAdminWalletAdjustment> {
   const accountPublicId = requireAccountPublicId(input.accountId)
   const account = await requireAccount(db, accountPublicId)
   const actionType = requireActionType(input.actionType)
@@ -807,7 +832,7 @@ async function prepareAdjustment(
     WHERE account_id = ? AND business_reference = ?
     LIMIT 1
   `).bind(account.user_id, businessReference).first<{ found: number }>()
-  const riskCodes: PreparedAdjustment['riskCodes'] = ['POLICY_UNRESOLVED_ALL_REVIEW']
+  const riskCodes: PreparedAdminWalletAdjustment['riskCodes'] = ['POLICY_UNRESOLVED_ALL_REVIEW']
   if (balanceAfter < 0) riskCodes.push('NEGATIVE_BALANCE')
   if (account.wallet_status === 'frozen') riskCodes.push('WALLET_FROZEN')
   if (duplicate) riskCodes.push('DUPLICATE_BUSINESS_REFERENCE')
@@ -829,7 +854,7 @@ async function prepareAdjustment(
   }
 }
 
-function toPreview(prepared: PreparedAdjustment): AdminWalletAdjustmentPreview {
+function toPreview(prepared: PreparedAdminWalletAdjustment): AdminWalletAdjustmentPreview {
   return {
     account: toAccountSummary(prepared.account),
     actionType: prepared.actionType,
@@ -1090,6 +1115,52 @@ function requireBusinessReference(value: unknown) {
     throw new AppWalletError(400, 'INVALID_BUSINESS_REFERENCE', '业务单号格式无效')
   }
   return value.trim()
+}
+
+function validateAdjustmentWorkflow(
+  businessReference: string,
+  workflow: AdminWalletAdjustmentWorkflowOptions,
+) {
+  const itemId = workflow.legacyMigrationItemId
+  if (!itemId) {
+    if (businessReference.startsWith('legacy:')) {
+      throw new AppWalletError(403, 'WALLET_MIGRATION_WORKFLOW_REQUIRED', 'legacy 业务引用只能由旧余额迁移工作流创建')
+    }
+    return
+  }
+  if (!LEGACY_MIGRATION_ITEM_ID.test(itemId) || businessReference !== `legacy:${itemId}`) {
+    throw new AppWalletError(400, 'INVALID_WALLET_MIGRATION_LINK', '旧余额迁移条目与业务引用不匹配')
+  }
+}
+
+async function requireAdjustmentWorkflowLink(
+  db: D1Database,
+  adjustmentId: string,
+  workflow: AdminWalletAdjustmentWorkflowOptions,
+  businessReference?: string,
+) {
+  const itemId = workflow.legacyMigrationItemId
+  if (!itemId) {
+    if (businessReference?.startsWith('legacy:')) {
+      throw new AppWalletError(403, 'WALLET_MIGRATION_WORKFLOW_REQUIRED', '旧余额迁移申请只能由迁移执行器复核')
+    }
+    return
+  }
+  if (!LEGACY_MIGRATION_ITEM_ID.test(itemId)) {
+    throw new AppWalletError(400, 'INVALID_WALLET_MIGRATION_LINK', '旧余额迁移条目标识无效')
+  }
+  if (businessReference && businessReference !== `legacy:${itemId}`) {
+    throw new AppWalletError(409, 'WALLET_MIGRATION_LINK_CONFLICT', '调币申请不属于指定旧余额迁移条目')
+  }
+  const link = await db.prepare(`
+    SELECT item_id, adjustment_id
+    FROM app_wallet_legacy_migration_links
+    WHERE item_id = ? AND adjustment_id = ?
+    LIMIT 1
+  `).bind(itemId, adjustmentId).first<{ item_id: string; adjustment_id: string }>()
+  if (!link) {
+    throw new AppWalletError(409, 'WALLET_MIGRATION_LINK_CONFLICT', '旧余额迁移申请缺少不可变证据链接')
+  }
 }
 
 function requireEntryId(value: unknown) {

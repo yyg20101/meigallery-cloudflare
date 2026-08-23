@@ -6,7 +6,7 @@ Feature ID：F-06
 
 App 版本：1.0
 
-状态：P0 喜欢/关注已进入 Interaction-1 基线；收藏夹/浏览历史与关注更新已分别完成 Interaction-2/3 默认关闭的 Cloudflare 与 KMP 开发，配置、migration 和专项验证后置；推荐信号与保留期仍待门禁关闭
+状态：P0 喜欢/关注已进入 Interaction-1 基线；收藏夹/浏览历史、关注更新与浏览历史生命周期已分别完成 Interaction-2/3/4 默认关闭开发，配置、migration 和专项验证后置；推荐信号与正式保留期仍待门禁关闭
 
 ## 2. Epic
 
@@ -17,6 +17,7 @@ App 版本：1.0
 - 安全审核：[举报、拉黑与安全审核](../report-blocking-and-moderation/prd.md)
 - API 基线：[App API 与实时通信契约](../../../../app/API_AND_REALTIME_CONTRACT.md)
 - 数据基线：[真人发现平台数据模型与渐进迁移方案](../../../../app/DATA_AND_MIGRATION.md)
+- 浏览历史生命周期：[Interaction-4 浏览历史到期生命周期开发基线](../../../../app/INTERACTION_4_VIEW_HISTORY_LIFECYCLE_INTEGRATION.md)
 - 开放决策：OQ-005、OQ-014、OQ-020、OQ-023
 
 ## 3. Goal
@@ -107,7 +108,7 @@ App 版本：1.0
 
 #### 个人内容中心
 
-- **VIR-FR-050**：“关注”一级页作为个人内容中心，默认提供关注更新、喜欢、收藏夹和浏览历史二级入口；最终排布以 OQ-005 高保真结论为准。
+- **VIR-FR-050**：最终高保真排布以底部“关注”承载关注更新与已关注筛选，“我的”承载独立喜欢、收藏夹和浏览历史入口；各列表保持独立路由、状态与返回栈。
 - **VIR-FR-051**：四类列表分别提供加载、空、错误、离线、资料不可用、权限不足和同步冲突状态，文案不使用“匹配”“对方回应”等表达。
 - **VIR-FR-052**：跨设备以服务端状态为准；客户端离线缓存只读，联网后按更新时间/版本同步，不把陈旧 true 状态覆盖已撤销关系。
 - **VIR-FR-053**：分页项返回各关系的权威状态和资料可用性；客户端不得仅根据本地列表推导全局关系状态。
@@ -212,7 +213,7 @@ Interaction-2 在不关闭 OQ-014、OQ-020、OQ-023 的前提下，冻结多文�
 - 浏览历史默认关闭，只有显式开启、详情成功呈现且携带当前历史版本时才记录；卡片曝光、预取和详情失败不得调用记录接口。
 - 逐条删除和全部清除都会原子提升历史版本，操作前的在途请求不得重新写回；关闭记录保持账号私有、服务端权威。
 - 屏蔽人物同步清理喜欢、关注、收藏和当前可见历史，解除屏蔽不恢复；失效资料仅返回最小不可用占位。
-- Cloudflare 服务端、D1 schema、OpenAPI 与 KMP 收藏夹/浏览记录页面均已完成开发，运行门禁保持关闭；配置、migration、专项测试、模拟器/真机、远端联调和自动清理按开发顺序后置。
+- Cloudflare 服务端、D1 schema、OpenAPI 与 KMP 收藏夹/浏览记录页面均已完成开发，运行门禁保持关闭；自动清理源码已由 Interaction-4 补齐，配置、migration、专项测试、模拟器/真机和远端联调按开发顺序后置。
 
 详细边界见 `docs/app/INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md`。
 
@@ -225,9 +226,19 @@ Interaction-3 在不接系统推送、不新增第二套发布事实、不向目
 - 站内提醒在用户 HTTP pull 时按账号惰性写入 Message-3 Outbox，相同账号与发布事件只保留一项，不在发布事务同步枚举全部关注者。
 - 投递前重验当前关注、屏蔽、认证、发布、授权、有效期、可见性与来源图库；取消关注或失效后的待投递项永久抑制，恢复时不补发旧事件。
 - bootstrap 独立返回 `interactions.followUpdates`；Auth、运行开关、策略版本和 production-ready 任一缺失都安全关闭。
-- Cloudflare 服务端、D1 schema 和 KMP 独立 transport/三段式关注页均已完成开发；接口包含在当前累计 OpenAPI `1.16.0` 中。配置、migration、专项测试、模拟器/真机和远端联调统一后置。
+- Cloudflare 服务端、D1 schema 和 KMP 独立 transport 均已完成开发；底部“关注”页按最终 Figma 使用“全部 / 有更新 / 最近关注”筛选，喜欢由独立 `APP-INT-02` 承载。该切片接口已包含在 OpenAPI，仓库当前累计为 `1.26.0`；配置、migration、专项测试、模拟器/真机和远端联调统一后置。
 
 详细边界见 `docs/app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
+
+### 6.11 Interaction-4 浏览历史生命周期开发基线
+
+- 清理必须显式配置策略 ID，源码 development 默认 ID 不能授权删除。
+- 只有浏览历史保留决策批准且 purge 开启时，才按每行 `expires_at` 稳定、有界删除。
+- 收藏/历史 capability、本人记录开关或会员权益关闭后，仍履行已经批准的到期删除义务。
+- 清理不改偏好版本、收藏、会员 entitlement，不生成通知或推荐信号；错误只记录固定码。
+- 不新增 API、KMP 或 Figma 状态，测试源码已编写但按当前要求未执行。
+
+详细边界见 `docs/app/INTERACTION_4_VIEW_HISTORY_LIFECYCLE_INTEGRATION.md`。
 
 ## 7. Acceptance Criteria
 
@@ -245,6 +256,7 @@ Interaction-3 在不接系统推送、不新增第二套发布事实、不向目
 - **VIR-AC-012**：Given 另一账号尝试读取用户收藏夹，When 使用可枚举或已知 ID 请求，Then 服务端拒绝且不泄漏存在性。
 - **VIR-AC-013**：Given 乐观关注操作被服务端拒绝，When 响应返回，Then UI 回滚并且不显示订阅成功。
 - **VIR-AC-014**：Given 屏幕阅读器开启，When 聚焦喜欢、关注和收藏按钮，Then 可听到动作、当前状态和操作结果。
+- **VIR-AC-015（Interaction-4）**：Given 浏览历史记录已到期且保留清理门禁完整，When 每日维护执行，Then 记录按稳定顺序有界物理删除，能力关闭或会员到期不会延长保留。
 
 ## 8. Out of Scope
 

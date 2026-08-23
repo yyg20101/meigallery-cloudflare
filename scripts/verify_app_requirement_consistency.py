@@ -40,27 +40,27 @@ BASELINE_DOCUMENTS = (
 )
 
 EXPECTED_COUNTS = {
-    "pages": 92,
-    "mobilePages": 49,
-    "adminPages": 43,
-    "p0Pages": 54,
-    "p1Pages": 31,
-    "p2Pages": 7,
-    "defaultCaptures": 92,
-    "keyStateCaptures": 54,
-    "totalCaptures": 146,
+    "pages": 99,
+    "mobilePages": 50,
+    "adminPages": 49,
+    "p0Pages": 57,
+    "p1Pages": 32,
+    "p2Pages": 10,
+    "defaultCaptures": 99,
+    "keyStateCaptures": 57,
+    "totalCaptures": 156,
     "detailedFigmaPages": 5,
     "detailedFigmaStateCaptures": 23,
-    "documentPrototypeMappings": 169,
-    "figmaDesignedPages": 92,
-    "figmaDesignedStates": 349,
-    "figmaMobileStates": 186,
-    "figmaAdminStates": 163,
-    "figmaFlowPreviews": 92,
-    "figmaPageActions": 1790,
-    "figmaFlowActions": 494,
-    "figmaTotalActions": 2284,
-    "groups": 14,
+    "documentPrototypeMappings": 179,
+    "figmaDesignedPages": 99,
+    "figmaDesignedStates": 408,
+    "figmaMobileStates": 208,
+    "figmaAdminStates": 200,
+    "figmaFlowPreviews": 99,
+    "figmaHistoricalPageActionBaseline": 2957,
+    "figmaHistoricalFlowActionBaseline": 614,
+    "figmaHistoricalActionBaseline": 3571,
+    "groups": 15,
 }
 
 IN_SCOPE_PRODUCT_REQUIREMENTS = {
@@ -102,6 +102,40 @@ def forbid(text: str, needle: str, label: str) -> None:
         raise ValueError(f"{label} 仍包含旧口径：{needle}")
 
 
+def validate_page_state_counts(manifest: dict) -> None:
+    counts = manifest.get("counts", {})
+    pages = manifest.get("pages", [])
+    state_totals = {"mobile": 0, "admin": 0}
+    for page in pages:
+        states = page.get("states")
+        if not isinstance(states, list) or not states:
+            raise ValueError(f"{page.get('pageId', '未知页面')} 缺少正式状态")
+        if any(
+            not isinstance(state, str) or not state or state.strip() != state
+            for state in states
+        ):
+            raise ValueError(
+                f"{page.get('pageId', '未知页面')} 存在空白或未规范化的正式状态名称"
+            )
+        if len(states) != len(set(states)):
+            raise ValueError(f"{page['pageId']} 存在重复正式状态")
+        platform = page.get("platform")
+        if platform not in state_totals:
+            raise ValueError(f"{page['pageId']} 平台类型无效：{platform!r}")
+        state_totals[platform] += len(states)
+    derived = {
+        "figmaDesignedPages": len(pages),
+        "figmaDesignedStates": sum(state_totals.values()),
+        "figmaMobileStates": state_totals["mobile"],
+        "figmaAdminStates": state_totals["admin"],
+    }
+    for key, value in derived.items():
+        if counts.get(key) != value:
+            raise ValueError(
+                f"{key} 与逐页正式状态不一致：清单 {counts.get(key)}，实际 {value}"
+            )
+
+
 def main() -> None:
     texts = {path: read(path) for path in BASELINE_DOCUMENTS}
     manifest = json.loads(read(MANIFEST_PATH))
@@ -114,6 +148,7 @@ def main() -> None:
         actual = manifest.get("counts", {}).get(key)
         if actual != expected:
             raise ValueError(f"{key} 数量错误：期望 {expected}，实际 {actual}")
+    validate_page_state_counts(manifest)
 
     pages = manifest.get("pages", [])
     page_ids = [page["pageId"] for page in pages]
@@ -168,20 +203,21 @@ def main() -> None:
         RELEASE_SCOPE,
     ):
         text = texts[path]
-        for phrase in ("92", "49", "43"):
+        for phrase in ("99", "50", "49"):
             require(text, phrase, str(path.relative_to(ROOT)))
 
     for path in (CLIENT, PAGE_DESIGN, PAGE_DETAIL, DEVELOPMENT, TRACEABILITY):
         text = texts[path]
-        require(text, "146", str(path.relative_to(ROOT)))
-        require(text, "54", str(path.relative_to(ROOT)))
+        require(text, "156", str(path.relative_to(ROOT)))
+        require(text, "57", str(path.relative_to(ROOT)))
         require(text, "23", str(path.relative_to(ROOT)))
-        require(text, "169", str(path.relative_to(ROOT)))
-        require(text, "349", str(path.relative_to(ROOT)))
-        require(text, "2,284", str(path.relative_to(ROOT)))
+        require(text, "179", str(path.relative_to(ROOT)))
+        require(text, "408", str(path.relative_to(ROOT)))
+        require(text, "208", str(path.relative_to(ROOT)))
+        require(text, "3,571", str(path.relative_to(ROOT)))
 
-    require(texts[PAGE_DESIGN], "P0 54 页、P1 31 页、P2 7 页", "逐页产品设计")
-    require(texts[TRACEABILITY], "54 / 31 / 7", "需求追踪矩阵")
+    require(texts[PAGE_DESIGN], "P0 57 页、P1 32 页、P2 10 页", "逐页产品设计")
+    require(texts[TRACEABILITY], "57 / 32 / 10", "需求追踪矩阵")
     require(texts[PRODUCT], "需求追踪矩阵", "产品总需求")
     require(texts[CLIENT], "需求追踪矩阵", "客户需求确认稿")
     require(texts[RELEASE_SCOPE], "需求追踪矩阵", "发布范围 PRD")

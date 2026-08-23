@@ -11,6 +11,11 @@ const ALLOWED_API_PROXY_REQUEST_HEADERS = new Set([
   'x-audit-download-ticket',
   'x-audit-step-up',
   'x-forwarded-for',
+  'x-import-part-size',
+  'x-import-upload-session',
+  'x-step-up-token',
+  'x-data-rights-token',
+  'x-data-rights-download-ticket',
   'x-real-ip',
 ])
 
@@ -23,6 +28,7 @@ const ALLOWED_API_PROXY_RESPONSE_HEADERS = new Set([
   'retry-after',
   'set-cookie',
   'x-content-type-options',
+  'x-data-rights-manifest-sha256',
   'x-ratelimit-limit',
   'x-ratelimit-remaining',
 ])

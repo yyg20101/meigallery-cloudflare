@@ -335,22 +335,16 @@ function summaryEntries(summary: Record<string, unknown>) {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-[1500px] space-y-6 p-4 sm:p-6">
-    <header class="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-3 text-sm">
-          <NuxtLink to="/admin/app/audit" class="font-medium text-gray-600 hover:text-gray-950">← 返回审计查询</NuxtLink>
-          <NuxtLink to="/admin/app/audit/integrity" class="font-medium text-gray-600 hover:text-gray-950">完整性检查</NuxtLink>
-        </div>
-        <h1 class="mt-3 text-2xl font-semibold text-gray-950">受控审计导出</h1>
-        <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">先冻结可见范围，再由不同的 Owner 独立复核。文件只保存在私有 R2，申请人重新验证密码后才能取得五分钟内有效的一次性下载票据。</p>
-      </div>
-      <div class="grid shrink-0 gap-2 text-xs sm:grid-cols-3 xl:w-[470px]">
-        <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-900"><strong class="block">1. 强认证</strong><span class="mt-1 block leading-5">申请、复核、下载分别验证密码</span></div>
-        <div class="rounded-xl border border-violet-200 bg-violet-50 p-3 text-violet-900"><strong class="block">2. 独立复核</strong><span class="mt-1 block leading-5">申请人不能审批自己的申请</span></div>
-        <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-900"><strong class="block">3. 私有交付</strong><span class="mt-1 block leading-5">无公开 URL，票据消费后失效</span></div>
-      </div>
-    </header>
+  <div class="mx-auto w-full max-w-[1500px] space-y-6">
+    <AdminAppPageHeader page-id="ADM-AUD-04" route="/admin/app/audit/exports" title="受控导出" description="通过申请、独立复核、强认证和短期一次性凭证导出审计事实。" :state="errorMessage ? '操作失败' : loading || actionLoading ? '处理中' : '正常'" figma-state="正常" :state-tone="errorMessage ? 'danger' : loading || actionLoading ? 'warning' : 'success'">
+      <template #actions><NuxtLink to="/admin/app/audit" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">返回审计查询</NuxtLink><NuxtLink to="/admin/app/audit/integrity" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">完整性检查</NuxtLink></template>
+    </AdminAppPageHeader>
+
+    <div class="grid gap-2 text-xs sm:grid-cols-3">
+      <div class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-900"><strong class="block">1. 强认证</strong><span class="mt-1 block leading-5">申请、复核、下载分别验证密码</span></div>
+      <div class="rounded-xl border border-violet-200 bg-violet-50 p-3 text-violet-900"><strong class="block">2. 独立复核</strong><span class="mt-1 block leading-5">申请人不能审批自己的申请</span></div>
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-900"><strong class="block">3. 私有交付</strong><span class="mt-1 block leading-5">无公开 URL，票据消费后失效</span></div>
+    </div>
 
     <p v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ errorMessage }}</p>
     <p v-if="successMessage" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">{{ successMessage }}</p>

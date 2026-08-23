@@ -1,5 +1,5 @@
 {
-  "runId": "meigallery-app-1.0-figma-final-20260730",
+  "runId": "meigallery-app-1.0-figma-final-20260813",
   "appVersion": "1.0",
   "status": "completed",
   "figmaFile": {
@@ -7,41 +7,56 @@
     "fileKey": "LaNSwwGsznwcpV8msj7BQC",
     "url": "https://www.figma.com/design/LaNSwwGsznwcpV8msj7BQC/Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery",
     "finalVersionId": "2381987656588552168",
+    "versionNote": "该版本 ID 为原始 349 状态冻结点；当前事实源为同一 fileKey 的实时文件。2026-08-14 已完成 408 个正式状态登记。APP-SET-08 除创建、处理、失败、补充与升级状态外，新增维持原结论 1130:3617、申诉成立 1132:3618、已关闭 1132:3670 三个终态节点；三个结果页均已完成 393 × 852 定向排版检查并可返回 APP-SET-01。历史 Prototype Flow、Delivery Index 与全量交互计数仍待开发结束后的统一复核。",
     "mobileCheckpointVersionId": "2381975076605262200"
   },
   "coverage": {
-    "pages": 92,
-    "mobilePages": 49,
-    "adminPages": 43,
-    "states": 349,
-    "mobileStates": 186,
-    "adminStates": 163,
-    "prototypeFlowPreviews": 92,
-    "deliveryIndexCards": 92
+    "pages": 99,
+    "mobilePages": 50,
+    "adminPages": 49,
+    "states": 408,
+    "mobileStates": 208,
+    "adminStates": 200,
+    "mobileSupportSections": 14,
+    "mobileSupportFrames": 171,
+    "prototypeFlowPreviews": 99,
+    "deliveryIndexCards": 99,
+    "legacyDeliveryIndexRows": 99
   },
-  "interactions": {
-    "mobilePageActions": 382,
-    "mobileFlowActions": 128,
-    "adminPageActions": 1408,
-    "adminFlowActions": 366,
-    "totalActions": 2284,
+  "historicalInteractionBaseline": {
+    "scope": "APP-SET-08 增量六态前；不是当前 408 状态最终动作总数",
+    "currentTotalStatus": "待全部开发完成后统一重算",
+    "mobilePageActions": 914,
+    "mobileSupportActions": 1008,
+    "mobileFlowActions": 180,
+    "adminPageActions": 2043,
+    "adminFlowActions": 434,
+    "pageActions": 2957,
+    "flowActions": 614,
+    "totalActions": 3571,
     "missingDestinations": 0,
     "undersizedMobileTouchTargets": 0
   },
   "visualQa": {
-    "mobileTextNodes": 4301,
-    "adminTextNodes": 8120,
+    "mobileTextNodes": 4866,
+    "mobileSupportTextNodes": 4122,
+    "adminTextNodes": 10464,
     "mobileUnstyledText": 0,
+    "mobileSupportUnstyledText": 0,
     "adminUnstyledText": 0,
     "mobileRawFills": 0,
+    "mobileSupportRawFills": 0,
     "adminRawFills": 0,
     "mobileRawStrokes": 0,
+    "mobileSupportRawStrokes": 0,
     "adminRawStrokes": 0,
     "mobileMissingFonts": 0,
+    "mobileSupportMissingFonts": 0,
     "adminMissingFonts": 0,
     "mobileTextOverflow": 0,
+    "mobileSupportTextOverflow": 0,
     "adminTextOverflow": 0,
-    "mobileIconContainersChecked": 1807,
+    "mobileIconContainersChecked": 1810,
     "mobileOffCenterIcons": 0
   },
   "officialPages": {
@@ -62,7 +77,7 @@
       "platform": "mobile",
       "name": "启动与认证",
       "pages": 6,
-      "states": 24
+      "states": 25
     },
     {
       "platform": "mobile",
@@ -73,14 +88,14 @@
     {
       "platform": "mobile",
       "name": "互动与历史",
-      "pages": 5,
-      "states": 18
+      "pages": 6,
+      "states": 28
     },
     {
       "platform": "mobile",
       "name": "平台话题与通知",
       "pages": 6,
-      "states": 27
+      "states": 32
     },
     {
       "platform": "mobile",
@@ -92,7 +107,7 @@
       "platform": "mobile",
       "name": "我的与设置",
       "pages": 12,
-      "states": 38
+      "states": 44
     },
     {
       "platform": "mobile",
@@ -115,8 +130,8 @@
     {
       "platform": "admin",
       "name": "发现运营",
-      "pages": 7,
-      "states": 26
+      "pages": 8,
+      "states": 31
     },
     {
       "platform": "admin",
@@ -133,14 +148,20 @@
     {
       "platform": "admin",
       "name": "会员与金币",
-      "pages": 12,
-      "states": 43
+      "pages": 13,
+      "states": 49
     },
     {
       "platform": "admin",
       "name": "通知与审计",
-      "pages": 7,
-      "states": 24
+      "pages": 9,
+      "states": 37
+    },
+    {
+      "platform": "admin",
+      "name": "数据权利",
+      "pages": 2,
+      "states": 13
     }
   ],
   "evidence": [
@@ -156,6 +177,13 @@
     "docs/app/assets/figma-qa/phase3/prototype-flows-overview-20260730.png",
     "docs/app/assets/figma-qa/phase3/admin-prototype-flows-overview-20260730.jpeg",
     "docs/app/assets/figma-qa/phase3/delivery-index-summary-20260730.jpeg",
-    "docs/app/assets/figma-qa/phase3/qa-handoff-release-gate-20260730.jpeg"
+    "docs/app/assets/figma-qa/phase3/qa-handoff-release-gate-20260730.jpeg",
+    "docs/app/assets/page-prototypes/admin/adm-src-01__default.png",
+    "docs/app/assets/page-prototypes/admin/adm-mbr-07__default.png",
+    "docs/app/assets/page-prototypes/admin/adm-mbr-07__state-03.png",
+    "docs/app/assets/page-prototypes/admin/adm-aud-05__default.png",
+    "docs/app/assets/page-prototypes/admin/adm-aud-06__default.png",
+    "docs/app/assets/page-prototypes/admin/adm-pri-01__default.png",
+    "docs/app/assets/page-prototypes/admin/adm-pri-02__default.png"
   ]
 }

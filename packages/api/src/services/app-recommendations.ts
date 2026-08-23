@@ -16,13 +16,25 @@ import {
 import {
   APP_RECOMMENDATION_MAX_PREFERENCE_TERMS,
   AppRecommendationError,
+  listCompatibleRecommendationRules,
   normalizeRecommendationRegionCode,
   requireAppRecommendationPolicy,
+  resolveAppRecommendationCapabilities,
+  type AppRecommendationCapabilities,
   type AppRecommendationMode,
   type AppRecommendationPolicy,
   type AppRecommendationRuntimeConfig,
 } from './app-recommendation-policy'
+import {
+  normalizeAppNumericVersion,
+  supportsAppMinimumVersion,
+} from './app-client-version'
+import {
+  parseRecommendationRuleRegions,
+  recommendationRuleMatchesRegion,
+} from './app-recommendation-region'
 import { requireAppOperationalControlAvailable } from './app-operational-safety'
+import { recommendationAccountHash } from './app-recommendation-evidence'
 import {
   AppTaxonomyError,
   assertAssignableTaxonomyTerms,
@@ -82,6 +94,7 @@ export type RecommendationRuleRow = {
   effective_at: string | null
   expires_at: string | null
   rollback_rule_version_id: string | null
+  guardrail_policy_id: string | null
   production_ready: number
   last_dry_run_json: string | null
   last_dry_run_at: string | null
@@ -150,17 +163,69 @@ export interface UpdateAppRecommendationPreferenceInput {
   preferredTermIds?: unknown
 }
 
+export async function resolveExecutableAppRecommendationCapabilities(
+  db: D1Database,
+  config: AppRecommendationRuntimeConfig,
+  clientVersionValue: string | undefined,
+  now = new Date(),
+): Promise<AppRecommendationCapabilities> {
+  const capabilities = await resolveAppRecommendationCapabilities(
+    db,
+    config,
+    clientVersionValue,
+    now,
+  )
+  if (!capabilities.feed || !capabilities.policy) return capabilities
+  const clientVersion = normalizeAppNumericVersion(clientVersionValue)
+  if (!clientVersion) return closeExecutableCapabilities(capabilities)
+  const activeRule = await loadActiveRuleOrNull(
+    db,
+    'non_personalized',
+    clientVersion,
+    undefined,
+    undefined,
+    config.requireProductionReady,
+    now,
+  )
+  if (!activeRule) return closeExecutableCapabilities(capabilities)
+  const activePersonalizedRule = capabilities.personalization
+    ? await loadActiveRuleOrNull(
+        db,
+        'personalized',
+        clientVersion,
+        undefined,
+        undefined,
+        config.requireProductionReady,
+        now,
+      )
+    : null
+  return {
+    ...capabilities,
+    personalization: capabilities.personalization && Boolean(activePersonalizedRule),
+    activeRuleVersionId: activeRule.rule_version_id,
+  }
+}
+
 export async function getAppRecommendationPreference(
   db: D1Database,
   accountId: number,
   config: AppRecommendationRuntimeConfig,
+  clientVersionValue: string | undefined,
   now = new Date(),
 ): Promise<AppRecommendationPreference> {
   assertAccountId(accountId)
-  const policy = await requireAppRecommendationPolicy(db, config, 'preferences', now)
+  const clientVersion = requireRecommendationClientVersion(clientVersionValue)
+  const policy = await requireAppRecommendationPolicy(db, config, 'preferences', now, clientVersion)
   const row = await findPreference(db, accountId)
   const activePersonalizedRule = policy.personalizationEnabled
-    ? await loadUsablePersonalizedRule(db, config.requireProductionReady, now)
+    ? await loadUsablePersonalizedRule(
+        db,
+        clientVersion,
+        undefined,
+        row?.taxonomy_catalog_id,
+        config.requireProductionReady,
+        now,
+      )
     : null
   return mapPreference(row, policy, activePersonalizedRule)
 }
@@ -170,10 +235,12 @@ export async function updateAppRecommendationPreference(
   accountId: number,
   inputValue: unknown,
   config: AppRecommendationRuntimeConfig,
+  clientVersionValue: string | undefined,
   now = new Date(),
 ): Promise<AppRecommendationPreference> {
   assertAccountId(accountId)
-  const policy = await requireAppRecommendationPolicy(db, config, 'preferences', now)
+  const clientVersion = requireRecommendationClientVersion(clientVersionValue)
+  const policy = await requireAppRecommendationPolicy(db, config, 'preferences', now, clientVersion)
   const input = requirePreferenceInput(inputValue)
   const current = await findPreference(db, accountId)
   const expectedVersion = normalizePreferenceExpectedVersion(input.expectedVersion)
@@ -248,7 +315,14 @@ export async function updateAppRecommendationPreference(
     throw new AppRecommendationError(503, 'RECOMMENDATION_PREFERENCE_WRITE_FAILED', '推荐偏好写入结果异常', true)
   }
   const activePersonalizedRule = policy.personalizationEnabled
-    ? await loadUsablePersonalizedRule(db, config.requireProductionReady, now)
+    ? await loadUsablePersonalizedRule(
+        db,
+        clientVersion,
+        undefined,
+        updated.taxonomy_catalog_id,
+        config.requireProductionReady,
+        now,
+      )
     : null
   return mapPreference(updated, policy, activePersonalizedRule)
 }
@@ -259,6 +333,7 @@ export async function getAppRecommendationPage(
   config: AppRecommendationRuntimeConfig,
   apiUrl: string,
   viewer: null | { accountInternalId: number; accountPublicId: string },
+  clientVersionValue: string | undefined,
   now = new Date(),
 ): Promise<AppRecommendationPage> {
   await requireAppOperationalControlAvailable(
@@ -266,12 +341,22 @@ export async function getAppRecommendationPage(
     'recommendation_delivery',
     (code, message, detail) => new AppRecommendationError(503, code, message, true, detail),
   )
-  const policy = await requireAppRecommendationPolicy(db, config, 'feed', now)
+  const clientVersion = requireRecommendationClientVersion(clientVersionValue)
+  const policy = await requireAppRecommendationPolicy(db, config, 'feed', now, clientVersion)
   const input = normalizeRecommendationRequest(inputValue, policy)
   const preference = viewer
     ? await findPreference(db, viewer.accountInternalId)
     : null
-  const modeResolution = await resolveRequestedMode(db, input.mode, preference, policy, config, now)
+  let modeResolution = await resolveRequestedMode(
+    db,
+    input.mode,
+    preference,
+    policy,
+    config,
+    clientVersion,
+    input.regionCode,
+    now,
+  )
   const cursorSigningSecret = requireCursorSigningSecret(config.cursorSigningSecret)
   const decodedCursor = input.cursor
     ? await decodeSignedRecommendationCursor(input.cursor, cursorSigningSecret, now)
@@ -279,28 +364,44 @@ export async function getAppRecommendationPage(
   const sessionId = decodedCursor?.sessionId ?? await createSessionId()
   const cursorExpiresAt = decodedCursor?.expiresAt
     ?? new Date(now.getTime() + CURSOR_TTL_MS).toISOString()
-  const activeRule = modeResolution.activeRule
-    ?? await loadActiveRule(db, modeResolution.mode, config.requireProductionReady, now)
-  const rule = await selectRolloutRule(
-    db,
-    activeRule,
-    sessionId,
-    config.requireProductionReady,
-    now,
-  )
-  await assertRecommendationRuleRuntimeDependencies(
-    db,
-    rule,
-    config.requireProductionReady,
-    now,
-  )
-  if (
-    modeResolution.mode === 'personalized'
-    && preference?.taxonomy_catalog_id !== rule.taxonomy_catalog_id
-  ) {
-    throw invalidRule('个性化偏好目录与实际执行规则目录不一致')
+  let execution: Awaited<ReturnType<typeof resolveRecommendationExecution>>
+  try {
+    execution = await resolveRecommendationExecution(
+      db,
+      modeResolution.mode,
+      modeResolution.activeRule,
+      sessionId,
+      clientVersion,
+      input.regionCode,
+      preference?.taxonomy_catalog_id ?? null,
+      config.requireProductionReady,
+      now,
+    )
   }
-  const ruleModel = validateExecutableRule(rule, modeResolution.mode, input.regionCode)
+  catch (error) {
+    if (
+      input.mode !== 'auto'
+      || modeResolution.mode !== 'personalized'
+      || !(error instanceof AppRecommendationError)
+    ) throw error
+    modeResolution = {
+      mode: 'non_personalized' as const,
+      fallbackReason: 'PERSONALIZATION_NOT_READY' as const,
+      activeRule: null,
+    }
+    execution = await resolveRecommendationExecution(
+      db,
+      modeResolution.mode,
+      modeResolution.activeRule,
+      sessionId,
+      clientVersion,
+      input.regionCode,
+      null,
+      config.requireProductionReady,
+      now,
+    )
+  }
+  const { rule, model: ruleModel } = execution
   const preferredTermIds = modeResolution.mode === 'personalized'
     ? readPreferenceTermIds(preference)
     : []
@@ -406,6 +507,7 @@ export async function getAppRecommendationPage(
     {
       regionCode: input.regionCode,
       preferenceHash,
+      clientVersion,
     },
     items,
     cursorSigningSecret,
@@ -594,6 +696,8 @@ async function resolveRequestedMode(
   preference: PreferenceRow | null,
   policy: AppRecommendationPolicy,
   config: AppRecommendationRuntimeConfig,
+  clientVersion: string,
+  regionCode: string | null,
   now: Date,
 ) {
   const preferredTermIds = readPreferenceTermIds(preference)
@@ -601,7 +705,14 @@ async function resolveRequestedMode(
     && policy.personalizationDecisionStatus === 'approved'
     && preference?.personalization_enabled === 1
     && preferredTermIds.length > 0
-    ? await loadUsablePersonalizedRule(db, config.requireProductionReady, now)
+    ? await loadUsablePersonalizedRule(
+        db,
+        clientVersion,
+        regionCode,
+        preference?.taxonomy_catalog_id ?? null,
+        config.requireProductionReady,
+        now,
+      )
     : null
   const personalizationReady = policy.personalizationEnabled
     && policy.personalizationDecisionStatus === 'approved'
@@ -634,28 +745,40 @@ async function resolveRequestedMode(
 
 async function loadUsablePersonalizedRule(
   db: D1Database,
+  clientVersion: string,
+  regionCode: string | null | undefined,
+  taxonomyCatalogId: string | null | undefined,
   requireProductionReady: boolean,
   now: Date,
 ) {
-  const rule = await loadActiveRuleOrNull(db, 'personalized', requireProductionReady, now)
-  if (!rule) return null
-  try {
-    await assertRecommendationRuleRuntimeDependencies(db, rule, requireProductionReady, now)
-    return rule
-  }
-  catch (error) {
-    if (error instanceof AppRecommendationError) return null
-    throw error
-  }
+  return loadActiveRuleOrNull(
+    db,
+    'personalized',
+    clientVersion,
+    regionCode,
+    taxonomyCatalogId,
+    requireProductionReady,
+    now,
+  )
 }
 
 async function loadActiveRule(
   db: D1Database,
   mode: AppRecommendationMode,
+  clientVersion: string,
+  regionCode: string | null,
   requireProductionReady: boolean,
   now: Date,
 ) {
-  const row = await loadActiveRuleOrNull(db, mode, requireProductionReady, now)
+  const row = await loadActiveRuleOrNull(
+    db,
+    mode,
+    clientVersion,
+    regionCode,
+    undefined,
+    requireProductionReady,
+    now,
+  )
   if (!row) {
     throw new AppRecommendationError(
       503,
@@ -670,44 +793,65 @@ async function loadActiveRule(
 async function loadActiveRuleOrNull(
   db: D1Database,
   mode: AppRecommendationMode,
+  clientVersion: string,
+  regionCode: string | null | undefined,
+  taxonomyCatalogId: string | null | undefined,
   requireProductionReady: boolean,
   now: Date,
 ) {
-  return db.prepare(`
-    SELECT ${RULE_FIELDS}
-    FROM app_recommendation_rule_versions
-    WHERE entry_point = 'discovery_home'
-      AND mode = ?
-      AND (
-        state = 'active'
-        OR (state = 'scheduled' AND effective_at IS NOT NULL AND datetime(effective_at) <= datetime(?))
-      )
-      AND rollout_percent > 0
-      AND (effective_at IS NULL OR datetime(effective_at) <= datetime(?))
-      AND (expires_at IS NULL OR datetime(expires_at) > datetime(?))
-      AND (? = 0 OR production_ready = 1)
-    ORDER BY
-      CASE state WHEN 'scheduled' THEN 0 ELSE 1 END ASC,
-      COALESCE(effective_at, activated_at) DESC,
-      activated_at DESC,
-      rule_version_id ASC
-    LIMIT 1
-  `).bind(
+  const selections = await listCompatibleRecommendationRules(
+    db,
     mode,
-    now.toISOString(),
-    now.toISOString(),
-    now.toISOString(),
-    requireProductionReady ? 1 : 0,
-  ).first<RecommendationRuleRow>()
+    clientVersion,
+    regionCode,
+    taxonomyCatalogId,
+    requireProductionReady,
+    now,
+  )
+  for (const selection of selections) {
+    const rule = await db.prepare(`
+      SELECT ${RULE_FIELDS}
+      FROM app_recommendation_rule_versions
+      WHERE rule_version_id = ?
+      LIMIT 1
+    `).bind(selection.rule_version_id).first<RecommendationRuleRow>()
+    if (!rule) continue
+    try {
+      validateExecutableRule(rule, mode, regionCode)
+      await assertRecommendationRuleRuntimeDependencies(db, rule, requireProductionReady, now)
+      return rule
+    }
+    catch (error) {
+      if (!(error instanceof AppRecommendationError)) throw error
+    }
+  }
+  return null
 }
 
 async function selectRolloutRule(
   db: D1Database,
   activeRule: RecommendationRuleRow,
   sessionId: string,
+  clientVersion: string,
+  regionCode: string | null,
   requireProductionReady: boolean,
   now: Date,
 ) {
+  if (!supportsAppMinimumVersion(clientVersion, activeRule.minimum_client_version)) {
+    throw new AppRecommendationError(
+      403,
+      'RECOMMENDATION_CLIENT_VERSION_UNSUPPORTED',
+      '当前客户端版本尚不支持此推荐规则，请先更新 App',
+    )
+  }
+  if (!recommendationRuleMatchesRegion(activeRule.target_region_codes_json, regionCode)) {
+    throw new AppRecommendationError(
+      503,
+      'RECOMMENDATION_REGION_NOT_READY',
+      '当前地区暂无可用推荐规则',
+      true,
+    )
+  }
   if (activeRule.rollout_percent >= 100) return activeRule
   if (activeRule.rollout_percent <= 0 || !activeRule.rollback_rule_version_id) {
     throw invalidRule('灰度规则缺少可执行的回退版本')
@@ -722,8 +866,14 @@ async function selectRolloutRule(
     WHERE rule_version_id = ?
       AND entry_point = ?
       AND mode = ?
+      AND rollout_percent = 100
       AND state IN ('active', 'paused', 'retired', 'rolled_back')
       AND activated_at IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM app_recommendation_guardrail_blocks block
+        WHERE block.rule_version_id = app_recommendation_rule_versions.rule_version_id
+      )
       AND (effective_at IS NULL OR datetime(effective_at) <= datetime(?))
       AND (expires_at IS NULL OR datetime(expires_at) > datetime(?))
       AND (? = 0 OR production_ready = 1)
@@ -737,6 +887,12 @@ async function selectRolloutRule(
     requireProductionReady ? 1 : 0,
   ).first<RecommendationRuleRow>()
   if (!fallback) throw invalidRule('灰度回退版本不存在、已过期或未通过当前环境门禁')
+  if (!supportsAppMinimumVersion(clientVersion, fallback.minimum_client_version)) {
+    throw invalidRule('灰度回退版本不支持当前客户端版本')
+  }
+  if (!recommendationRuleMatchesRegion(fallback.target_region_codes_json, regionCode)) {
+    throw invalidRule('灰度回退版本不覆盖当前地区')
+  }
   if (
     activeRule.mode === 'personalized'
     && fallback.taxonomy_catalog_id !== activeRule.taxonomy_catalog_id
@@ -746,22 +902,67 @@ async function selectRolloutRule(
   return fallback
 }
 
+async function resolveRecommendationExecution(
+  db: D1Database,
+  mode: AppRecommendationMode,
+  preferredActiveRule: RecommendationRuleRow | null,
+  sessionId: string,
+  clientVersion: string,
+  regionCode: string | null,
+  preferenceCatalogId: string | null,
+  requireProductionReady: boolean,
+  now: Date,
+) {
+  const activeRule = preferredActiveRule
+    ?? await loadActiveRule(
+      db,
+      mode,
+      clientVersion,
+      regionCode,
+      requireProductionReady,
+      now,
+    )
+  const rule = await selectRolloutRule(
+    db,
+    activeRule,
+    sessionId,
+    clientVersion,
+    regionCode,
+    requireProductionReady,
+    now,
+  )
+  await assertRecommendationRuleRuntimeDependencies(
+    db,
+    rule,
+    requireProductionReady,
+    now,
+  )
+  if (mode === 'personalized' && preferenceCatalogId !== rule.taxonomy_catalog_id) {
+    throw invalidRule('个性化偏好目录与实际执行规则目录不一致')
+  }
+  return {
+    rule,
+    model: validateExecutableRule(rule, mode, regionCode),
+  }
+}
+
 function validateExecutableRule(
   rule: RecommendationRuleRow,
   mode: AppRecommendationMode,
-  regionCode: string | null,
+  regionCode: string | null | undefined,
 ) {
+  if (!normalizeAppNumericVersion(rule.minimum_client_version)) {
+    throw invalidRule('推荐规则最低客户端版本格式无效')
+  }
   const weights = parseRecommendationWeights(rule.weights_json)
   const reasons = parseRecommendationReasonMap(rule.reason_map_json)
   const targetChannels = parseStringArray(rule.target_channels_json, '推荐渠道')
-  const targetRegions = parseStringArray(rule.target_region_codes_json, '推荐地区')
+  const targetRegions = parseRecommendationRuleRegions(rule.target_region_codes_json)
   if (targetChannels.length !== 1 || targetChannels[0] !== 'app') {
     throw invalidRule('当前规则渠道必须且只能为 App')
   }
-  if (targetRegions.some(region => !/^[a-z0-9-]{2,32}$/u.test(region))) {
-    throw invalidRule('推荐规则包含无效地区代码')
-  }
-  if (targetRegions.length && (!regionCode || !targetRegions.includes(regionCode))) {
+  if (!targetRegions) throw invalidRule('推荐规则包含无效地区代码')
+  if (!recommendationRuleMatchesRegion(rule.target_region_codes_json, regionCode)) {
     throw new AppRecommendationError(503, 'RECOMMENDATION_REGION_NOT_READY', '当前地区暂无可用推荐规则', true)
   }
   if (mode === 'non_personalized' && weights.preferredTaxonomy !== 0) {
@@ -786,6 +987,14 @@ export async function assertRecommendationRuleRuntimeDependencies(
   now = new Date(),
   errorStatus: 422 | 503 = 503,
 ) {
+  if (!normalizeAppNumericVersion(rule.minimum_client_version)) {
+    throw new AppRecommendationError(
+      errorStatus,
+      'RECOMMENDATION_CLIENT_VERSION_INVALID',
+      '推荐规则最低客户端版本格式无效',
+      true,
+    )
+  }
   const weights = parseRecommendationWeights(rule.weights_json)
   if (rule.mode === 'personalized') {
     if (!rule.taxonomy_catalog_id) {
@@ -1091,6 +1300,19 @@ function mapPreference(
   }
 }
 
+function closeExecutableCapabilities(
+  capabilities: AppRecommendationCapabilities,
+): AppRecommendationCapabilities {
+  return {
+    ...capabilities,
+    feed: false,
+    preferences: false,
+    personalization: false,
+    editorial: false,
+    activeRuleVersionId: null,
+  }
+}
+
 function readPreferenceTermIds(row: PreferenceRow | null) {
   if (!row) return []
   try {
@@ -1256,7 +1478,7 @@ async function maybeRecordRecommendationEvidence(
   const createdAt = now.toISOString()
   const expiresAt = new Date(now.getTime() + policy.evidenceRetentionDays * 86_400_000).toISOString()
   const accountHash = accountPublicId
-    ? await hmacHex(signingSecret, `recommendation-account-v1\u0000${accountPublicId}`)
+    ? await recommendationAccountHash(signingSecret, accountPublicId)
     : null
   const contextHash = await sha256Hex(JSON.stringify(context))
   const statements = [
@@ -1379,6 +1601,18 @@ function assertAccountId(value: number) {
   }
 }
 
+function requireRecommendationClientVersion(value: string | undefined) {
+  const version = normalizeAppNumericVersion(value)
+  if (!version) {
+    throw new AppRecommendationError(
+      400,
+      'APP_CLIENT_VERSION_INVALID',
+      'X-Client-Version 必须为两段或三段数字版本',
+    )
+  }
+  return version
+}
+
 function requireCursorSigningSecret(value: string) {
   if (typeof value !== 'string' || value.length < 16) {
     throw new AppRecommendationError(
@@ -1441,7 +1675,8 @@ export const RECOMMENDATION_RULE_FIELDS = `
   reason_map_json, target_region_codes_json, target_channels_json,
   max_consecutive_same_region, max_consecutive_same_term, repeat_exposure_cap,
   rollout_percent, minimum_client_version, effective_at, expires_at,
-  rollback_rule_version_id, production_ready, last_dry_run_json, last_dry_run_at,
+  rollback_rule_version_id, guardrail_policy_id, production_ready,
+  last_dry_run_json, last_dry_run_at,
   lock_version, created_by, updated_by, reviewed_by, activated_by,
   created_at, updated_at, reviewed_at, activated_at, paused_at
 `

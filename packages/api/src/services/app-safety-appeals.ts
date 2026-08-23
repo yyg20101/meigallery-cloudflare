@@ -1,7 +1,9 @@
 import type {
+  AppAppealReviewState,
   AppSafetyAppealCreateResult,
   AppSafetyAppealDetail,
   AppSafetyAppealStatus,
+  AppSafetyAppealSupplementResult,
   AppSafetyAppealSummary,
 } from '@meigallery/shared'
 import { APP_SAFETY_MAX_APPEAL_STATEMENT_LENGTH, AppSafetyError } from './app-safety'
@@ -18,12 +20,17 @@ export interface CreateAppSafetyAppealInput {
   statement?: unknown
 }
 
+export interface AddAppSafetyAppealSupplementInput {
+  expectedVersion?: unknown
+  note?: unknown
+}
+
 export interface AppAppealListQuery {
   limit: number
   cursor: null | {
-    v: 1
+    v: 2
     accountScope: string
-    submittedAt: string
+    updatedAt: string
     appealId: string
   }
 }
@@ -32,6 +39,8 @@ export interface SafetyAppealPolicy {
   id: string
   appealWindowDays: number
   maxStatementLength: number
+  reviewSlaHours: number | null
+  reviewSlaApproved: boolean
 }
 
 type AppealRow = {
@@ -39,12 +48,14 @@ type AppealRow = {
   report_id: string
   appeal_type: string
   statement_text: string
+  review_state: string
   user_visible_status: string
   user_visible_message: string
   original_report_version: number
   version: number
   submitted_at: string
   updated_at: string
+  supplement_due_at: string | null
   resolved_at: string | null
 }
 
@@ -59,6 +70,12 @@ type AppealIdempotencyRow = {
   request_hash: string
   result_id: string
   result_version: number
+}
+
+type AppealSupplementRow = {
+  sequence: number
+  note_text: string
+  created_at: string
 }
 
 export function parseAppAppealListQuery(input: {
@@ -132,6 +149,9 @@ export async function createAppSafetyAppeal(
   const appealId = prefixedId('apl')
   const eventId = prefixedId('ape')
   const nowIso = now.toISOString()
+  const reviewDueAt = policy.reviewSlaApproved && policy.reviewSlaHours !== null
+    ? new Date(now.getTime() + policy.reviewSlaHours * 60 * 60 * 1000).toISOString()
+    : null
   const statementHash = await sha256Hex(statement)
   const message = '复核申请已收到，将由与原审核人不同的人员处理。'
   try {
@@ -140,12 +160,13 @@ export async function createAppSafetyAppeal(
         INSERT INTO app_safety_appeals (
           id, report_id, account_id, appeal_type, original_report_version,
           original_decision_admin_id, statement_text, statement_sha256,
-          status, user_visible_status, user_visible_message, assigned_admin_id,
-          policy_id, version, mutation_token, submitted_at, updated_at, resolved_at
+          status, review_state, user_visible_status, user_visible_message, assigned_admin_id,
+          policy_id, version, mutation_token, submitted_at, updated_at,
+          review_due_at, supplement_due_at, resolved_at
         )
         SELECT ?, id, account_id, 'report_no_violation_review', version,
-               assigned_admin_id, ?, ?, 'submitted', 'submitted', ?, NULL,
-               ?, 1, NULL, ?, ?, NULL
+               assigned_admin_id, ?, ?, 'submitted', 'normal', 'submitted', ?, NULL,
+               ?, 1, NULL, ?, ?, ?, NULL, NULL
         FROM app_safety_reports
         WHERE id = ? AND account_id = ? AND status = 'no_violation'
           AND version = ? AND assigned_admin_id IS NOT NULL AND resolved_at = ?
@@ -157,6 +178,7 @@ export async function createAppSafetyAppeal(
         policy.id,
         nowIso,
         nowIso,
+        reviewDueAt,
         reportId,
         accountId,
         expectedReportVersion,
@@ -211,12 +233,12 @@ export async function listAppSafetyAppeals(
   const conditions = ['account_id = ?']
   const params: unknown[] = [accountId]
   if (query.cursor) {
-    conditions.push('(submitted_at < ? OR (submitted_at = ? AND id > ?))')
-    params.push(query.cursor.submittedAt, query.cursor.submittedAt, query.cursor.appealId)
+    conditions.push('(updated_at < ? OR (updated_at = ? AND id > ?))')
+    params.push(query.cursor.updatedAt, query.cursor.updatedAt, query.cursor.appealId)
   }
   const rows = await db.prepare(`${APPEAL_SELECT}
     WHERE ${conditions.join(' AND ')}
-    ORDER BY submitted_at DESC, id ASC
+    ORDER BY updated_at DESC, id ASC
     LIMIT ?
   `).bind(...params, query.limit + 1).all<AppealRow>()
   const hasMore = rows.results.length > query.limit
@@ -226,9 +248,9 @@ export async function listAppSafetyAppeals(
     data: page.map(mapAppealSummary),
     nextCursor: hasMore && last
       ? encodeCursor({
-          v: 1,
+          v: 2,
           accountScope: accountPublicId,
-          submittedAt: last.submitted_at,
+          updatedAt: last.updated_at,
           appealId: last.id,
         })
       : null,
@@ -248,14 +270,34 @@ export async function getAppSafetyAppeal(
   `).bind(appealId, accountId).first<AppealRow>()
   if (!appeal) throw appealNotFound()
   const events = await db.prepare(`
-    SELECT sequence, user_visible_status, user_visible_message, created_at
-    FROM app_safety_appeal_events
+    SELECT ROW_NUMBER() OVER (ORDER BY created_at ASC, event_id ASC) AS sequence,
+           user_visible_status, user_visible_message, created_at
+    FROM (
+      SELECT id AS event_id, user_visible_status, user_visible_message, created_at
+      FROM app_safety_appeal_events
+      WHERE appeal_id = ?
+      UNION ALL
+      SELECT id AS event_id, 'processing' AS user_visible_status,
+             user_visible_message, created_at
+      FROM app_appeal_review_events
+      WHERE appeal_kind = 'report' AND appeal_id = ?
+    ) timeline
+    ORDER BY created_at ASC, event_id ASC
+  `).bind(appealId, appealId).all<AppealEventRow>()
+  const supplements = await db.prepare(`
+    SELECT sequence, note_text, created_at
+    FROM app_safety_appeal_supplements
     WHERE appeal_id = ?
     ORDER BY sequence ASC
-  `).bind(appealId).all<AppealEventRow>()
+  `).bind(appealId).all<AppealSupplementRow>()
   return {
     ...mapAppealSummary(appeal),
     statement: appeal.statement_text,
+    supplements: supplements.results.map(item => ({
+      sequence: Number(item.sequence),
+      note: item.note_text,
+      createdAt: item.created_at,
+    })),
     timeline: events.results.map(event => ({
       sequence: Number(event.sequence),
       status: normalizeVisibleAppealStatus(event.user_visible_status),
@@ -263,6 +305,127 @@ export async function getAppSafetyAppeal(
       createdAt: event.created_at,
     })),
   }
+}
+
+export async function addAppSafetyAppealSupplement(
+  db: D1Database,
+  accountId: number,
+  appealIdValue: string,
+  idempotencyKeyValue: string | null,
+  input: AddAppSafetyAppealSupplementInput,
+  now = new Date(),
+): Promise<AppSafetyAppealSupplementResult> {
+  const appealId = normalizeAppealId(appealIdValue)
+  const expectedVersion = normalizeAppealVersion(input.expectedVersion)
+  const note = normalizeStatement(input.note, APP_SAFETY_MAX_APPEAL_STATEMENT_LENGTH)
+  const idempotencyKey = normalizeIdempotencyKey(idempotencyKeyValue)
+  const actorScope = viewerScope(accountId)
+  const operation = 'appeal_supplement_add'
+  const requestHash = await hashCanonical({ appealId, expectedVersion, note })
+  const replay = await findReviewCommand(db, actorScope, operation, idempotencyKey)
+  if (replay) {
+    assertIdempotencyHash(replay, requestHash)
+    return { appeal: await getAppSafetyAppeal(db, accountId, replay.result_id), replayed: true }
+  }
+
+  const current = await db.prepare(`
+    SELECT id, version, status, review_state
+    FROM app_safety_appeals
+    WHERE id = ? AND account_id = ? LIMIT 1
+  `).bind(appealId, accountId).first<{
+    id: string
+    version: number
+    status: string
+    review_state: string
+  }>()
+  if (!current) throw appealNotFound()
+  if (Number(current.version) !== expectedVersion) {
+    throw new AppSafetyError(409, 'APPEAL_VERSION_CONFLICT', '申诉已被更新，请刷新后重新补充')
+  }
+  const currentReviewState = normalizeReviewState(current.review_state)
+  if (
+    currentReviewState === 'needs_escalation'
+    || !['submitted', 'triaged', 'investigating'].includes(current.status)
+  ) {
+    throw new AppSafetyError(409, 'APPEAL_SUPPLEMENT_UNAVAILABLE', '当前申诉不能补充说明')
+  }
+
+  const nowIso = now.toISOString()
+  const nextVersion = expectedVersion + 1
+  const mutationToken = crypto.randomUUID()
+  const noteHash = await sha256Hex(note)
+  const supplementId = prefixedSupplementId()
+  const reviewEventId = prefixedReviewEventId()
+  const message = currentReviewState === 'evidence_insufficient'
+    ? '补充说明已收到，申诉已恢复独立复核；原业务状态仍未自动改变。'
+    : '补充说明已收到，独立复核继续进行；原业务状态仍未自动改变。'
+
+  await db.batch([
+    db.prepare(`
+      UPDATE app_safety_appeals
+      SET status = 'investigating', review_state = 'normal',
+          user_visible_status = 'processing', user_visible_message = ?,
+          supplement_due_at = NULL, version = ?, mutation_token = ?, updated_at = ?
+      WHERE id = ? AND account_id = ? AND version = ?
+        AND review_state IN ('normal', 'evidence_insufficient')
+        AND status IN ('submitted', 'triaged', 'investigating')
+    `).bind(message, nextVersion, mutationToken, nowIso, appealId, accountId, expectedVersion),
+    db.prepare(`
+      INSERT INTO app_safety_appeal_supplements (
+        id, appeal_id, sequence, account_id, note_text, note_sha256, created_at
+      )
+      SELECT ?, id,
+             (SELECT COALESCE(MAX(sequence), 0) + 1 FROM app_safety_appeal_supplements WHERE appeal_id = ?),
+             account_id, ?, ?, ?
+      FROM app_safety_appeals
+      WHERE id = ? AND version = ? AND mutation_token = ? AND account_id = ?
+    `).bind(supplementId, appealId, note, noteHash, nowIso, appealId, nextVersion, mutationToken, accountId),
+    db.prepare(`
+      INSERT INTO app_appeal_review_events (
+        id, appeal_kind, appeal_id, appeal_version, actor_type,
+        actor_account_id, actor_admin_id, event_type,
+        review_state_from, review_state_to, reason_code,
+        user_visible_message, created_at
+      )
+      SELECT ?, 'report', id, version, 'viewer', account_id, NULL,
+             'supplement_added', ?, 'normal', 'viewer_added_supplement', ?, ?
+      FROM app_safety_appeals
+      WHERE id = ? AND version = ? AND mutation_token = ? AND account_id = ?
+    `).bind(
+      reviewEventId,
+      currentReviewState,
+      message,
+      nowIso,
+      appealId,
+      nextVersion,
+      mutationToken,
+      accountId,
+    ),
+    db.prepare(`
+      INSERT INTO app_appeal_review_commands (
+        actor_scope, appeal_kind, operation, idempotency_key, request_hash,
+        result_id, result_version, created_at
+      )
+      SELECT ?, 'report', ?, ?, ?, id, version, ?
+      FROM app_safety_appeals
+      WHERE id = ? AND version = ? AND mutation_token = ? AND account_id = ?
+    `).bind(
+      actorScope,
+      operation,
+      idempotencyKey,
+      requestHash,
+      nowIso,
+      appealId,
+      nextVersion,
+      mutationToken,
+      accountId,
+    ),
+  ])
+  const persisted = await findReviewCommand(db, actorScope, operation, idempotencyKey)
+  if (!persisted || Number(persisted.result_version) !== nextVersion) {
+    throw new AppSafetyError(409, 'APPEAL_VERSION_CONFLICT', '申诉已被更新，请刷新后重新补充', true)
+  }
+  return { appeal: await getAppSafetyAppeal(db, accountId, appealId), replayed: false }
 }
 
 export async function requireSafetyAppealPolicy(
@@ -273,6 +436,7 @@ export async function requireSafetyAppealPolicy(
   const policy = await db.prepare(`
     SELECT policy.id, policy.state, policy.production_ready,
            policy.appeal_window_days, policy.max_statement_length,
+           policy.review_sla_hours, policy.review_sla_decision_status,
            retention.state AS retention_state,
            retention.production_ready AS retention_ready,
            retention.decision_status
@@ -286,6 +450,8 @@ export async function requireSafetyAppealPolicy(
     production_ready: number
     appeal_window_days: number
     max_statement_length: number
+    review_sla_hours: number | null
+    review_sla_decision_status: string
     retention_state: string
     retention_ready: number
     decision_status: string
@@ -298,6 +464,11 @@ export async function requireSafetyAppealPolicy(
     || !inRange(Number(policy.appeal_window_days), 1, 365)
     || !Number.isInteger(Number(policy.max_statement_length))
     || !inRange(Number(policy.max_statement_length), 1, APP_SAFETY_MAX_APPEAL_STATEMENT_LENGTH)
+    || (policy.review_sla_hours !== null && (
+      !Number.isInteger(Number(policy.review_sla_hours))
+      || !inRange(Number(policy.review_sla_hours), 1, 2160)
+    ))
+    || !['unresolved', 'approved'].includes(policy.review_sla_decision_status)
   ) {
     throw new AppSafetyError(503, 'APPEAL_POLICY_NOT_READY', '申诉策略参数超出当前契约范围')
   }
@@ -309,6 +480,7 @@ export async function requireSafetyAppealPolicy(
       || policy.retention_state !== 'published'
       || policy.retention_ready !== 1
       || policy.decision_status !== 'approved'
+      || policy.review_sla_decision_status !== 'approved'
     )
   ) {
     throw new AppSafetyError(503, 'APPEAL_POLICY_NOT_READY', '申诉与保留策略尚未完成生产发布')
@@ -317,6 +489,8 @@ export async function requireSafetyAppealPolicy(
     id: policy.id,
     appealWindowDays: Number(policy.appeal_window_days),
     maxStatementLength: Number(policy.max_statement_length),
+    reviewSlaHours: policy.review_sla_hours === null ? null : Number(policy.review_sla_hours),
+    reviewSlaApproved: policy.review_sla_decision_status === 'approved',
   }
 }
 
@@ -325,9 +499,9 @@ function inRange(value: number, minimum: number, maximum: number) {
 }
 
 const APPEAL_SELECT = `
-  SELECT id, report_id, appeal_type, statement_text, user_visible_status,
+  SELECT id, report_id, appeal_type, statement_text, review_state, user_visible_status,
          user_visible_message, original_report_version, version,
-         submitted_at, updated_at, resolved_at
+         submitted_at, updated_at, supplement_due_at, resolved_at
   FROM app_safety_appeals
 `
 
@@ -337,13 +511,20 @@ function mapAppealSummary(row: AppealRow): AppSafetyAppealSummary {
     reportId: row.report_id,
     type: 'report_no_violation_review',
     status: normalizeVisibleAppealStatus(row.user_visible_status),
+    reviewState: normalizeReviewState(row.review_state),
     userVisibleMessage: row.user_visible_message,
     originalReportVersion: Number(row.original_report_version),
     version: Number(row.version),
     submittedAt: row.submitted_at,
     updatedAt: row.updated_at,
+    supplementDueAt: row.supplement_due_at,
     resolvedAt: row.resolved_at,
   }
+}
+
+function normalizeReviewState(value: string): AppAppealReviewState {
+  if (value === 'normal' || value === 'evidence_insufficient' || value === 'needs_escalation') return value
+  return 'normal'
 }
 
 function normalizeVisibleAppealStatus(value: string): AppSafetyAppealStatus {
@@ -374,6 +555,13 @@ function normalizeAppealId(value: unknown): string {
 function normalizeExpectedVersion(value: unknown): number {
   if (!Number.isInteger(value) || Number(value) < 1) {
     throw new AppSafetyError(400, 'EXPECTED_VERSION_INVALID', 'expectedReportVersion 必须为正整数')
+  }
+  return Number(value)
+}
+
+function normalizeAppealVersion(value: unknown): number {
+  if (!Number.isInteger(value) || Number(value) < 1) {
+    throw new AppSafetyError(400, 'EXPECTED_VERSION_INVALID', 'expectedVersion 必须为正整数')
   }
   return Number(value)
 }
@@ -432,6 +620,20 @@ async function findAppealIdempotency(
   `).bind(actorScope, operation, idempotencyKey).first<AppealIdempotencyRow>()
 }
 
+async function findReviewCommand(
+  db: D1Database,
+  actorScope: string,
+  operation: string,
+  idempotencyKey: string,
+) {
+  return db.prepare(`
+    SELECT request_hash, result_id, result_version
+    FROM app_appeal_review_commands
+    WHERE actor_scope = ? AND operation = ? AND idempotency_key = ?
+    LIMIT 1
+  `).bind(actorScope, operation, idempotencyKey).first<AppealIdempotencyRow>()
+}
+
 function assertIdempotencyHash(row: AppealIdempotencyRow, requestHash: string) {
   if (row.request_hash !== requestHash) {
     throw new AppSafetyError(409, 'IDEMPOTENCY_CONFLICT', '同一幂等键不能用于不同申诉操作')
@@ -449,6 +651,14 @@ async function hashCanonical(value: unknown): Promise<string> {
 
 function prefixedId(prefix: 'apl' | 'ape') {
   return `${prefix}_${crypto.randomUUID().replace(/-/gu, '')}`
+}
+
+function prefixedSupplementId() {
+  return `aas_${crypto.randomUUID().replace(/-/gu, '')}`
+}
+
+function prefixedReviewEventId() {
+  return `are_${crypto.randomUUID().replace(/-/gu, '')}`
 }
 
 function viewerScope(accountId: number) {
@@ -478,9 +688,10 @@ function decodeCursor(value: string): unknown {
 function isAppealCursor(value: unknown): value is NonNullable<AppAppealListQuery['cursor']> {
   if (!value || typeof value !== 'object') return false
   const cursor = value as Record<string, unknown>
-  return cursor.v === 1
+  return cursor.v === 2
     && typeof cursor.accountScope === 'string'
-    && typeof cursor.submittedAt === 'string'
+    && typeof cursor.updatedAt === 'string'
+    && !Number.isNaN(Date.parse(cursor.updatedAt))
     && typeof cursor.appealId === 'string'
     && APPEAL_ID_PATTERN.test(cursor.appealId)
 }

@@ -34,6 +34,22 @@ const SAFETY_MIGRATION = readFileSync(
   new URL('../../migrations/0073_app_messaging_safety_operations.sql', import.meta.url),
   'utf8',
 )
+const TAXONOMY_MIGRATION = readFileSync(
+  new URL('../../migrations/0081_app_taxonomy_catalog.sql', import.meta.url),
+  'utf8',
+)
+const ESCALATION_MIGRATION = readFileSync(
+  new URL('../../migrations/0085_app_conversation_safety_escalations.sql', import.meta.url),
+  'utf8',
+)
+const ROUTING_MIGRATION = readFileSync(
+  new URL('../../migrations/0086_app_conversation_routing_and_shifts.sql', import.meta.url),
+  'utf8',
+)
+const QUALITY_MIGRATION = readFileSync(
+  new URL('../../migrations/0087_app_conversation_quality_reviews.sql', import.meta.url),
+  'utf8',
+)
 const NOW = new Date('2026-08-06T08:00:00.000Z')
 
 let miniflare: Miniflare
@@ -67,7 +83,8 @@ beforeAll(async () => {
     );
     CREATE TABLE person_profiles (
       id TEXT PRIMARY KEY,
-      display_name TEXT NOT NULL
+      display_name TEXT NOT NULL,
+      region_code TEXT
     );
     CREATE TABLE profile_public_projections (
       profile_id TEXT PRIMARY KEY REFERENCES person_profiles(id),
@@ -104,10 +121,28 @@ beforeAll(async () => {
       after_value TEXT,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE app_operational_safety_controls (
+      control_key TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      state TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      incident_id TEXT,
+      reason_code TEXT,
+      reason_summary TEXT,
+      changed_by INTEGER,
+      changed_at TEXT NOT NULL
+    );
+    INSERT INTO app_operational_safety_controls (
+      control_key, display_name, state, version, changed_at
+    ) VALUES ('operator_messaging', '运营消息发送', 'available', 1, '2026-08-06T00:00:00.000Z');
   `))
   await db.exec(executableSql(MEMBERSHIP_MIGRATION))
   await db.exec(executableSql(MESSAGE_MIGRATION))
   await db.exec(executableSql(SAFETY_MIGRATION))
+  await db.exec(executableSql(TAXONOMY_MIGRATION))
+  await db.exec(executableSql(ESCALATION_MIGRATION))
+  await db.exec(executableSql(ROUTING_MIGRATION))
+  await db.exec(executableSql(QUALITY_MIGRATION))
 })
 
 beforeEach(async () => {

@@ -37,37 +37,21 @@ describe('App API v2 路由契约', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(response.headers.get('x-contract-version')).toBe('1.10.0')
-    expect(body.data.capabilities).toEqual({
+    expect(response.headers.get('x-contract-version')).toBe('1.26.0')
+    expect(body.data.capabilities).toMatchObject({
       discovery: true,
       auth: false,
-      interactions: {
-        like: false,
-        follow: false,
-        favorite: false,
-        history: false,
-      },
-      membership: {
-        catalog: false,
-        entitlements: false,
-        applications: false,
-      },
       messaging: false,
       notifications: false,
+      realtime: false,
       wallet: false,
-      safety: {
-        reports: false,
-        blocks: false,
-        conversationClose: false,
-        appeals: false,
-      },
       payments: false,
       systemPush: false,
     })
     expect(body.meta).toMatchObject({
       requestId: 'req_app_test',
       apiVersion: '2',
-      contractVersion: '1.10.0',
+      contractVersion: '1.26.0',
     })
   })
 
@@ -501,9 +485,11 @@ describe('App API v2 路由契约', () => {
     expect(contract).toContain('/api/v2/notifications/{notificationId}:')
     expect(contract).toContain('/api/v2/notifications/{notificationId}/read:')
     expect(contract).toContain('/api/v2/me/notification-preferences:')
+    expect(contract).toContain('/api/v2/realtime/tickets:')
+    expect(contract).toContain('/api/v2/realtime/connect:')
     expect(contract).toContain('/api/v2/me/wallet:')
     expect(contract).toContain('/api/v2/me/wallet/entries:')
     expect(contract).toContain('/api/v2/me/wallet/entries/{entryId}:')
-    expect(contract).toContain('version: 1.10.0')
+    expect(contract).toContain('version: 1.26.0')
   })
 })

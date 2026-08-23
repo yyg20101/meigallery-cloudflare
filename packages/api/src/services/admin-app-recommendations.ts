@@ -1,5 +1,9 @@
 import { generateId } from '../utils/db'
 import {
+  compareAppNumericVersions,
+  normalizeAppNumericVersion,
+} from './app-client-version'
+import {
   AppRecommendationError,
   normalizeRecommendationExpectedVersion,
   normalizeRecommendationPlacementId,
@@ -7,6 +11,10 @@ import {
   normalizeRecommendationRuleVersionId,
   type AppRecommendationPolicy,
 } from './app-recommendation-policy'
+import {
+  parseRecommendationRuleRegions,
+  recommendationFallbackCoversTargetRegions,
+} from './app-recommendation-region'
 import {
   RECOMMENDATION_RULE_FIELDS,
   assertRecommendationRuleRuntimeDependencies,
@@ -16,9 +24,9 @@ import {
   type RecommendationRuleRow,
 } from './app-recommendations'
 import { requireAppOperationalControlAvailable } from './app-operational-safety'
+import { assertRecommendationGuardrailForActivation } from './admin-app-recommendation-guardrails'
 
 const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7E]{16,128}$/u
-const VERSION_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/u
 
 type AdminActor = {
   adminId: number
@@ -68,6 +76,7 @@ export type CreateRecommendationRuleInput = {
   effectiveAt?: unknown
   expiresAt?: unknown
   rollbackRuleVersionId?: unknown
+  guardrailPolicyId?: unknown
 }
 
 export type UpdateRecommendationRuleInput = Omit<CreateRecommendationRuleInput, 'mode'> & {
@@ -344,6 +353,9 @@ export async function updateAdminRecommendationRule(
     rollbackRuleVersionId: input.rollbackRuleVersionId === undefined
       ? current.rollback_rule_version_id
       : input.rollbackRuleVersionId,
+    guardrailPolicyId: input.guardrailPolicyId === undefined
+      ? current.guardrail_policy_id
+      : input.guardrailPolicyId,
   })
   const token = crypto.randomUUID()
   const nowIso = now.toISOString()
@@ -355,6 +367,7 @@ export async function updateAdminRecommendationRule(
           max_consecutive_same_region = ?, max_consecutive_same_term = ?,
           repeat_exposure_cap = ?, rollout_percent = ?, minimum_client_version = ?,
           effective_at = ?, expires_at = ?, rollback_rule_version_id = ?,
+          guardrail_policy_id = ?,
           last_dry_run_json = NULL, last_dry_run_at = NULL,
           lock_version = lock_version + 1, mutation_token = ?, updated_by = ?, updated_at = ?
       WHERE rule_version_id = ? AND state = 'draft' AND lock_version = ?
@@ -374,6 +387,7 @@ export async function updateAdminRecommendationRule(
       draft.effectiveAt,
       draft.expiresAt,
       draft.rollbackRuleVersionId,
+      draft.guardrailPolicyId,
       token,
       actor.adminId,
       nowIso,
@@ -513,7 +527,8 @@ export async function activateAdminRecommendationRule(
   const current = await requireRuleState(db, ruleVersionId, input.expectedVersion, ['approved', 'scheduled', 'paused'])
   validateRuleForActivation(current, policy, requireProductionReady, now)
   await assertRecommendationRuleRuntimeDependencies(db, current, requireProductionReady, now, 422)
-  await assertRolloutFallback(db, current, requireProductionReady, now)
+  await assertRecommendationGuardrailForActivation(db, current, requireProductionReady)
+  await assertRolloutFallback(db, current, policy, requireProductionReady, now)
   const targetState = current.effective_at && Date.parse(current.effective_at) > now.getTime()
     ? 'scheduled'
     : 'active'
@@ -664,7 +679,8 @@ export async function rollbackAdminRecommendationRule(
     }
     validateRuleForActivation(retainedActive, policy, requireProductionReady, now)
     await assertRecommendationRuleRuntimeDependencies(db, retainedActive, requireProductionReady, now, 422)
-    await assertRolloutFallback(db, retainedActive, requireProductionReady, now)
+    await assertRecommendationGuardrailForActivation(db, retainedActive, requireProductionReady)
+    await assertRolloutFallback(db, retainedActive, policy, requireProductionReady, now)
     const rolledBack = await transitionRule(
       db,
       current,
@@ -689,7 +705,8 @@ export async function rollbackAdminRecommendationRule(
   }
   validateRuleForActivation(target, policy, requireProductionReady, now)
   await assertRecommendationRuleRuntimeDependencies(db, target, requireProductionReady, now, 422)
-  await assertRolloutFallback(db, target, requireProductionReady, now)
+  await assertRecommendationGuardrailForActivation(db, target, requireProductionReady)
+  await assertRolloutFallback(db, target, policy, requireProductionReady, now)
   const currentToken = crypto.randomUUID()
   const targetToken = crypto.randomUUID()
   const nowIso = now.toISOString()
@@ -1030,10 +1047,15 @@ async function normalizeRuleDraft(db: D1Database, input: CreateRecommendationRul
   const rollbackRuleVersionId = input.rollbackRuleVersionId === undefined || input.rollbackRuleVersionId === null || input.rollbackRuleVersionId === ''
     ? null
     : normalizeRecommendationRuleVersionId(input.rollbackRuleVersionId)
+  const guardrailPolicyId = optionalId(
+    input.guardrailPolicyId,
+    /^rgp_[A-Za-z0-9_-]{1,92}$/u,
+    '推荐守护策略 ID',
+  )
   if (mode === 'personalized' && !taxonomyCatalogId) {
     throw new AppRecommendationError(422, 'RECOMMENDATION_TAXONOMY_REQUIRED', '个性化规则必须绑定稳定 taxonomy 目录')
   }
-  await assertReferences(db, taxonomyCatalogId, heatVersionId, rollbackRuleVersionId)
+  await assertReferences(db, taxonomyCatalogId, heatVersionId, rollbackRuleVersionId, guardrailPolicyId)
   return {
     mode,
     name,
@@ -1051,6 +1073,7 @@ async function normalizeRuleDraft(db: D1Database, input: CreateRecommendationRul
     effectiveAt,
     expiresAt,
     rollbackRuleVersionId,
+    guardrailPolicyId,
   }
 }
 
@@ -1072,12 +1095,13 @@ function insertRuleStatement(
       reason_map_json, target_region_codes_json, target_channels_json,
       max_consecutive_same_region, max_consecutive_same_term, repeat_exposure_cap,
       rollout_percent, minimum_client_version, effective_at, expires_at,
-      rollback_rule_version_id, production_ready, last_dry_run_json, last_dry_run_at,
+      rollback_rule_version_id, guardrail_policy_id, production_ready,
+      last_dry_run_json, last_dry_run_at,
       lock_version, mutation_token, created_by, updated_by, reviewed_by, activated_by,
       created_at, updated_at, reviewed_at, activated_at, paused_at
     ) VALUES (
       ?, ?, ?, 'draft', 'discovery_home', ?, ?, ?, ?, ?, ?, ?, ?, '["app"]',
-      ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 1, NULL, ?, ?, NULL, NULL, ?, ?, NULL, NULL, NULL
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 1, NULL, ?, ?, NULL, NULL, ?, ?, NULL, NULL, NULL
     )
   `).bind(
     input.ruleVersionId,
@@ -1099,6 +1123,7 @@ function insertRuleStatement(
     input.draft.effectiveAt,
     input.draft.expiresAt,
     input.draft.rollbackRuleVersionId,
+    input.draft.guardrailPolicyId,
     input.actor.adminId,
     input.actor.adminId,
     input.nowIso,
@@ -1187,6 +1212,23 @@ function validateRuleForActivation(
 ) {
   parseRecommendationWeights(rule.weights_json)
   parseRecommendationReasonMap(rule.reason_map_json)
+  if (!parseRecommendationRuleRegions(rule.target_region_codes_json)) {
+    throw new AppRecommendationError(
+      422,
+      'RECOMMENDATION_REGIONS_INVALID',
+      '推荐规则目标地区配置无效',
+    )
+  }
+  if (
+    !normalizeAppNumericVersion(rule.minimum_client_version)
+    || !normalizeAppNumericVersion(policy.minimumClientVersion)
+  ) {
+    throw new AppRecommendationError(
+      422,
+      'RECOMMENDATION_CLIENT_VERSION_INVALID',
+      '规则或策略的最低客户端版本必须为两段或三段数字版本',
+    )
+  }
   const dryRun = parseDryRun(rule.last_dry_run_json)
   if (!dryRun || dryRun.emptyResultRisk || dryRun.candidateCount <= 0) {
     throw new AppRecommendationError(422, 'RECOMMENDATION_DRY_RUN_REQUIRED', '启用前必须完成有候选结果的 Dry-run')
@@ -1211,34 +1253,75 @@ function validateRuleForActivation(
 async function assertRolloutFallback(
   db: D1Database,
   rule: RecommendationRuleRow,
+  policy: AppRecommendationPolicy,
   requireProductionReady: boolean,
   now: Date,
 ) {
-  if (rule.rollout_percent >= 100) return
+  const policyComparison = compareAppNumericVersions(
+    rule.minimum_client_version,
+    policy.minimumClientVersion,
+  )
+  if (policyComparison === null) {
+    throw new AppRecommendationError(
+      422,
+      'RECOMMENDATION_CLIENT_VERSION_INVALID',
+      '规则或策略的最低客户端版本格式无效',
+    )
+  }
+  const clientVersionFallbackRequired = policyComparison > 0
+  const targetRegions = parseRecommendationRuleRegions(rule.target_region_codes_json)
+  if (!targetRegions) {
+    throw new AppRecommendationError(
+      422,
+      'RECOMMENDATION_REGIONS_INVALID',
+      '推荐规则目标地区配置无效',
+    )
+  }
+  const regionFallbackRequired = targetRegions.length > 0
+  if (
+    rule.rollout_percent >= 100
+    && !clientVersionFallbackRequired
+    && !regionFallbackRequired
+  ) return
   if (!rule.rollback_rule_version_id || rule.rollback_rule_version_id === rule.rule_version_id) {
     throw new AppRecommendationError(
       422,
       'RECOMMENDATION_ROLLOUT_FALLBACK_REQUIRED',
-      '小于 100% 的灰度必须绑定另一个已生效过的完整回退版本',
+      regionFallbackRequired
+        ? '按地区投放的规则必须绑定另一个已生效过且覆盖目标地区的回退版本'
+        : clientVersionFallbackRequired
+        ? '规则最低版本高于策略基线时必须绑定另一个已生效过的兼容回退版本'
+        : '小于 100% 的灰度必须绑定另一个已生效过的完整回退版本',
     )
   }
   const fallback = await findRule(db, rule.rollback_rule_version_id)
+  const fallbackVersionComparison = fallback
+    ? compareAppNumericVersions(fallback.minimum_client_version, rule.minimum_client_version)
+    : null
   const usable = fallback
     && fallback.entry_point === rule.entry_point
     && fallback.mode === rule.mode
     && (rule.mode !== 'personalized' || fallback.taxonomy_catalog_id === rule.taxonomy_catalog_id)
     && ['active', 'paused', 'retired', 'rolled_back'].includes(fallback.state)
     && Boolean(fallback.activated_at)
+    && fallback.rollout_percent === 100
     && (!fallback.expires_at || Date.parse(fallback.expires_at) > now.getTime())
     && (!requireProductionReady || fallback.production_ready === 1)
+    && fallbackVersionComparison !== null
+    && fallbackVersionComparison <= 0
+    && recommendationFallbackCoversTargetRegions(
+      rule.target_region_codes_json,
+      fallback.target_region_codes_json,
+    )
   if (!usable) {
     throw new AppRecommendationError(
       422,
       'RECOMMENDATION_ROLLOUT_FALLBACK_INVALID',
-      '灰度回退版本未生效过、模式/个性化目录不一致、已过期或未通过当前环境门禁',
+      '灰度回退版本不是完整投放、未生效过、未覆盖目标地区、客户端版本不兼容、模式/个性化目录不一致、已过期或未通过当前环境门禁',
     )
   }
   await assertRecommendationRuleRuntimeDependencies(db, fallback, requireProductionReady, now, 422)
+  await assertRecommendationGuardrailForActivation(db, fallback, requireProductionReady)
 }
 
 async function normalizePlacement(db: D1Database, input: CreateEditorialPlacementInput) {
@@ -1425,6 +1508,7 @@ async function assertReferences(
   taxonomyCatalogId: string | null,
   heatVersionId: string | null,
   rollbackRuleVersionId: string | null,
+  guardrailPolicyId: string | null,
 ) {
   const checks: Promise<unknown>[] = []
   if (taxonomyCatalogId) {
@@ -1438,6 +1522,10 @@ async function assertReferences(
   if (rollbackRuleVersionId) {
     checks.push(db.prepare('SELECT rule_version_id FROM app_recommendation_rule_versions WHERE rule_version_id = ? LIMIT 1')
       .bind(rollbackRuleVersionId).first())
+  }
+  if (guardrailPolicyId) {
+    checks.push(db.prepare('SELECT policy_id FROM app_recommendation_guardrail_policies WHERE policy_id = ? LIMIT 1')
+      .bind(guardrailPolicyId).first())
   }
   const results = await Promise.all(checks)
   if (results.some(item => !item)) {
@@ -1498,6 +1586,7 @@ function draftFromRow(row: RecommendationRuleRow): NormalizedRuleDraft {
     effectiveAt: null,
     expiresAt: null,
     rollbackRuleVersionId: row.rule_version_id,
+    guardrailPolicyId: row.guardrail_policy_id,
   }
 }
 
@@ -1527,6 +1616,7 @@ function mapRule(row: RecommendationRuleRow) {
     effectiveAt: row.effective_at,
     expiresAt: row.expires_at,
     rollbackRuleVersionId: row.rollback_rule_version_id,
+    guardrailPolicyId: row.guardrail_policy_id,
     productionReady: row.production_ready === 1,
     lastDryRun: parseDryRun(row.last_dry_run_json),
     lastDryRunAt: row.last_dry_run_at,
@@ -1863,10 +1953,15 @@ function integer(value: unknown, fallback: number, min: number, max: number, lab
 
 function optionalVersionCode(value: unknown) {
   if (value === undefined || value === null || value === '') return null
-  if (typeof value !== 'string' || !VERSION_CODE_PATTERN.test(value.trim())) {
-    throw new AppRecommendationError(400, 'RECOMMENDATION_VERSION_INVALID', '最低客户端版本格式无效')
+  const normalized = normalizeAppNumericVersion(value)
+  if (!normalized) {
+    throw new AppRecommendationError(
+      400,
+      'RECOMMENDATION_VERSION_INVALID',
+      '最低客户端版本必须为两段或三段数字版本',
+    )
   }
-  return value.trim()
+  return normalized
 }
 
 function requiredTimestamp(value: unknown, label: string) {
@@ -1998,6 +2093,7 @@ const CREATE_RULE_KEYS = [
   'effectiveAt',
   'expiresAt',
   'rollbackRuleVersionId',
+  'guardrailPolicyId',
 ] as const
 
 const UPDATE_RULE_KEYS = ['expectedVersion', ...CREATE_RULE_KEYS.filter(key => key !== 'mode')] as const

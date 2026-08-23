@@ -150,15 +150,8 @@ function payloadStateLabel(value: 'empty' | 'valid' | 'invalid') {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <h1 class="text-xl font-bold text-gray-950">App 审计查询</h1>
-          <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">只读 · 查询留痕</span>
-        </div>
-        <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">按稳定序号还原管理员责任事实。列表不展示消息正文、证据、Token 或受保护地址；每次查询和详情读取都会产生新的追加式审计事件。</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
+    <AdminAppPageHeader page-id="ADM-AUD-01" route="/admin/app/audit" title="审计查询" description="按动作、对象、操作者、时间和请求链查询稳定责任事实；查询本身留痕。" :state="errorMessage ? '查询失败' : loading ? '查询中' : '正常'" figma-state="正常" :state-tone="errorMessage ? 'danger' : loading ? 'warning' : 'success'">
+      <template #actions>
         <NuxtLink
           v-if="isOwner"
           to="/admin/app/audit/registry"
@@ -179,8 +172,8 @@ function payloadStateLabel(value: 'empty' | 'valid' | 'invalid') {
         >
           完整性状态
         </NuxtLink>
-      </div>
-    </header>
+      </template>
+    </AdminAppPageHeader>
 
     <section class="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
       <form class="space-y-4" @submit.prevent="runQuery(true)">

@@ -4,6 +4,7 @@ import { verifyCode } from './email-verification'
 import { generateId } from '../utils/db'
 import { hashPassword, verifyPassword } from '../utils/password'
 import { getAppMembershipSummary } from './app-membership'
+import { checkAppRegistrationIdentityReuse } from './app-data-rights-deletions'
 
 const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -17,7 +18,7 @@ const LOCAL_DOCUMENT_HOSTS = new Set(['localhost', '127.0.0.1', '10.0.2.2'])
 export const APP_TURNSTILE_PAGE_PATH = '/api/v2/auth/turnstile' as const
 export const APP_TURNSTILE_RESULT_PATH = '/api/v2/auth/turnstile/result' as const
 
-type AppAuthErrorStatus = 400 | 401 | 403 | 404 | 409 | 503
+type AppAuthErrorStatus = 400 | 401 | 403 | 404 | 409 | 428 | 503
 
 export class AppAccountAccessError extends Error {
   constructor(
@@ -25,6 +26,7 @@ export class AppAccountAccessError extends Error {
     public readonly code: string,
     message: string,
     public readonly retryable = false,
+    public readonly revokedRealtimeSession: { accountId: number; sessionId: string } | null = null,
   ) {
     super(message)
   }
@@ -142,6 +144,8 @@ type SecurityRow = {
   session_version: number
   restriction_reason_code: string | null
   restricted_until: string | null
+  restriction_version: number
+  restriction_reference: string | null
 }
 
 type UserRow = {
@@ -289,6 +293,23 @@ export async function registerAppAccount(
     throw new AppAccountAccessError(400, 'EMAIL_VERIFICATION_FAILED', '邮箱验证码无效或已过期')
   }
 
+  const identityReuse = await checkAppRegistrationIdentityReuse(env, email, now)
+  if (!identityReuse.configured) {
+    throw new AppAccountAccessError(
+      503,
+      'ACCOUNT_CREATION_POLICY_UNAVAILABLE',
+      '账号创建策略暂时不可用，请稍后重试',
+      true,
+    )
+  }
+  if (!identityReuse.allowed) {
+    throw new AppAccountAccessError(
+      409,
+      'ACCOUNT_CREATION_UNAVAILABLE',
+      '暂时无法创建账号，请检查信息或使用登录/恢复流程',
+    )
+  }
+
   const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
     .bind(email)
     .first<{ id: number }>()
@@ -415,8 +436,14 @@ export async function refreshAppSession(
   const row = await findSessionByRefreshHash(db, tokenHash)
 
   if (!row) {
-    await revokeRefreshReplayIfKnown(db, tokenHash, requestId, now)
-    throw new AppAccountAccessError(401, 'SESSION_INVALID', '会话已失效，请重新登录')
+    const revokedRealtimeSession = await revokeRefreshReplayIfKnown(db, tokenHash, requestId, now)
+    throw new AppAccountAccessError(
+      401,
+      'SESSION_INVALID',
+      '会话已失效，请重新登录',
+      false,
+      revokedRealtimeSession,
+    )
   }
   assertSessionUsable(row, now, 'refresh', { allowRestricted: true })
   if (requiredDocuments) {
@@ -451,14 +478,26 @@ export async function refreshAppSession(
       ),
     ])
     if ((results[1]?.meta.changes ?? 0) !== 1) {
-      await revokeRefreshReplayIfKnown(db, tokenHash, requestId, now)
-      throw new AppAccountAccessError(401, 'SESSION_INVALID', '会话已失效，请重新登录')
+      const revokedRealtimeSession = await revokeRefreshReplayIfKnown(db, tokenHash, requestId, now)
+      throw new AppAccountAccessError(
+        401,
+        'SESSION_INVALID',
+        '会话已失效，请重新登录',
+        false,
+        revokedRealtimeSession,
+      )
     }
   }
   catch (error) {
     if (error instanceof AppAccountAccessError) throw error
-    await revokeRefreshReplayIfKnown(db, tokenHash, requestId, now)
-    throw new AppAccountAccessError(401, 'SESSION_INVALID', '会话已失效，请重新登录')
+    const revokedRealtimeSession = await revokeRefreshReplayIfKnown(db, tokenHash, requestId, now)
+    throw new AppAccountAccessError(
+      401,
+      'SESSION_INVALID',
+      '会话已失效，请重新登录',
+      false,
+      revokedRealtimeSession,
+    )
   }
 
   await recordSecurityEvent(db, {
@@ -525,17 +564,24 @@ export async function revokeCurrentAppSession(
   accessToken: string,
   requestId: string,
   now = new Date(),
-): Promise<void> {
+): Promise<{ accountId: number; sessionId: string } | null> {
   const normalizedToken = normalizeToken(accessToken, 'mga_')
   const tokenHash = await hashOpaqueValue(normalizedToken)
   const row = await findSessionByAccessHash(db, tokenHash)
-  if (!row) return
+  if (!row) return null
 
-  await db.prepare(`
-    UPDATE app_sessions
-    SET status = 'revoked', revoked_at = ?, revoke_reason = 'current_logout', updated_at = ?
-    WHERE id = ? AND status = 'active'
-  `).bind(now.toISOString(), now.toISOString(), row.session_id).run()
+  await db.batch([
+    db.prepare(`
+      UPDATE app_sessions
+      SET status = 'revoked', revoked_at = ?, revoke_reason = 'current_logout', updated_at = ?
+      WHERE id = ? AND status = 'active'
+    `).bind(now.toISOString(), now.toISOString(), row.session_id),
+    db.prepare(`
+      UPDATE app_realtime_tickets
+      SET cancelled_at = ?, cancellation_reason = 'session_logout'
+      WHERE session_id = ? AND consumed_at IS NULL AND cancelled_at IS NULL
+    `).bind(now.toISOString(), row.session_id),
+  ])
   await recordSecurityEvent(db, {
     accountId: row.account_id,
     deviceId: row.device_id,
@@ -544,6 +590,7 @@ export async function revokeCurrentAppSession(
     requestId,
     now,
   })
+  return { accountId: row.account_id, sessionId: row.session_id }
 }
 
 export async function getAppAccount(
@@ -608,7 +655,13 @@ function restrictionSummary(security: SecurityRow | null): AppAccountRestriction
       ? '账号已进入数据权利处理流程，普通业务入口保持关闭。请通过数据任务入口查看权威状态。'
       : '平台正在复核账号状态。受限期间仅保留帮助、必要数据权利和退出登录等安全入口。',
     restrictedUntil: security?.restricted_until ?? null,
-    actions: ['help', 'data_rights', 'logout'],
+    appealReference: security?.restriction_reference ?? null,
+    sourceVersion: security?.restriction_version
+      ? String(security.restriction_version)
+      : null,
+    actions: security?.restriction_reference
+      ? ['appeal', 'help', 'data_rights', 'logout']
+      : ['help', 'data_rights', 'logout'],
   }
 }
 
@@ -661,6 +714,12 @@ export async function revokeAppDevice(
   if (device.status === 'revoked') return deviceSummary(device, false, false)
 
   await db.batch([
+    db.prepare(`
+      UPDATE app_realtime_tickets
+      SET cancelled_at = ?, cancellation_reason = 'device_revoked'
+      WHERE device_id = ? AND account_id = ?
+        AND consumed_at IS NULL AND cancelled_at IS NULL
+    `).bind(now.toISOString(), deviceId, principal.accountInternalId),
     db.prepare(`
       UPDATE app_devices
       SET status = 'revoked', session_version = session_version + 1,
@@ -840,6 +899,8 @@ async function createAccountFoundation(
     session_version: 1,
     restriction_reason_code: null,
     restricted_until: null,
+    restriction_version: 0,
+    restriction_reference: null,
   }
   const subjectHash = await hashOpaqueValue(email)
   const acceptedAt = now.toISOString()
@@ -1112,7 +1173,8 @@ async function establishDeviceSession(
 async function getSecurityRow(db: D1Database, accountId: number): Promise<SecurityRow | null> {
   return db.prepare(`
     SELECT account_id, account_public_id, status, session_version,
-           restriction_reason_code, restricted_until
+           restriction_reason_code, restricted_until,
+           restriction_version, restriction_reference
     FROM app_account_security
     WHERE account_id = ?
   `).bind(accountId).first<SecurityRow>()
@@ -1231,19 +1293,26 @@ async function revokeRefreshReplayIfKnown(
   tokenHash: string,
   requestId: string,
   now: Date,
-): Promise<void> {
+): Promise<{ accountId: number; sessionId: string } | null> {
   const replay = await db.prepare(`
     SELECT h.session_id, s.account_id, s.device_id
     FROM app_refresh_token_history h
     JOIN app_sessions s ON s.id = h.session_id
     WHERE h.token_hash = ?
   `).bind(tokenHash).first<{ session_id: string; account_id: number; device_id: string }>()
-  if (!replay) return
-  await db.prepare(`
-    UPDATE app_sessions
-    SET status = 'revoked', revoked_at = ?, revoke_reason = 'refresh_token_reuse', updated_at = ?
-    WHERE id = ?
-  `).bind(now.toISOString(), now.toISOString(), replay.session_id).run()
+  if (!replay) return null
+  await db.batch([
+    db.prepare(`
+      UPDATE app_sessions
+      SET status = 'revoked', revoked_at = ?, revoke_reason = 'refresh_token_reuse', updated_at = ?
+      WHERE id = ?
+    `).bind(now.toISOString(), now.toISOString(), replay.session_id),
+    db.prepare(`
+      UPDATE app_realtime_tickets
+      SET cancelled_at = ?, cancellation_reason = 'refresh_token_reuse'
+      WHERE session_id = ? AND consumed_at IS NULL AND cancelled_at IS NULL
+    `).bind(now.toISOString(), replay.session_id),
+  ])
   await recordSecurityEvent(db, {
     accountId: replay.account_id,
     deviceId: replay.device_id,
@@ -1253,6 +1322,7 @@ async function revokeRefreshReplayIfKnown(
     requestId,
     now,
   })
+  return { accountId: replay.account_id, sessionId: replay.session_id }
 }
 
 function accountSummaryFromSession(row: SessionLookupRow): AppAccountSummary {

@@ -82,19 +82,12 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <h1 class="text-xl font-bold text-gray-950">App 会员独立复核</h1>
-          <span class="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-800">双人分离</span>
-        </div>
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">队列不展示内部备注正文。进入逐单详情后才记录受控读取；发起人不能复核自己的变更。</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
+    <AdminAppPageHeader page-id="ADM-MBR-07" route="/admin/app/membership/reviews" title="会员变更复核队列" description="独立复核发放、续期与撤销，且发起人不得自审。" :state="errorMessage ? '加载失败' : status === 'pending' ? '加载中' : reviewableCount ? '待复核' : '空队列'" :figma-state="errorMessage ? '加载失败' : status === 'pending' ? '加载中' : reviewableCount ? '待复核' : '空队列'" :state-tone="errorMessage ? 'danger' : status === 'pending' || reviewableCount ? 'warning' : 'success'">
+      <template #actions>
         <NuxtLink to="/admin/app/membership/applications" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">会员申请</NuxtLink>
         <NuxtLink to="/admin/app/membership/grants/new" class="inline-flex min-h-10 items-center rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-black">创建变更</NuxtLink>
-      </div>
-    </header>
+      </template>
+    </AdminAppPageHeader>
 
     <section class="grid gap-3 sm:grid-cols-3">
       <div class="rounded-xl border border-gray-200 bg-white p-4">

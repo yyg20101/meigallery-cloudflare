@@ -1,12 +1,18 @@
 import type {
   AppFavoriteFolderCollection,
   AppFavoriteFolderDeleteResult,
+  AppFavoriteFolderPreview,
   AppFavoriteFolderSummary,
   AppFavoriteFolderType,
   AppFavoriteListItem,
   AppFavoriteMutationResult,
 } from '@meigallery/shared'
-import { getPublicPersonProfilesByIds } from './app-discovery'
+import { resolvePublicCoverUrl } from '../utils/cover-url'
+import {
+  getPublicPersonProfilesByIds,
+  PUBLIC_PROFILE_ELIGIBILITY_SQL,
+  publicProfileEligibilityParams,
+} from './app-discovery'
 import {
   AppMembershipError,
   type AppMembershipRuntimeConfig,
@@ -29,8 +35,11 @@ import {
 
 const FAVORITE_FOLDER_ENTITLEMENT = 'favorite.folder_count'
 const DEFAULT_FOLDER_ID = 'ff_default'
-const FAVORITE_CURSOR_VERSION = 1
+const FAVORITE_CURSOR_VERSION = 2
 const MAX_CUSTOM_FOLDER_LIMIT = 100
+const REGION_CODE_PATTERN = /^[a-z0-9-]{2,32}$/u
+const TAXONOMY_TERM_ID_PATTERN = /^txt_[A-Za-z0-9_-]{4,92}$/u
+const SEARCH_TEXT_MAX_LENGTH = 40
 
 type FolderRow = {
   id: string
@@ -53,16 +62,30 @@ type FavoriteListRow = {
   favorited_at: string
 }
 
+type FolderPreviewRow = {
+  folder_id: string
+  profile_id: string
+  source_gallery_id: string
+  cover_key: string | null
+  preview_order: number
+}
+
 type FavoriteCursor = {
-  v: 1
+  v: 2
   accountScope: string
   folderScope: string | null
+  searchText: string | null
+  regionCode: string | null
+  styleTermId: string | null
   favoritedAt: string
   profileId: string
 }
 
 export interface AppFavoriteListQuery {
   limit: number
+  searchText: string | null
+  regionCode: string | null
+  styleTermId: string | null
   cursor: FavoriteCursor | null
 }
 
@@ -79,14 +102,30 @@ export interface UpdateAppFavoriteFolderInput {
 export function parseAppFavoriteListQuery(input: {
   limit?: string
   cursor?: string
+  query?: string
+  region?: string
+  styleTerm?: string
   accountScope: string
   folderId?: string | null
 }): AppFavoriteListQuery {
   const folderScope = input.folderId ? normalizeFavoriteFolderId(input.folderId) : null
+  const searchText = normalizeSearchText(input.query)
+  const regionCode = normalizeRegionCode(input.region)
+  const styleTermId = normalizeStyleTermId(input.styleTerm)
   return {
     limit: normalizePageLimit(input.limit),
+    searchText,
+    regionCode,
+    styleTermId,
     cursor: input.cursor
-      ? decodeFavoriteCursor(input.cursor, input.accountScope, folderScope)
+      ? decodeFavoriteCursor(
+          input.cursor,
+          input.accountScope,
+          folderScope,
+          searchText,
+          regionCode,
+          styleTermId,
+        )
       : null,
   }
 }
@@ -96,12 +135,13 @@ export async function listAppFavoriteFolders(
   accountId: number,
   collectionConfig: AppInteractionCollectionRuntimeConfig,
   membershipConfig: AppMembershipRuntimeConfig,
+  apiUrl: string,
   now = new Date(),
 ): Promise<AppFavoriteFolderCollection> {
   assertPositiveAccountId(accountId)
   await requireAppInteractionCollectionPolicy(db, collectionConfig, 'favorites')
   await ensureDefaultFavoriteFolder(db, accountId, now)
-  const [result, customFolderLimit] = await Promise.all([
+  const [result, customFolderLimit, totalRow, previewProfilesByFolder] = await Promise.all([
     db.prepare(`
       SELECT folder.id, folder.folder_type, folder.name, folder.sort_order, folder.version,
              folder.created_at, folder.updated_at, COUNT(item.profile_id) AS item_count
@@ -114,11 +154,18 @@ export async function listAppFavoriteFolders(
                folder.sort_order ASC, folder.created_at ASC, folder.id ASC
     `).bind(accountId).all<FolderRow>(),
     resolveCustomFolderLimit(db, accountId, membershipConfig, now),
+    db.prepare(`
+      SELECT COUNT(DISTINCT profile_id) AS count
+      FROM app_favorite_folder_items
+      WHERE account_id = ?
+    `).bind(accountId).first<{ count: number }>(),
+    listFolderPreviewProfiles(db, accountId, apiUrl, now),
   ])
-  const folders = result.results.map(mapFolder)
+  const folders = result.results.map(row => mapFolder(row, previewProfilesByFolder.get(row.id) ?? []))
   const customFolderCount = folders.filter(folder => folder.type === 'custom').length
   return {
     folders,
+    totalFavoriteCount: requireNonNegativeCount(totalRow?.count),
     customFolderCount,
     customFolderLimit,
     canCreateCustomFolder: customFolderCount < customFolderLimit,
@@ -263,9 +310,11 @@ export async function deleteAppFavoriteFolder(
   folderIdValue: string,
   expectedVersionValue: unknown,
   collectionConfig: AppInteractionCollectionRuntimeConfig,
+  now = new Date(),
 ): Promise<AppFavoriteFolderDeleteResult> {
   assertPositiveAccountId(accountId)
   await requireAppInteractionCollectionPolicy(db, collectionConfig, 'favorites')
+  await ensureDefaultFavoriteFolder(db, accountId, now)
   const folderId = normalizeCustomFolderId(folderIdValue)
   const expectedVersion = normalizeExpectedVersion(expectedVersionValue)
   const current = await findFolder(db, accountId, folderId)
@@ -275,17 +324,10 @@ export async function deleteAppFavoriteFolder(
   if (current.folder_type !== 'custom') throw defaultFolderImmutable()
   if (current.version !== expectedVersion) throw folderVersionConflict()
   const impact = await db.prepare(`
-    SELECT COUNT(*) AS item_count,
-           COALESCE(SUM(CASE WHEN NOT EXISTS (
-             SELECT 1
-             FROM app_favorite_folder_items other
-             WHERE other.account_id = item.account_id
-               AND other.profile_id = item.profile_id
-               AND other.folder_id <> item.folder_id
-           ) THEN 1 ELSE 0 END), 0) AS global_count
+    SELECT COUNT(*) AS item_count
     FROM app_favorite_folder_items item
     WHERE item.account_id = ? AND item.folder_id = ?
-  `).bind(accountId, folderId).first<{ item_count: number; global_count: number }>()
+  `).bind(accountId, folderId).first<{ item_count: number }>()
   const result = await db.prepare(`
     DELETE FROM app_favorite_folders
     WHERE account_id = ? AND id = ? AND folder_type = 'custom' AND version = ?
@@ -295,7 +337,8 @@ export async function deleteAppFavoriteFolder(
     folderId,
     deleted: true,
     removedItemCount: requireNonNegativeCount(impact?.item_count),
-    removedGlobalFavoriteCount: requireNonNegativeCount(impact?.global_count),
+    // 兼容 1.21 返回结构；删除自定义收藏夹前，数据库触发器会把条目保留到默认收藏。
+    removedGlobalFavoriteCount: 0,
   }
 }
 
@@ -380,11 +423,59 @@ export async function listAppFavorites(
   await requireAppInteractionCollectionPolicy(db, collectionConfig, 'favorites')
   const folderId = folderIdValue ? normalizeFavoriteFolderId(folderIdValue) : null
   if (folderId && !(await findFolder(db, accountId, folderId))) throw folderNotFound()
+  const itemConditions = ['item.account_id = ?']
   const bindings: unknown[] = [accountId]
-  let folderCondition = ''
   if (folderId) {
-    folderCondition = 'AND item.folder_id = ?'
+    itemConditions.push('item.folder_id = ?')
     bindings.push(folderId)
+  }
+  if (query.searchText || query.regionCode || query.styleTermId) {
+    const profileConditions: string[] = []
+    const profileBindings: unknown[] = [...publicProfileEligibilityParams(now)]
+    if (query.regionCode) {
+      profileConditions.push('p.region_code = ?')
+      profileBindings.push(query.regionCode)
+    }
+    if (query.styleTermId) {
+      profileConditions.push(`EXISTS (
+        SELECT 1
+        FROM profile_public_taxonomy_terms style_term
+        WHERE style_term.profile_id = p.profile_id
+          AND style_term.taxonomy_type = 'style'
+          AND style_term.term_id = ?
+      )`)
+      profileBindings.push(query.styleTermId)
+    }
+    if (query.searchText) {
+      const pattern = `%${escapeLikePattern(query.searchText)}%`
+      profileConditions.push(`(
+        p.display_name LIKE ? ESCAPE '\\'
+        OR COALESCE(p.region_label, '') LIKE ? ESCAPE '\\'
+        OR p.tags_json LIKE ? ESCAPE '\\'
+        OR EXISTS (
+          SELECT 1
+          FROM profile_public_taxonomy_terms search_term
+          JOIN app_taxonomy_catalog_items search_item
+            ON search_item.catalog_id = search_term.catalog_id
+            AND search_item.term_id = search_term.term_id
+          WHERE search_term.profile_id = p.profile_id
+            AND (
+              search_item.display_name LIKE ? ESCAPE '\\'
+              OR search_item.aliases_json LIKE ? ESCAPE '\\'
+            )
+        )
+      )`)
+      profileBindings.push(pattern, pattern, pattern, pattern, pattern)
+    }
+    itemConditions.push(`EXISTS (
+      SELECT 1
+      FROM profile_public_projections p
+      JOIN galleries g ON g.id = p.source_gallery_id
+      WHERE p.profile_id = item.profile_id
+        AND (${PUBLIC_PROFILE_ELIGIBILITY_SQL})
+        ${profileConditions.map(condition => `AND ${condition}`).join('\n        ')}
+    )`)
+    bindings.push(...profileBindings)
   }
   let cursorCondition = ''
   if (query.cursor) {
@@ -401,7 +492,7 @@ export async function listAppFavorites(
     FROM (
       SELECT item.profile_id, MAX(item.created_at) AS favorited_at
       FROM app_favorite_folder_items item
-      WHERE item.account_id = ? ${folderCondition}
+      WHERE ${itemConditions.join(' AND ')}
       GROUP BY item.profile_id
     ) favorite
     WHERE 1 = 1 ${cursorCondition}
@@ -421,6 +512,9 @@ export async function listAppFavorites(
         v: FAVORITE_CURSOR_VERSION,
         accountScope,
         folderScope: folderId,
+        searchText: query.searchText,
+        regionCode: query.regionCode,
+        styleTermId: query.styleTermId,
         favoritedAt: last.favorited_at,
         profileId: last.profile_id,
       })
@@ -439,6 +533,42 @@ export async function listAppFavorites(
     nextCursor,
     hasMore,
   }
+}
+
+async function listFolderPreviewProfiles(
+  db: D1Database,
+  accountId: number,
+  apiUrl: string,
+  now: Date,
+): Promise<Map<string, AppFavoriteFolderPreview[]>> {
+  const result = await db.prepare(`
+    WITH ranked_previews AS (
+      SELECT item.folder_id, item.profile_id, p.source_gallery_id, g.cover_key,
+             ROW_NUMBER() OVER (
+               PARTITION BY item.folder_id
+               ORDER BY item.created_at DESC, item.profile_id ASC
+             ) AS preview_order
+      FROM app_favorite_folder_items item
+      JOIN profile_public_projections p ON p.profile_id = item.profile_id
+      JOIN galleries g ON g.id = p.source_gallery_id
+      WHERE item.account_id = ?
+        AND (${PUBLIC_PROFILE_ELIGIBILITY_SQL})
+    )
+    SELECT folder_id, profile_id, source_gallery_id, cover_key, preview_order
+    FROM ranked_previews
+    WHERE preview_order <= 4
+    ORDER BY folder_id ASC, preview_order ASC
+  `).bind(accountId, ...publicProfileEligibilityParams(now)).all<FolderPreviewRow>()
+
+  const previewsByFolder = new Map<string, AppFavoriteFolderPreview[]>()
+  for (const row of result.results) {
+    const resolved = resolvePublicCoverUrl(row.source_gallery_id, row.cover_key)
+    const coverUrl = resolved?.startsWith('/') ? new URL(resolved, apiUrl).toString() : resolved ?? null
+    const previews = previewsByFolder.get(row.folder_id) ?? []
+    previews.push({ profileId: row.profile_id, coverUrl })
+    previewsByFolder.set(row.folder_id, previews)
+  }
+  return previewsByFolder
 }
 
 async function ensureDefaultFavoriteFolder(
@@ -642,7 +772,10 @@ async function findFolderByNormalizedName(
   `).bind(accountId, normalizedName).first<FolderRow>()
 }
 
-function mapFolder(row: FolderRow): AppFavoriteFolderSummary {
+function mapFolder(
+  row: FolderRow,
+  previewProfiles: AppFavoriteFolderPreview[] = [],
+): AppFavoriteFolderSummary {
   if (row.folder_type !== 'default' && row.folder_type !== 'custom') {
     throw new AppInteractionCollectionError(503, 'FAVORITE_FOLDER_DATA_INVALID', '收藏夹数据异常')
   }
@@ -653,6 +786,7 @@ function mapFolder(row: FolderRow): AppFavoriteFolderSummary {
     sortOrder: Number(row.sort_order),
     version: Number(row.version),
     itemCount: requireNonNegativeCount(row.item_count),
+    previewProfiles: previewProfiles.slice(0, 4),
     createdAt: requireStoredTime(row.created_at),
     updatedAt: requireStoredTime(row.updated_at),
   }
@@ -749,6 +883,9 @@ function decodeFavoriteCursor(
   value: string,
   accountScope: string,
   folderScope: string | null,
+  searchText: string | null,
+  regionCode: string | null,
+  styleTermId: string | null,
 ): FavoriteCursor {
   try {
     if (!/^[A-Za-z0-9_-]{1,1024}$/u.test(value)) throw new Error('cursor format')
@@ -760,6 +897,9 @@ function decodeFavoriteCursor(
       parsed.v !== FAVORITE_CURSOR_VERSION
       || parsed.accountScope !== accountScope
       || parsed.folderScope !== folderScope
+      || parsed.searchText !== searchText
+      || parsed.regionCode !== regionCode
+      || parsed.styleTermId !== styleTermId
       || typeof parsed.favoritedAt !== 'string'
       || !Number.isFinite(Date.parse(parsed.favoritedAt))
       || typeof parsed.profileId !== 'string'
@@ -772,4 +912,35 @@ function decodeFavoriteCursor(
   catch {
     throw new AppInteractionCollectionError(400, 'INVALID_CURSOR', '收藏列表游标无效或已不适用于当前范围')
   }
+}
+
+function normalizeSearchText(value: string | undefined): string | null {
+  const normalized = value?.normalize('NFKC').trim().replace(/\s+/gu, ' ') || null
+  if (
+    normalized
+    && (normalized.length > SEARCH_TEXT_MAX_LENGTH || containsControlCharacter(normalized))
+  ) {
+    throw new AppInteractionCollectionError(400, 'INVALID_REQUEST', '搜索文字格式不正确或超过 40 个字符')
+  }
+  return normalized
+}
+
+function normalizeRegionCode(value: string | undefined): string | null {
+  const normalized = value?.trim().toLowerCase() || null
+  if (normalized && !REGION_CODE_PATTERN.test(normalized)) {
+    throw new AppInteractionCollectionError(400, 'INVALID_REQUEST', '地区参数格式不正确')
+  }
+  return normalized
+}
+
+function normalizeStyleTermId(value: string | undefined): string | null {
+  const normalized = value?.trim() || null
+  if (normalized && !TAXONOMY_TERM_ID_PATTERN.test(normalized)) {
+    throw new AppInteractionCollectionError(400, 'INVALID_REQUEST', '风格词条参数格式不正确')
+  }
+  return normalized
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/gu, match => `\\${match}`)
 }

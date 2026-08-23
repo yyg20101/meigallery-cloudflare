@@ -3,6 +3,8 @@ const route = useRoute()
 const { user, logout } = useAuth()
 const { siteName } = useSiteSettings()
 const config = useRuntimeConfig()
+const isAppConsole = computed(() => route.path.startsWith('/admin/app'))
+const globalSearch = ref('')
 
 const sidebarCollapsed = ref(false)
 const sidebarReady = ref(false)
@@ -35,9 +37,57 @@ type AdminNavItem = {
   activePaths?: string[]
 }
 
-const navItems: AdminNavItem[] = [
+const appNavItems: AdminNavItem[] = [
+  { to: '/admin/app', label: '运营总览', exact: true, activePaths: ['/admin/app/incidents'], icon: 'grid' },
+  {
+    to: '/admin/app/persons',
+    label: '真人与内容',
+    icon: 'users',
+    activePaths: ['/admin/app/imports', '/admin/app/verifications', '/admin/app/publications'],
+  },
+  {
+    to: '/admin/app/recommendation/rules',
+    label: '发现运营',
+    icon: 'chart',
+    activePaths: ['/admin/app/taxonomy', '/admin/app/search', '/admin/app/recommendation'],
+  },
+  {
+    to: '/admin/app/conversations',
+    label: '平台话题',
+    icon: 'message',
+    activePaths: ['/admin/app/conversation-groups', '/admin/app/conversation-quality'],
+  },
+  {
+    to: '/admin/app/reviews',
+    label: '安全与申诉',
+    icon: 'clipboard',
+    activePaths: ['/admin/app/safety', '/admin/app/appeals'],
+  },
+  {
+    to: '/admin/app/membership/applications',
+    activePrefix: '/admin/app/membership',
+    activePaths: [
+      '/admin/app/entitlements',
+      '/admin/app/wallets',
+      '/admin/app/coin-adjustments',
+      '/admin/app/coin-adjustment-batches',
+      '/admin/app/reconciliation',
+    ],
+    label: '会员与金币',
+    icon: 'ticket',
+  },
+  { to: '/admin/app/data-rights', label: '数据权利', icon: 'key' },
+  {
+    to: '/admin/app/notifications',
+    label: '通知与审计',
+    icon: 'message',
+    activePaths: ['/admin/app/audit'],
+  },
+]
+
+const legacyNavItems: AdminNavItem[] = [
   { to: '/admin', label: '概览', exact: true, icon: 'grid' },
-  { to: '/admin/app', label: 'App 运营总览', exact: true, activePaths: ['/admin/app/incidents'], icon: 'grid' },
+  { to: '/admin/app', label: 'App 运营总览', icon: 'grid' },
   { to: '/admin/galleries', label: '图库管理', icon: 'image' },
   { to: '/admin/app/persons', label: 'App 人物供给', icon: 'users' },
   { to: '/admin/app/taxonomy', label: 'App 分类目录', icon: 'tag' },
@@ -60,7 +110,7 @@ const navItems: AdminNavItem[] = [
   { to: '/admin/app/data-rights', label: 'App 数据权利', icon: 'clipboard' },
   { to: '/admin/tags', label: '标签管理', icon: 'tag' },
   { to: '/admin/users', label: '会员管理', icon: 'users' },
-  { to: '/admin/import', label: '导入任务', icon: 'upload' },
+  { to: '/admin/app/imports', label: '导入任务', icon: 'upload' },
   { to: '/admin/import-api-tokens', label: '导入 Token', icon: 'key' },
   { to: '/admin/external-import-records', label: '外部导入', icon: 'clipboard' },
   { to: '/admin/legacy-import', label: '旧站迁移', icon: 'refresh' },
@@ -74,6 +124,8 @@ const navItems: AdminNavItem[] = [
   { to: '/admin/app/audit', label: 'App 审计与完整性', icon: 'clipboard' },
 ]
 
+const navItems = computed(() => isAppConsole.value ? appNavItems : legacyNavItems)
+
 function isActive(item: AdminNavItem) {
   if (item.exact) {
     return route.path === item.to
@@ -85,9 +137,15 @@ function isActive(item: AdminNavItem) {
 
 const pageTitle = computed(() => {
   // 逆序匹配最长前缀
-  const matched = [...navItems].reverse().find(n => isActive(n))
+  const matched = [...navItems.value].reverse().find(n => isActive(n))
   return matched?.label ?? '后台管理'
 })
+
+function submitGlobalSearch() {
+  const query = globalSearch.value.trim()
+  if (!query) return
+  navigateTo({ path: '/admin/app/search', query: { query } })
+}
 
 async function handleLogout() {
   await logout()
@@ -96,34 +154,45 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div data-admin-layout class="flex min-h-screen min-w-0">
+  <div data-admin-layout :data-admin-app-layout="isAppConsole || undefined" class="flex min-h-screen min-w-0">
     <aside
       :class="[
-        'bg-[#111] text-gray-300 flex flex-col shrink-0',
+        'flex shrink-0 flex-col text-stone-300',
+        isAppConsole ? 'bg-[#2f2622]' : 'bg-[#111]',
         sidebarReady ? 'transition-all duration-200' : '',
-        sidebarCollapsed ? 'w-14' : 'w-48',
+        sidebarCollapsed ? 'w-14' : isAppConsole ? 'w-[236px]' : 'w-48',
       ]"
     >
-      <div class="p-4 border-b border-gray-700 flex items-center justify-between">
-        <NuxtLink v-if="!sidebarCollapsed" to="/admin" class="text-white text-sm font-bold truncate">
-          {{ siteName }} 管理
+      <div :class="['flex min-h-16 items-center justify-between gap-3 px-4', isAppConsole ? 'border-b border-white/5' : 'border-b border-gray-700']">
+        <NuxtLink v-if="!sidebarCollapsed" :to="isAppConsole ? '/admin/app' : '/admin'" class="flex min-w-0 items-center gap-3 truncate text-sm font-bold text-white">
+          <span v-if="isAppConsole" class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#f25182] to-[#c92558] font-serif text-base italic text-white shadow-lg shadow-rose-950/20">M</span>
+          <span class="truncate">{{ isAppConsole ? 'MeiGallery 控制台' : `${siteName} 管理` }}</span>
         </NuxtLink>
-        <button class="text-gray-400 hover:text-white p-1" :aria-label="sidebarCollapsed ? '展开后台侧栏' : '折叠后台侧栏'" @click="sidebarCollapsed = !sidebarCollapsed">
+        <button class="shrink-0 rounded-md p-1 text-stone-400 hover:bg-white/10 hover:text-white" :aria-label="sidebarCollapsed ? '展开后台侧栏' : '折叠后台侧栏'" @click="sidebarCollapsed = !sidebarCollapsed">
           <svg v-if="sidebarCollapsed" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
       </div>
-      <nav class="flex-1 overflow-y-auto py-2">
+      <p v-if="isAppConsole && !sidebarCollapsed" class="px-5 pb-2 pt-3 text-[11px] tracking-wide text-stone-500">开发环境</p>
+      <nav :class="['flex-1 overflow-y-auto', isAppConsole ? 'space-y-1 px-3 py-2' : 'py-2']">
         <NuxtLink
           v-for="item in navItems"
           :key="item.to"
           :to="item.to"
           :class="[
-            'flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-white/10 hover:text-white transition-colors',
-            isActive(item) ? 'bg-white/10 text-white border-l-2 border-white' : 'border-l-2 border-transparent',
+            'relative flex min-w-0 items-center gap-3 text-sm transition-colors',
+            isAppConsole ? 'min-h-11 rounded-xl px-3 py-2.5' : 'px-3 py-2.5',
+            isActive(item)
+              ? isAppConsole
+                ? 'bg-[#746a65] text-white'
+                : 'border-l-2 border-white bg-white/10 text-white'
+              : isAppConsole
+                ? 'text-stone-400 hover:bg-white/[0.07] hover:text-white'
+                : 'border-l-2 border-transparent hover:bg-white/10 hover:text-white',
           ]"
           :title="sidebarCollapsed ? item.label : undefined"
         >
+          <span v-if="isAppConsole && isActive(item)" class="absolute -left-3 h-7 w-1 rounded-r-full bg-[#ed4b7d]" />
           <!-- Icons -->
           <svg v-if="item.icon === 'grid'" class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <svg v-else-if="item.icon === 'image'" class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
@@ -138,10 +207,14 @@ async function handleLogout() {
           <svg v-else-if="item.icon === 'chart'" class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l3-3 3 2 5-7"/><path d="M18 7h-4"/><path d="M18 7v4"/></svg>
           <svg v-else-if="item.icon === 'ticket'" class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9a3 3 0 0 0 0 6v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2a3 3 0 0 0 0-6V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
           <svg v-else-if="item.icon === 'clipboard'" class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="12" y2="18"/></svg>
-          <span v-if="!sidebarCollapsed" class="truncate">{{ item.label }}</span>
+          <span v-if="!sidebarCollapsed" class="min-w-0 truncate">{{ item.label }}</span>
         </NuxtLink>
       </nav>
-      <div class="py-2 border-t border-gray-700">
+      <div v-if="isAppConsole && !sidebarCollapsed" class="m-4 rounded-xl bg-[#746a65] px-3 py-3 text-xs leading-5 text-stone-200">
+        <p class="truncate font-medium text-white">{{ user?.nickname || user?.email || '当前管理员' }}</p>
+        <p class="truncate text-stone-300">{{ user?.role === 'owner' ? 'Owner · 华东运营组' : '管理员 · 当前在线' }}</p>
+      </div>
+      <div :class="['py-2', isAppConsole ? 'border-t border-white/5' : 'border-t border-gray-700']">
         <NuxtLink
           to="/"
           class="flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-white/10 hover:text-white border-l-2 border-transparent"
@@ -153,22 +226,51 @@ async function handleLogout() {
     </aside>
 
     <div data-admin-content class="flex w-0 min-w-0 flex-1 flex-col">
-      <header data-admin-header class="min-w-0 border-b border-gray-200 bg-white">
+      <header data-admin-header class="min-w-0 border-b border-[#f1e5df] bg-white/95 backdrop-blur">
         <div v-if="showDevDataWarning" data-admin-dev-warning class="min-w-0 border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900 [overflow-wrap:anywhere] sm:px-5 lg:px-8">
           <span class="font-semibold">DEV 测试环境：</span>
           当前后台连接独立 dev D1/R2/Queue 资源，发布、导入、上传、会员和设置修改会影响 dev 测试数据；写操作会弹出二次确认并写入审计日志。
         </div>
-        <div data-admin-header-row class="flex min-w-0 items-center justify-between gap-3 px-3 py-3 sm:px-5 lg:px-8">
-          <h2 data-admin-header-title class="min-w-0 [overflow-wrap:anywhere] text-base font-semibold text-gray-900">{{ pageTitle }}</h2>
-          <div class="flex min-w-0 items-center gap-3 text-sm text-gray-600">
-            <span v-if="user" class="hidden min-w-0 truncate sm:inline">{{ user.email }}</span>
-            <button class="text-gray-500 hover:text-red-600" @click="handleLogout">登出</button>
+        <div data-admin-header-row :class="['flex min-h-16 min-w-0 items-center justify-between gap-4 px-3 sm:px-5 lg:px-10', isAppConsole ? 'py-2' : 'py-3']">
+          <div class="min-w-0">
+            <p v-if="isAppConsole" class="truncate text-sm text-stone-500">App 运营&nbsp; / &nbsp;{{ pageTitle }}</p>
+            <h2 v-else data-admin-header-title class="min-w-0 [overflow-wrap:anywhere] text-base font-semibold text-gray-900">{{ pageTitle }}</h2>
+          </div>
+          <div class="flex min-w-0 items-center gap-2 text-sm text-gray-600">
+            <form v-if="isAppConsole" class="hidden min-w-0 lg:block" role="search" @submit.prevent="submitGlobalSearch">
+              <label class="flex min-h-10 w-[280px] min-w-0 items-center gap-2 rounded-xl border border-[#eedbd3] bg-[#fffdfa] px-3 focus-within:border-[#df4a79]">
+                <svg class="h-4 w-4 shrink-0 text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input v-model="globalSearch" class="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-stone-400" placeholder="搜索页面、账号或业务单" />
+              </label>
+            </form>
+            <NuxtLink v-if="isAppConsole" to="/admin/app/notifications" aria-label="查看站内通知" class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#fff7f2] text-stone-600 hover:text-[#d62f65]"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></NuxtLink>
+            <NuxtLink v-if="isAppConsole" to="/admin/app/audit" aria-label="查看审计信息" class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#fff7f2] text-stone-600 hover:text-[#d62f65]"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg></NuxtLink>
+            <button v-if="isAppConsole" class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#d62f65] text-sm font-semibold text-white" :title="user?.email || '退出登录'" @click="handleLogout">{{ (user?.nickname || user?.email || 'W').slice(0, 1).toUpperCase() }}</button>
+            <template v-else>
+              <span v-if="user" class="hidden min-w-0 truncate sm:inline">{{ user.email }}</span>
+              <button class="text-gray-500 hover:text-red-600" @click="handleLogout">登出</button>
+            </template>
           </div>
         </div>
       </header>
-      <main data-admin-main class="min-w-0 flex-1 bg-gray-50 p-3 sm:p-5 lg:p-8">
+      <main data-admin-main :class="['min-w-0 flex-1', isAppConsole ? 'bg-[#fffaf7] p-4 sm:p-6 lg:p-10' : 'bg-gray-50 p-3 sm:p-5 lg:p-8']">
         <slot />
       </main>
     </div>
   </div>
 </template>
+
+<style scoped>
+[data-admin-app-layout] :deep(.bg-blue-600) {
+  background-color: #d62f65;
+}
+
+[data-admin-app-layout] :deep(.hover\:bg-blue-700:hover) {
+  background-color: #bd2756;
+}
+
+[data-admin-app-layout] :deep(.text-blue-600),
+[data-admin-app-layout] :deep(.text-blue-700) {
+  color: #c53867;
+}
+</style>

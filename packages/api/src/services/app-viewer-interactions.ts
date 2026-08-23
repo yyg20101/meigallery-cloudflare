@@ -3,14 +3,22 @@ import type {
   AppViewerInteractionState,
   AppViewerInteractionType,
 } from '@meigallery/shared'
-import { getPublicPersonProfile, getPublicPersonProfilesByIds } from './app-discovery'
+import {
+  getPublicPersonProfile,
+  getPublicPersonProfilesByIds,
+  PUBLIC_PROFILE_ELIGIBILITY_SQL,
+  publicProfileEligibilityParams,
+} from './app-discovery'
 import { isAppProfileBlocked } from './app-safety'
 
 export const APP_INTERACTION_DEFAULT_PAGE_SIZE = 20
 export const APP_INTERACTION_MAX_PAGE_SIZE = 40
 
-const INTERACTION_CURSOR_VERSION = 1
+const INTERACTION_CURSOR_VERSION = 2
 const PROFILE_ID_PATTERN = /^pp_[A-Za-z0-9_-]{1,77}$/
+const REGION_CODE_PATTERN = /^[a-z0-9-]{2,32}$/
+const TAXONOMY_TERM_ID_PATTERN = /^txt_[A-Za-z0-9_-]{4,92}$/
+const SEARCH_TEXT_MAX_LENGTH = 40
 
 type InteractionRow = {
   profile_id: string
@@ -19,9 +27,12 @@ type InteractionRow = {
 }
 
 type InteractionCursor = {
-  v: 1
+  v: 2
   accountScope: string
   interactionType: AppViewerInteractionType
+  searchText: string | null
+  regionCode: string | null
+  styleTermId: string | null
   createdAt: string
   profileId: string
 }
@@ -29,7 +40,11 @@ type InteractionCursor = {
 export class AppViewerInteractionError extends Error {
   constructor(
     readonly status: 400 | 403 | 404,
-    readonly code: 'INVALID_CURSOR' | 'PROFILE_NOT_AVAILABLE' | 'INTERACTION_FORBIDDEN',
+    readonly code:
+      | 'INVALID_REQUEST'
+      | 'INVALID_CURSOR'
+      | 'PROFILE_NOT_AVAILABLE'
+      | 'INTERACTION_FORBIDDEN',
     message: string,
   ) {
     super(message)
@@ -38,12 +53,18 @@ export class AppViewerInteractionError extends Error {
 
 export type AppViewerInteractionQuery = {
   limit: number
+  searchText: string | null
+  regionCode: string | null
+  styleTermId: string | null
   cursor: InteractionCursor | null
 }
 
 export function parseAppViewerInteractionQuery(input: {
   limit?: string
   cursor?: string
+  query?: string
+  region?: string
+  styleTerm?: string
   accountScope: string
   interactionType: AppViewerInteractionType
 }): AppViewerInteractionQuery {
@@ -51,10 +72,20 @@ export function parseAppViewerInteractionQuery(input: {
   const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
     ? Math.min(parsedLimit, APP_INTERACTION_MAX_PAGE_SIZE)
     : APP_INTERACTION_DEFAULT_PAGE_SIZE
+  const searchText = normalizeSearchText(input.query)
+  const regionCode = normalizeRegionCode(input.region)
+  const styleTermId = normalizeStyleTermId(input.styleTerm)
   const cursor = input.cursor
-    ? decodeInteractionCursor(input.cursor, input.accountScope, input.interactionType)
+    ? decodeInteractionCursor(
+        input.cursor,
+        input.accountScope,
+        input.interactionType,
+        searchText,
+        regionCode,
+        styleTermId,
+      )
     : null
-  return { limit, cursor }
+  return { limit, searchText, regionCode, styleTermId, cursor }
 }
 
 export async function getViewerInteractionState(
@@ -169,18 +200,68 @@ export async function listViewerInteractions(
   now = new Date(),
 ): Promise<{ data: AppViewerInteractionListItem[]; nextCursor: string | null; hasMore: boolean }> {
   requireAccountId(accountId)
-  const conditions = ['account_id = ?', 'interaction_type = ?']
+  const conditions = ['i.account_id = ?', 'i.interaction_type = ?']
   const params: unknown[] = [accountId, interactionType]
+
+  if (query.searchText || query.regionCode || query.styleTermId) {
+    const profileConditions: string[] = []
+    const profileParams: unknown[] = [...publicProfileEligibilityParams(now)]
+    if (query.regionCode) {
+      profileConditions.push('p.region_code = ?')
+      profileParams.push(query.regionCode)
+    }
+    if (query.styleTermId) {
+      profileConditions.push(`EXISTS (
+        SELECT 1
+        FROM profile_public_taxonomy_terms style_term
+        WHERE style_term.profile_id = p.profile_id
+          AND style_term.taxonomy_type = 'style'
+          AND style_term.term_id = ?
+      )`)
+      profileParams.push(query.styleTermId)
+    }
+    if (query.searchText) {
+      const pattern = `%${escapeLikePattern(query.searchText)}%`
+      profileConditions.push(`(
+        p.display_name LIKE ? ESCAPE '\\'
+        OR COALESCE(p.region_label, '') LIKE ? ESCAPE '\\'
+        OR p.tags_json LIKE ? ESCAPE '\\'
+        OR EXISTS (
+          SELECT 1
+          FROM profile_public_taxonomy_terms search_term
+          JOIN app_taxonomy_catalog_items search_item
+            ON search_item.catalog_id = search_term.catalog_id
+            AND search_item.term_id = search_term.term_id
+          WHERE search_term.profile_id = p.profile_id
+            AND (
+              search_item.display_name LIKE ? ESCAPE '\\'
+              OR search_item.aliases_json LIKE ? ESCAPE '\\'
+            )
+        )
+      )`)
+      profileParams.push(pattern, pattern, pattern, pattern, pattern)
+    }
+    conditions.push(`EXISTS (
+      SELECT 1
+      FROM profile_public_projections p
+      JOIN galleries g ON g.id = p.source_gallery_id
+      WHERE p.profile_id = i.profile_id
+        AND (${PUBLIC_PROFILE_ELIGIBILITY_SQL})
+        ${profileConditions.map(condition => `AND ${condition}`).join('\n        ')}
+    )`)
+    params.push(...profileParams)
+  }
+
   if (query.cursor) {
-    conditions.push('(created_at < ? OR (created_at = ? AND profile_id > ?))')
+    conditions.push('(i.created_at < ? OR (i.created_at = ? AND i.profile_id > ?))')
     params.push(query.cursor.createdAt, query.cursor.createdAt, query.cursor.profileId)
   }
 
   const result = await db.prepare(`
-    SELECT profile_id, interaction_type, created_at
-    FROM app_viewer_interactions
+    SELECT i.profile_id, i.interaction_type, i.created_at
+    FROM app_viewer_interactions i
     WHERE ${conditions.join(' AND ')}
-    ORDER BY created_at DESC, profile_id ASC
+    ORDER BY i.created_at DESC, i.profile_id ASC
     LIMIT ?
   `).bind(...params, query.limit + 1).all<InteractionRow>()
 
@@ -198,6 +279,9 @@ export async function listViewerInteractions(
         v: INTERACTION_CURSOR_VERSION,
         accountScope,
         interactionType,
+        searchText: query.searchText,
+        regionCode: query.regionCode,
+        styleTermId: query.styleTermId,
         createdAt: lastRow.created_at,
         profileId: lastRow.profile_id,
       })
@@ -274,6 +358,9 @@ function decodeInteractionCursor(
   value: string,
   accountScope: string,
   interactionType: AppViewerInteractionType,
+  searchText: string | null,
+  regionCode: string | null,
+  styleTermId: string | null,
 ): InteractionCursor {
   try {
     if (!/^[A-Za-z0-9_-]{1,1024}$/u.test(value)) throw new Error('cursor format')
@@ -285,6 +372,9 @@ function decodeInteractionCursor(
       parsed.v !== INTERACTION_CURSOR_VERSION
       || parsed.accountScope !== accountScope
       || parsed.interactionType !== interactionType
+      || parsed.searchText !== searchText
+      || parsed.regionCode !== regionCode
+      || parsed.styleTermId !== styleTermId
       || typeof parsed.createdAt !== 'string'
       || parsed.createdAt.length > 40
       || !Number.isFinite(Date.parse(parsed.createdAt))
@@ -298,4 +388,42 @@ function decodeInteractionCursor(
   catch {
     throw new AppViewerInteractionError(400, 'INVALID_CURSOR', '分页游标无效或已不适用于当前列表')
   }
+}
+
+function normalizeSearchText(value: string | undefined): string | null {
+  const normalized = value?.trim().replace(/\s+/gu, ' ') || null
+  if (
+    normalized
+    && (
+      normalized.length > SEARCH_TEXT_MAX_LENGTH
+      || /[\u0000-\u001F\u007F]/u.test(normalized)
+    )
+  ) {
+    throw invalidRequest('搜索文字格式不正确或超过 40 个字符')
+  }
+  return normalized
+}
+
+function normalizeRegionCode(value: string | undefined): string | null {
+  const normalized = value?.trim().toLowerCase() || null
+  if (normalized && !REGION_CODE_PATTERN.test(normalized)) {
+    throw invalidRequest('地区参数格式不正确')
+  }
+  return normalized
+}
+
+function normalizeStyleTermId(value: string | undefined): string | null {
+  const normalized = value?.trim() || null
+  if (normalized && !TAXONOMY_TERM_ID_PATTERN.test(normalized)) {
+    throw invalidRequest('风格词条参数格式不正确')
+  }
+  return normalized
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/gu, match => `\\${match}`)
+}
+
+function invalidRequest(message: string): AppViewerInteractionError {
+  return new AppViewerInteractionError(400, 'INVALID_REQUEST', message)
 }

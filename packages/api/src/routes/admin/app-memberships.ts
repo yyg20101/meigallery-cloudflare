@@ -53,8 +53,231 @@ import {
   type UpdateAdminMembershipCatalogInput,
   type UpsertAdminMembershipEntitlementInput,
 } from '../../services/admin-app-membership-catalogs'
+import {
+  createAdminAppMembershipLegacyDryRun,
+  executeAdminAppMembershipLegacyJob,
+  getAdminAppMembershipLegacyWorkspace,
+  listAdminAppMembershipLegacyJobs,
+  reviewAdminAppMembershipLegacyItem,
+  submitAdminAppMembershipLegacyJob,
+  type AdminMembershipLegacyDryRunInput,
+  type AdminMembershipLegacyExecuteInput,
+  type AdminMembershipLegacyReviewInput,
+  type AdminMembershipLegacySubmitInput,
+} from '../../services/admin-app-membership-migrations'
+import {
+  cancelAdminAppMembershipBatch,
+  createAdminAppMembershipBatchPreview,
+  getAdminAppMembershipBatch,
+  listAdminAppMembershipBatches,
+  submitAdminAppMembershipBatch,
+  type AdminMembershipBatchCancelInput,
+  type AdminMembershipBatchCreateInput,
+  type AdminMembershipBatchSubmitInput,
+} from '../../services/admin-app-membership-batches'
+import {
+  publishAppRealtimeRefresh,
+  scheduleAppRealtimeTask,
+} from '../../services/app-realtime'
 
 export const adminAppMembershipRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
+adminAppMembershipRoutes.get('/batches', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await listAdminAppMembershipBatches(
+      c.env.DB,
+      config.catalogVersionId,
+      new Date(),
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/batches/preview', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const data = await createAdminAppMembershipBatchPreview(
+      c.env.DB,
+      config.catalogVersionId,
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminMembershipBatchCreateInput>(),
+      new Date(),
+      config.requireProductionReady,
+    )
+    return c.json({
+      message: data.replayed ? '已返回原批量预览' : '会员批量预览已创建',
+      data: data.batch,
+    }, data.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/batches/:batchId', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await getAdminAppMembershipBatch(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('batchId'),
+      c.get('userId')!,
+      new Date(),
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/batches/:batchId/submit', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const data = await submitAdminAppMembershipBatch(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('batchId'),
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminMembershipBatchSubmitInput>(),
+      new Date(),
+      config.requireProductionReady,
+    )
+    return c.json({
+      message: data.replayed ? '已返回原批量提交结果' : '会员批量有效行已提交独立复核',
+      data: data.batch,
+    })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/batches/:batchId/cancel', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const data = await cancelAdminAppMembershipBatch(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('batchId'),
+      c.get('userId')!,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminMembershipBatchCancelInput>(),
+      new Date(),
+    )
+    return c.json({
+      message: data.replayed ? '已返回原批量取消结果' : '会员批量预览已取消',
+      data: data.batch,
+    })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/migrations', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await listAdminAppMembershipLegacyJobs(c.env.DB, config.catalogVersionId) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/migrations/dry-run', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const result = await createAdminAppMembershipLegacyDryRun(
+      c.env.DB,
+      config.catalogVersionId,
+      membershipMigrationActor(c),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminMembershipLegacyDryRunInput>(),
+    )
+    return c.json({
+      message: result.replayed ? '已返回原 Dry-run 结果' : '旧会员 Dry-run 已生成',
+      data: result.workspace,
+    }, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.get('/migrations/:jobId', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    return c.json({ data: await getAdminAppMembershipLegacyWorkspace(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('jobId'),
+      membershipMigrationActor(c),
+    ) })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/migrations/:jobId/submit', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const result = await submitAdminAppMembershipLegacyJob(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('jobId'),
+      membershipMigrationActor(c),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminMembershipLegacySubmitInput>(),
+    )
+    return c.json({ message: result.replayed ? '已返回原提交结果' : '迁移条目已提交独立复核', data: result.workspace })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/migrations/:jobId/items/:itemId/review', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const result = await reviewAdminAppMembershipLegacyItem(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('jobId'),
+      c.req.param('itemId'),
+      membershipMigrationActor(c),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminMembershipLegacyReviewInput>(),
+    )
+    return c.json({ message: result.replayed ? '已返回原复核结果' : '迁移条目复核决定已记录', data: result.workspace })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
+
+adminAppMembershipRoutes.post('/migrations/:jobId/execute', async (c) => {
+  try {
+    const config = enabledConfig(c.env)
+    const result = await executeAdminAppMembershipLegacyJob(
+      c.env.DB,
+      config.catalogVersionId,
+      c.req.param('jobId'),
+      membershipMigrationActor(c),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminMembershipLegacyExecuteInput>(),
+    )
+    return c.json({ message: result.replayed ? '已返回原执行结果' : '已完成受控迁移执行', data: result.workspace })
+  }
+  catch (error) {
+    return handleAppMembershipError(c, error)
+  }
+})
 
 adminAppMembershipRoutes.get('/catalogs', async (c) => {
   try {
@@ -337,7 +560,7 @@ for (const [path, transition] of [
   adminAppMembershipRoutes.post(`/applications/:applicationId/${path}`, async (c) => {
     try {
       const config = enabledConfig(c.env)
-      return c.json({ data: await transitionAdminAppMembershipApplication(
+      const data = await transitionAdminAppMembershipApplication(
         c.env.DB,
         config.catalogVersionId,
         c.req.param('applicationId'),
@@ -346,7 +569,13 @@ for (const [path, transition] of [
         await c.req.json<AdminAppMembershipApplicationMutationInput>(),
         new Date(),
         config.requireProductionReady,
-      ) })
+      )
+      scheduleAppRealtimeTask(c.executionCtx, publishAppRealtimeRefresh(c.env, {
+        accountId: data.account.userId,
+        dedupeKey: `membership-application:${data.application.applicationId}:${data.application.status}:${data.application.version}`,
+        scopes: ['membership'],
+      }), `membership.application.${transition}`)
+      return c.json({ data })
     }
     catch (error) {
       return handleAppMembershipError(c, error)
@@ -522,6 +751,13 @@ adminAppMembershipRoutes.post('/reviews/:requestId/decision', async (c) => {
       new Date(),
       config.requireProductionReady,
     )
+    if (!data.replayed) {
+      scheduleAppRealtimeTask(c.executionCtx, publishAppRealtimeRefresh(c.env, {
+        accountId: data.request.account.userId,
+        dedupeKey: `membership-review:${data.request.requestId}:${data.request.status}:${data.request.version}`,
+        scopes: ['membership'],
+      }), 'membership.review.decision')
+    }
     return c.json({
       message: data.replayed
         ? '已返回原复核结果'
@@ -548,6 +784,14 @@ adminAppMembershipRoutes.post('/grants', async (c) => {
       new Date(),
       config.requireProductionReady,
     )
+    if (!data.replayed) {
+      scheduleAppRealtimeTask(c.executionCtx, publishAppRealtimeRefresh(c.env, {
+        accountId: data.userId,
+        dedupeKey: `membership-grant:${data.grantId}:created`,
+        scopes: ['membership'],
+        occurredAt: new Date(data.createdAt),
+      }), 'membership.grant')
+    }
     return c.json({ message: data.replayed ? '已返回原会员操作结果' : 'App 会员已发放', data }, data.replayed ? 200 : 201)
   }
   catch (error) {
@@ -565,6 +809,14 @@ adminAppMembershipRoutes.post('/grants/:grantId/revoke', async (c) => {
       c.req.header('Idempotency-Key') ?? null,
       await c.req.json<AdminAppMembershipRevokeInput>(),
     )
+    if (!data.replayed) {
+      scheduleAppRealtimeTask(c.executionCtx, publishAppRealtimeRefresh(c.env, {
+        accountId: data.userId,
+        dedupeKey: `membership-grant:${data.grantId}:revoked:${data.revokedAt ?? 'unknown'}`,
+        scopes: ['membership'],
+        occurredAt: data.revokedAt ? new Date(data.revokedAt) : undefined,
+      }), 'membership.revoke')
+    }
     return c.json({ message: data.replayed ? '已返回原会员撤销结果' : 'App 会员发放已撤销', data })
   }
   catch (error) {
@@ -589,6 +841,13 @@ function parseUserId(raw: string): number {
 function parseReviewDecision(value: unknown): 'approve' | 'reject' {
   if (value === 'approve' || value === 'reject') return value
   throw new AppMembershipError(400, 'MEMBERSHIP_REVIEW_DECISION_INVALID', 'decision 必须为 approve 或 reject')
+}
+
+function membershipMigrationActor(c: {
+  get(name: 'userId'): number | null
+  get(name: 'userRole'): string | null
+}) {
+  return { id: c.get('userId')!, role: c.get('userRole') }
 }
 
 function handleAppMembershipError(c: Parameters<typeof errorJson>[0], error: unknown) {

@@ -4,6 +4,7 @@
   "figmaFileKey": "LaNSwwGsznwcpV8msj7BQC",
   "phase": "P2",
   "status": "completed",
+  "snapshotNote": "历史快照：本文件只记录 2026-07-30 Phase 2 结构验收，92 行等数字不得作为当前页面覆盖口径；当前事实见 figma-final-delivery-state.json（99 页、408 个正式状态，其中移动端 208、后台 200）。",
   "rollbackVersion": {
     "title": "App 1.0｜Phase 2 前基线",
     "versionId": "2381950989888493587"

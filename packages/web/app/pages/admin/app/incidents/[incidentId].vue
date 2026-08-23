@@ -278,16 +278,9 @@ function safeSummary(event: AdminOperationalIncidentEvent) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <h1 class="break-words text-xl font-bold text-gray-950">运营事件处置</h1>
-          <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">ADM-OV-03</span>
-        </div>
-        <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-500">{{ incidentId }}</p>
-      </div>
-      <NuxtLink to="/admin/app/incidents" class="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto">返回事件中心</NuxtLink>
-    </header>
+    <AdminAppPageHeader page-id="ADM-OV-03" :route="route.path" title="异常详情" :description="`记录影响、时间线、处置动作和受控安全开关 · ${incidentId}`" :state="status === 'pending' ? '加载中' : detailError ? '加载失败' : detail ? adminIncidentStatusLabel(detail.status) : '正常'" :figma-state="detailError ? '证据不足' : detail?.status === 'open' && (detail.severity === 'p0' || detail.severity === 'p1') ? '影响扩大' : '正常'" :state-tone="detailError ? 'danger' : status === 'pending' ? 'warning' : detail?.severity === 'p0' || detail?.severity === 'p1' ? 'danger' : 'info'">
+      <template #actions><NuxtLink to="/admin/app/incidents" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#eaded8] bg-white px-4 text-sm font-medium text-stone-700 hover:bg-[#fff7f2]">返回事件中心</NuxtLink></template>
+    </AdminAppPageHeader>
 
     <p v-if="actionError" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ actionError }}</p>
     <p v-if="successMessage" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">{{ successMessage }}</p>

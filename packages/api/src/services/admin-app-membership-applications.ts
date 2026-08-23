@@ -450,7 +450,7 @@ function adminApplicationSelect() {
            a.approval_request_key, s.account_public_id, u.email, u.status AS account_status
     FROM app_membership_applications a
     JOIN users u ON u.id = a.user_id
-    LEFT JOIN app_account_security s ON s.user_id = a.user_id
+    LEFT JOIN app_account_security s ON s.account_id = a.user_id
   `
 }
 

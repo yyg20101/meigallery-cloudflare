@@ -5,6 +5,7 @@
 本文使用以下状态标签区分当前可验收能力、部分实现能力、后续规划和历史迁移背景，避免把规划态误读为当前生产能力：
 
 - `[当前实现]`：代码、配置、迁移或 CI 已支持，可纳入当前版本验收。
+- `[开发实现，待统一验证]`：产品链路源码与 migration 已完成，配置、migration 执行、构建、测试和环境 QA 按当前开发顺序后置。
 - `[部分实现]`：已有入口、字段、辅助工具或部分流程，但完整业务链路仍需后续补齐。
 - `[后续规划]`：路线图能力或需要单独 PRD / 技术设计验收，不属于当前上线阻断项。
 - `[历史参考]`：旧站迁移、历史命名或历史文档背景，用于追踪来源，不代表当前生产行为。
@@ -24,13 +25,14 @@
 - 首发版本桌面端和移动端核心页面 Lighthouse Performance >= 85。
 - 旧站 607 篇公开文章规模内，图库列表、标签筛选和关键词搜索可正常返回结果；当前压测口径以 `docs/PROJECT_STATUS.md` 和 `docs/TECHNICAL_SPEC.md` 为准。
 - 受保护图片、私有 R2 对象和后台管理接口的服务端权限校验覆盖率为 100%。
-- 批量导入当前验收范围为 manifest CSV 解析工具、后台导入任务记录、JSON `galleries` 处理入口、结构化错误返回和错误 CSV；zip 上传、解压和大文件异步完整导入不作为当前上线阻断项。
+- ZIP 批量导入源码范围为私有 R2 multipart、服务端 ZIP 校验、Queue 逐项创建 Gallery、部分失败/暂停恢复和错误 CSV；只有完成后置配置、migration 与统一验证后才进入上线验收。
+- Telegram 外部导入只接收已标准化的 `file_id` JSON，不内置 Bot 或 caption 解析；接收必须原子，媒体只经专用 Queue 执行，并支持租约过期恢复和可定位资源清理。
 - 旧站导入后，100% 内容进入草稿或待审核状态，不允许未经审核直接发布。
 
 后续压测和规划指标：
 
 - 在 100,000 条图库记录规模内，组合标签搜索 P95 响应时间 <= 500 ms。
-- 100 个图库目录的合法 zip 导入包，后续完整异步导入成功率 >= 98%。
+- 100 个图库目录的合法 ZIP 导入包，在环境启用后的导入成功率目标 >= 98%。
 - Cloudflare Stream 接入后，完整视频等受保护媒体的服务端权限校验覆盖率为 100%。
 - Stream 接入后，管理员完成"上传导入包 -> 校验 -> 草稿预览 -> 发布"的标准流程耗时 <= 3 分钟，不包含视频转码等待时间。
 
@@ -146,16 +148,17 @@
 - 发布前可预览前台详情页效果。
 - 普通用户没有上传、编辑、发布入口。
 
-**故事 7：批量导入内容 `[部分实现 / 后续规划]`**  
-作为管理员，我希望批量导入包含文案、图片和视频元数据的图库数据，以便高效创建多个图库草稿；完整 zip 包上传和解压处理为后续异步导入能力。
+**故事 7：批量导入内容 `[开发实现，待统一验证]`**
+作为管理员，我希望批量导入包含文案、图片和可选视频的图库 ZIP，以便高效创建多个图库草稿，并能在单项失败时保留其他成功结果。
 
 验收标准：
 
-- 当前可验收范围：支持创建 `zip` 类型导入任务记录，并通过后台处理入口接收已解析后的 JSON `galleries` 数据。
-- 当前可验收范围：manifest CSV 解析工具校验必填列、必填字段、slug、`required_level` 和 `status`；后台处理入口校验标题、slug 唯一性并返回结构化错误。
-- 当前可验收范围：合法图库默认进入草稿或待审核状态，不直接发布。
-- 当前可验收范围：单个图库处理失败不影响其他图库继续处理，失败项写入错误 CSV。
-- 后续完整异步导入范围：zip 文件上传、R2 源文件保存、解压、目录结构校验、媒体上传、草稿图库创建、错误报告 CSV 下载、失败项重试和部分成功统计。
+- 支持 256 MiB 以内 ZIP，经 8 MiB R2 multipart 上传，浏览器不持有真实 R2 uploadId 或分片 ETag。
+- 服务端校验 ZIP 容器、精确 manifest schema、目录、必需文件、媒体类型/大小/尺寸和压缩炸弹边界。
+- 单个图库失败不影响其他图库；可重试错误支持只重试失败项，运行时故障支持暂停和继续，错误报告经鉴权下载。
+- Admin 创建的 Gallery 强制草稿；Owner 才可遵守 manifest 的 `published`。
+- ZIP 是 Gallery 内容包，不自动创建 Person/Profile，不自动进入推荐；真人候选必须另行完成来源、授权、认证和发布工作流。
+- Queue、Stream、migration、构建、测试和环境 QA 完成前不得标记为生产可用。
 
 **故事 8：内容和系统设置 `[当前实现]`**  
 作为站长，我希望配置联系方式、默认会员等级和站点基础信息，以便运营信息可以独立维护。
@@ -167,19 +170,21 @@
 - 前台用户中心按有值字段展示联系方式列表。
 - 配置变更写入审计日志。
 
-**故事 9：旧站迁移 `[部分实现 / 历史参考]`**  
+**故事 9：旧站迁移 `[开发实现，待统一验证 / 历史参考 / 后续规划]`**
 作为管理员，我希望从 WordPress 旧站导入公开文章和媒体，以便把现有资源迁移到新系统并重新审核。
 
 验收标准：
 
-- 支持输入旧站 REST API 地址或上传 WordPress 导出 XML。
-- 导入任务记录旧 `post_id`、旧 URL、旧标题、旧分类、旧标签、旧媒体 URL。
+- 当前支持输入安全 HTTPS 旧站 REST API 地址；WordPress 导出 XML 仍为后续独立上传/解析能力，不能以 REST 执行伪装成功。
+- 导入任务以不超过 512 KiB 的私有来源快照记录旧 `post_id`、旧 URL、旧标题、旧分类/标签 ID、旧媒体 URL 和原 HTML；列表接口不返回原 HTML。
 - 正文 HTML 自动解析为图片、视频待处理元数据和文本说明。
 - 旧站分类按映射表转为地区标签。
 - 旧站标签按映射表转为身份、风格、场景等标签类型。
 - 含敏感词、缺少媒体、媒体下载失败或授权状态未知的内容进入待审核，并记录待审核原因。
-- 审核记录必须包含审核人、审核时间、审核结论和备注；审核状态机以 `docs/TECHNICAL_SPEC.md` 的当前实现和规划说明为准。
+- 审核记录必须包含审核人、审核时间、审核结论和备注；通过/拒绝为不可原地改写终态，重复同结论幂等成功。
+- 执行任务必须使用服务端权威租约并在远程分页和逐篇写入期间续租；Worker 中断后只能回收已过期任务并创建新任务安全重试，有效租约不得被抢占。
 - 导入内容默认草稿，不允许直接公开发布。
+- 迁移审核本身不得发布 Gallery；修改内容与发布继续走独立 Gallery 管理流程。
 
 ### 非目标（MVP 不做） `[当前边界]`
 
@@ -231,9 +236,12 @@ MVP 不需要 AI。
 ### 独立 App 兼容开发基线 `[部分实现 / 后续规划]`
 
 - 独立 KMP App 复用当前项目的账号、人物、会员、金币、平台话题、安全和数据权利事实；兼容迁移统一通过 App API v2 与共享稳定 ID，不在客户端复制业务事实或硬编码会员名称。
-- 当前 App API v2 累计契约为 `1.18.0`。Media-1 已在 Privacy-1 基线上新增默认关闭的人物图片列表、短期会员图片授权、公开认证说明和 KMP 自适应浏览交互；复用现有图库与人物公开投影，不新增媒体副本或 schema。
-- 注销申请创建后立即撤销普通会话并阻止新增受保护业务事实；Privacy-1 不生成导出文件、不签发下载地址、不执行不可逆删除。真实导出、保留隔离与删除/匿名化属于 Privacy-2，必须先关闭地区、保留期、Owner、SLA 和恢复门禁。
-- 详细产品、API 与跨仓实现边界分别见 [App 1.0 开发需求](./app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)、[App API 与实时通信契约](./app/API_AND_REALTIME_CONTRACT.md)、[Privacy-1 数据权利控制面跨仓开发基线](./app/PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md) 和 [Media-1 人物图片与认证说明跨仓开发基线](./app/MEDIA_1_PERSON_MEDIA_AND_VERIFICATION_INTEGRATION.md)。
+- 当前 App API v2 累计契约为 `1.26.0`。Media-1 已在 Privacy-1 基线上新增默认关闭的人物图片列表、短期会员图片授权、公开认证说明和 KMP 自适应浏览交互；Membership-7 又为本人权益快照增加不参与授权的生命周期呈现，精确区分即将到期、自然到期和撤销。两者均复用现有权威事实，不新增媒体副本或隐式会员映射。
+- 注销申请创建后立即撤销普通会话并阻止新增受保护业务事实。Privacy-2A 已完成私有导出制品和一次性下载源码，Privacy-2C 将新制品的显式个人数据范围补齐到 41 类并兼容旧 35-scope 任务；Privacy-2B 已完成九步不可逆删除、七类法定保留隔离、完成证据和 KMP 本地终态清理源码，Recommendation-6 又把账号关联推荐会话/条目纳入第四步零残留删除。OQ-020/OQ-024/OQ-025 未关闭且 migration、配置、测试未完成前，两项 processing capability 均保持关闭。
+- Membership-6 已完成默认关闭的管理员 CSV 批量编排服务端源码；每个有效行只创建普通独立复核申请，另一管理员批准前不产生 grant。OQ-018、`0104`、配置和验证后置；Figma 尚无正式批量页面，因此不新增 Nuxt 可见入口。
+- Message-4 已完成默认关闭的账号级实时刷新源码：一次性短票据与 Hibernation WebSocket 只发送有限刷新范围和游标，不发送业务正文或权限事实；KMP 只在登录且前台时连接，收到信号后重新拉取当前可见 HTTP 权威数据。OQ-028、Durable Object 配置、`0105` 与验证统一后置，App 1.0 仍不接入系统推送。
+- Message-9 已完成默认关闭的通知内容生命周期源码：批准策略下按原始事件时间写入不可变到期边界，过期延迟事件只抑制 Outbox；每日维护只有显式策略、approved 保留天数和 purge 门禁完整时，才有界删除 explicit/legacy 正文与单条已读事件并保留去重墓碑。OQ-020、`0115`、配置、构建和专项验证统一后置，无 API、KMP、Nuxt 或 Figma 增量。
+- 详细产品、API 与跨仓实现边界分别见 [App 1.0 开发需求](./app/MEIGALLERY_APP_1_0_DEVELOPMENT_REQUIREMENTS.md)、[App API 与实时通信契约](./app/API_AND_REALTIME_CONTRACT.md)、[Message-4 账号级实时刷新交付基线](./app/MESSAGE_4_REALTIME_REFRESH_INTEGRATION.md)、[Message-9 通知内容生命周期开发基线](./app/MESSAGE_9_NOTIFICATION_CONTENT_LIFECYCLE_INTEGRATION.md)、[Membership-6 会员批量发放服务端交付基线](./app/MEMBERSHIP_6_BATCH_GRANTS_INTEGRATION.md)、[Privacy-1 数据权利控制面跨仓开发基线](./app/PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md)、[Privacy-2A 私有导出制品跨仓交付基线](./app/PRIVACY_2A_PRIVATE_EXPORT_INTEGRATION.md)、[Privacy-2B 账号不可逆注销跨仓交付基线](./app/PRIVACY_2B_IRREVERSIBLE_DELETION_INTEGRATION.md)、[Privacy-2C 个人数据副本覆盖补全开发基线](./app/PRIVACY_2C_DATA_COPY_COVERAGE_INTEGRATION.md)、[Recommendation-6 推荐解释证据生命周期开发基线](./app/RECOMMENDATION_6_EVIDENCE_LIFECYCLE_INTEGRATION.md) 和 [Media-1 人物图片与认证说明跨仓开发基线](./app/MEDIA_1_PERSON_MEDIA_AND_VERIFICATION_INTEGRATION.md)。
 
 ### 数据模型摘要 `[当前实现 / 规划字段]`
 
@@ -248,17 +256,13 @@ MVP 不需要 AI。
 - `admin_audit_logs`：管理员操作审计。
 - `site_settings`：站点配置（站名、SEO）、联系方式结构化字段（wechat、telegram、email、custom_note）。
 - `legacy_import_sources`：旧站来源、类型、API 地址、导入配置。
-- `legacy_import_items`：旧 post ID、旧 URL、映射图库、导入状态、审核状态。
+- `legacy_import_items`：旧 post ID、旧 URL、映射图库、导入/审核状态、私有来源快照、结构化失败与审核证据。
 
-### 批量导入规格 `[部分实现 / 后续规划]`
+### 批量导入规格 `[开发实现，待统一验证]`
 
-当前实现分为两层：
+当前源码使用同源后台页面和 API Worker 建立受控 R2 multipart；原包合并后由 Queue 逐项处理。浏览器不解析 ZIP，也不提交已解析 JSON、私有 R2 key、R2 uploadId 或 ETag 清单。
 
-- 当前可验收能力：`POST /api/admin/import-jobs` 创建导入任务记录；`POST /api/admin/import-jobs/:id/process` 接收已解析后的 JSON `galleries` 数据，创建草稿图库、关联标签、登记已上传媒体 key，并在失败时生成错误 CSV。
-- 当前辅助能力：`packages/api/src/utils/import-parser.ts` 可解析 `manifest.csv` 文本并校验必填列、必填字段、slug、`required_level` 和 `status`。
-- 后续完整 zip 导入能力：管理员上传下述 zip 包到 R2，后台异步解压、校验目录和文件、写入媒体、生成草稿和错误报告。
-
-后续完整 zip 包格式：
+ZIP 包格式：
 
 ```text
 gallery-import.zip
@@ -300,33 +304,33 @@ gallery-002,城市街拍,city-snap-002,上海,高冷,都市,"短发,街拍",free
 - 风格：清新
 ```
 
-当前已实现校验：
-
-- `manifest.csv` 解析工具校验 `folder`、`title`、`slug` 必填。
-- `manifest.csv` 解析工具校验 `slug` 仅包含小写字母、数字、中文和连字符。
-- `manifest.csv` 解析工具校验 `required_level` 仅允许空值、`free`、`vip`、`svip`。
-- `manifest.csv` 解析工具校验 `status` 仅允许空值、`draft`、`published`。
-- 后台处理入口校验图库 `title`、`slug` 和 slug 唯一性。
-- 后台处理入口按角色处理状态：Admin 强制草稿，Owner 可按 `published` 直接发布。
-- 后台处理入口单个图库失败不阻塞同批其他图库，并可将错误 CSV 写入 R2。
-
-后续完整 zip 校验规则：
+当前源码校验与处理规则：
 
 - `manifest.csv`、`content.md`、`cover.jpg` 必填。
 - 每个图库目录至少包含一张图片。
-- 图片格式支持 jpg、jpeg、png、webp。
-- 视频导入格式规划支持 mp4；Stream 未接入前仅记录待处理视频元数据，不上传、不转码、不生成播放地址。
-- `videos/preview.mp4` 可选；Stream 接入后可作为公开视频。
-- `videos/full.mp4` 可选；Stream 接入后默认按图库等级或资源等级保护。
-- 未存在标签可自动创建，但标签类型必须合法。
+- `manifest.csv` 只接受精确九列表头；`folder` 与 `slug` 在同一包内不得重复，slug 仅允许小写 ASCII 字母、数字和单个连字符。
+- 图片支持 jpg/jpeg/png/webp，必须通过魔数、容器、尺寸与像素上限校验；提取后剥离可能含定位、设备和作者信息的元数据。
+- `videos/preview.mp4`、`videos/full.mp4` 可选；只有 Stream 配置完整时才上传并强制 signed URL，配置缺失时项目进入可重试失败，不伪造成功。
+- 未存在标签可自动创建；先按类型和名称复用，新增标签使用稳定纯 ASCII slug 并单独审计。
 - `status=published` 仅 Owner 角色可直接发布；Admin 角色强制导入为草稿，忽略 published 状态。
+- 单项成功写入 Gallery、媒体、标签关系、项目终态与审计的同一 D1 batch；最多自动尝试 3 次。
+- ZIP 导入只产生 Gallery，不把 `folder/title` 推断为真人身份，不自动创建 Person/Profile 或推荐资格。
 
-### WordPress 迁移规格 `[部分实现 / 历史参考]`
+### Telegram 外部导入规格 `[开发实现，待统一验证]`
 
-旧站迁移支持两种来源：
+- 只接受持有 Import Token、类型权限和 `sourceBotKey` 白名单的 `gallery` / `case` JSON；同一外部消息保持唯一幂等。
+- 主记录、全部文件行和 accepted 审计必须以同一 D1 batch 原子落库，每日 token 限额在原子条件内复核；HTTP 请求只接收和发送专用 Queue 消息，不以 `waitUntil` 承担媒体处理。
+- JSON 请求体按 64 KiB 有界读取，payload 逐字段类型/长度验证后只保留白名单字段；Queue 派发、failed 清理和 fetching 执行均使用一次性 token 与可过期 30 分钟租约，并持久化处理中目标 ID 和逐文件确定性 R2 key。重投不得生成新孤儿对象，过期恢复不得抢占有效执行器。
+- Telegram `getFile` 和文件下载各自最多 60 秒；图片以 10 MiB 有界流读取，必须通过实际 JPEG/PNG/WebP 内容、容器、尺寸、像素、元数据净化和声明 MIME 一致性校验。
+- failed 重试和过期恢复先按持久化资源定位清理；清理失败时保留引用并阻止重跑，不得把 D1/R2/网络异常原文、Bot Token、下载 URL 或私有 R2 key 返回调用方。
+- Telegram 导入只创建待审核 Gallery 或 Case，不创建 Person/Profile，也不进入公开推荐。
 
-- WordPress REST API：`/wp-json/wp/v2/posts`、`categories`、`tags`、`media`。
-- WordPress XML export：用于 REST API 不完整或需要离线迁移时。
+### WordPress 迁移规格 `[开发实现，待统一验证 / 历史参考 / 后续规划]`
+
+旧站迁移的数据模型预留两种来源：
+
+- WordPress REST API：当前可执行，使用 `/wp-json/wp/v2/posts`、`categories` 和 `tags`。
+- WordPress XML export：用于 REST API 不完整或需要离线迁移，当前尚未实现上传与解析。
 
 迁移字段映射：
 
@@ -334,8 +338,8 @@ gallery-002,城市街拍,city-snap-002,上海,高冷,都市,"短发,街拍",free
 - `post.link` → `galleries.legacy_url`
 - `post.slug` → `galleries.legacy_slug`
 - `post.title.rendered` → `galleries.title`
-- `post.excerpt.rendered` → `galleries.summary`
-- `post.content.rendered` → `galleries.body_md` 和 `media_assets`
+- `post.content.rendered` 的清洗文本摘要 → `galleries.summary`
+- `post.content.rendered` → 私有来源快照、清洗后的 `galleries.body_md` 和待处理 `media_assets`；正文不保留源站媒体嵌入
 - `post.categories` → 地区标签映射
 - `post.tags` → 普通标签映射
 
@@ -344,9 +348,14 @@ gallery-002,城市街拍,city-snap-002,上海,高冷,都市,"短发,街拍",free
 - WordPress HTML 中的 `<img>` 解析为图片资源。
 - WordPress HTML 中的 `<video>` 当前解析为待处理视频元数据。
 - 远程图片迁移到 R2。
+- 远程图片每张最多 10 MiB，必须以内容魔数确认 JPEG/PNG/WebP，校验容器与尺寸并剥离元数据；不能信任响应 Content-Type。
 - 远程视频待 Stream 接入后迁移到 Cloudflare Stream。
 - 旧站公开 URL 生成 SEO redirect 记录。
 - 旧站敏感分类名不直接作为新站前台标签展示，必须通过映射表重命名。
+- 来源显式分类/标签映射必须绑定既有权威标签 ID；映射损坏或目标不存在时任务停止，不能静默生成错误替代标签。
+- 同一来源任务串行执行，并同时按旧 `post_id` 与 Gallery slug 去重。
+- 单篇 Gallery、标签、媒体、legacy 条目、redirect 和审计必须原子提交；失败时整篇回滚，并在继续其他文章前原子保存结构化失败条目、安全来源快照和最小审计。失败事实无法保存时任务整体失败。
+- 任务列表、任务级媒体下载和全局媒体辅助操作必须只作用于 legacy 数据；Owner 可操作全部，Admin 仅操作本人任务。
 
 ### 安全与隐私 `[当前实现 / 当前边界]`
 
@@ -370,8 +379,8 @@ gallery-002,城市街拍,city-snap-002,上海,高冷,都市,"短发,街拍",free
 | 联系方式二维码 | 2 MB | png/jpeg/webp；后台联系方式入口 |
 | 站点图标 | 1 MB | png/jpeg/webp/ico；后台站点设置入口 |
 | 单个视频 | 1 GB | 规划上限；Stream 接入前不作为当前上传验收项 |
-| 导入包 zip | 后续异步能力目标 2 GB | 当前 API 不直接接收或解压 zip；后续通过 R2 直传源文件处理 |
-| 单个导入包内图库数 | 后续异步能力目标 200 | 当前 JSON 处理入口按请求体提交已解析数据；后续限制用于避免单个异步任务过大 |
+| 导入包 ZIP | 256 MiB | 8 MiB R2 multipart；不受单次 Worker 请求体 100/200 MB 方案差异阻断 |
+| 单个导入包内图库数 | 200 | 服务端 manifest 行数上限；ZIP 条目总数上限 1,024 |
 | 单个图库图片数 | 100 | 前台展示和加载性能约束 |
 | 单个图库视频数 | 5 | 规划上限；preview + full 为主 |
 | 缩略图尺寸 | 当前固定宽 480px | 使用 Cloudflare Images Transformations 时仅启用单规格；失败或未启用时回退原图 |
@@ -380,7 +389,7 @@ gallery-002,城市街拍,city-snap-002,上海,高冷,都市,"短发,街拍",free
 
 | 维度 | MVP 上限 | 说明 |
 |------|----------|------|
-| 同时进行的导入任务 | 当前处理中的任务 <= 3 | 当前创建任务时检查 `processing` 数量；后续异步 worker 继续沿用该限制 |
+| 同时进行的导入任务 | `validating/processing/finalizing` <= 3 | 创建时提示，状态认领 SQL 再原子检查，避免竞争超限；上传中的 multipart 不占处理槽位 |
 | 搜索结果分页 | 每页 24 条 | 前台默认值 |
 | 标签类型 | 后台可配，初始 11 种 | 地区范围、地区组、城市/国家、身份、性格、风格、职业、发型、服饰、场景、内容类型 |
 | API 速率限制 | 登录/注册 5 次/分钟；公开 API 60 次/分钟/IP | 防止暴力破解和爬虫 |
@@ -441,7 +450,7 @@ MVP：
 - 登录、注册、会员状态。
 - 管理员手动发放会员等级和有效期。
 - 后台图库、标签、媒体、站点设置管理。
-- 批量导入任务记录、manifest CSV 解析工具、JSON `galleries` 处理入口和结构化错误返回；完整 zip 上传、解压和异步媒体导入后续收敛。
+- ZIP 批量导入源码：私有 R2 multipart、服务端范围解析、Queue 逐项导入、部分失败/暂停恢复、审计和错误报告；配置、migration 与统一验证完成后启用。
 - WordPress 旧站导入和迁移预览。
 - 受保护图片访问控制；视频访问控制保留设计，待 Stream 接入后完整启用。
 - 基础审计日志。
@@ -467,7 +476,7 @@ v2.0：
 | 风险 | 影响 | 缓解措施 |
 |------|------|----------|
 | 视频播放成本快速增长 | 月费超支 | Stream 接入后记录播放分钟数；设定月预算告警线；视频数量初始受控 |
-| 大导入包超同步请求能力 | 超时、内存溢出 | 当前不直接接收 zip；后续设计为 R2 直传源文件 + 异步任务 + 进度轮询 |
+| 大导入包超同步请求能力 | 超时、内存溢出 | 固定 8 MiB multipart 绕开账户方案单请求上限；原包通过 R2 range 读取，Queue 每次只处理一个 Gallery |
 | 标签体系失控 | 搜索效果下降 | 限制标签类型种类；后台提供合并工具（v1.1） |
 | 媒体防盗链被绕过 | 资源泄露 | R2 private bucket + Worker 代理受保护图片响应；Stream 接入后使用 signed token；前端不暴露原始地址 |
 | 人像内容合规风险 | 法律/平台风险 | 保存授权来源；旧站导入强制审核；敏感词检测进入待审核队列 |
@@ -476,7 +485,7 @@ v2.0：
 
 当前生产域名：616618.xyz / api.616618.xyz。
 
-当前 WordPress 迁移状态：606 图库 + 2811 图片 + 53 标签已迁入；729 个视频因 Cloudflare Stream 未接入暂跳过。
+[历史快照] WordPress 曾记录 606 图库 + 2811 图片 + 53 标签已迁入；729 个视频因 Cloudflare Stream 未接入暂跳过。该数字不代表当前生产数据库核验结果，正式迁移前须重新盘点。
 
 ### 已确定决策 `[当前决策]`
 

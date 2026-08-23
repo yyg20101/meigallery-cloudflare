@@ -231,17 +231,9 @@ async function submitRequest() {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-      <div class="min-w-0">
-        <NuxtLink to="/admin/app/audit/integrity" class="text-sm font-medium text-gray-600 hover:text-gray-950">← 返回审计完整性</NuxtLink>
-        <div class="mt-2 flex flex-wrap items-center gap-2">
-          <h1 class="text-xl font-bold text-gray-950">Action 口径治理</h1>
-          <span class="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">Owner · 双人复核</span>
-        </div>
-        <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">从真实审计事实识别未登记 Action，预览历史影响并追加正式版本。这里不会自动登记、修改历史事实、批准保留策略或运行清理。</p>
-      </div>
-      <button type="button" class="inline-flex min-h-11 max-w-full shrink-0 items-center justify-center whitespace-normal rounded-lg bg-gray-950 px-5 py-2 text-sm font-medium text-white hover:bg-black" @click="startNewAction">登记前置 Action</button>
-    </header>
+    <AdminAppPageHeader page-id="ADM-AUD-05" route="/admin/app/audit/registry" title="Action 口径治理" description="从真实审计事实识别未登记 Action，预览影响并提交独立复核。" :state="errorMessage ? '加载失败' : loading ? '加载中' : overview?.blockers.length ? '治理阻断' : '正常'" :figma-state="errorMessage ? '加载失败' : loading ? '加载中' : overview?.blockers.length ? '治理阻断' : '正常'" :state-tone="errorMessage ? 'danger' : loading || overview?.blockers.length ? 'warning' : 'success'">
+      <template #actions><NuxtLink to="/admin/app/audit/integrity" class="inline-flex min-h-11 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">返回完整性状态</NuxtLink><button type="button" class="inline-flex min-h-11 items-center justify-center rounded-[10px] bg-[#d63363] px-5 text-sm font-medium text-white" @click="startNewAction">登记前置 Action</button></template>
+    </AdminAppPageHeader>
 
     <p v-if="errorMessage" class="break-words rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ errorMessage }}</p>
     <p v-if="successMessage" class="break-words rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-700">{{ successMessage }}</p>

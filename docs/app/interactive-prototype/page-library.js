@@ -33,6 +33,7 @@
     currentId: requestedPage ? requestedPage.id : "APP-AUTH-01",
     platform: requestedPage ? requestedPage.platform : "mobile",
     currentState: params.get("state") || null,
+    legalDocument: "terms",
     search: "",
     completed: new Set(),
     toggles: new Set(["个性化推荐", "保存浏览历史", "消息通知", "互动通知"])
@@ -154,11 +155,48 @@
 
   function renderAuth(page) {
     const isRegister = page.id === "APP-AUTH-03";
-    return phoneShell(page, `<div class="library-scroll"><div class="auth-hero"><span class="welcome-logo">M</span><h2>${isRegister ? "创建观看者账号" : "欢迎回来"}</h2><p>${isRegister ? "注册不会创建公开真人资料" : "登录后继续浏览已认证真人资料"}</p></div>${stateNotice(page)}<div class="library-form"><label><span>手机号</span><div class="form-field">${icon("user")}<input value="138 0013 8000" aria-label="手机号" /></div></label><label><span>验证码</span><div class="form-field">${icon("lock")}<input value="2468" aria-label="验证码" /><button type="button" data-action="secondary">重新获取</button></div></label>${isRegister ? `<label class="check-row"><input type="checkbox" checked />我已阅读用户协议与隐私政策</label>` : ""}${primaryButton(page)}<button type="button" class="secondary-button" data-action="secondary">需要帮助</button></div><div class="auth-boundary">账号身份：观看者<br />不会进入真人推荐列表</div></div>`);
+    const registrationCode = isRegister ? `<label><span>邮箱验证码</span><div class="form-field">${icon("lock")}<input value="582914" inputmode="numeric" aria-label="邮箱验证码" /><button type="button" data-action="secondary">重新获取</button></div></label>` : "";
+    const consent = isRegister ? `<label class="check-row"><input type="checkbox" checked />我已逐项阅读并同意当前四类生效文档</label>` : "";
+    return phoneShell(page, `<div class="library-scroll"><div class="auth-hero"><span class="welcome-logo">M</span><h2>${isRegister ? "创建观看者账号" : "欢迎回来"}</h2><p>${isRegister ? "验证邮箱并设置密码；注册不会创建公开真人资料" : "使用已验证邮箱和密码登录观看者账号"}</p></div>${stateNotice(page)}<div class="library-form"><label><span>邮箱</span><div class="form-field">${icon("mail")}<input value="viewer@example.com" inputmode="email" aria-label="邮箱" /></div></label><label><span>密码</span><div class="form-field">${icon("lock")}<input value="password" type="password" aria-label="密码" /></div></label>${registrationCode}${consent}${primaryButton(page)}<button type="button" class="secondary-button" data-action="secondary">${isRegister ? "逐项查看四份当前文档" : "需要帮助"}</button></div><div class="auth-boundary">账号身份：观看者<br />不会进入真人推荐列表</div></div>`);
   }
 
   function renderChallenge(page) {
-    return phoneShell(page, `<div class="library-scroll">${mobileHeader(page.name, { caption: "账号安全" })}${stateNotice(page)}<section class="security-illustration">${icon("shield-check")}<h2>确认是你本人操作</h2><p>检测到新设备登录，需要完成短信二次验证。</p></section><div class="code-boxes"><span>2</span><span>4</span><span>6</span><span>8</span></div><div class="security-meta"><span>验证码发送至</span><strong>138 **** 8000</strong></div>${primaryButton(page)}<button class="secondary-button" type="button" data-action="secondary">60 秒后重新发送</button></div>`);
+    const value = selectedState(page);
+    const failed = value === "失败";
+    const limited = value === "次数限制";
+    const content = limited
+      ? {
+          title: "暂时不能继续验证",
+          description: "服务端已限制当前挑战频率，原操作未执行。",
+          boundary: "为保护服务，当前挑战已暂停。请按服务端返回的时间稍后重试。",
+          panelTitle: "验证暂时不可用",
+          panelMessage: "挑战频率已受服务端限制，不会自动绕过或使用旧 token。",
+          left: "可重试时间由服务端返回",
+          right: "请稍后重试",
+          primary: "暂时不可验证"
+        }
+      : failed
+        ? {
+            title: "安全验证未完成",
+            description: "原操作尚未执行，可重新加载受控验证页。",
+            boundary: "本次挑战未通过；不会恢复账号权限或重新触发原操作。",
+            panelTitle: "验证页未完成",
+            panelMessage: "网络异常、取消或挑战失败；重新加载不会执行原操作。",
+            left: "原操作未执行",
+            right: "可以安全重试",
+            primary: "重新加载验证"
+          }
+        : {
+            title: "完成人机安全验证",
+            description: "完成 Cloudflare Turnstile 后，将自动继续原操作。",
+            boundary: "用于拦截自动化滥用，不确认真实身份、不读取短信，也不会创建公开资料。",
+            panelTitle: "请在此区域完成验证",
+            panelMessage: "实际验证组件由 Cloudflare 渲染；完成后自动返回 App。",
+            left: "验证完成后将自动继续",
+            right: "不保存 token",
+            primary: "等待验证完成…"
+          };
+    return phoneShell(page, `<div class="library-scroll challenge-screen">${mobileHeader(page.name, { caption: "账号安全", action: "安全验证", actionIcon: "shield-check" })}<div class="challenge-identity"><i></i>APP-AUTH-04 · /auth/challenge</div><div class="challenge-heading"><h2>${content.title}</h2><span class="${failed ? "failed" : ""}">${value}</span></div><p class="challenge-description">${content.description}</p><div class="challenge-boundary ${failed ? "failed" : ""}">${icon("shield-check")}<div><strong>为什么需要验证</strong><span>${content.boundary}</span></div></div><section class="challenge-platform"><small>Cloudflare Turnstile 安全验证</small><h3>平台受控验证页</h3><div>${icon("shield-check")}<strong>${content.panelTitle}</strong><span>${content.panelMessage}</span></div></section><div class="challenge-meta"><span>${content.left}</span><strong>${content.right}</strong></div><button type="button" class="primary-button challenge-primary ${!failed ? "disabled" : ""}" data-action="${failed ? "secondary" : "noop"}" ${!failed ? "disabled" : ""}>${content.primary}</button><button class="challenge-cancel" type="button" data-action="previous-page">${icon("log-out")}取消并返回</button></div>`);
   }
 
   function renderPreferences(page) {
@@ -167,7 +205,22 @@
   }
 
   function renderDocument(page) {
-    return phoneShell(page, `<div class="library-scroll document-screen">${mobileHeader(page.name, { caption: "版本 2026-07-23" })}${stateNotice(page)}<div class="document-meta"><span>当前生效版本</span><strong>更新时间：2026-07-23</strong></div><h2>MeiGallery 用户协议</h2><p>欢迎使用 MeiGallery。本服务用于浏览经过平台审核和授权的写真、时尚、生活及艺术内容。</p><h3>账号与身份</h3><p>普通用户注册后为观看者。公开真人资料由管理员依据授权素材创建、认证并发布。</p><h3>平台话题</h3><p>当前话题由平台运营团队接收与处理，不代表真人本人在线、查看或亲自回复。</p><h3>会员与金币</h3><p>App 1.0 不提供在线支付、金币购买、充值、消费、兑换、转账或提现入口。</p>${primaryButton(page)}</div>`);
+    const documentMap = {
+      terms: ["服务条款", "1. 注册只创建观看者账号，不创建公开真人资料。\n2. 公开真人资料仅由管理员依据授权创建、认证和发布。\n3. 仅有效会员可发起平台话题；由平台运营接收，不代表真人本人查看或回复。\n4. App 1.0 不提供在线支付；管理员金币调整必须留存原因和明细。"],
+      privacy: ["隐私政策", "1. 观看者账号资料保持私有，不会自动转为公开真人资料。\n2. 推荐使用用户选择的地区、热度和偏好，不采集精确位置。\n3. Turnstile token 仅在当前操作内存中使用，不读取手机号或短信。\n4. 受保护媒体始终由服务端校验权限并签发短期访问凭证。"],
+      platform: ["平台运营说明", "1. 公开真人资料由管理员依据授权素材创建、认证和维护。\n2. 用户消息由平台运营接收与处理，不代表真人本人在线或亲自回复。\n3. 只有有效会员可以发起平台话题，不要求双方同意。\n4. 举报、申诉和金币调整均按稳定对象记录并保留可见明细。"],
+      eligibility: ["必要资格说明", "1. 服务地区和必要资格以服务端当前政策与生效正文为准。\n2. 观看者注册不会获得公开真人身份或资料发布资格。\n3. 平台仅展示合法、非露骨且具有明确授权来源的内容。\n4. 用户不得冒充真人、绕过权限或将平台回复描述为真人本人回复。"]
+    };
+    const active = documentMap[state.legalDocument] || documentMap.terms;
+    const current = selectedState(page);
+    const failed = current === "加载失败";
+    const updated = current === "版本更新";
+    const tabs = Object.entries(documentMap).map(([key, item]) => `<button type="button" class="legal-document-tab ${key === state.legalDocument ? "active" : ""}" data-action="select-legal-document" data-document="${key}">${item[0]}</button>`).join("");
+    const status = failed ? "加载失败" : updated ? "版本更新" : "正常";
+    const description = failed ? "当前未取得完整生效正文，不能继续同意。" : updated ? "当前生效版本已更新，请阅读最新正文后再返回确认。" : "完整正文、版本和更新时间可追溯；以服务端当前生效内容为准。";
+    const notice = failed ? `<div class="legal-document-notice">${icon("alert-circle")}<span><strong>同意操作已关闭</strong><small>不会使用空白、缓存残片或旧版本替代完整正文。</small></span></div>` : updated ? `<div class="legal-document-notice">${icon("file-description")}<span><strong>旧版确认已失效</strong><small>请阅读完整新正文；返回后需重新确认四类当前文档。</small></span></div>` : "";
+    const body = failed ? `<article class="legal-document-card legal-document-error">${icon("alert-circle")}<h3>${active[0]}暂时无法加载</h3><p>尚未取得${active[0]}当前完整正文，不能用空白、缓存残片或旧版本代替。</p><button type="button" class="secondary-button" data-action="reset-page">重新加载</button></article>` : `<article class="legal-document-card"><h3>MeiGallery ${active[0]}</h3><small>生效版本 ${updated ? "v1.1 · 更新于 2026-08-11" : "v1.0 · 更新于 2026-07-30"}</small><p>${active[1].split("\n").map(escapeHtml).join("<br />")}</p></article>`;
+    return phoneShell(page, `<div class="library-scroll legal-document-screen">${mobileHeader("条款与隐私", { caption: "APP-AUTH-06 · /legal/{document}" })}<div class="legal-title-row"><h2>${failed ? "文档加载失败" : active[0]}</h2><span>${status}</span></div><p class="legal-description">${description}</p>${notice}<div class="legal-document-tabs">${tabs}</div>${body}<button type="button" class="page-primary-action ${failed ? "disabled" : ""}" ${failed ? "disabled" : ""} data-action="previous-page">${failed ? "正文不可用" : "返回原页面"}</button>${failed ? `<button type="button" class="legal-return-action" data-action="previous-page">${icon("log-out")}返回原页面</button>` : ""}</div>`);
   }
 
   function renderDiscover(page) {
@@ -731,6 +784,7 @@
         break;
       case "secondary": showToast("次要操作已触发；原型保留当前页面便于继续评审"); break;
       case "toggle-choice": target.classList.toggle("selected"); break;
+      case "select-legal-document": state.legalDocument = target.dataset.document || "terms"; render(); break;
       case "toggle-setting": {
         const key = target.dataset.setting;
         if (state.toggles.has(key)) state.toggles.delete(key); else state.toggles.add(key);

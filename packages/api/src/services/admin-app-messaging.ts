@@ -19,6 +19,11 @@ import {
 import { getAppMessagingRuntimeControl } from './app-safety'
 import { requireAppOperationalControlAvailable } from './app-operational-safety'
 import {
+  evaluateAppMessageModeration,
+  prepareAppMessageModerationStatements,
+  type AppMessageModerationRuntimeContext,
+} from './app-message-moderation'
+import {
   resolveConversationRoutingClaimAccesses,
   shanghaiClock,
   type ConversationRoutingClaimAccess,
@@ -129,6 +134,9 @@ type AdminConversationRow = {
   last_message_at: string
   created_at: string
   updated_at: string
+  visible_last_sequence: number
+  visible_last_message_at: string
+  visible_updated_at: string
   unread_count: number
   assigned_admin_id: number | null
   assignment_status: string | null
@@ -193,6 +201,13 @@ export async function listAdminAppConversations(
            conversation.viewer_read_sequence, conversation.operator_read_sequence,
            conversation.last_message_at, conversation.created_at,
            conversation.updated_at,
+           COALESCE((
+             SELECT MAX(message.sequence) FROM app_conversation_messages message
+             WHERE message.conversation_id = conversation.id
+               AND message.status IN ('accepted', 'recalled')
+           ), 0) AS visible_last_sequence,
+           conversation.last_message_at AS visible_last_message_at,
+           conversation.updated_at AS visible_updated_at,
            assignment.assigned_admin_id,
            assignment.status AS assignment_status,
            assignment.version AS assignment_version,
@@ -201,6 +216,7 @@ export async function listAdminAppConversations(
              SELECT COUNT(*) FROM app_conversation_messages message
              WHERE message.conversation_id = conversation.id
                AND message.sender_type = 'viewer'
+               AND message.status = 'accepted'
                AND message.sequence > conversation.operator_read_sequence
            ) AS unread_count
     FROM app_conversations conversation
@@ -212,7 +228,7 @@ export async function listAdminAppConversations(
     WHERE 1 = 1 ${condition}
     ORDER BY
       CASE conversation.queue_status WHEN 'awaiting_operator' THEN 0 WHEN 'awaiting_viewer' THEN 1 ELSE 2 END,
-      conversation.updated_at ASC,
+      visible_updated_at ASC,
       conversation.id ASC
     LIMIT ?
   `).bind(...params, query.limit).all<AdminConversationRow>()
@@ -273,6 +289,7 @@ export async function listAdminAppConversationMessages(
            actor_account_id, actor_admin_id, created_at
     FROM app_conversation_messages
     WHERE conversation_id = ? AND sequence > ?
+      AND status IN ('accepted', 'recalled')
     ORDER BY sequence ASC
     LIMIT ?
   `).bind(conversationId, query.afterSequence, query.limit + 1).all<Parameters<typeof mapAppConversationMessage>[0]>()
@@ -307,7 +324,7 @@ export async function auditAdminAppConversationAccess(
     JSON.stringify({
       accessReason: ACCESS_REASON,
       requestId,
-      lastSequence: conversation.last_sequence,
+      lastSequence: conversation.visible_last_sequence,
     }),
     now.toISOString(),
   ).run()
@@ -328,7 +345,7 @@ export async function markAdminAppConversationRead(
   }
   const conversation = await findConversationForAdmin(db, conversationId)
   if (!conversation) throw conversationNotFound()
-  if (sequence > conversation.last_sequence) {
+  if (sequence > conversation.visible_last_sequence) {
     throw new AppMessagingError(400, 'INVALID_SEQUENCE', '已读 sequence 超出当前会话范围')
   }
   const readSequence = Math.max(conversation.operator_read_sequence, sequence)
@@ -362,6 +379,10 @@ export async function sendAdminAppConversationMessage(
   idempotencyKeyValue: string | null,
   body: AdminSendAppMessageInput,
   now = new Date(),
+  moderationContext: AppMessageModerationRuntimeContext = {
+    policyId: null,
+    requireProductionReady: false,
+  },
 ): Promise<{ message: AppConversationMessage; replayed: boolean }> {
   const conversationId = normalizeConversationId(conversationIdValue)
   const clientMessageId = normalizeClientMessageId(body.clientMessageId)
@@ -414,6 +435,13 @@ export async function sendAdminAppConversationMessage(
   const conversation = await findConversationForAdmin(db, conversationId)
   if (!conversation) throw conversationNotFound()
   assertAdminConversationWritable(conversation)
+  const moderation = await evaluateAppMessageModeration(
+    db,
+    moderationContext,
+    'platform_operator',
+    text,
+    now,
+  )
   const nowIso = now.toISOString()
   const recentBoundary = new Date(now.getTime() - 60_000).toISOString()
   const messageId = prefixedId('msg')
@@ -428,7 +456,7 @@ export async function sendAdminAppConversationMessage(
           actor_account_id, actor_admin_id, created_at, recalled_at
         )
         SELECT ?, conversation.id, conversation.last_sequence + 1,
-               'platform_operator', ?, 'text', ?, ?, 'accepted', NULL, ?, ?, NULL
+               'platform_operator', ?, 'text', ?, ?, ?, NULL, ?, ?, NULL
         FROM app_conversations conversation
         JOIN app_account_security security ON security.account_id = conversation.account_id
         JOIN profile_public_projections projection ON projection.profile_id = conversation.profile_id
@@ -469,6 +497,7 @@ export async function sendAdminAppConversationMessage(
         clientMessageId,
         text,
         bodyHash,
+        moderation.status,
         adminId,
         nowIso,
         conversationId,
@@ -481,6 +510,7 @@ export async function sendAdminAppConversationMessage(
         recentBoundary,
         OPERATOR_MESSAGES_PER_MINUTE,
       ),
+      ...prepareAppMessageModerationStatements(db, moderation, messageId),
       db.prepare(`
         INSERT INTO app_conversation_operator_message_facts (
           message_id, conversation_id, profile_id, group_id,
@@ -541,12 +571,22 @@ export async function sendAdminAppConversationMessage(
         UPDATE app_conversations
         SET last_sequence = (SELECT sequence FROM app_conversation_messages WHERE id = ?),
             operator_read_sequence = (SELECT sequence FROM app_conversation_messages WHERE id = ?),
-            last_message_at = ?,
-            queue_status = 'awaiting_viewer',
-            updated_at = ?
+            last_message_at = CASE WHEN ? = 'accepted' THEN ? ELSE last_message_at END,
+            queue_status = CASE WHEN ? = 'accepted' THEN 'awaiting_viewer' ELSE queue_status END,
+            updated_at = CASE WHEN ? = 'accepted' THEN ? ELSE updated_at END
         WHERE id = ?
           AND EXISTS (SELECT 1 FROM app_conversation_messages WHERE id = ?)
-      `).bind(messageId, messageId, nowIso, nowIso, conversationId, messageId),
+      `).bind(
+        messageId,
+        messageId,
+        moderation.status,
+        nowIso,
+        moderation.status,
+        moderation.status,
+        nowIso,
+        conversationId,
+        messageId,
+      ),
       db.prepare(`
         INSERT INTO app_messaging_idempotency (
           actor_scope, operation, idempotency_key, request_hash,
@@ -572,6 +612,8 @@ export async function sendAdminAppConversationMessage(
           senderType: 'platform_operator',
           bodySha256: bodyHash,
           bodyLength: text.length,
+          moderationStatus: moderation.status,
+          moderationCaseId: moderation.caseId,
         }),
         nowIso,
         messageId,
@@ -740,6 +782,7 @@ export async function claimAdminAppConversation(
                    SELECT 1 FROM app_conversation_messages response
                    WHERE response.conversation_id = assignment.conversation_id
                      AND response.sender_type = 'platform_operator'
+                     AND response.status = 'accepted'
                  ) THEN 0 ELSE 1 END,
                  (
                    SELECT COUNT(*) FROM app_conversation_assignment_state operator_assignment
@@ -1351,6 +1394,7 @@ function routingClaimWriteGate(
             SELECT 1 FROM app_conversation_messages response
             WHERE response.conversation_id = routed_conversation.id
               AND response.sender_type = 'platform_operator'
+              AND response.status = 'accepted'
           )
           OR (
             (
@@ -1487,6 +1531,13 @@ async function getAdminConversationRow(
            conversation.viewer_read_sequence, conversation.operator_read_sequence,
            conversation.last_message_at, conversation.created_at,
            conversation.updated_at,
+           COALESCE((
+             SELECT MAX(message.sequence) FROM app_conversation_messages message
+             WHERE message.conversation_id = conversation.id
+               AND message.status IN ('accepted', 'recalled')
+           ), 0) AS visible_last_sequence,
+           conversation.last_message_at AS visible_last_message_at,
+           conversation.updated_at AS visible_updated_at,
            assignment.assigned_admin_id,
            assignment.status AS assignment_status,
            assignment.version AS assignment_version,
@@ -1495,6 +1546,7 @@ async function getAdminConversationRow(
              SELECT COUNT(*) FROM app_conversation_messages message
              WHERE message.conversation_id = conversation.id
                AND message.sender_type = 'viewer'
+               AND message.status = 'accepted'
                AND message.sequence > conversation.operator_read_sequence
            ) AS unread_count
     FROM app_conversations conversation
@@ -1550,10 +1602,10 @@ function mapAdminConversationSummary(
       claimAccess: routingAccess?.status ?? 'legacy_unscoped',
     },
     unreadViewerCount: Math.max(0, Number(row.unread_count)),
-    lastSequence: Number(row.last_sequence),
-    lastMessageAt: row.last_message_at,
+    lastSequence: Number(row.visible_last_sequence),
+    lastMessageAt: row.visible_last_message_at,
     createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    updatedAt: row.visible_updated_at,
   }
 }
 

@@ -187,6 +187,8 @@ TURNSTILE_SECRET_KEY=<对应 Secret>
 
 任一必要值缺失或非法时 bootstrap 必须保持 `auth=false`。production 文档入口只接受无账号密码、无 fragment 的 HTTPS URL；本地调试才允许 localhost、127.0.0.1 和 Android 模拟器 `10.0.2.2` 的 HTTP URL。production 继续显式设置 `APP_AUTH_ENABLED=false` 和 `APP_AUTH_REGISTRATION_ENABLED=false`；不得仅为联调修改 production 值。`0069_app_account_access.sql` 在正式身份数据接入前仍需生产备份、隐私/保留期评审和独立 migration 授权。
 
+Account/Settings-2 预留三个非敏感运行开关：`APP_ACCOUNT_PROFILE_ENABLED`、`APP_INITIAL_PREFERENCES_ENABLED`、`APP_CONVERSATION_SETTINGS_ENABLED`。它们当前不写入 Wrangler，未配置即按 `false` 处理；只有 `0095_app_account_profile_and_conversation_settings.sql` 在目标环境完成迁移、依赖的 Auth/Taxonomy/Recommendation/Messaging 能力可用，并通过专项验收后，才在配置阶段逐项加入。bootstrap 与对应私有路由会再次检查依赖，不能通过只设置单一开关绕过底层能力门禁。
+
 dev 当前只为 Safety-2 联调开放已有测试会话所需的 Auth、举报与申诉能力；注册、会员、消息以及全部 production-ready 门禁继续关闭。四类开发文档暂统一指向 dev Web `/rules`，版本为 `dev-rules-2026-08-07`，不得复制到 production。部署后执行：
 
 ```bash

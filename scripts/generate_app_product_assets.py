@@ -113,7 +113,7 @@ def generate_page_capture_comparison(reference: Path) -> Path:
     mobile = PAGE_ASSET_DIR / "mobile/app-dsc-01__default.png"
     admin = PAGE_ASSET_DIR / "admin/adm-ov-01__default.png"
     if not mobile.exists() or not admin.exists():
-        raise FileNotFoundError("缺少逐页原型代表截图，请先完成 146 张截图生成")
+        raise FileNotFoundError("缺少逐页原型代表截图，请先完成 156 张基础截图生成")
 
     canvas = Image.new("RGB", (2400, 1480), "#f1f2f5")
     draw = ImageDraw.Draw(canvas)

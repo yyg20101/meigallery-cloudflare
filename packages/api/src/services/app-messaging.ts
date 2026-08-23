@@ -19,6 +19,10 @@ import {
   isAppProfileBlocked,
   type AppMessagingRuntimeControl,
 } from './app-safety'
+import {
+  evaluateAppMessageModeration,
+  prepareAppMessageModerationStatements,
+} from './app-message-moderation'
 
 export const APP_MESSAGE_1_CATALOG_ID = 'amc_app_1_0_message_1_dev_1'
 export const APP_MESSAGING_DISCLOSURE_VERSION = 'managed_message_1'
@@ -46,6 +50,7 @@ export interface AppMessagingRuntimeConfig {
   catalogVersionId: string | null
   disclosureVersion: string
   requireProductionReady: boolean
+  moderationPolicyId: string | null
 }
 
 export interface AppConversationListQuery {
@@ -101,6 +106,9 @@ type ConversationRow = {
   last_message_at: string
   created_at: string
   updated_at: string
+  visible_last_sequence: number
+  visible_last_message_at: string
+  visible_updated_at: string
   unread_count: number
   blocked: number
 }
@@ -149,6 +157,7 @@ export function getAppMessagingRuntimeConfig(env: Pick<Bindings,
   | 'APP_MESSAGING_ADMIN_ENABLED'
   | 'APP_MESSAGING_DISCLOSURE_VERSION'
   | 'APP_MESSAGING_PRODUCTION_READY'
+  | 'APP_MESSAGE_MODERATION_POLICY_VERSION'
   | 'APP_SAFETY_ENABLED'
   | 'APP_SAFETY_ADMIN_ENABLED'
   | 'APP_SAFETY_REASON_CATALOG_VERSION'
@@ -173,6 +182,7 @@ export function getAppMessagingRuntimeConfig(env: Pick<Bindings,
     catalogVersionId: membership.catalogVersionId,
     disclosureVersion: disclosureVersion ?? APP_MESSAGING_DISCLOSURE_VERSION,
     requireProductionReady,
+    moderationPolicyId: env.APP_MESSAGE_MODERATION_POLICY_VERSION?.trim() || null,
   }
 }
 
@@ -537,30 +547,54 @@ export async function listAppConversations(
   now = new Date(),
   requireProductionReady = false,
 ): Promise<{ data: AppConversationSummary[]; nextCursor: string | null; hasMore: boolean }> {
-  const conditions = ['account_id = ?']
   const params: unknown[] = [accountId]
+  const cursorCondition = query.cursor
+    ? 'WHERE (visible_updated_at < ? OR (visible_updated_at = ? AND id > ?))'
+    : ''
   if (query.cursor) {
-    conditions.push('(updated_at < ? OR (updated_at = ? AND id > ?))')
     params.push(query.cursor.updatedAt, query.cursor.updatedAt, query.cursor.conversationId)
   }
   const result = await db.prepare(`
-    SELECT c.*,
-      (
-        SELECT COUNT(*)
-        FROM app_conversation_messages message
-        WHERE message.conversation_id = c.id
-          AND message.sender_type = 'platform_operator'
-          AND message.sequence > c.viewer_read_sequence
-      ) AS unread_count,
-      EXISTS (
-        SELECT 1 FROM app_profile_blocks block
-        WHERE block.account_id = c.account_id
-          AND block.profile_id = c.profile_id
-          AND block.state = 'blocked'
-      ) AS blocked
-    FROM app_conversations c
-    WHERE ${conditions.join(' AND ')}
-    ORDER BY updated_at DESC, id ASC
+    WITH projected AS (
+      SELECT c.*,
+        (
+          SELECT COUNT(*)
+          FROM app_conversation_messages message
+          WHERE message.conversation_id = c.id
+            AND message.sender_type = 'platform_operator'
+            AND message.status = 'accepted'
+            AND message.sequence > c.viewer_read_sequence
+        ) AS unread_count,
+        EXISTS (
+          SELECT 1 FROM app_profile_blocks block
+          WHERE block.account_id = c.account_id
+            AND block.profile_id = c.profile_id
+            AND block.state = 'blocked'
+        ) AS blocked,
+        COALESCE((
+          SELECT MAX(message.sequence)
+          FROM app_conversation_messages message
+          WHERE message.conversation_id = c.id
+            AND (message.sender_type = 'viewer' OR message.status IN ('accepted', 'recalled'))
+        ), 0) AS visible_last_sequence,
+        MAX(c.last_message_at, COALESCE((
+          SELECT MAX(message.created_at)
+          FROM app_conversation_messages message
+          WHERE message.conversation_id = c.id
+            AND (message.sender_type = 'viewer' OR message.status IN ('accepted', 'recalled'))
+        ), c.created_at)) AS visible_last_message_at,
+        MAX(c.updated_at, COALESCE((
+          SELECT MAX(message.created_at)
+          FROM app_conversation_messages message
+          WHERE message.conversation_id = c.id
+            AND (message.sender_type = 'viewer' OR message.status IN ('accepted', 'recalled'))
+        ), c.created_at)) AS visible_updated_at
+      FROM app_conversations c
+      WHERE c.account_id = ?
+    )
+    SELECT * FROM projected
+    ${cursorCondition}
+    ORDER BY visible_updated_at DESC, id ASC
     LIMIT ?
   `).bind(...params, query.limit + 1).all<ConversationRow>()
 
@@ -576,7 +610,7 @@ export async function listAppConversations(
       ? encodeBase64Url(JSON.stringify({
           v: 1,
           accountScope: accountPublicId,
-          updatedAt: last.updated_at,
+          updatedAt: last.visible_updated_at,
           conversationId: last.id,
         }))
       : null,
@@ -624,6 +658,7 @@ export async function listAppConversationMessages(
            actor_account_id, actor_admin_id, created_at
     FROM app_conversation_messages
     WHERE conversation_id = ? AND sequence > ?
+      AND (sender_type = 'viewer' OR status IN ('accepted', 'recalled'))
     ORDER BY sequence ASC
     LIMIT ?
   `).bind(conversationId, query.afterSequence, query.limit + 1).all<AppConversationMessageRow>()
@@ -645,6 +680,7 @@ export async function sendAppViewerMessage(
   input: SendAppMessageInput,
   now = new Date(),
   requireProductionReady = false,
+  moderationPolicyId: string | null = null,
 ): Promise<{ message: AppConversationMessage; replayed: boolean }> {
   const conversationId = normalizeConversationId(conversationIdValue)
   const clientMessageId = normalizeClientMessageId(input.clientMessageId)
@@ -690,6 +726,13 @@ export async function sendAppViewerMessage(
   if (runtimeControl.viewerSendsPaused) {
     throw new AppMessagingError(503, 'MESSAGING_PAUSED', runtimeControl.userVisibleMessage, true)
   }
+  const moderation = await evaluateAppMessageModeration(
+    db,
+    { policyId: moderationPolicyId, requireProductionReady },
+    'viewer',
+    text,
+    now,
+  )
   const nowIso = now.toISOString()
   const recentBoundary = new Date(now.getTime() - 60_000).toISOString()
   const messageId = prefixedId('msg')
@@ -703,7 +746,7 @@ export async function sendAppViewerMessage(
           actor_account_id, actor_admin_id, created_at, recalled_at
         )
         SELECT ?, conversation.id, conversation.last_sequence + 1, 'viewer', ?,
-               'text', ?, ?, 'accepted', ?, NULL, ?, NULL
+               'text', ?, ?, ?, ?, NULL, ?, NULL
         FROM app_conversations conversation
         JOIN profile_public_projections profile ON profile.profile_id = conversation.profile_id
         JOIN galleries gallery ON gallery.id = profile.source_gallery_id
@@ -755,6 +798,7 @@ export async function sendAppViewerMessage(
         clientMessageId,
         text,
         bodyHash,
+        moderation.status,
         accountId,
         nowIso,
         entitlement.grantId,
@@ -770,17 +814,27 @@ export async function sendAppViewerMessage(
         recentBoundary,
         VIEWER_MESSAGES_PER_MINUTE,
       ),
+      ...prepareAppMessageModerationStatements(db, moderation, messageId),
       db.prepare(`
         UPDATE app_conversations
         SET last_sequence = (
               SELECT sequence FROM app_conversation_messages WHERE id = ?
             ),
-            last_message_at = ?,
-            queue_status = 'awaiting_operator',
-            updated_at = ?
+            last_message_at = CASE WHEN ? = 'accepted' THEN ? ELSE last_message_at END,
+            queue_status = CASE WHEN ? = 'accepted' THEN 'awaiting_operator' ELSE queue_status END,
+            updated_at = CASE WHEN ? = 'accepted' THEN ? ELSE updated_at END
         WHERE id = ?
           AND EXISTS (SELECT 1 FROM app_conversation_messages WHERE id = ?)
-      `).bind(messageId, nowIso, nowIso, conversationId, messageId),
+      `).bind(
+        messageId,
+        moderation.status,
+        nowIso,
+        moderation.status,
+        moderation.status,
+        nowIso,
+        conversationId,
+        messageId,
+      ),
       db.prepare(`
         INSERT INTO app_messaging_idempotency (
           actor_scope, operation, idempotency_key, request_hash,
@@ -831,7 +885,7 @@ export async function markAppConversationRead(
   }
   const conversation = await findConversationById(db, accountId, conversationId)
   if (!conversation) throw conversationNotFound()
-  if (sequence > conversation.last_sequence) {
+  if (sequence > conversation.visible_last_sequence) {
     throw new AppMessagingError(400, 'INVALID_SEQUENCE', '已读 sequence 超出当前会话范围')
   }
   const readSequence = Math.max(conversation.viewer_read_sequence, sequence)
@@ -968,6 +1022,7 @@ export async function findConversationForAdmin(
         SELECT COUNT(*) FROM app_conversation_messages message
         WHERE message.conversation_id = c.id
           AND message.sender_type = 'viewer'
+          AND message.status = 'accepted'
           AND message.sequence > c.operator_read_sequence
       ) AS unread_count,
       EXISTS (
@@ -975,7 +1030,14 @@ export async function findConversationForAdmin(
         WHERE block.account_id = c.account_id
           AND block.profile_id = c.profile_id
           AND block.state = 'blocked'
-      ) AS blocked
+      ) AS blocked,
+      COALESCE((
+        SELECT MAX(message.sequence) FROM app_conversation_messages message
+        WHERE message.conversation_id = c.id
+          AND message.status IN ('accepted', 'recalled')
+      ), 0) AS visible_last_sequence,
+      c.last_message_at AS visible_last_message_at,
+      c.updated_at AS visible_updated_at
     FROM app_conversations c
     WHERE c.id = ?
     LIMIT 1
@@ -1344,15 +1406,15 @@ function mapConversation(
     disclosureText: APP_MESSAGING_DISCLOSURE_TEXT,
     status,
     queueStatus,
-    lastSequence: Number(row.last_sequence),
+    lastSequence: Number(row.visible_last_sequence),
     unreadCount: Math.max(0, Number(row.unread_count)),
     canSend: status === 'active' && row.blocked !== 1 && profileAvailable && sendState.allowed,
     sendUnavailableReason: statusReason,
     canClose: status !== 'closed',
     closeUnavailableReason: status === 'closed' ? '话题已关闭' : null,
-    lastMessageAt: row.last_message_at,
+    lastMessageAt: row.visible_last_message_at,
     createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    updatedAt: row.visible_updated_at,
   }
 }
 
@@ -1400,6 +1462,7 @@ async function findConversationByProfile(
         SELECT COUNT(*) FROM app_conversation_messages message
         WHERE message.conversation_id = c.id
           AND message.sender_type = 'platform_operator'
+          AND message.status = 'accepted'
           AND message.sequence > c.viewer_read_sequence
       ) AS unread_count,
       EXISTS (
@@ -1407,7 +1470,22 @@ async function findConversationByProfile(
         WHERE block.account_id = c.account_id
           AND block.profile_id = c.profile_id
           AND block.state = 'blocked'
-      ) AS blocked
+      ) AS blocked,
+      COALESCE((
+        SELECT MAX(message.sequence) FROM app_conversation_messages message
+        WHERE message.conversation_id = c.id
+          AND (message.sender_type = 'viewer' OR message.status IN ('accepted', 'recalled'))
+      ), 0) AS visible_last_sequence,
+      MAX(c.last_message_at, COALESCE((
+        SELECT MAX(message.created_at) FROM app_conversation_messages message
+        WHERE message.conversation_id = c.id
+          AND (message.sender_type = 'viewer' OR message.status IN ('accepted', 'recalled'))
+      ), c.created_at)) AS visible_last_message_at,
+      MAX(c.updated_at, COALESCE((
+        SELECT MAX(message.created_at) FROM app_conversation_messages message
+        WHERE message.conversation_id = c.id
+          AND (message.sender_type = 'viewer' OR message.status IN ('accepted', 'recalled'))
+      ), c.created_at)) AS visible_updated_at
     FROM app_conversations c
     WHERE c.account_id = ? AND c.profile_id = ?
     LIMIT 1
@@ -1425,6 +1503,7 @@ async function findConversationById(
         SELECT COUNT(*) FROM app_conversation_messages message
         WHERE message.conversation_id = c.id
           AND message.sender_type = 'platform_operator'
+          AND message.status = 'accepted'
           AND message.sequence > c.viewer_read_sequence
       ) AS unread_count,
       EXISTS (
@@ -1432,7 +1511,22 @@ async function findConversationById(
         WHERE block.account_id = c.account_id
           AND block.profile_id = c.profile_id
           AND block.state = 'blocked'
-      ) AS blocked
+      ) AS blocked,
+      COALESCE((
+        SELECT MAX(message.sequence) FROM app_conversation_messages message
+        WHERE message.conversation_id = c.id
+          AND (message.sender_type = 'viewer' OR message.status IN ('accepted', 'recalled'))
+      ), 0) AS visible_last_sequence,
+      MAX(c.last_message_at, COALESCE((
+        SELECT MAX(message.created_at) FROM app_conversation_messages message
+        WHERE message.conversation_id = c.id
+          AND (message.sender_type = 'viewer' OR message.status IN ('accepted', 'recalled'))
+      ), c.created_at)) AS visible_last_message_at,
+      MAX(c.updated_at, COALESCE((
+        SELECT MAX(message.created_at) FROM app_conversation_messages message
+        WHERE message.conversation_id = c.id
+          AND (message.sender_type = 'viewer' OR message.status IN ('accepted', 'recalled'))
+      ), c.created_at)) AS visible_updated_at
     FROM app_conversations c
     WHERE c.account_id = ? AND c.id = ?
     LIMIT 1

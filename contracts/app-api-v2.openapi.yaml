@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MeiGallery App API v2
-  version: 1.19.0
+  version: 1.26.0
   description: >-
     App 1.0 的公共发现契约、Auth-1 保守账号访问、Interaction-1 喜欢/关注、Membership-1
     五级会员开发基线、Membership-2 站内申请、Message-1 平台话题 HTTP 权威闭环、Message-2 举报/屏蔽/话题关闭安全闭环与 Safety-2 独立复核申诉。账号能力必须同时具备
@@ -21,7 +21,12 @@ info:
     新增密码二次验证、数据导出/账号注销申请、请求级状态凭证、进度查询和可取消窗口；默认关闭且不生成导出包、不执行不可逆删除。Media-1
     新增复用既有图库素材的人物图片列表、短期会员访问凭证和公开认证范围说明；每次取图都重新核验公开资格，受保护图片不允许持久缓存，视频继续关闭。App Core-1
     新增版本化运行策略、帮助中心、法律文档目录和账号限制摘要；客户端必须在强制升级、维护或地区不可用时停止进入业务页面。
-    系统推送、实时通道、媒体消息、账号/金币申诉和视频播放仍未纳入本次契约。
+    Account/Settings-2 新增观看者私有账号资料、注册后初始偏好能力和单话题免打扰设置；账号资料不会创建、认领或修改公开真人，
+    修改前必须使用当前密码二次验证，免打扰只抑制未来平台回复站内提醒且话题关闭后锁定。Message-4
+    新增默认关闭的账号级 WebSocket 刷新通道：一次性短票据绑定账号、会话与设备，事件只包含刷新范围和游标，业务正文与权限继续由 D1/HTTP 权威读取；断线按有界退避重连并支持游标补偿。系统推送、媒体消息、
+    Account/Settings-3 新增账号限制与金币分录的统一申诉入口；它复用独立复核策略，但不会直接解除限制或改写金币账本。Privacy-2A
+    在默认关闭的治理门禁后新增私有 R2 导出制品、短期一次性下载票据和流式 TAR 下载；它不开放不可逆删除处理器。
+    视频播放仍未纳入本次契约。
 servers:
   - url: https://{host}
     variables:
@@ -43,6 +48,7 @@ tags:
   - name: Membership
   - name: Messaging
   - name: Notification
+  - name: Realtime
   - name: Wallet
   - name: Safety
   - name: DataRights
@@ -52,6 +58,14 @@ paths:
       tags: [Bootstrap]
       operationId: getAppBootstrap
       summary: 获取 App 能力与发现页配置
+      parameters:
+        - name: X-Client-Version
+          in: header
+          required: false
+          description: 缺失或非法时推荐 capability 安全关闭，其他独立能力继续按各自门禁计算。
+          schema:
+            type: string
+            pattern: '^\d{1,5}\.\d{1,5}(?:\.\d{1,5})?$'
       responses:
         '200':
           description: 当前客户端可用能力
@@ -82,6 +96,56 @@ paths:
                 $ref: '#/components/schemas/SupportCenterResponse'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v2/realtime/tickets:
+    post:
+      tags: [Realtime]
+      operationId: createAppRealtimeTicket
+      summary: 为当前账号会话签发一次性实时连接短票据
+      description: >-
+        默认关闭。票据只保存 SHA-256 摘要，绑定当前账号、会话和设备，短期有效且只能消费一次；
+        票据不得写入 URL、日志或持久缓存，也不授予任何业务读取权限。
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: 一次性实时连接票据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeTicketResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/realtime/connect:
+    get:
+      tags: [Realtime]
+      operationId: connectAppRealtime
+      summary: 使用一次性短票据升级到账号级刷新 WebSocket
+      description: >-
+        Authorization 使用 Realtime scheme。服务端只发送 server.ready、refresh.required 与 server.synced；
+        refresh.required 不包含消息、通知、会员、钱包、账号资料、内部 ID 或内部备注，客户端收到后必须重新走已鉴权 HTTP 对账。
+      security:
+        - RealtimeTicketAuth: []
+      responses:
+        '101':
+          description: WebSocket 协议升级成功；后续帧见 RealtimeClientHelloFrame 与 RealtimeServerFrame。
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/taxonomy/catalog:
     get:
       tags: [Taxonomy]
@@ -304,6 +368,62 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/v2/me/account-profile:
+    get:
+      tags: [Account]
+      operationId: getAppAccountProfile
+      summary: 获取观看者私有账号资料
+      description: >-
+        只返回当前观看者账号的私有昵称、受控头像样式和脱敏登录标识；不会创建、认领或修改公开真人资料。
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 当前账号私有资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountProfileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Account]
+      operationId: updateAppAccountProfile
+      summary: 二次验证后更新观看者私有账号资料
+      description: >-
+        使用 expectedVersion 做乐观并发控制；实际修改昵称或头像样式时必须提交当前密码。
+        未提交当前密码返回 428，密码错误返回 403；无变化请求不会推进版本。
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountProfileUpdateRequest'
+      responses:
+        '200':
+          description: 更新后的私有账号资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountProfileResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/me/data-rights:
     get:
       tags: [DataRights]
@@ -475,6 +595,85 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v2/me/data-rights/requests/{requestId}/download-tickets:
+    post:
+      tags: [DataRights]
+      operationId: issueMyDataRightsExportDownloadTicket
+      summary: 为已就绪的本人导出制品签发一次性下载票据
+      description: >-
+        仅接受与当前会话、申请及 export_download 用途绑定的未消费二次验证凭证。相同幂等键只能重放同一张仍有效、
+        尚未消费的票据；票据正文属于敏感凭证，不得写入日志、URL、持久化客户端状态或分析事件。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DataRightsRequestId'
+        - $ref: '#/components/parameters/DataRightsIdempotencyKey'
+        - $ref: '#/components/parameters/DataRightsStepUpToken'
+      responses:
+        '200':
+          description: 返回短期一次性票据；幂等重放通过 data.replayed 标识
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsDownloadTicketResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/data-rights/requests/{requestId}/download:
+    get:
+      tags: [DataRights]
+      operationId: downloadMyDataRightsExport
+      summary: 使用一次性票据流式下载本人 TAR 导出制品
+      description: >-
+        服务端先原子消费票据并重新核验会话、申请版本、制品版本、R2 ETag、长度和摘要快照，再直接流式返回私有 R2 对象。
+        票据消费发生在响应流开始前；网络中断后必须重新验证身份并签发新票据，不能重放旧票据。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DataRightsRequestId'
+        - $ref: '#/components/parameters/DataRightsDownloadTicket'
+      responses:
+        '200':
+          description: 私有 TAR 导出流；响应禁止缓存
+          headers:
+            Cache-Control:
+              description: 固定为 private, no-store, max-age=0。
+              schema:
+                type: string
+                const: private, no-store, max-age=0
+            Content-Disposition:
+              description: 固定安全文件名的附件下载声明。
+              schema:
+                type: string
+                const: 'attachment; filename="meigallery-data-export.tar"'
+            Content-Length:
+              description: 经制品快照核验的完整 TAR 字节数。
+              schema:
+                type: integer
+                minimum: 1
+            X-Data-Rights-Manifest-SHA256:
+              description: manifest.json 的小写十六进制 SHA-256；客户端必须与票据及申请详情一致性核验。
+              schema:
+                type: string
+                pattern: '^[0-9a-f]{64}$'
+          content:
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/me/data-rights/requests/{requestId}/cancel:
     post:
       tags: [DataRights]
@@ -603,7 +802,8 @@ paths:
       summary: 获取本人当前会员与 typed entitlement 快照
       description: >-
         只解析 App 会员 grant；不会自动映射旧 Web vip/svip。权限执行必须同时检查 executable=true，
-        不能根据显示名称或客户端缓存自行放行。
+        不能根据显示名称或客户端缓存自行放行。lifecycle 仅用于呈现当前、即将到期、已到期或已撤销状态；
+        lifecycle.endedGrant 是历史展示信息，绝不能恢复权限或替代顶层 grant/tier。
       security:
         - BearerAuth: []
       responses:
@@ -859,6 +1059,71 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v2/conversations/{conversationId}/settings:
+    get:
+      tags: [Messaging]
+      operationId: getAppConversationSettings
+      summary: 获取本人单个平台话题设置
+      description: >-
+        返回免打扰开关和可编辑状态。免打扰只抑制未来 message.platform_reply 站内提醒，
+        不删除消息、不影响必要安全通知，也不改变平台运营接收边界。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: 当前话题设置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationViewerSettingsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      tags: [Messaging]
+      operationId: updateAppConversationSettings
+      summary: 更新本人单个平台话题免打扰设置
+      description: >-
+        使用 expectedVersion 做乐观并发控制；话题关闭后设置锁定并返回 409。
+        举报、屏蔽和关闭仍使用各自既有安全接口，不由本接口代替。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationViewerSettingsUpdateRequest'
+      responses:
+        '200':
+          description: 更新后的话题设置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationViewerSettingsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v2/conversations/{conversationId}/messages:
     get:
       tags: [Messaging]
@@ -1058,6 +1323,9 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ListLimit'
         - $ref: '#/components/parameters/ListCursor'
+        - $ref: '#/components/parameters/InteractionSearchQuery'
+        - $ref: '#/components/parameters/InteractionRegion'
+        - $ref: '#/components/parameters/InteractionStyleTerm'
       responses:
         '200':
           description: 本人的喜欢关系
@@ -1082,6 +1350,9 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ListLimit'
         - $ref: '#/components/parameters/ListCursor'
+        - $ref: '#/components/parameters/InteractionSearchQuery'
+        - $ref: '#/components/parameters/InteractionRegion'
+        - $ref: '#/components/parameters/InteractionStyleTerm'
       responses:
         '200':
           description: 本人的关注关系
@@ -1134,6 +1405,9 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ListLimit'
         - $ref: '#/components/parameters/ListCursor'
+        - $ref: '#/components/parameters/InteractionSearchQuery'
+        - $ref: '#/components/parameters/InteractionRegion'
+        - $ref: '#/components/parameters/InteractionStyleTerm'
       responses:
         '200':
           description: 本人全部收藏
@@ -1285,6 +1559,9 @@ paths:
         - $ref: '#/components/parameters/FavoriteFolderId'
         - $ref: '#/components/parameters/ListLimit'
         - $ref: '#/components/parameters/ListCursor'
+        - $ref: '#/components/parameters/InteractionSearchQuery'
+        - $ref: '#/components/parameters/InteractionRegion'
+        - $ref: '#/components/parameters/InteractionStyleTerm'
       responses:
         '200':
           description: 文件夹内收藏人物
@@ -1994,6 +2271,7 @@ paths:
       tags: [Safety]
       operationId: listMyAppSafetyAppeals
       summary: 获取本人的申诉记录
+      description: 按 updatedAt 降序、appealId 升序分页；游标绑定当前账号与该排序。
       security:
         - BearerAuth: []
       parameters:
@@ -2039,6 +2317,195 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/v2/me/appeals/{appealId}/supplements:
+    post:
+      tags: [Safety]
+      operationId: addMyAppSafetyAppealSupplement
+      summary: 补充本人举报结论申诉的必要说明
+      description: >-
+        申诉处于开放复核且未进入升级状态时接受。补充说明作为不可变事实保存，
+        不直接改变原举报结论；账号受限状态仍可调用。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: appealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^apl_[A-Za-z0-9_-]{1,76}$'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppealSupplementRequest'
+      responses:
+        '200':
+          description: 幂等重放原补充结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyAppealCreateResponse'
+        '201':
+          description: 补充说明已接收
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SafetyAppealCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v2/service-appeals:
+    post:
+      tags: [Safety]
+      operationId: createAppServiceAppeal
+      summary: 对本人账号限制或金币分录申请独立复核
+      description: >-
+        只接受服务端返回的来源 ID 与预期版本。同一来源版本只允许一个申诉；提交不会直接解除账号限制、
+        修改金币余额或创建调币申请。账号受限状态仍可调用本接口。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceAppealCreateRequest'
+      responses:
+        '200':
+          description: 幂等重放原申诉
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAppealCreateResponse'
+        '201':
+          description: 申诉已接收
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAppealCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v2/me/service-appeals:
+    get:
+      tags: [Safety]
+      operationId: listMyAppServiceAppeals
+      summary: 获取本人账号限制与金币分录申诉记录
+      description: 账号受限状态仍可读取本人业务申诉进度；列表按 updatedAt 降序、appealId 升序分页，游标绑定当前账号与该排序。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ListLimit'
+        - $ref: '#/components/parameters/ListCursor'
+      responses:
+        '200':
+          description: 本人的业务申诉摘要列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAppealListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v2/me/service-appeals/{appealId}:
+    get:
+      tags: [Safety]
+      operationId: getMyAppServiceAppeal
+      summary: 获取本人账号限制或金币分录申诉详情
+      description: 只返回用户申诉说明和用户可见时间线；不返回内部审核信息或业务快照。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: appealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^bap_[A-Za-z0-9_-]{1,76}$'
+      responses:
+        '200':
+          description: 本人业务申诉详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAppealDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v2/me/service-appeals/{appealId}/supplements:
+    post:
+      tags: [Safety]
+      operationId: addMyAppServiceAppealSupplement
+      summary: 补充本人业务申诉的必要说明
+      description: >-
+        申诉处于开放复核且未进入升级状态、expectedVersion 仍匹配时接受。补充说明作为不可变事实保存，
+        不直接改变账号限制、金币账本或原业务结论；账号受限状态仍可调用。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: appealId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^bap_[A-Za-z0-9_-]{1,76}$'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppealSupplementRequest'
+      responses:
+        '200':
+          description: 幂等重放原补充结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAppealCreateResponse'
+        '201':
+          description: 补充说明已接收
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAppealCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/v2/discovery/feed:
     get:
       tags: [Discovery]
@@ -2109,6 +2576,8 @@ paths:
       security:
         - BearerAuth: []
         - {}
+      parameters:
+        - $ref: '#/components/parameters/AppClientVersion'
       requestBody:
         required: true
         content:
@@ -2140,6 +2609,8 @@ paths:
       description: 只返回本人主动选择的稳定 taxonomy 词条；不从会员、金币、消息、私信或精确位置推断偏好。
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppClientVersion'
       responses:
         '200':
           description: 本人的请求态和当前有效态
@@ -2147,6 +2618,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RecommendationPreferenceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2162,6 +2635,8 @@ paths:
         政策决策未批准时服务端拒绝开启，不会保存为待生效暗状态。
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppClientVersion'
       requestBody:
         required: true
         content:
@@ -2978,6 +3453,11 @@ components:
       in: header
       name: X-Media-Access-Token
       description: 只允许读取绑定人物的单张会员图片，不具备任何账号或其他媒体访问权限。
+    RealtimeTicketAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 格式为 Realtime 后接一次性短票据；不得复用 Bearer Access Token。
   headers:
     RequestId:
       description: 服务端生成的请求追踪 ID。
@@ -2987,8 +3467,18 @@ components:
       description: 当前响应契约版本。
       schema:
         type: string
-        const: 1.19.0
+        const: 1.26.0
   parameters:
+    AppClientVersion:
+      name: X-Client-Version
+      in: header
+      required: true
+      description: >-
+        当前 App 的两段或三段数字版本。推荐策略、实际规则和灰度回退均按此值执行最低版本门禁；
+        缺失、非法或低于策略最低版本时不会放宽到不兼容规则。
+      schema:
+        type: string
+        pattern: '^\d{1,5}\.\d{1,5}(?:\.\d{1,5})?$'
     ProfileId:
       name: profileId
       in: path
@@ -3033,6 +3523,29 @@ components:
         minLength: 1
         maxLength: 1024
       description: 与当前账号和关系类型隔离的不透明游标。
+    InteractionSearchQuery:
+      name: query
+      in: query
+      schema:
+        type: string
+        maxLength: 40
+      description: >-
+        可选的本人互动列表搜索文字；只匹配当前仍公开的人物昵称、地区和公开分类展示值。
+        搜索文字进入 URL，客户端不得把该参数写入分析事件或日志。
+    InteractionRegion:
+      name: region
+      in: query
+      schema:
+        type: string
+        pattern: '^[a-z0-9-]{2,32}$'
+      description: 可选的当前公开地区代码；由发现页地区目录提供。
+    InteractionStyleTerm:
+      name: styleTerm
+      in: query
+      schema:
+        type: string
+        pattern: '^txt_[A-Za-z0-9_-]{4,92}$'
+      description: 可选的当前公开风格词条稳定 ID；由已发布分类目录提供。
     ConversationId:
       name: conversationId
       in: path
@@ -3123,6 +3636,14 @@ components:
         type: string
         pattern: '^drup_[A-Za-z0-9_-]{43}$'
       description: 正常创建注销申请时必填；仅在使用原幂等键和已被本次注销撤销的发起 Access Token 重放丢失响应时可省略。
+    DataRightsDownloadTicket:
+      name: X-Data-Rights-Download-Ticket
+      in: header
+      required: true
+      schema:
+        type: string
+        pattern: '^drdl_[A-Za-z0-9_-]{43}$'
+      description: 短期、一次性并绑定账号、会话、申请及制品版本的下载票据；不得放入 URL 或持久化客户端状态。
   responses:
     BadRequest:
       description: 查询参数或游标无效
@@ -3156,6 +3677,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     UnprocessableEntity:
       description: 请求结构正确，但名称或业务内容不满足约束
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionRequired:
+      description: 敏感账号资料修改前必须重新验证当前登录身份
       content:
         application/json:
           schema:
@@ -3209,7 +3736,7 @@ components:
           const: '2'
         contractVersion:
           type: string
-          const: 1.19.0
+          const: 1.26.0
     ListMeta:
       allOf:
         - $ref: '#/components/schemas/Meta'
@@ -3391,6 +3918,95 @@ components:
         status:
           type: string
           enum: [active, restricted]
+    AccountAvatarStyle:
+      type: string
+      enum: [rose, coral, lilac, sky, mint, sand]
+    AccountLoginIdentity:
+      type: object
+      additionalProperties: false
+      required: [provider, maskedValue, verified]
+      properties:
+        provider:
+          type: string
+          const: email
+        maskedValue:
+          type: string
+          minLength: 4
+          maxLength: 320
+          description: 只用于本人识别账号的脱敏邮箱，不得作为公开真人字段。
+        verified:
+          type: boolean
+    AccountProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - accountId
+        - nickname
+        - avatarStyle
+        - avatarLabel
+        - loginIdentity
+        - visibility
+        - publicPersonProfileCreated
+        - requiresReauthenticationForUpdate
+        - version
+        - updatedAt
+      properties:
+        accountId:
+          type: string
+          pattern: '^acc_[A-Za-z0-9_-]+$'
+        nickname:
+          type: [string, 'null']
+          maxLength: 40
+        avatarStyle:
+          $ref: '#/components/schemas/AccountAvatarStyle'
+        avatarLabel:
+          type: string
+          minLength: 1
+          maxLength: 2
+        loginIdentity:
+          $ref: '#/components/schemas/AccountLoginIdentity'
+        visibility:
+          type: string
+          const: private
+        publicPersonProfileCreated:
+          type: boolean
+          const: false
+        requiresReauthenticationForUpdate:
+          type: boolean
+          const: true
+        version:
+          type: integer
+          minimum: 0
+        updatedAt:
+          type: [string, 'null']
+          format: date-time
+    AccountProfileUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, nickname, avatarStyle]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 0
+        nickname:
+          type: [string, 'null']
+          maxLength: 40
+        avatarStyle:
+          $ref: '#/components/schemas/AccountAvatarStyle'
+        currentPassword:
+          type: string
+          minLength: 8
+          maxLength: 128
+          writeOnly: true
+    AccountProfileResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/AccountProfile'
+        meta:
+          $ref: '#/components/schemas/Meta'
     DeviceSummary:
       type: object
       additionalProperties: false
@@ -3505,7 +4121,7 @@ components:
     AccountRestrictionSummary:
       type: object
       additionalProperties: false
-      required: [mode, reasonCategory, title, message, restrictedUntil, actions]
+      required: [mode, reasonCategory, title, message, restrictedUntil, appealReference, sourceVersion, actions]
       properties:
         mode:
           type: string
@@ -3524,14 +4140,20 @@ components:
         restrictedUntil:
           type: [string, 'null']
           format: date-time
+        appealReference:
+          type: [string, 'null']
+          pattern: '^SEC-[A-Z0-9-]{8,28}$'
+        sourceVersion:
+          type: [string, 'null']
+          pattern: '^[A-Za-z0-9._:-]{1,80}$'
         actions:
           type: array
           minItems: 1
-          maxItems: 3
+          maxItems: 4
           uniqueItems: true
           items:
             type: string
-            enum: [help, data_rights, logout]
+            enum: [appeal, help, data_rights, logout]
     MeSummary:
       type: object
       additionalProperties: false
@@ -3662,14 +4284,73 @@ components:
       allOf:
         - $ref: '#/components/schemas/DataRightsRequestSummary'
         - type: object
-          required: [timeline]
+          required: [timeline, exportArtifact]
           properties:
             timeline:
               type: array
               maxItems: 500
               items:
                 $ref: '#/components/schemas/DataRightsTimelineItem'
+            exportArtifact:
+              oneOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/DataRightsExportArtifactSummary'
       unevaluatedProperties: false
+    DataRightsExportArtifactStatus:
+      type: string
+      enum: [queued, collecting, finalizing, ready, expired, failed]
+    DataRightsExportArtifactSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - artifactId
+        - status
+        - format
+        - fileName
+        - schemaVersion
+        - recordCount
+        - sizeBytes
+        - manifestSha256
+        - generatedAt
+        - expiresAt
+        - canDownload
+        - downloadRequiresStepUp
+      properties:
+        artifactId:
+          type: string
+          pattern: '^drea_[A-Za-z0-9_-]{1,91}$'
+        status:
+          $ref: '#/components/schemas/DataRightsExportArtifactStatus'
+        format:
+          type: string
+          const: tar
+        fileName:
+          type: string
+          const: meigallery-data-export.tar
+        schemaVersion:
+          type: integer
+          minimum: 1
+        recordCount:
+          type: integer
+          minimum: 0
+        sizeBytes:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 262144000
+        manifestSha256:
+          type: [string, 'null']
+          pattern: '^[0-9a-f]{64}$'
+        generatedAt:
+          type: [string, 'null']
+          format: date-time
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+        canDownload:
+          type: boolean
+        downloadRequiresStepUp:
+          type: boolean
+          const: true
     DataRightsStepUpRequest:
       type: object
       additionalProperties: false
@@ -3725,6 +4406,26 @@ components:
         replayed:
           type: boolean
         sessionRevoked:
+          type: boolean
+    DataRightsDownloadTicketResult:
+      type: object
+      additionalProperties: false
+      required: [ticket, expiresAt, fileName, manifestSha256, replayed]
+      properties:
+        ticket:
+          type: string
+          pattern: '^drdl_[A-Za-z0-9_-]{43}$'
+          writeOnly: true
+        expiresAt:
+          type: string
+          format: date-time
+        fileName:
+          type: string
+          const: meigallery-data-export.tar
+        manifestSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        replayed:
           type: boolean
     DataRightsDeletionRequest:
       type: object
@@ -3838,6 +4539,15 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/DataRightsMutationResult'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    DataRightsDownloadTicketResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/DataRightsDownloadTicketResult'
         meta:
           $ref: '#/components/schemas/Meta'
     MembershipEntitlementValue:
@@ -4017,6 +4727,24 @@ components:
           type: integer
         accentToken:
           type: string
+    MembershipGrantSummary:
+      type: object
+      additionalProperties: false
+      required: [grantId, sourceType, startsAt, expiresAt, userVisibleNote]
+      properties:
+        grantId:
+          type: string
+        sourceType:
+          type: string
+          const: manual_admin
+        startsAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        userVisibleNote:
+          type: string
     MembershipResolvedEntitlement:
       type: object
       additionalProperties: false
@@ -4087,7 +4815,7 @@ components:
     MembershipSnapshot:
       type: object
       additionalProperties: false
-      required: [catalogVersionId, versionCode, generatedAt, status, tier, grant, entitlements]
+      required: [catalogVersionId, versionCode, generatedAt, status, tier, grant, lifecycle, entitlements]
       properties:
         catalogVersionId:
           type: string
@@ -4106,23 +4834,38 @@ components:
         grant:
           oneOf:
             - type: 'null'
-            - type: object
-              additionalProperties: false
-              required: [grantId, sourceType, startsAt, expiresAt, userVisibleNote]
-              properties:
-                grantId:
-                  type: string
-                sourceType:
-                  type: string
-                  const: manual_admin
-                startsAt:
-                  type: string
-                  format: date-time
-                expiresAt:
-                  type: string
-                  format: date-time
-                userVisibleNote:
-                  type: string
+            - $ref: '#/components/schemas/MembershipGrantSummary'
+        lifecycle:
+          type: object
+          additionalProperties: false
+          required: [state, expiringSoonWindowDays, remainingDays, endedGrant]
+          properties:
+            state:
+              type: string
+              enum: [free, active, expiring_soon, expired, revoked]
+            expiringSoonWindowDays:
+              type: integer
+              minimum: 1
+              maximum: 365
+            remainingDays:
+              type: [integer, 'null']
+              minimum: 0
+            endedGrant:
+              oneOf:
+                - type: 'null'
+                - type: object
+                  additionalProperties: false
+                  required: [tier, grant, endedAt, userVisibleNote]
+                  properties:
+                    tier:
+                      $ref: '#/components/schemas/MembershipTierSummary'
+                    grant:
+                      $ref: '#/components/schemas/MembershipGrantSummary'
+                    endedAt:
+                      type: string
+                      format: date-time
+                    userVisibleNote:
+                      type: [string, 'null']
         entitlements:
           type: array
           items:
@@ -4549,6 +5292,49 @@ components:
           minimum: 1
         hasMore:
           type: boolean
+    ConversationViewerSettings:
+      type: object
+      additionalProperties: false
+      required: [conversationId, muted, editable, lockedReason, closedAt, version, updatedAt]
+      properties:
+        conversationId:
+          type: string
+          pattern: '^cv_[A-Za-z0-9_-]{1,77}$'
+        muted:
+          type: boolean
+        editable:
+          type: boolean
+        lockedReason:
+          type: [string, 'null']
+          enum: [CONVERSATION_CLOSED, null]
+        closedAt:
+          type: [string, 'null']
+          format: date-time
+        version:
+          type: integer
+          minimum: 0
+        updatedAt:
+          type: [string, 'null']
+          format: date-time
+    ConversationViewerSettingsUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, muted]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 0
+        muted:
+          type: boolean
+    ConversationViewerSettingsResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ConversationViewerSettings'
+        meta:
+          $ref: '#/components/schemas/Meta'
     ConversationCreateResponse:
       type: object
       additionalProperties: false
@@ -5179,7 +5965,7 @@ components:
     SupportTopic:
       type: object
       additionalProperties: false
-      required: [topicId, category, categoryLabel, title, summary, sections, keywords]
+      required: [topicId, category, categoryLabel, title, summary, sections, keywords, action]
       properties:
         topicId:
           type: string
@@ -5224,6 +6010,11 @@ components:
             type: string
             minLength: 1
             maxLength: 40
+        action:
+          oneOf:
+            - type: string
+              enum: [open_data_export, open_account_deletion]
+            - type: 'null'
     SupportContact:
       type: object
       additionalProperties: false
@@ -5275,7 +6066,7 @@ components:
       properties:
         contentVersion:
           type: string
-          const: app_core_help_1
+          const: app_core_help_2
         serviceBoundary:
           type: string
           minLength: 1
@@ -5309,7 +6100,7 @@ components:
     Bootstrap:
       type: object
       additionalProperties: false
-      required: [product, appVersion, runtime, capabilities, support, discovery, media, recommendation, search, taxonomy, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, wallet, safety, dataRights]
+      required: [product, appVersion, runtime, capabilities, support, discovery, media, recommendation, search, taxonomy, interactionCollections, followUpdates, auth, membershipApplications, messaging, notifications, realtime, wallet, safety, dataRights]
       properties:
         product:
           type: string
@@ -5322,7 +6113,7 @@ components:
         capabilities:
           type: object
           additionalProperties: false
-          required: [discovery, recommendation, search, taxonomy, auth, interactions, membership, media, messaging, notifications, wallet, safety, dataRights, support, payments, systemPush]
+          required: [discovery, recommendation, search, taxonomy, auth, interactions, membership, media, messaging, notifications, realtime, wallet, safety, dataRights, support, payments, systemPush]
           properties:
             discovery:
               type: boolean
@@ -5404,12 +6195,15 @@ components:
               type: boolean
             notifications:
               type: boolean
+            realtime:
+              type: boolean
+              description: 仅表示账号级无正文刷新通道通过全部运行时与治理门禁。
             wallet:
               type: boolean
             safety:
               type: object
               additionalProperties: false
-              required: [reports, blocks, conversationClose, appeals]
+              required: [reports, blocks, conversationClose, appeals, accountRestrictionAppeals, walletEntryAppeals]
               properties:
                 reports:
                   type: boolean
@@ -5418,6 +6212,10 @@ components:
                 conversationClose:
                   type: boolean
                 appeals:
+                  type: boolean
+                accountRestrictionAppeals:
+                  type: boolean
+                walletEntryAppeals:
                   type: boolean
             dataRights:
               type: object
@@ -5446,7 +6244,7 @@ components:
           properties:
             contentVersion:
               type: string
-              const: app_core_help_1
+              const: app_core_help_2
             centerPath:
               type: string
               const: /api/v2/app/support
@@ -5640,6 +6438,8 @@ components:
             - methods
             - registrationEnabled
             - deviceManagementEnabled
+            - accountProfileEnabled
+            - initialPreferencesEnabled
             - accessTokenTtlSeconds
             - challenge
             - documents
@@ -5654,6 +6454,12 @@ components:
               type: boolean
             deviceManagementEnabled:
               type: boolean
+            accountProfileEnabled:
+              type: boolean
+              description: 是否开放观看者私有昵称与受控头像样式管理。
+            initialPreferencesEnabled:
+              type: boolean
+              description: 是否在注册成功后开放一次初始偏好设置；仍需 recommendation.preferences 与 taxonomy.catalog 同时可用。
             accessTokenTtlSeconds:
               type: integer
               minimum: 60
@@ -5754,7 +6560,7 @@ components:
         messaging:
           type: object
           additionalProperties: false
-          required: [receiverLabel, disclosureVersion, disclosureText, transport, maxTextLength]
+          required: [receiverLabel, disclosureVersion, disclosureText, transport, maxTextLength, conversationSettingsEnabled]
           properties:
             receiverLabel:
               type: string
@@ -5773,6 +6579,9 @@ components:
             maxTextLength:
               type: integer
               const: 1000
+            conversationSettingsEnabled:
+              type: boolean
+              description: 是否开放单话题免打扰设置；举报、屏蔽和关闭继续使用独立安全接口。
         notifications:
           type: object
           additionalProperties: false
@@ -5805,6 +6614,45 @@ components:
                   preference:
                     type: string
                     enum: [optional, required]
+        realtime:
+          type: object
+          additionalProperties: false
+          required: [policyVersion, transport, protocol, ticketPath, connectPath, eventSchemaVersion, ticketTtlSeconds, reconnectMinDelayMs, reconnectMaxDelayMs, maxConnectionsPerAccount]
+          properties:
+            policyVersion:
+              type: string
+              pattern: '^rtp_[A-Za-z0-9._-]{1,96}$'
+            transport:
+              type: string
+              const: websocket_refresh
+            protocol:
+              type: string
+              const: meigallery.realtime.v1
+            ticketPath:
+              type: string
+              const: /api/v2/realtime/tickets
+            connectPath:
+              type: string
+              const: /api/v2/realtime/connect
+            eventSchemaVersion:
+              type: integer
+              const: 1
+            ticketTtlSeconds:
+              type: integer
+              minimum: 30
+              maximum: 120
+            reconnectMinDelayMs:
+              type: integer
+              minimum: 500
+              maximum: 5000
+            reconnectMaxDelayMs:
+              type: integer
+              minimum: 5000
+              maximum: 60000
+            maxConnectionsPerAccount:
+              type: integer
+              minimum: 1
+              maximum: 8
         wallet:
           type: object
           additionalProperties: false
@@ -5897,7 +6745,7 @@ components:
         dataRights:
           type: object
           additionalProperties: false
-          required: [policyVersion, transport, stepUpTtlSeconds, statusAccessHeader, systemPush, exportProcessing, deletionProcessing, cancellationEnabled]
+          required: [policyVersion, transport, stepUpTtlSeconds, statusAccessHeader, downloadTicketHeader, exportFormat, systemPush, exportProcessing, deletionProcessing, cancellationEnabled]
           properties:
             policyVersion:
               type: string
@@ -5913,6 +6761,12 @@ components:
             statusAccessHeader:
               type: string
               const: X-Data-Rights-Token
+            downloadTicketHeader:
+              type: string
+              const: X-Data-Rights-Download-Ticket
+            exportFormat:
+              type: string
+              const: tar
             systemPush:
               type: boolean
               const: false
@@ -6038,6 +6892,121 @@ components:
           $ref: '#/components/schemas/Bootstrap'
         meta:
           $ref: '#/components/schemas/Meta'
+    RealtimeRefreshScope:
+      type: string
+      enum: [account, conversations, messages, notifications, membership, wallet]
+    RealtimeTicket:
+      type: object
+      additionalProperties: false
+      required: [ticket, protocol, connectPath, expiresAt]
+      properties:
+        ticket:
+          type: string
+          pattern: '^mrt_[A-Za-z0-9_-]{40,96}$'
+          writeOnly: true
+        protocol:
+          type: string
+          const: meigallery.realtime.v1
+        connectPath:
+          type: string
+          const: /api/v2/realtime/connect
+        expiresAt:
+          type: string
+          format: date-time
+    RealtimeTicketResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/RealtimeTicket'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    RealtimeClientHelloFrame:
+      type: object
+      additionalProperties: false
+      required: [type, schemaVersion, lastCursor]
+      properties:
+        type:
+          type: string
+          const: client.hello
+        schemaVersion:
+          type: integer
+          const: 1
+        lastCursor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+    RealtimeServerReadyFrame:
+      type: object
+      additionalProperties: false
+      required: [type, schemaVersion, protocol, serverTime]
+      properties:
+        type:
+          type: string
+          const: server.ready
+        schemaVersion:
+          type: integer
+          const: 1
+        protocol:
+          type: string
+          const: meigallery.realtime.v1
+        serverTime:
+          type: string
+          format: date-time
+    RealtimeRefreshRequiredFrame:
+      type: object
+      additionalProperties: false
+      required: [type, schemaVersion, eventId, cursor, occurredAt, scopes]
+      properties:
+        type:
+          type: string
+          const: refresh.required
+        schemaVersion:
+          type: integer
+          const: 1
+        eventId:
+          type: string
+          pattern: '^rte_(?:sync_)?[A-Za-z0-9_-]{12,88}$'
+        cursor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        occurredAt:
+          type: string
+          format: date-time
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/RealtimeRefreshScope'
+    RealtimeServerSyncedFrame:
+      type: object
+      additionalProperties: false
+      required: [type, schemaVersion, cursor, serverTime]
+      properties:
+        type:
+          type: string
+          const: server.synced
+        schemaVersion:
+          type: integer
+          const: 1
+        cursor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        serverTime:
+          type: string
+          format: date-time
+    RealtimeServerFrame:
+      oneOf:
+        - $ref: '#/components/schemas/RealtimeServerReadyFrame'
+        - $ref: '#/components/schemas/RealtimeRefreshRequiredFrame'
+        - $ref: '#/components/schemas/RealtimeServerSyncedFrame'
+      discriminator:
+        propertyName: type
     SafetyReason:
       type: object
       additionalProperties: false
@@ -6339,10 +7308,22 @@ components:
           type: string
           minLength: 1
           maxLength: 500
+    AppealSupplementRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, note]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        note:
+          type: string
+          minLength: 1
+          maxLength: 500
     SafetyAppealSummary:
       type: object
       additionalProperties: false
-      required: [appealId, reportId, type, status, userVisibleMessage, originalReportVersion, version, submittedAt, updatedAt, resolvedAt]
+      required: [appealId, reportId, type, status, reviewState, userVisibleMessage, originalReportVersion, version, submittedAt, updatedAt, supplementDueAt, resolvedAt]
       properties:
         appealId:
           type: string
@@ -6355,6 +7336,8 @@ components:
           const: report_no_violation_review
         status:
           $ref: '#/components/schemas/SafetyAppealStatus'
+        reviewState:
+          $ref: '#/components/schemas/AppealReviewState'
         userVisibleMessage:
           type: string
         originalReportVersion:
@@ -6368,6 +7351,9 @@ components:
           format: date-time
         updatedAt:
           type: string
+          format: date-time
+        supplementDueAt:
+          type: [string, 'null']
           format: date-time
         resolvedAt:
           type: [string, 'null']
@@ -6390,7 +7376,7 @@ components:
     SafetyAppealDetail:
       type: object
       additionalProperties: false
-      required: [appealId, reportId, type, status, userVisibleMessage, originalReportVersion, version, submittedAt, updatedAt, resolvedAt, statement, timeline]
+      required: [appealId, reportId, type, status, reviewState, userVisibleMessage, originalReportVersion, version, submittedAt, updatedAt, supplementDueAt, resolvedAt, statement, supplements, timeline]
       properties:
         appealId:
           type: string
@@ -6403,6 +7389,8 @@ components:
           const: report_no_violation_review
         status:
           $ref: '#/components/schemas/SafetyAppealStatus'
+        reviewState:
+          $ref: '#/components/schemas/AppealReviewState'
         userVisibleMessage:
           type: string
         originalReportVersion:
@@ -6417,6 +7405,9 @@ components:
         updatedAt:
           type: string
           format: date-time
+        supplementDueAt:
+          type: [string, 'null']
+          format: date-time
         resolvedAt:
           type: [string, 'null']
           format: date-time
@@ -6424,6 +7415,10 @@ components:
           type: string
           minLength: 1
           maxLength: 500
+        supplements:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppealSupplement'
         timeline:
           type: array
           minItems: 1
@@ -6466,13 +7461,218 @@ components:
           $ref: '#/components/schemas/SafetyAppealDetail'
         meta:
           $ref: '#/components/schemas/Meta'
+    ServiceAppealSourceType:
+      type: string
+      enum: [account_restriction, wallet_entry]
+    ServiceAppealSource:
+      type: object
+      additionalProperties: false
+      required: [type, sourceId, sourceVersion, reference, label]
+      properties:
+        type:
+          $ref: '#/components/schemas/ServiceAppealSourceType'
+        sourceId:
+          type: string
+          minLength: 5
+          maxLength: 96
+        sourceVersion:
+          type: string
+          pattern: '^[A-Za-z0-9._:-]{1,80}$'
+        reference:
+          type: string
+          minLength: 5
+          maxLength: 80
+        label:
+          type: string
+          minLength: 2
+          maxLength: 80
+    ServiceAppealCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceType, sourceId, expectedSourceVersion, statement]
+      properties:
+        sourceType:
+          $ref: '#/components/schemas/ServiceAppealSourceType'
+        sourceId:
+          type: string
+          minLength: 5
+          maxLength: 96
+        expectedSourceVersion:
+          type: string
+          pattern: '^[A-Za-z0-9._:-]{1,80}$'
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 500
+    AppealReviewState:
+      type: string
+      enum: [normal, evidence_insufficient, needs_escalation]
+    ServiceAppealSummary:
+      type: object
+      additionalProperties: false
+      required: [appealId, source, status, reviewState, userVisibleMessage, version, submittedAt, updatedAt, supplementDueAt, resolvedAt]
+      properties:
+        appealId:
+          type: string
+          pattern: '^bap_[A-Za-z0-9_-]{1,76}$'
+        source:
+          $ref: '#/components/schemas/ServiceAppealSource'
+        status:
+          $ref: '#/components/schemas/SafetyAppealStatus'
+        reviewState:
+          $ref: '#/components/schemas/AppealReviewState'
+        userVisibleMessage:
+          type: string
+          minLength: 1
+          maxLength: 300
+        version:
+          type: integer
+          minimum: 1
+        submittedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        supplementDueAt:
+          type: [string, 'null']
+          format: date-time
+        resolvedAt:
+          type: [string, 'null']
+          format: date-time
+    ServiceAppealTimelineItem:
+      type: object
+      additionalProperties: false
+      required: [sequence, status, message, createdAt]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/SafetyAppealStatus'
+        message:
+          type: string
+          minLength: 1
+          maxLength: 300
+        createdAt:
+          type: string
+          format: date-time
+    AppealSupplement:
+      type: object
+      additionalProperties: false
+      required: [sequence, note, createdAt]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        note:
+          type: string
+          minLength: 1
+          maxLength: 500
+        createdAt:
+          type: string
+          format: date-time
+    ServiceAppealDetail:
+      type: object
+      additionalProperties: false
+      required: [appealId, source, status, reviewState, userVisibleMessage, version, submittedAt, updatedAt, supplementDueAt, resolvedAt, statement, supplements, timeline]
+      properties:
+        appealId:
+          type: string
+          pattern: '^bap_[A-Za-z0-9_-]{1,76}$'
+        source:
+          $ref: '#/components/schemas/ServiceAppealSource'
+        status:
+          $ref: '#/components/schemas/SafetyAppealStatus'
+        reviewState:
+          $ref: '#/components/schemas/AppealReviewState'
+        userVisibleMessage:
+          type: string
+          minLength: 1
+          maxLength: 300
+        version:
+          type: integer
+          minimum: 1
+        submittedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        supplementDueAt:
+          type: [string, 'null']
+          format: date-time
+        resolvedAt:
+          type: [string, 'null']
+          format: date-time
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 500
+        supplements:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppealSupplement'
+        timeline:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ServiceAppealTimelineItem'
+    ServiceAppealCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [appeal, replayed]
+          properties:
+            appeal:
+              $ref: '#/components/schemas/ServiceAppealDetail'
+            replayed:
+              type: boolean
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ServiceAppealListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 40
+          items:
+            $ref: '#/components/schemas/ServiceAppealSummary'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    ServiceAppealDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ServiceAppealDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
     FavoriteFolderType:
       type: string
       enum: [default, custom]
+    FavoriteFolderPreview:
+      type: object
+      additionalProperties: false
+      required: [profileId, coverUrl]
+      properties:
+        profileId:
+          type: string
+          pattern: '^pp_[A-Za-z0-9_-]{1,77}$'
+        coverUrl:
+          type: [string, 'null']
+          format: uri
     FavoriteFolderSummary:
       type: object
       additionalProperties: false
-      required: [folderId, type, name, sortOrder, version, itemCount, createdAt, updatedAt]
+      required: [folderId, type, name, sortOrder, version, itemCount, previewProfiles, createdAt, updatedAt]
       properties:
         folderId:
           type: string
@@ -6494,6 +7694,12 @@ components:
           type: integer
           minimum: 0
           maximum: 500
+        previewProfiles:
+          type: array
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/FavoriteFolderPreview'
         createdAt:
           type: string
           format: date-time
@@ -6503,13 +7709,17 @@ components:
     FavoriteFolderCollection:
       type: object
       additionalProperties: false
-      required: [folders, customFolderCount, customFolderLimit, canCreateCustomFolder]
+      required: [folders, totalFavoriteCount, customFolderCount, customFolderLimit, canCreateCustomFolder]
       properties:
         folders:
           type: array
           maxItems: 101
           items:
             $ref: '#/components/schemas/FavoriteFolderSummary'
+        totalFavoriteCount:
+          type: integer
+          minimum: 0
+          maximum: 50500
         customFolderCount:
           type: integer
           minimum: 0

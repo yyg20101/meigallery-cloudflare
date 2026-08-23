@@ -35,34 +35,34 @@ watch(publicationStatus, () => { page.value = 1 })
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div class="min-w-0">
-        <h1 class="text-xl font-bold text-gray-950">App 人物供给</h1>
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">
-          管理人物候选、用途授权、认证复核与公开版本。这里不会把现有图库自动映射为人物。
-        </p>
-      </div>
-      <NuxtLink
-        to="/admin/app/persons/new"
-        class="inline-flex min-h-10 shrink-0 items-center justify-center self-start rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-      >
-        新建人物候选
-      </NuxtLink>
+    <AdminAppPageHeader
+      page-id="ADM-PER-01"
+      route="/admin/app/persons"
+      title="真人列表"
+      description="管理真人草稿、认证和发布双状态，并进入新建或审核。"
+      :state="error ? '加载失败' : status === 'pending' ? '加载中' : '正常'"
+      figma-state="正常"
+      :state-tone="error ? 'danger' : status === 'pending' ? 'warning' : 'success'"
+    >
+      <template #actions>
+        <NuxtLink to="/admin/app/imports" class="inline-flex min-h-9 shrink-0 items-center justify-center rounded-[10px] border border-[#f2ddd6] bg-white px-4 text-sm font-medium text-[#6a5f5a] hover:bg-[#fff5f1]">批量导入</NuxtLink>
+        <NuxtLink to="/admin/app/persons/new" class="inline-flex min-h-9 shrink-0 items-center justify-center rounded-[10px] bg-[#d63363] px-4 text-sm font-medium text-white hover:bg-[#bd2756]">＋ 新建真人</NuxtLink>
+      </template>
+    </AdminAppPageHeader>
+
+    <div class="rounded-xl border border-[#b2ddff] bg-[#d1e9ff] px-4 py-3 text-sm leading-6 text-[#175cd3]">
+      <span class="font-semibold">当前数据可用：</span>
+      数据来自服务端权威视图；只有当前版本同时通过用途授权、认证与发布复核，才会生成 App 公开投影。
     </div>
 
-    <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-      <span class="font-semibold">上线边界：</span>
-      只有当前内容版本同时通过用途授权、四项认证与发布复核，且来源图库仍发布时，才会生成 App 公开投影。
-    </div>
-
-    <form class="grid min-w-0 gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-[minmax(0,1fr)_13rem_auto]" @submit.prevent="applySearch">
+    <form class="grid min-w-0 gap-3 rounded-xl border border-[#f2ddd6] bg-white p-3 md:grid-cols-[minmax(0,1fr)_13rem_auto]" @submit.prevent="applySearch">
       <label class="min-w-0">
         <span class="sr-only">搜索人物候选</span>
         <input
           v-model="searchInput"
           class="min-h-10 w-full min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm"
           maxlength="80"
-          placeholder="搜索展示名、人物 ID 或资料 ID"
+          placeholder="搜索账号、真人或业务单"
         />
       </label>
       <label class="min-w-0">
@@ -76,7 +76,7 @@ watch(publicationStatus, () => { page.value = 1 })
           <option value="archived">已归档</option>
         </select>
       </label>
-      <button class="min-h-10 rounded-lg bg-gray-950 px-5 py-2 text-sm font-medium text-white hover:bg-black">查询</button>
+      <button class="min-h-10 rounded-[10px] bg-[#2c2421] px-5 py-2 text-sm font-medium text-white hover:bg-[#443833]">查询</button>
     </form>
 
     <div v-if="error" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -84,7 +84,7 @@ watch(publicationStatus, () => { page.value = 1 })
       <button class="ml-2 font-medium underline" @click="refresh()">重试</button>
     </div>
 
-    <div class="min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
+    <div class="min-w-0 overflow-hidden rounded-xl border border-[#f2ddd6] bg-white">
       <div v-if="status === 'pending'" class="px-6 py-12 text-center text-sm text-gray-500">正在加载人物供给队列…</div>
       <div v-else-if="!items.length" class="px-6 py-12 text-center">
         <h2 class="text-base font-semibold text-gray-900">还没有人物候选</h2>
@@ -92,7 +92,7 @@ watch(publicationStatus, () => { page.value = 1 })
       </div>
       <div v-else class="w-full overflow-x-auto">
         <table class="min-w-[980px] w-full divide-y divide-gray-200 text-sm">
-          <thead class="bg-gray-50 text-left text-xs font-medium text-gray-600">
+          <thead class="bg-[#fff5f1] text-left text-xs font-medium text-[#6a5f5a]">
             <tr>
               <th class="px-4 py-3">人物 / 来源</th>
               <th class="px-4 py-3">用途授权</th>
@@ -104,7 +104,7 @@ watch(publicationStatus, () => { page.value = 1 })
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
-            <tr v-for="item in items" :key="item.personId" class="align-top hover:bg-gray-50/70">
+            <tr v-for="item in items" :key="item.personId" class="align-top even:bg-[#fff9f5] hover:bg-[#fff5f1]">
               <td class="max-w-72 px-4 py-4">
                 <div class="break-words font-medium text-gray-950">{{ item.displayName }}</div>
                 <div class="mt-1 break-all text-xs text-gray-500">{{ item.personId }}</div>

@@ -1054,16 +1054,19 @@ async function resolveReportTarget(
     SELECT target.sequence, target.sender_type, target.body_sha256,
       (SELECT id FROM app_conversation_messages before_message
        WHERE before_message.conversation_id = target.conversation_id
-         AND before_message.sequence = target.sequence - 1
-         AND before_message.status <> 'recalled'
+         AND before_message.sequence < target.sequence
+         AND (before_message.sender_type = 'viewer' OR before_message.status IN ('accepted', 'recalled'))
+       ORDER BY before_message.sequence DESC
        LIMIT 1) AS before_message_id,
       (SELECT id FROM app_conversation_messages after_message
        WHERE after_message.conversation_id = target.conversation_id
-         AND after_message.sequence = target.sequence + 1
-         AND after_message.status <> 'recalled'
+         AND after_message.sequence > target.sequence
+         AND (after_message.sender_type = 'viewer' OR after_message.status IN ('accepted', 'recalled'))
+       ORDER BY after_message.sequence ASC
        LIMIT 1) AS after_message_id
     FROM app_conversation_messages target
     WHERE target.id = ? AND target.conversation_id = ?
+      AND (target.sender_type = 'viewer' OR target.status IN ('accepted', 'recalled'))
     LIMIT 1
   `).bind(target.messageId, target.conversationId).first<{
     sequence: number

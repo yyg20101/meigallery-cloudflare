@@ -107,22 +107,16 @@ async function createRule() {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <h1 class="text-xl font-bold text-gray-950">App 推荐运营</h1>
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">
-          管理发现首页的版本化推荐规则。规则创建、Dry-run、复核、启用与回滚相互分离，现有公开发现流不受影响。
-        </p>
-      </div>
-      <div class="flex flex-wrap gap-2">
+    <AdminAppPageHeader page-id="ADM-REC-01" route="/admin/app/recommendation/rules" title="推荐规则版本" description="管理候选、排序、热度、灰度和回滚，并保持安全过滤不可关闭。" :state="error ? '加载失败' : status === 'pending' ? '加载中' : '正常'" figma-state="正常" :state-tone="error ? 'danger' : status === 'pending' ? 'warning' : 'success'">
+      <template #actions>
         <NuxtLink to="/admin/app/recommendation/placements" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
           运营精选排期
         </NuxtLink>
-        <button class="inline-flex min-h-10 items-center justify-center rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-black" @click="showCreate = !showCreate">
+        <button class="inline-flex min-h-10 items-center justify-center rounded-[10px] bg-[#d63363] px-4 py-2 text-sm font-medium text-white hover:bg-[#bd2756]" @click="showCreate = !showCreate">
           {{ showCreate ? '收起创建表单' : '新建规则草稿' }}
         </button>
-      </div>
-    </div>
+      </template>
+    </AdminAppPageHeader>
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
       <span class="font-semibold">当前决策边界：</span>

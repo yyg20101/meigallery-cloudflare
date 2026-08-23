@@ -5,16 +5,19 @@
 本文使用以下状态标签区分当前代码事实、部分实现、后续设计和历史迁移背景：
 
 - `[当前实现]`：仓库已有代码、配置、迁移或测试支撑。
+- `[开发实现，待统一验证]`：源码与 migration 已完成，但按当前开发顺序尚未执行配置、migration、构建、测试或环境 QA。
 - `[部分实现]`：已有数据结构、入口或辅助能力，但端到端流程仍未完整接入。
 - `[后续规划]`：需要单独设计、实现和验收的目标态能力。
 - `[历史参考]`：旧站、旧命名或迁移背景，不代表新增功能入口。
 
 ## 1. 技术目标 `[当前实现 / 后续规划]`
 
+- 所有用户可见页面、弹层、状态和跨页流程执行 Figma-first 门禁：先在正式 Figma 文件完成独立 Frame、Prototype、Delivery Index 与设计 QA，再进入 KMP 或 Nuxt 实现；缺少正式 Node ID 时不得用代码自行创造临时 UI。
+- Page ID、设计路由、Figma Node ID 与状态 key 仅作为设计交付、实现映射和测试追踪元数据保留，KMP 与 Nuxt 的真实 UI 不得可见渲染这些标注；面向用户的业务编号必须由独立产品需求明确规定。
 - 使用 Cloudflare 作为唯一部署和运行平台。
 - 前台和后台共用同一套认证、权限、媒体访问控制能力。
 - 所有受保护媒体都必须经过服务端授权，前端不持有真实资源地址。
-- 批量导入当前实现为任务记录 + 已解析 JSON 数据处理；完整 zip 大文件导入按后续异步任务设计，避免大文件和视频处理阻塞请求。
+- 批量导入源码已实现私有 R2 multipart 原包上传、ZIP 中央目录范围读取、逐项 Queue 处理、部分失败与安全重试；配置、migration 和统一验证后置，避免大文件、图片与视频处理阻塞请求。
 - 会员等级使用 rank 数值比较，业务逻辑不硬编码等级名称。
 
 ## 2. 技术栈 `[当前实现 / 后续规划]`
@@ -112,7 +115,8 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `app_viewer_interactions` 只保存 `account_id`、稳定 `profile_id`、`like|follow` 关系类型和 ISO 创建时间；复合主键保证幂等，migration 不 seed、不回填 legacy 互动、不生成聚合计数。
 - `GET /api/v2/person-profiles/:profileId/interactions`、`PUT|DELETE .../like|follow` 和 `GET /api/v2/me/likes|follows` 全部复用 App Bearer 会话中间件，请求体不接收账号 ID。
 - PUT 通过参数化条件写入在 D1 内重新校验当前资料的认证、发布、授权时间、可见性和来源图库状态；DELETE 不依赖资料仍公开，便于用户清理已失效关系。
-- 本人列表以 `created_at DESC, profile_id ASC` 稳定分页，不透明游标绑定账号公开作用域和关系类型。资料已失效时只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不泄露历史封面、地区、标签或简介。
+- 本人列表以 `created_at DESC, profile_id ASC` 稳定分页。`GET /api/v2/me/likes|follows` 可选接收最长 40 字符的 `query`、地区 stable code `region` 与风格 stable term ID `styleTerm`；所有条件只作用于当前账号私有列表读取，不改变关系。搜索命中当前公开姓名、地区、公开标签与已发布 taxonomy 显示名/别名，地区和风格继续复用公开资格投影。
+- 不透明游标绑定账号、关系类型、规范化搜索、地区和风格完整上下文；查询条件变化、游标版本变化或跨账号复用均拒绝，客户端必须按当前条件从首屏重读，不得跨版本混排。资料已失效时，无筛选列表只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`；带搜索或筛选时失效资料不参与匹配，绝不泄露历史封面、地区、标签或简介。
 - bootstrap 只在 Auth 安全配置整体可用时返回 `interactions.like=true` 和 `interactions.follow=true`；收藏与历史由 Interaction-2 独立门禁控制，不随 Auth 或喜欢/关注自动开启。production 现有 Auth 开关保持关闭；dev 因内部 Safety-2 联调开启 Auth，会同时暴露既有喜欢/关注契约，但不开放注册且不改变生产上线状态。
 - Interaction-1 本身不提供按目标资料查看互动者的产品 API，也不创建匹配、会话、目标侧通知或推荐信号。关注更新由 Interaction-3 独立读取发布事实；收藏/收藏夹与历史使用 Interaction-2 独立表族，不得写入当前关系表。
 
@@ -120,16 +124,18 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 ### Interaction-2 收藏夹与浏览历史 `[跨仓开发完成，默认关闭]`
 
-`0078_app_favorites_and_view_history.sql` 和 App API v2 `1.11.0` 建立收藏夹与浏览历史服务端开发基线：
+`0078_app_favorites_and_view_history.sql` 和 App API v2 `1.11.0` 建立收藏夹与浏览历史服务端开发基线；该切片在累计契约 `1.21.0` 与 `0096_app_favorite_folder_preserve_default.sql` 完成 Figma-first 对齐，仓库当前累计契约为 `1.26.0`：
 
 - 收藏是独立于喜欢、关注的账号私有关系，使用默认收藏夹、自定义收藏夹和条目表，不向 `app_viewer_interactions` 增加临时 `favorite` 类型。同一人物可存在于多个文件夹；全局取消收藏才移除全部文件夹关系。
-- 默认收藏夹按账号懒创建且不可删除；自定义收藏夹使用客户端随机稳定 ID 幂等创建，重命名、排序和删除要求 `expectedVersion`。文件夹数量读取可执行 `favorite.folder_count` entitlement，会员降级保留已有数据并只阻止继续超额创建。
+- 默认收藏夹按账号懒创建且不可删除；自定义收藏夹使用客户端随机稳定 ID 幂等创建，重命名、排序和删除要求 `expectedVersion`，名称最多 20 字。删除自定义收藏夹前，`0096` 触发器把其中条目保留到默认收藏，不能取消喜欢。文件夹数量读取可执行 `favorite.folder_count` entitlement，会员降级保留已有数据并只阻止继续超额创建。
+- 收藏夹总览返回账号去重总数和每夹最多四张当前仍公开的预览图；收藏列表支持最多 40 字账号私有搜索、单地区 code 和单风格 taxonomy term ID。游标绑定账号、文件夹与完整筛选条件，条件变化必须重开分页。
 - 浏览历史默认关闭。用户显式开启后，详情成功呈现才可提交带 `viewId + expectedHistoryVersion` 的记录命令；卡片曝光、预取和详情失败不记录。同一人物聚合为一行，最近同 `viewId` 重放不重复计数。
 - 逐条删除与清空历史都会原子提升偏好版本并删除记录，使删除前的在途写请求失效；支持全部清除时同步关闭。列表同时检查行到期时间和当前可执行保留窗口，会员升级不会复活已过期记录。
 - 人物被屏蔽时，在既有 Safety 条件批次中清理喜欢、关注、收藏和当前可见历史，并提升历史版本；解除屏蔽不恢复任何旧关系。
-- `APP_INTERACTION_COLLECTIONS_ENABLED`、策略版本和 production-ready 是独立运行门禁；当前未加入 Wrangler 配置，全部现有环境继续返回 `favorite=false`、`history=false`。OQ-014、OQ-020 与 OQ-023 未关闭，不生成自动清理、不接推荐信号，也不把技术上限当作会员销售承诺。
-- KMP 已实现严格 bootstrap/DTO Mapper、收藏状态与多文件夹 transport、全部收藏和文件夹页面、详情收藏/归属调整，以及浏览记录显式设置、成功详情展示后稳定事件 ID 写入、分页、逐条删除和版本化清空。账号绑定设置缓存、降级保留和旧版本不重放均由客户端显式处理。
-- 当前仍未修改环境配置、执行 `0078` migration、切换会员 entitlement、运行专项测试、Framework 链接、模拟器/真机或远端联调；所有现有环境保持 capability 关闭。
+- Interaction-4 在不改变 API/UI 的前提下补齐浏览历史生命周期：只有显式策略 ID、`history_retention_decision_status=approved` 与 `purge_enabled=1` 同时有效时，每日任务才按 `expires_at, account_id, profile_id` 有界物理删除并报告积压；能力或记录开关关闭后不撤销既有删除义务。
+- `APP_INTERACTION_COLLECTIONS_ENABLED`、策略版本和 production-ready 是独立运行门禁；当前未加入 Wrangler 配置，全部现有环境继续返回 `favorite=false`、`history=false`。OQ-014、OQ-020 与 OQ-023 未关闭，development 清理会安全跳过、不接推荐信号，也不把技术上限当作会员销售承诺。
+- KMP 已实现严格 bootstrap/DTO Mapper、收藏状态与多文件夹 transport、文件夹页面、详情收藏/归属调整，以及浏览记录显式设置、成功详情展示后稳定事件 ID 写入、分页、逐条删除和版本化清空。`APP-INT-03/04/05/06` 的正式页、弹层、空态和失败态必须先有 Figma Node ID；`APP-INT-06` 以服务端结果更新勾选状态，更新失败保留旧值，移出唯一剩余收藏夹先二次确认。当前不存在独立“全部收藏”卡片。账号绑定设置缓存、降级保留和旧版本不重放均由客户端显式处理。
+- 当前仍未修改环境配置、执行 `0078`/`0096` migration、切换会员 entitlement、运行构建、专项测试、Framework 链接、模拟器/真机、`android-cli` 截图或远端联调；所有现有环境保持 capability 关闭。
 
 完整边界见 `docs/app/INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md`。
 
@@ -142,7 +148,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `app_follow_update_policies` 只保存 feed、站内通知投影、生产门禁和生效下界；bootstrap 的 `interactions.followUpdates` 不从 `follow=true` 推导。
 - 站内通知在用户执行 HTTP pull 时按账号惰性写入既有 Message-3 Outbox，以 `(account_id,event_type,event_ref)` 去重，避免发布事务同步枚举关注者。
 - Outbox 投递前重验关注关系、屏蔽状态、发布、认证、用途授权、有效期、可见性和来源图库。取消关注、功能关闭或资料失效后标记 `suppressed`，恢复时不补发旧事件。
-- KMP 已接入严格 transport、“更新 / 已关注 / 喜欢”三段式关注页、取消关注回收和通知目标跳转。当前未配置 `APP_FOLLOW_UPDATES_*`、未执行 `0079`、未接系统推送，也未运行专项测试或远端联调；所有现有环境 capability 保持关闭。
+- KMP 已接入严格 transport；底部“关注”页按 Figma 收敛为“全部 / 有更新 / 最近关注”筛选，喜欢由独立 `APP-INT-02` 承载，并保留服务端取消关注、事件回收和通知目标跳转。当前未配置 `APP_FOLLOW_UPDATES_*`、未执行 `0079`、未接系统推送，也未运行专项测试或远端联调；所有现有环境 capability 保持关闭。
 
 完整边界见 `docs/app/INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
 
@@ -192,7 +198,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 
 完整边界见 `docs/app/SEARCH_2_FILTERS_AND_SAVED_FILTERS_INTEGRATION.md`。
 
-### Recommendation-1 版本化推荐与运营精选 `[Cloudflare 与 KMP 开发完成，默认关闭]`
+### Recommendation-1/2/3/4/5/6 版本化推荐、运营精选、自动停止与证据生命周期 `[Cloudflare 与 KMP 开发完成，默认关闭]`
 
 `0083_app_recommendation_rules_and_editorial.sql` 和 App API v2 `1.16.0` 在统一公开人物资格与稳定 taxonomy 基线上建立推荐运营闭环：
 
@@ -201,15 +207,20 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - 当前运行信号只允许资料质量、批准后的热度版本、时效、请求地区和本人主动选择的稳定 taxonomy。会员、金币、消息、搜索、浏览、关注、收藏、精确位置和内部审核字段不进入 Recommendation-1 排序。
 - `app_recommendation_rule_versions` 保存模式、整数权重、范围、多样性、灰度、计划时间、最低客户端版本和回退引用。创建/复制幂等，草稿和状态流转使用乐观版本；创建人不能复核自己的规则或精选排期。
 - `rolloutPercent=1..99` 必须绑定同入口、同模式、曾安全生效的回退版本；个性化目标/回退目录必须一致。服务端按规则与推荐会话稳定分桶，短期 HMAC 签名游标绑定实际执行规则，客户端不能伪造会话选择灰度桶，单页和跨页不混合两个版本。
+- Recommendation-2 已把 KMP 固定发送的 `X-Client-Version` 接入 bootstrap capability、推荐流、本人偏好和实际规则选择：只接受两段/三段数字版本，高版本 scheduled 不覆盖旧客户端仍兼容的 active 版本，active 高于客户端时只使用显式登记且兼容的历史回退。规则最低版本高于策略基线时，即使全量启用也必须登记回退；无兼容规则时安全关闭而不放宽资格。
+- Recommendation-3 已把 `targetRegionCodes` 前移到 scheduled/active/历史回退选择：空数组表示全局规则，非空数组只服务明确地区，未选择地区时不猜测。新排期不覆盖请求地区时继续尝试兼容 active；回退必须再次匹配当前地区。地区规则即使全量启用也必须登记回退，全局目标只能回退到全局规则，地区目标回退必须为全局或覆盖目标全部地区；非法范围安全关闭。
+- Recommendation-4 让上述有序候选逐条加载完整不可变规则并校验权重、理由、App 渠道、taxonomy/heatVersion 和 production-ready 依赖；高优先规则失效时继续尝试下一条安全版本。个性化候选还绑定账号当前偏好目录，新目录排期不覆盖旧目录偏好；`auto` 的实际灰度回退若失效会重建非个性化执行上下文；bootstrap 只公布通过完整校验的实际规则。
+- Recommendation-5 以 `0113_app_recommendation_guardrails.sql` 增加默认关闭的守护控制、经独立复核的目标/反指标策略、仅聚合整数评估、不可变停止事实和运行时回退。部分灰度只有在来源、保留、purge、策略和环境门禁全部满足时可执行；关键数据缺失或 stop 指标连续越线后，任何比例的新会话都排除该版本并只使用登记的 100% 回退。停止事实不伪造规则暂停或管理员动作，复投必须复制新版本。
+- Recommendation-6 以 `0114_app_recommendation_evidence_lifecycle.sql` 为既有推荐会话增加账号摘要定位索引和会话/条目 UPDATE 不可变约束。既有 15 分钟调度只在策略显式配置、保留决策批准、天数有效且 purge 开启时有界删除到期会话并级联条目；推荐能力或证据写入后来关闭不取消既有删除义务。Privacy-2B 以同一分用途 HMAC 定位账号关联会话，把会话和条目纳入注销步骤前后零残留计数；开始/重试还会检查稳定 `SESSION_SECRET` 可用。
 - 未来 `effectiveAt` 进入 `scheduled`，到点后只影响新会话；立即启用、暂停和回滚会重新校验目标与回退版本。同一入口和模式最多一个 active 与一个 scheduled 版本。
 - 运营精选固定返回 `source=editorial`、`disclosure=平台精选`，披露文案不可改为认证、自然热门或未披露推荐；排期提交、批准、启用和每次用户请求均复核人物公开资格。
 - `GET/PUT /api/v2/me/recommendation-preference` 管理本人显式偏好。开启必须引用当前可用的不可变 taxonomy 目录和稳定词条；关闭会清空选择，不能保留暗中画像。
 - OQ-023 未关闭时服务端拒绝启用个性化；OQ-020 未关闭时不写推荐会话/条目证据；OQ-009 未关闭时热度权重保持 `0`，migration 只建立未批准的空热度版本。
 - Nuxt 已实现规则列表、规则编辑、合成 Dry-run、精选排期四个后台页面，并提供提交、复核、启用/排期、暂停和回滚操作。页面按窄屏换行和表格横向容器处理，状态不只依赖颜色。
 - KMP 已实现 Recommendation Domain/Repository、严格 `1.16.0` DTO、智能/通用推荐、实际模式与 fallback、推荐理由、固定精选披露、签名游标分页约束，以及本人主动 taxonomy 偏好页面；Android Debug APK 与 iOS Simulator Kotlin/Native 编译通过。
-- 当前未配置 `APP_RECOMMENDATION_*`、未执行 `0083`，也未运行 migration、专项测试、Framework 链接、模拟器/真机或远端联调；所有现有环境继续 fail closed。
+- 当前未配置 `APP_RECOMMENDATION_*`、未执行 `0083/0113/0114`、未批准真实聚合来源/阈值/保留期，也未运行 migration、专项测试、Framework 链接、模拟器/真机或远端联调；所有现有环境继续 fail closed。
 
-完整边界见 `docs/app/RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md`。
+完整边界见 `docs/app/RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md`、`docs/app/RECOMMENDATION_2_CLIENT_VERSION_GUARD_INTEGRATION.md`、`docs/app/RECOMMENDATION_3_REGION_SCOPE_AND_FALLBACK_INTEGRATION.md`、`docs/app/RECOMMENDATION_4_EXECUTABLE_RULE_SELECTION_INTEGRATION.md`、`docs/app/RECOMMENDATION_5_GUARDRAIL_AND_AUTOMATIC_STOP_INTEGRATION.md` 与 `docs/app/RECOMMENDATION_6_EVIDENCE_LIFECYCLE_INTEGRATION.md`。
 
 ### Privacy-1 数据权利控制面 `[Cloudflare 与 KMP 开发完成，默认关闭]`
 
@@ -225,11 +236,42 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `/api/admin/app/data-rights` 和 Nuxt `ADM-PRI-01/02` 提供脱敏队列、领取、开始处理、失败、重试和证据核验取消；没有 Privacy-2 真实证据时不提供完成动作。
 - Operations-1 只对超过 `deadline_at` 的非终态申请生成聚合 `data_rights_overdue` Incident，不复制账号或申请敏感内容，也不代替权威状态机。
 - KMP 已实现严格 `1.17.0` DTO、系统安全状态凭证、手机单列/宽屏双栏、注销影响逐项确认、退出登录后的申请级访问，以及注销成功响应丢失时对原幂等命令的安全恢复。当前未修改 Wrangler、未执行 `0094`，也未运行 migration、专项测试、KMP 构建、模拟器/真机或远端联调。
-- Privacy-2 的 R2 导出制品、短期下载凭证、到期清理、下载审计、不可逆删除/匿名化、法定保留排除与完成证明后置，必须等待治理决策和生产处理门禁冻结。
+- 本段是 Privacy-1 历史边界。Privacy-2A 已以默认关闭方式实现私有 R2 导出制品、一次性下载票据、到期清理与下载审计；Privacy-2B 已完成默认关闭的不可逆删除、保留隔离与完成证明源码，治理审批和运行验证继续后置。
 
 完整边界见 `docs/app/PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md`。
 
-### Media-1 人物图片与认证说明 `[Cloudflare 与 KMP 开发完成，默认关闭]`
+### Privacy-2A/2C 私有数据导出制品与覆盖补全 `[Cloudflare、Nuxt 与 KMP 开发完成，默认关闭]`
+
+`0102_app_data_rights_private_exports.sql` 与 App API v2 `1.24.0` 在 Privacy-1 控制面上补齐可恢复个人数据副本：
+
+- export profile 与 Privacy-1 policy 一一绑定且不可更新；development seed 为 `production_ready=0`，正式执行继续要求 policy/profile 双重发布、三项治理决策、Queue 和私有 R2 binding 全部就绪。
+- 执行器只读取当前 41 个显式白名单分类。Privacy-2C 保持原 35 类 ordinal 不变，只在末尾追加推荐偏好、人物拉黑状态/事件、旧版图库点赞和推荐解释会话/条目；任务创建时冻结每类最大 `rowid` 作为纳入边界，再按小页生成 NDJSON。旧的 35-scope artifact 按自身 scope 数收尾，新 artifact 才生成 41 类。推荐证据以与写入相同的账号 HMAC 定位，但 `account_hash`、`context_hash`、密码、token、数据库数字内部 ID、内部备注和其他账号内容全部排除。
+- Queue 消费使用 D1 短租约、generation token、分类游标和确定性 R2 key 恢复；分片、README、manifest 与 TAR 均核验 SHA-256、长度、ETag 和 metadata，只有完整事实一致才把申请推进到 `ready`。
+- 申请详情新增 `exportArtifact`。`POST /api/v2/me/data-rights/requests/:requestId/download-tickets` 消费 `export_download` step-up 并签发 `drdl_` 一次性票据；`GET /api/v2/me/data-rights/requests/:requestId/download` 使用专用 `X-Data-Rights-Download-Ticket` Header，原子消费后返回 `application/x-tar` 私有流。
+- 下载再次绑定当前普通 session、账号、申请/制品版本、manifest/aggregate SHA-256、R2 ETag、长度和到期时间；票据明文不落 D1、日志、URL 或客户端持久化状态。
+- KMP 使用 Ktor `bodyAsChannel()` 以 64 KiB 流写平台文件，严格核验 MIME、文件名、Content-Length 和 manifest 摘要；Android 使用 MediaStore/应用 Documents，iOS 使用临时文件同步后原子移动，失败清理部分文件。
+- 到期先使 D1 申请、制品与未消费票据失效，再删除固定前缀的 R2 对象并核验不存在；清理失败保留 `purging` 供定时恢复，不重新开放下载。
+- 本段是 Privacy-2A 导出边界。Privacy-2B 已另行实现不可逆注销执行器；OQ-020/OQ-024/OQ-025 未关闭时 `deletionProcessing=false` 仍是硬门禁。
+- Privacy-2C 交付时不改变当时累计 App API `1.25.0`、TAR schema、KMP、Nuxt 或 Figma；导出 readiness 额外要求稳定 `SESSION_SECRET`，避免推荐 scope 在快照和分页之间失去账号定位。完整边界见 `docs/app/PRIVACY_2C_DATA_COPY_COVERAGE_INTEGRATION.md`。
+
+完整契约、状态机、Figma 与后置门禁见 `docs/app/PRIVACY_2A_PRIVATE_EXPORT_INTEGRATION.md`。
+
+### Privacy-2B 账号不可逆注销 `[Cloudflare、Nuxt 与 KMP 源码开发完成，默认关闭]`
+
+`0103_app_data_rights_irreversible_deletion.sql` 在 Privacy-1 控制面上补齐九步、可恢复且只能前向推进的注销执行器；该切片继续复用当时累计 `1.24.0` 的既有 deletion 状态和请求级访问形状，Membership-7 后仓库当前累计为 `1.26.0`：
+
+- 不可变 deletion profile 精确冻结九步合同、五项治理决策、身份复用模式和每步治理引用。development profile `drdp_app_1_0_privacy_2b_dev_1` 为 `production_ready=0`，OQ-020/OQ-024/OQ-025 未关闭时不能启动。
+- 执行顺序固定为撤销访问、清私有导出、清通知、清发现活动、清账号偏好、匿名化命名分析、关闭平台话题、隔离受监管事实和墓碑化账号。Recommendation-6 已把同一 HMAC 命中的推荐会话与条目纳入“清发现活动”；除保留隔离外，每步完成后剩余计数必须为零。
+- Queue 只携带 execution ID；D1 以短租约、当前步骤和不可变 evidence 恢复。只有九步证据、七类保留域和账号墓碑全部核验后，执行器才能写 `completed`；管理员只能开始或重试。
+- consent、membership、wallet、messaging evidence、safety、data rights、security audit 七域固定为 `compliance_only`；钱包在隔离前冻结，失败只允许前向修复，不恢复账号或产品写能力。
+- `users` 行作为 FK 锚点保留但清除登录身份和可识别资料。可选 identity seal 只保存邮箱的独立 Secret HMAC，并支持 current/previous 密钥轮换。
+- 待注销期间的身份、会话、设备、互动、偏好、通知、导出和命名分析重建继续由 D1 triggers 阻断或抑制，避免并发写回已经清除的事实。
+- KMP 读到 completed 后清除请求级状态凭证、普通会话和账号域内存，轮换 installation ID，并退出到未登录“我的”。`APP-SET-10` 没有完成态正式 Figma Frame，客户端不创建自拟成功页。
+- 当前未修改 Wrangler，未配置 `DATA_RIGHTS_DELETION_QUEUE`、`DATA_RIGHTS_RETENTION_MASTER_KEY_CURRENT/PREVIOUS`，未执行 `0103/0114`，也未运行构建、测试、设备 QA 或远端联调。
+
+完整执行合同、保留域、后台行为、Figma 约束和后置门禁见 `docs/app/PRIVACY_2B_IRREVERSIBLE_DELETION_INTEGRATION.md`；推荐证据删除边界见 `docs/app/RECOMMENDATION_6_EVIDENCE_LIFECYCLE_INTEGRATION.md`。
+
+### Media-1 人物图片与认证说明 `[Cloudflare 契约完成；APP-DSC-08 Figma/KMP 静态接线完成，默认关闭]`
 
 App API v2 `1.18.0` 复用现有 `galleries`、`media_assets` 和 `profile_public_projections`，不新增 migration 或第二套媒体事实：
 
@@ -237,7 +279,7 @@ App API v2 `1.18.0` 复用现有 `galleries`、`media_assets` 和 `profile_publi
 - `POST .../media/:mediaId/access` 以 HMAC 签发 5 分钟、绑定账号公开 ID、当前 App session、人物和单图的凭证；签发和取图两次检查当前会员 rank。
 - `GET .../media/:mediaId/content` 每次重新执行统一人物公开资格谓词并由 Worker 代理 R2；只允许 JPEG/PNG/WebP/AVIF、最大 24 MiB、`no-store` 和 `nosniff`。
 - `GET .../verification` 只返回四项认证范围、政策/时间/版本和运营主体，不返回 evidence、reviewer 或内部说明。
-- KMP 媒体 token 仅在 Repository 局部变量存在；UI 只接收字节。会员图片授权到期、账号变化或退出页面后清空内存并重新请求。手机为全屏主图与底部条，`>=760dp` 为主图与侧栏。
+- `APP-DSC-08` 以 Figma 正式节点 `159:66285`、`159:66346`、`159:66400`、`159:66437` 和支持 Section `750:3580` 为唯一可见 UI 基线。KMP 媒体 token 仅在 Repository 局部变量存在，UI 只接收字节；会员图片授权到期、账号变化或退出页面后清空内存并重新请求。当前页面采用全屏主图、顶部操作、页码胶囊及底部说明/动作，更宽窗口只居中约束，不自行增加 Figma 未定义的缩略图条或侧栏。
 - `APP_MEDIA_ENABLED`、`APP_PROTECTED_MEDIA_ENABLED`、production 的 `APP_MEDIA_PRODUCTION_READY` 均未配置；视频固定关闭，专项测试、Gradle、模拟器/真机和联调后置。
 
 完整边界见 `docs/app/MEDIA_1_PERSON_MEDIA_AND_VERIFICATION_INTEGRATION.md`。
@@ -255,6 +297,19 @@ App API v2 `1.19.0` 在既有 bootstrap 上兼容新增版本化 `runtime` 与 `
 
 本阶段不新增 migration，不写 Wrangler 值，不运行 Cloudflare/KMP 构建与专项测试。完整边界见 `docs/app/APP_CORE_1_RUNTIME_SUPPORT_SYSTEM_INTEGRATION.md`。
 
+### Account/Settings-2 账号资料、初始偏好与会话设置 `[Cloudflare、Figma 与 KMP 开发完成，配置和测试后置]`
+
+App API v2 `1.20.0` 以兼容新增方式补齐观看者私有账号资料与单会话设置：
+
+- `0095_app_account_profile_and_conversation_settings.sql` 只新增账号头像样式表、会话免打扰表和会话/账号复合归属唯一键；不 seed、不回填公开真人，也不自动打开能力。
+- `GET/PUT /api/v2/me/account-profile` 返回私有昵称、受控头像样式和脱敏邮箱。修改必须提交当前密码和 `expectedVersion`，成功后写账号安全事件；账号资料不会创建或认领 Person。
+- `GET/PUT /api/v2/conversations/:conversationId/settings` 同时校验 Bearer 账号与会话归属，以乐观版本维护 `muted`；关闭会话固定锁定设置。
+- 免打扰只抑制之后尚未投递的 `message.platform_reply` 站内通知，不删除消息、不改变消息接收主体，也不表示系统推送已实现。
+- `APP_ACCOUNT_PROFILE_ENABLED`、`APP_INITIAL_PREFERENCES_ENABLED`、`APP_CONVERSATION_SETTINGS_ENABLED` 均默认关闭；bootstrap 与具体路由双重检查，底层 Auth、Recommendation/Taxonomy 或 Messaging 不可用时不能单独开启。
+- Figma 已补齐 APP-AUTH-05、APP-SET-02、APP-MSG-03/04 的正常、失败、锁定、举报、屏蔽和关闭确认状态；KMP 必须按节点实现，设计缺口先补 Figma，禁止代码自行发明可见页面。
+
+完整节点、状态机与跨仓边界见 `docs/app/ACCOUNT_SETTINGS_2_FIGMA_CROSS_REPO_INTEGRATION.md`。本阶段未运行 migration、构建、专项测试、模拟器/真机或远端联调。
+
 ### 独立 App 五级会员 `[开发验证，默认关闭]`
 
 `0071_app_membership_catalog_and_grants.sql` 和 App API v2 `1.4.0` 建立 Membership-1 最小闭环：
@@ -263,12 +318,15 @@ App API v2 `1.19.0` 在既有 bootstrap 上兼容新增版本化 `runtime` 与 `
 - 心遇、心悦、心知、心契、心耀使用稳定 code/tier ID 和 `rank=10/20/30/40/50`。展示名称、颜色和文案不参与权限判断。
 - entitlement 以稳定 key、schema 版本和值类型定义；当前支持 `boolean|integer|enum`。七项开发配置全部为 `planned`，只能展示，不能据此开放消息、筛选、历史或收藏夹业务。
 - `GET /api/v2/membership/catalog` 提供公共五级目录；`GET /api/v2/me/entitlements` 使用 App Bearer 会话返回本人最高有效 App grant 和快照。`GET /api/v2/me` 复用同一摘要，不读取旧 Web `user_memberships`。
+- Membership-7 在累计 App API `1.26.0` 为本人快照增加 `lifecycle`：服务端以统一时钟和可配置窗口返回 `active|expiring_soon|expired|revoked|free`。已结束 grant 只进入 `lifecycle.endedGrant`；顶层 `status/tier/grant` 与 entitlement 合并仍只接受当前有效、未撤销 grant，历史摘要不得用于授权。可选 `APP_MEMBERSHIP_EXPIRING_SOON_DAYS` 仅完成 Binding/解析，实际环境配置后置。
 - 管理后台在现有用户详情页提供独立 App 会员面板，并以 `/admin/app/membership/grants/new` 提供 `ADM-MBR-04` 单账号变更工作台；支持账号搜索确认、预览、立即/预约发放、同级续期和撤销。`0088_app_membership_change_reviews.sql` 进一步交付 `ADM-MBR-05` 独立复核队列与逐单详情：发起人不得自审，批准时在 D1 条件批次内重验账号、当前 grant、业务单号和会员申请锁，并原子写入正式 grant/revocation、复核结果、事件和审计。没有已发布风险策略时服务端保守要求全部复核。
 - `0089_app_membership_catalog_management.sql` 交付 `ADM-MBR-01/02` 管理平面：目录从稳定基线完整复制，使用乐观锁和管理员幂等命令维护五级与 typed entitlement；发布申请固化校验报告和内容哈希，只能由非创建人、非申请人的有效 Owner 决定。当前运行引用、已发布、待复核以及被 grant、申请或后继目录引用的版本不可原地修改。发布只生成不可变版本，不切换环境目录或迁移 grant。
 - `APP_MEMBERSHIP_ENABLED` 与 `APP_MEMBERSHIP_ADMIN_ENABLED` 分离；production 还要求 `APP_MEMBERSHIP_PRODUCTION_READY=true` 且目录行同时为 `published + production_ready=1`。production/dev 当前都显式关闭。
-- migration 不 seed 账号 grant、不回填 legacy 数据、不把 `vip/svip` 自动映射为五级会员。`0088` 同样不 seed 风险策略；正式阈值、migration 执行、配置和专项测试统一后置。批量发放、额度消耗和旧会员迁移仍未实现。
+- migration 不 seed 账号 grant、不回填 legacy 数据、不把 `vip/svip` 自动映射为五级会员。`0088` 同样不 seed 风险策略；正式阈值、migration 执行、配置和专项测试统一后置。`0098_app_membership_legacy_migrations.sql` 已实现旧会员显式映射、证据冻结、逐项独立复核、执行门禁与租约恢复，但默认关闭且尚未执行。
+- `0104_app_membership_batch_grants.sql` 已实现 Membership-6 默认关闭的 CSV 批量编排：最多 200 行，每个有效行只创建普通 `app_membership_change_requests`，必须由另一管理员逐项复核；10 分钟租约和稳定逐行幂等键支持部分失败恢复，不会直接写 grant。OQ-018 未关闭且 Figma 没有正式批量页面，因此 D1 控制保持 `enabled=0`，不新增 Nuxt 页面或导航；`0104`、配置和验证后置。
+- Message-1 的 `direct_message.new_threads_per_day` 上海自然日额度原子消耗已独立实现。
 
-完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md`、`docs/app/MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md` 和 `docs/app/MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md`。
+完整跨仓边界与验收要求见 `docs/app/MEMBERSHIP_1_CROSS_REPO_INTEGRATION.md`、`docs/app/MEMBERSHIP_3_CHANGE_REVIEW_INTEGRATION.md`、`docs/app/MEMBERSHIP_4_CATALOG_MANAGEMENT_INTEGRATION.md`、`docs/app/MEMBERSHIP_5_LEGACY_MIGRATION_INTEGRATION.md`、`docs/app/MEMBERSHIP_6_BATCH_GRANTS_INTEGRATION.md` 和 `docs/app/MEMBERSHIP_7_LIFECYCLE_PRESENTATION_INTEGRATION.md`。
 
 ### Membership-2 站内会员申请 `[开发验证，默认关闭]`
 
@@ -295,7 +353,7 @@ App API v2 `1.19.0` 在既有 bootstrap 上兼容新增版本化 `runtime` 与 `
 - 新话题额度按 `Asia/Shanghai` 自然日计算，消耗事实追加写入；同一个人物复用已有会话不重复消耗额度。观看者发送限 20 条/分钟/会话，运营发送限 60 条/分钟/会话，生产仍需配置 Cloudflare 边缘限流。
 - 接收主体固定为“平台运营接收”，消息发送方只允许 `viewer|platform_operator|system`。管理员不能提交 `person` 身份；后台回复另有文案门禁，禁止冒充真人或承诺回复、见面与关系结果。
 - 消息正文只存在业务消息表和受控正文响应中，不进入通用日志、分析事件或审计 JSON。管理员正文读取要求 `service_operation` 原因并写访问审计；回复审计只保存消息 ID、正文 SHA-256 与长度。
-- KMP 使用 bootstrap 的 `messaging` capability、接收主体、披露版本、HTTP 拉取方式和文本上限决定入口；当前只有手动刷新，没有 WebSocket、Durable Object、系统推送、媒体消息或假在线/输入状态。
+- KMP 使用 bootstrap 的 `messaging` capability、接收主体、披露版本、HTTP 拉取方式和文本上限决定入口；Message-1 当时只有手动刷新。后续 Message-4 只增加无正文刷新提示，不改变 D1/HTTP 权威，也不增加系统推送、媒体消息或假在线/输入状态。
 - `APP_MESSAGING_ENABLED` 与 `APP_MESSAGING_ADMIN_ENABLED` 独立，production 还要求 `APP_MESSAGING_PRODUCTION_READY=true`；三项当前均不放行，不得随 migration 自动开启。
 
 完整跨仓边界与验收要求见 `docs/app/MESSAGE_1_CROSS_REPO_INTEGRATION.md`。
@@ -329,7 +387,22 @@ App API v2 `1.19.0` 在既有 bootstrap 上兼容新增版本化 `runtime` 与 `
 
 完整跨仓边界与验收要求见 `docs/app/SAFETY_2_APPEAL_INTEGRATION.md`。
 
-### Message-3 站内通知与可靠到达 `[开发验证，默认关闭]`
+### Account/Settings-3 跨领域申诉 `[开发完成，默认关闭]`
+
+`0100_app_cross_domain_appeals.sql` 与 App API v2 `1.23.0` 把 `APP-SET-08` 扩展为举报结论、账号限制和金币分录共用的独立复核入口：
+
+- 举报结论继续使用 `app_safety_appeals`；账号限制和金币分录使用 `app_service_appeals`，不合并原领域事实，也不通过申诉业务双写原对象。
+- 账号限制新增单调版本与用户安全业务引用；金币分录使用不可变 `entryId + sequence`。同一账号、来源类型、来源 ID 与来源版本最多一个案件。
+- 创建与补充均要求幂等键；补充还要求 `expectedVersion`。事件、补充、命令和幂等结果追加写，服务申诉身份与来源快照不可变，终态不可再次修改。
+- 统一 `review_state=normal|evidence_insufficient|needs_escalation`；补充、请求补充和升级可跨两类申诉复用工作流，但升级与终态均禁止继续补充。
+- 用户 API 只返回本人来源摘要、用户可见说明和时间线；管理员列表不返回正文，领取后才按最小必要目的读取，且复核人不能是原业务决定管理员。
+- 两类用户申诉列表均按 `updatedAt DESC, appealId ASC` 使用账号绑定游标分页；KMP 对具体账号限制或金币分录入口在首屏未命中时继续跨页查找，不能把已有案件误判成新建状态。
+- `upheld|changed|closed` 只形成申诉结论；账号限制、举报和金币的任何后续业务变化仍必须进入各自权威服务。
+- KMP `APP-SET-08` 已绑定九个 Figma 正式节点，包含补充、升级和三个独立终态；通用入口按 `updatedAt` 选择最近案件，具体业务入口只匹配自身来源。
+
+`0100`、环境开关、策略 SLA、构建、专项测试、`android-cli`/真机验证和远端联调按当前开发顺序统一后置。完整边界见 `docs/app/ACCOUNT_SETTINGS_3_CROSS_DOMAIN_APPEAL_INTEGRATION.md`。
+
+### Message-3/9 站内通知与内容生命周期 `[开发完成，默认关闭；新增验证后置]`
 
 `0076_app_in_app_notifications.sql` 和 App API v2 `1.9.0` 建立统一站内通知中心：
 
@@ -337,12 +410,78 @@ App API v2 `1.19.0` 在既有 bootstrap 上兼容新增版本化 `runtime` 与 `
 - 业务表 D1 trigger 只在策略 `generation_enabled=1` 时原子写 Outbox；migration 初始策略关闭、无 seed、无历史回填。会员到期恢复还受策略 `effective_at` 下界约束。
 - Outbox 使用账号、事件类型和事件引用防重，支持处理租约、最多 5 次指数退避、dead letter 和 SHA-256 稳定通知 ID；App 拉取前定向消费，Worker cron 每 15 分钟做全局有界恢复。
 - 用户 API 提供分类游标列表、安全详情、服务端未读数、单条/分类已读和版本化偏好；游标绑定账号与分类，已读更新和设备审计在同一 D1 batch 中收敛。
+- Message-6 修复账号唯一偏好在策略切换时无法换绑的问题：初始化后发现 `policy_id` 落后于当前已就绪策略，会保留三个可选值，以旧策略 + 当前版本条件原子换绑并令版本加一；旧基线和新策略生效均追加偏好事件。并发已由其他请求完成时复用结果，无法收敛时可重试失败，绝不恢复默认值。
 - 通知只保存固定模板快照，不复制平台话题正文、申请说明、内部备注、安全证据、IP、精确位置或 Token。受控目标动作在响应时重新验证账号归属、对象状态和 capability。
-- Nuxt `/admin/app/notifications` 只读运行台展示双门禁、事件、模板和投递状态；投递列表不返回用户消息正文或敏感业务说明。
+- Nuxt `/admin/app/notifications` 展示双门禁、事件、模板和投递状态；`0097_app_notification_template_governance.sql` 已增加变量目录、允许列表和模板草稿/独立复核/发布工作流。投递列表不返回用户消息正文或敏感业务说明。
 - `APP_NOTIFICATIONS_ENABLED`、`APP_NOTIFICATIONS_ADMIN_ENABLED`、`APP_NOTIFICATIONS_POLICY_VERSION` 与 production-ready 门禁相互独立，production/dev 当前均不开放。OQ-020 未关闭前保留天数为空且不执行清理。
-- KMP 使用严格 bootstrap 配置和 HTTP pull，不接入 APNs、FCM、WebSocket 或系统通知权限；未知或矛盾 capability 安全关闭。
+- KMP 使用严格 bootstrap 配置和 HTTP pull，不接入 APNs、FCM 或系统通知权限；Message-4 WebSocket 只触发 HTTP 补拉，未知或矛盾 capability 安全关闭。
+- Message-9 以 `0115_app_notification_content_lifecycle.sql` 增加到期/legacy 索引和保留边界不可变触发器。批准策略下的新投递按原始事件时间写 `expires_at`，已超过窗口的延迟事件只收敛 Outbox；每日清理只有显式策略 ID、approved 保留天数和 `purge_enabled=1` 同时有效时，才有界删除正文与其单条已读事件。能力/generation 关闭不取消既有删除义务，Outbox 去重墓碑和分类已读聚合保留。
 
-完整跨仓边界与启用清单见 `docs/app/MESSAGE_3_NOTIFICATION_INTEGRATION.md`。
+完整跨仓边界与启用清单见 `docs/app/MESSAGE_3_NOTIFICATION_INTEGRATION.md` 与 `docs/app/MESSAGE_9_NOTIFICATION_CONTENT_LIFECYCLE_INTEGRATION.md`。
+
+### Message-4 账号级实时刷新 `[Cloudflare 与 KMP 源码开发完成，默认关闭]`
+
+`0105_app_realtime_refresh_channel.sql` 与 App API v2 `1.25.0` 在 Message-1/3 的 HTTP 权威链路上增加最小刷新提示：
+
+- `app_realtime_policies` 冻结一次性票据、账号连接数、DO 事件重放/保留和重连区间；development seed 固定为 `unresolved + disabled + production_ready=0`。
+- `POST /api/v2/realtime/tickets` 使用当前 Bearer session 签发绑定账号、session、设备的一次性短票据；D1 只保存 SHA-256。`GET /api/v2/realtime/connect` 使用独立 Realtime scheme 升级 WebSocket。
+- 一个内部账号映射一个 Hibernation Durable Object。DO SQLite 只保存去重哈希、六类刷新范围、发生时间和单调游标；不保存或发送消息/通知正文、账号资料、管理员信息、内部备注或 Token。
+- 话题/消息/已读、通知投递/已读、会员生效状态和钱包实际入账在 D1 成功后以 `waitUntil` 尽力发布。失败不得回滚业务事实，幂等重放不重复广播。
+- 退出、远程设备撤销、Refresh Token 重放和 Privacy-2B 注销会取消未消费票据并关闭对应 session/device/account 连接；不可逆注销执行同时清理该账号全部实时票据元数据。所有 HTTP API 仍独立重验权限。
+- KMP 严格校验 bootstrap 和三类服务端帧，前台连接、后台停连，使用有界指数退避与游标补偿；仅刷新当前可见 HTTP 页面，并复用 `APP-MSG-05` 已有“实时离线”状态。
+- OQ-028 未关闭，本阶段不写 Wrangler Durable Object binding/环境值，不执行 `0105`，也不运行构建、测试或设备 QA。
+
+完整契约、安全边界和后置门禁见 `docs/app/MESSAGE_4_REALTIME_REFRESH_INTEGRATION.md`。
+
+### Message-5 数据权利结果通知 `[Cloudflare 源码开发完成，默认关闭]`
+
+`0109_app_data_rights_notifications.sql` 复用 Message-3 已冻结的 `data.export_ready`、`account.deletion_updated` 和 `data_task + open_data_task` 形状，不增加 API 版本或页面状态：
+
+- 私有导出只有在申请、制品、任务和用户可见 `export_ready` 事件原子收敛后写通知 Outbox；固定模板不包含 R2 key、URL、下载票据、摘要或导出内容。
+- 注销创建后继续由 `0103` 抑制全部新通知。只有已验证取消把账号从 `deletion_pending` 恢复为原安全状态后，才为同一申请版本写一条取消结果通知；scheduled、processing、failed 和 completed 仍只允许申请级状态访问。
+- 通知目标返回前重新读取数据权利 overview capability 并验证申请属于当前账号；目标不可用时只保留安全历史正文，不执行动作。
+- KMP 已有 `OpenDataTask` 进入 `APP-SET-09/10` 权威页面，无需新增 Figma Frame。页面总量保持 99/408，Mobile 保持 50/208。
+- migration 不回填历史事件、不启用通知 generation、不改变 OQ-020 保留/清理门禁；`0109`、模板审批、配置、构建、测试与设备 QA 统一后置。
+
+完整边界见 `docs/app/MESSAGE_5_DATA_RIGHTS_NOTIFICATION_INTEGRATION.md`。
+
+### Message-6 通知偏好策略换绑 `[Cloudflare 源码开发完成，默认关闭]`
+
+Message-6 交付时不改变当时累计 App API `1.25.0`、数据库结构或 KMP 页面，只修复策略版本切换后的账号偏好连续性：
+
+- `app_notification_preferences` 继续按账号唯一，不为每个策略创建并行可写记录。
+- 当前策略与偏好行不一致时，保留消息、互动和营销选择，`version + 1` 后换绑新 `policy_id`。
+- 若旧版本没有事件，先补旧策略基线；新策略生效再写一条无设备的内部事件。账号 + version 唯一约束防止并发重复。
+- GET、PUT 和可选通知投递抑制共用该逻辑；production-ready 策略门禁仍先于任何换绑写入。
+- 无 migration、公共 DTO、Page ID 或 Figma 状态增量；构建、测试和并发验证统一后置。
+
+完整边界见 `docs/app/MESSAGE_6_NOTIFICATION_POLICY_REBIND_INTEGRATION.md`。
+
+### Message-7 数据导出失败必要通知 `[Cloudflare 源码开发完成，默认关闭]`
+
+`0110_app_data_export_failure_notifications.sql` 在 Message-5 的 ready 通知之外补齐 export failed 必要结果，交付时不改变当时累计 App API `1.25.0`：
+
+- `failExportJob` 的 D1 batch 先依次收敛申请、制品与执行任务，再插入用户可见失败事件；事件 SQL 重验三者 version、mutation token 和 failure code，避免 trigger 在制品尚未失败时提前读取。
+- `data.export_failed` 固定为 `system_security + required + data_task + open_data_task`，使用无变量安全模板，不返回内部错误或对象引用。
+- Outbox trigger 只接受系统生成的用户可见 `processing_failed`，并重验 export 申请、失败版本、账号归属和失败制品；通知策略关闭或任一事实不一致时 fail closed。
+- KMP 与 Nuxt 复用 `APP-SET-09` 失败态和 `ADM-NTF-01/02/03` 通用行，无 Page ID/Figma/公共 DTO 增量。
+- `0110`、模板审批、配置、构建、测试、Queue 失败注入和设备 QA 统一后置。
+
+完整边界见 `docs/app/MESSAGE_7_DATA_EXPORT_FAILURE_NOTIFICATION_INTEGRATION.md`。
+
+### Message-8 文本消息审核 `[Cloudflare 源码开发完成，默认关闭]`
+
+`0112_app_message_moderation.sql` 在 Message-1 既有四态消息 DTO 上补齐服务端文本审核与人工复核，交付时不改变当时累计 App API `1.25.0`：
+
+- `APP_MESSAGE_MODERATION_POLICY_VERSION` 未配置时保持原 accepted 行为；显式策略只有在 `evaluation_enabled=1` 且生效后执行，production 还要求 published、approved 与 production-ready。migration seed 为 unresolved/disabled，不写规则、不回填消息。
+- 评估事实只保存消息引用、策略/规则、结论、正文 SHA-256 与长度；正文不复制到案件、事件、审计或通知。案件列表无正文，领取后仅按 `message_moderation_review` 用途读取并审计。
+- 待审/拒绝消息保留内部 sequence，但不推进会话业务活跃时间，也不计入普通接收方、正常运营工作台、未读、queue flip 或自动分配；人工通过时原子重排到当前末尾并按发送方形成新的队列方向，避免迟到消息落在接收方已读/分页水位之前。观看者与运营摘要、游标使用各自可见投影，质检只消费 accepted 上下文，数据导出不会泄露未交付运营正文。运营发送者不能领取或裁决自己的案件。
+- `/api/admin/app/message-moderation/cases*` 提供无正文列表、10 分钟租约、受控详情和幂等通过/拒绝；当前没有正式后台审核 Figma，故不新增 Nuxt 页面或导航。
+- Privacy-2B 关闭账号话题前把该账号未完成审核案件系统收敛为 `cancelled`，清租约和审核幂等记录并追加 `account_deletion` 事件；保留原消息证据且不产生新的结果通知，管理员 API 不提供主动取消或恢复入口。
+- Message-3 增加观看者审核结果、待审运营回复最终通过和管理员会话限制/关闭通知；先限制后关闭使用独立 Outbox 身份。裁决幂等重放会重新尝试由稳定 dedupe key 保护的派单与实时刷新，通知仍受 generation 与运行时双门禁。召回继续保留为 OQ-033/Figma 后续能力。
+- 页面事实保持 99/408、Mobile 50/208、Admin 49/200；`0112`、真实策略/规则、配置、构建、测试和设备 QA 统一后置。
+
+完整边界见 `docs/app/MESSAGE_8_TEXT_MODERATION_INTEGRATION.md`。
 
 ### Wallet-1 金币账本与管理员单笔调币 `[开发验证，默认关闭]`
 
@@ -364,6 +503,46 @@ App API v2 `1.19.0` 在既有 bootstrap 上兼容新增版本化 `runtime` 与 `
 - Wallet 管理查询统一以 `app_account_security.account_id` 连接 `users.id`；测试 fixture 已与 `0069_app_account_access.sql` 的真实列契约对齐，不再使用会掩盖空库联调错误的 `user_id` 简化列。
 
 完整跨仓边界与启用清单见 `docs/app/WALLET_1_LEDGER_INTEGRATION.md`，共享 dev 迁移操作见 `docs/app/WALLET_1_DEV_VALIDATION_RUNBOOK.md`，隔离功能验收见 `docs/app/WALLET_1_DISPOSABLE_SMOKE_RUNBOOK.md`。
+
+### Wallet-2 批量调币与钱包对账 `[开发完成，默认关闭]`
+
+`0099_app_wallet_batches_and_reconciliation.sql` 在 Wallet-1 上增加两个管理员控制面，但不改变追加式账本和独立复核规则：
+
+- `ADM-WAL-05` 固定七列 CSV 逐行预览；批次内重复业务单号按行隔离，总额超过控制上限时保留校验证据但硬阻断提交。有效行使用确定性逐行幂等键创建普通 `pending_review` 申请。
+- 批量提交使用 10 分钟处理租约、执行令牌和 D1 状态 guard；中断后仅任务创建人可以接管过期租约，已经创建的调币申请不会重复。
+- `ADM-WAL-06` 比较钱包快照、最新 posted 分录、sequence 和前后余额链。扫描只生成差异案件，不直接改余额；同一时刻只允许一个有效扫描，过期或异常任务收敛为失败并写审计。
+- 只有单纯余额差异、sequence 一致且不超过单笔上限时可创建追加式 forward-fix；它仍进入 Wallet-1 的另一管理员复核。其他差异必须按 Runbook 人工处理。
+- `app_wallet_batch_controls.enabled` 默认 `0`，开启必须保存决策引用、批准人和批准时间；当前不执行 migration、不配置、不处理真实数据。
+- 页面严格对应 Figma：`ADM-WAL-05` 节点 `159:110550`、`159:110754`、`159:110958`、`159:111162`；`ADM-WAL-06` 节点 `159:111365`、`159:111569`、`159:111772`。
+
+完整边界见 `docs/app/WALLET_2_BATCH_AND_RECONCILIATION_INTEGRATION.md`。
+
+### Wallet-3 钱包快照重建与受控解冻 `[开发完成，默认关闭]`
+
+`0107_app_wallet_snapshot_recovery.sql` 把 Operations-1 的保护性冻结接回 Wallet-2 正式处置流，不引入第二套账本：
+
+- `app_wallet_recovery_commands` 和 `app_wallet_recovery_case_links` 只追加保存 Owner、幂等请求、案件集合摘要、执行前快照、分录重建末态、恢复结论与证据引用。
+- `GET .../recovery-preview` 重读同钱包全部未终结案件和完整分录链；`POST .../recover` 要求相同 `caseSetDigest`、锚点版本及 16–128 位幂等键。
+- 所有未终结案件必须由当前 Owner 认领；分录数量、末 sequence 或前后余额链仍不完整时 fail-closed。已解决 forward-fix 对应的显式链覆盖仍按 Wallet-2 规则识别。
+- D1 trigger 只允许精确匹配的 executing 恢复命令执行 `frozen -> active` 和快照重建，并在命令进入 `applied` 前验证钱包末态、案件版本、证据哈希和无剩余未终结案件。
+- 快照、覆盖案件关闭、不可变案件事件、钱包解冻和 `admin_audit_logs` 在同一 D1 batch；任一条件写失败全部回滚。成功后只发布 Message-4 `wallet` scope 刷新，不携带余额正文。
+- `ADM-WAL-06` 复用既有正常、钱包冻结、差异未解释三个 Figma 状态，没有新增 Page ID 或状态；全局仍为 99 页/408 状态、Mobile 50 页/208 状态。
+
+完整边界见 `docs/app/WALLET_3_SNAPSHOT_RECOVERY_INTEGRATION.md`。
+
+### Wallet-4 旧余额显式迁移 `[开发完成，默认关闭]`
+
+`0111_app_wallet_legacy_migrations.sql` 为仓库外旧余额快照建立显式证据链，不从当前不存在的 legacy 金币字段或会员事实猜测余额：
+
+- Dry-run 冻结来源系统、来源记录、`opaque:` 不透明账号引用、提取时间、映射规则、目标稳定 App 账号、整数余额和 SHA-256；目标不存在、重复映射、非空账本或已迁移来源逐项冲突。
+- 创建人提交后，每个有效条目必须由另一位 Owner 独立批准或拒绝；正式执行另受默认关闭的迁移控制、Wallet-1 写策略与 Operations-1 `wallet_adjustments` 控制约束。
+- 执行复用 Wallet-1 普通 `pending_review` 申请与原子不可变分录，不建立第二套余额事实；确定性创建/复核幂等键和 10 分钟租约避免中断后重复入账。
+- 冻结申请形成后若目标事实变化，执行器先以迁移专属幂等键拒绝申请，再把条目收敛为 `stale`；若分录已经形成则转入租约恢复。已完成执行请求即使门禁后来关闭也只读重放原结果。
+- `legacy:<itemId>` 保留业务引用与 `app_wallet_legacy_migration_links` 不可变侧表共同区分迁移和日常调币。普通调币接口不能创建该引用，也不能复核迁移链接申请。
+- 迁移队列与详情读取会写用途化 `admin_audit_logs`；来源账号引用只允许 `opaque:` 不透明标识，不接受邮箱或手机号正文。
+- 当前无 Wallet 迁移正式 Page ID，因此只增加受保护管理员 API 与 D1 治理结构，不新增 Nuxt/KMP/Figma 状态；全局仍为 99 页/408 状态、Mobile 50 页/208 状态。
+
+完整边界见 `docs/app/WALLET_4_LEGACY_BALANCE_MIGRATION_INTEGRATION.md`。
 
 ### 速率限制 `[当前实现 / 外部配置]`
 
@@ -466,7 +645,7 @@ App API v2 `1.19.0` 在既有 bootstrap 上兼容新增版本化 `runtime` 与 `
 | 图片原图 | `originals/{galleryId}/{assetId}.{ext}` | 私有，Worker 代理 |
 | 缩略图 | `thumbnails/{assetId}/w{width}.webp` | 公开或短缓存 |
 | 封面图 | `covers/{galleryId}/cover.{ext}` | 公开 CDN |
-| 导入包 | `imports/{jobId}/source.zip` | 私有，后续完整 zip 导入能力使用 |
+| 导入包 | `imports/{jobId}/packages/{uuid}.zip` | 私有；8 MiB multipart 完成后成为不可变任务快照 |
 | 错误报告 | `imports/{jobId}/errors.csv` | 私有，管理员下载 |
 
 ## 7. API 路由 `[当前实现 / 部分实现]`
@@ -524,10 +703,10 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | GET | `/api/v2/me/devices` | 默认关闭：本人设备列表 |
 | DELETE | `/api/v2/me/devices/:deviceId` | 默认关闭：幂等远程退出其他设备 |
 | GET/PUT/DELETE | `/api/v2/person-profiles/:profileId/favorite` | 默认关闭：本人收藏状态、加入默认收藏夹、取消全部收藏 |
-| GET | `/api/v2/me/favorites` | 默认关闭：本人全部收藏去重聚合列表 |
-| GET | `/api/v2/me/favorite-folders` | 默认关闭：本人收藏夹、条目数和当前额度 |
+| GET | `/api/v2/me/favorites` | 默认关闭：本人收藏去重聚合列表；支持 `query/region/styleTerm` |
+| GET | `/api/v2/me/favorite-folders` | 默认关闭：本人收藏夹、去重总数、四图预览和当前额度 |
 | PUT/PATCH/DELETE | `/api/v2/me/favorite-folders/:folderId` | 默认关闭：幂等创建、条件编辑或删除自定义收藏夹 |
-| GET | `/api/v2/me/favorite-folders/:folderId/items` | 默认关闭：本人指定收藏夹条目分页 |
+| GET | `/api/v2/me/favorite-folders/:folderId/items` | 默认关闭：本人指定收藏夹条目分页与账号私有单选筛选 |
 | PUT/DELETE | `/api/v2/me/favorite-folders/:folderId/items/:profileId` | 默认关闭：幂等加入或移出指定收藏夹 |
 | GET/PUT | `/api/v2/me/view-history/settings` | 默认关闭：本人历史记录开关、版本和当前保留权益 |
 | POST | `/api/v2/person-profiles/:profileId/view-history` | 默认关闭：详情成功呈现后的版本化有效浏览记录 |
@@ -564,6 +743,11 @@ API 代码统一通过 `packages/api/src/utils/api-error.ts` 的 `apiError` / `e
 | POST | `/api/v2/appeals` | production 默认关闭、dev 联调：对本人未发现违规结论幂等申请一次独立复核 |
 | GET | `/api/v2/me/appeals` | production 默认关闭、dev 联调：本人申诉游标分页与用户可见状态 |
 | GET | `/api/v2/me/appeals/:appealId` | production 默认关闭、dev 联调：本人申诉说明、结论与用户可见时间线 |
+| POST | `/api/v2/me/appeals/:appealId/supplements` | 默认关闭：对本人举报结论申诉幂等追加必要说明，要求 expectedVersion |
+| POST | `/api/v2/service-appeals` | 默认关闭：对当前账号限制或本人金币分录幂等创建跨领域申诉 |
+| GET | `/api/v2/me/service-appeals` | 默认关闭：本人账号限制/金币分录申诉游标分页 |
+| GET | `/api/v2/me/service-appeals/:appealId` | 默认关闭：本人业务申诉详情、补充与用户可见时间线 |
+| POST | `/api/v2/me/service-appeals/:appealId/supplements` | 默认关闭：对本人业务申诉幂等追加必要说明，要求 expectedVersion |
 
 App 公开人物查询统一要求：认证有效、发布有效、用途授权已开始且未到期、认证未到期、投影可见、来源图库仍为 `published`。任一条件失败时不得回退读取人物草稿或图库表。
 
@@ -574,6 +758,7 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/imports/telegram-file-id` | 接收外部 Bot 提交的 Telegram `file_id` JSON，创建导入记录并异步生成草稿 | Import Token |
 | GET | `/api/imports/:importId` | 查询同一 Import Token 创建的导入状态 | Import Token |
 | POST | `/api/imports/:importId/retry` | Bot 侧重试 failed 导入 | Import Token |
+| POST | `/api/imports/:importId/recover-stale` | 仅在 30 分钟处理租约已过期时清理原尝试并重新排队 | Import Token |
 
 ### 管理员 API `[当前实现 / 部分实现]`
 
@@ -660,6 +845,10 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/conversations/:conversationId/internal-notes` | 幂等追加内部备注，通用审计不复制正文 | admin+ |
 | POST | `/api/admin/app/conversations/:conversationId/transfer` | 使用 assignment 版本、稳定原因和交接说明原子转派 | admin+ |
 | POST | `/api/admin/app/conversations/:conversationId/safety-escalations` | 当前租约内创建独立内部安全升级并固定最小证据 | admin+ |
+| GET | `/api/admin/app/message-moderation/cases` | Message-8 无正文待审队列与租约状态 | admin+ |
+| POST | `/api/admin/app/message-moderation/cases/:caseId/claim` | 按版本幂等领取文本审核案件；运营作者不可自领 | admin+ |
+| GET | `/api/admin/app/message-moderation/cases/:caseId` | 当前领取人按 `message_moderation_review` 读取原消息并审计 | current reviewer |
+| POST | `/api/admin/app/message-moderation/cases/:caseId/decision` | 独立通过/拒绝并原子更新消息、案件、队列、通知事实和审计 | current reviewer |
 | GET | `/api/admin/app/conversation-groups` | 运营组、成员、班次、规则、容量和队列诊断快照 | admin+ |
 | POST/PATCH | `/api/admin/app/conversation-groups`、`/:groupId` | 创建或乐观版本更新运营组 | owner / group lead |
 | PUT | `/api/admin/app/conversation-groups/:groupId/members/:adminId` | 乐观版本新增或更新组成员职责与容量 | owner / group lead |
@@ -682,10 +871,13 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | POST | `/api/admin/app/safety/escalations/:escalationId/claim` | 独立审核员幂等领取，发起人不可领取 | admin+ |
 | GET | `/api/admin/app/safety/escalations/:escalationId` | 领取后按 `safety_escalation_review` 读取最小证据并审计 | admin+ |
 | POST | `/api/admin/app/safety/escalations/:escalationId/decision` | 使用 expectedVersion 记录无需动作或原子话题安全动作 | admin+ |
-| GET | `/api/admin/app/safety/appeals` | 不含申诉正文的独立复核队列及筛选 | admin+ |
-| POST | `/api/admin/app/safety/appeals/:appealId/claim` | 幂等领取申诉并强制原审核人与复核人隔离 | admin+ |
-| GET | `/api/admin/app/safety/appeals/:appealId` | 领取后按 `appeal_review` 读取申诉说明和最小举报证据并审计 | admin+ |
-| POST | `/api/admin/app/safety/appeals/:appealId/decision` | 使用 expectedVersion 维持原结论或原子重开举报 | admin+ |
+| GET | `/api/admin/app/safety/appeals` | 不含申诉正文的统一复核队列；按举报、账号限制、金币分录及工作流状态筛选 | admin+ |
+| GET | `/api/admin/app/safety/appeals/:appealId/summary` | 不读取正文的队列行权威摘要 | admin+ |
+| POST | `/api/admin/app/safety/appeals/:appealId/claim` | 幂等领取并强制原业务决定人与复核人隔离 | admin+ |
+| GET | `/api/admin/app/safety/appeals/:appealId` | 领取后按 `appeal_review` 读取申诉说明与来源最小证据并审计 | admin+ |
+| POST | `/api/admin/app/safety/appeals/:appealId/request-supplement` | 使用 expectedVersion 幂等请求用户补充必要说明 | admin+ |
+| POST | `/api/admin/app/safety/appeals/:appealId/escalate` | 使用 expectedVersion 幂等升级至高级复核 | admin+ |
+| POST | `/api/admin/app/safety/appeals/:appealId/decision` | 使用 expectedVersion 形成维持、成立或关闭结论；原业务变化另走权威工作流 | admin+ |
 | GET | `/api/admin/app/safety/runtime-control` | 读取全局话题暂停、容量、租约和保留门禁 | admin+ |
 | PATCH | `/api/admin/app/safety/runtime-control` | 幂等更新全局运行控制，要求版本/原因/审计 | owner |
 | GET | `/api/admin/app/audit/events` | 选择用途后按 31 天受限范围、精确引用和稳定 sequence 游标查询；admin 仅本人、owner 跨域 | admin+ |
@@ -699,7 +891,13 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | GET/POST | `/api/admin/app/audit/registry/requests[...]` | 幂等提交发布/退休申请、读取详情并由不同 Owner 独立复核 | owner |
 | POST | `/api/admin/import-jobs` | 创建导入任务（需 Turnstile） | admin+ |
 | GET | `/api/admin/import-jobs/:id` | 导入任务详情和进度 | admin+ |
+| POST | `/api/admin/import-jobs/:id/package/init` | 初始化私有 R2 multipart 上传会话 | admin（仅本人）/ owner（全部） |
+| PUT | `/api/admin/import-jobs/:id/package/parts/:partNumber` | 流式上传固定计划中的单个 ZIP 分片 | admin（仅本人）/ owner（全部） |
+| POST | `/api/admin/import-jobs/:id/package/complete` | 使用服务端持久化 ETag 合并并锁定原包 | admin（仅本人）/ owner（全部） |
 | POST | `/api/admin/import-jobs/:id/process` | 处理导入任务（需 Turnstile） | admin+ |
+| POST | `/api/admin/import-jobs/:id/retry` | 仅重试标记为 retryable 的失败项（需 Turnstile） | admin（仅本人）/ owner（全部） |
+| POST | `/api/admin/import-jobs/:id/resume` | 恢复安全暂停任务（需 Turnstile） | admin（仅本人）/ owner（全部） |
+| GET | `/api/admin/import-jobs/:id/errors` | Worker 代理下载当前任务错误 CSV | admin（仅本人）/ owner（全部） |
 | GET | `/api/admin/audit-logs` | 审计日志 | admin（仅自己）/ owner（全部） |
 | GET | `/api/admin/import-api-tokens` | Import Token 列表，不返回 hash 或明文 token | owner |
 | POST | `/api/admin/import-api-tokens` | 创建 Import Token，明文 token 仅返回一次 | owner |
@@ -708,6 +906,7 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | GET | `/api/admin/external-import-records` | 外部导入记录列表，支持状态、类型和 sourceBotKey 筛选 | admin+ |
 | GET | `/api/admin/external-import-records/:id` | 外部导入详情、文件状态、错误摘要和目标草稿链接 | admin+ |
 | POST | `/api/admin/external-import-records/:id/retry` | 后台重试 failed 外部导入，复用原 token 权限和 sourceBotKey 校验 | admin+ |
+| POST | `/api/admin/external-import-records/:id/recover-stale` | 后台恢复处理租约过期的外部导入并写审计 | admin+ |
 | GET | `/api/admin/settings` | 站点设置 | owner |
 | PATCH | `/api/admin/settings` | 修改站点设置 | owner |
 | GET | `/api/admin/ads` | 首页广告位列表 | owner |
@@ -747,12 +946,18 @@ App 公开人物查询统一要求：认证有效、发布有效、用途授权�
 | PATCH | `/api/admin/attribution/platforms/:provider` | 原子保存公开配置、加密凭证、事件映射和通道开关 | owner |
 | POST | `/api/admin/attribution/platforms/:provider/test` | 使用当前配置立即测试平台连接；临时测试参数不持久化 | owner |
 | POST | `/api/admin/legacy-import/sources` | 创建旧站来源 | admin+ |
+| GET | `/api/admin/legacy-import/sources` | 读取旧站来源列表 | admin+ |
 | POST | `/api/admin/legacy-import/jobs` | 启动旧站迁移 | admin+ |
+| GET | `/api/admin/legacy-import/jobs` | 读取专用 legacy 任务列表；Owner 全部、Admin 仅本人 | admin+ |
 | GET | `/api/admin/legacy-import/jobs/:id` | 迁移任务详情 | admin+ |
 | POST | `/api/admin/legacy-import/jobs/:id/execute` | 执行旧站迁移 | admin+ |
+| POST | `/api/admin/legacy-import/jobs/:id/recover-stale` | 把过期或历史缺失租约的 processing 任务收敛为失败；有效租约拒绝回收 | admin+ |
+| POST | `/api/admin/legacy-import/jobs/:id/download-media` | 下载指定已完成 legacy 任务的待处理图片 | admin+ |
 | GET | `/api/admin/legacy-import/items` | 迁移条目列表 | admin+ |
+| GET | `/api/admin/legacy-import/items/:id` | 读取单条迁移审核事实和私有来源快照 | admin+ |
 | PATCH | `/api/admin/legacy-import/items/:id/review` | 审核迁移条目 | admin+ |
 | POST | `/api/admin/legacy-import/download-pending` | 批量下载旧站待处理图片 | admin+ |
+| GET | `/api/admin/legacy-import/migrate/status` | 读取 legacy 范围内媒体与封面状态 | admin+ |
 | POST | `/api/admin/legacy-import/migrate/retry-failed` | 重置旧站下载失败图片 | admin+ |
 | POST | `/api/admin/legacy-import/migrate/set-covers` | 批量设置旧站迁移图库封面 | admin+ |
 
@@ -885,19 +1090,19 @@ CREATE INDEX idx_galleries_published ON galleries(status, published_at);
 
 ### App 互动、收藏、历史与关注更新表族 `[服务端开发完成，默认关闭]`
 
-`0070_app_viewer_interactions.sql` 保存 Interaction-1 喜欢/关注；`0078_app_favorites_and_view_history.sql` 另建 Interaction-2 收藏与历史表族。两者均不回填 legacy 数据，且收藏不得降级为 `app_viewer_interactions` 中的第三种关系：
+`0070_app_viewer_interactions.sql` 保存 Interaction-1 喜欢/关注；`0078_app_favorites_and_view_history.sql` 另建 Interaction-2 收藏与历史表族，`0096_app_favorite_folder_preserve_default.sql` 保证删除自定义收藏夹时保留默认收藏。它们均不回填 legacy 数据，且收藏不得降级为 `app_viewer_interactions` 中的第三种关系：
 
 | 表 | 责任 | 关键约束 |
 |----|------|----------|
 | `app_viewer_interactions` | 本人喜欢、关注私有关系 | 账号+资料+类型唯一；只允许 `like|follow` |
 | `app_interaction_collection_policies` | 收藏与历史版本化运行策略 | development/production-ready 分离；保留期、个性化和 purge 独立门禁 |
-| `app_favorite_folders` | 本人默认和自定义收藏夹 | 账号作用域 ID；默认夹唯一且不可删除；名称归一化去重；单调 version |
+| `app_favorite_folders` | 本人默认和自定义收藏夹 | 账号作用域 ID；默认夹唯一且不可删除；业务名称最多 20 字并归一化去重；单调 version |
 | `app_favorite_folder_items` | 文件夹与人物资料关系 | 账号+文件夹+资料唯一；同一人物可属于多个文件夹 |
 | `app_view_history_preferences` | 本人历史记录开关与并发版本 | 默认关闭；mutation token 绑定清除和屏蔽联动 |
 | `app_profile_view_history` | 本人按人物聚合的浏览历史 | 账号+资料唯一；保存最近浏览、次数、最近 view ID 摘要和到期时间 |
 | `app_follow_update_policies` | 关注更新流与通知投影版本化门禁 | 生效时间禁止历史回填；development/production-ready 分离；不复制发布事件 |
 
-Interaction-2/3 策略都只 seed 默认关闭的 development 配置，不 seed 收藏夹、收藏条目、偏好、历史、更新或通知。当前没有执行 `0078`/`0079` migration；保留策略未决时不创建 purge 任务，也不允许 production-ready。
+Interaction-2/3 策略都只 seed 默认关闭的 development 配置，不 seed 收藏夹、收藏条目、偏好、历史、更新或通知。Interaction-4 复用 `0078` 已有到期索引，不新增 migration；保留策略未决或环境未显式配置策略 ID 时清理器跳过。当前没有执行 `0078`/`0079`/`0096` migration，也不允许 production-ready。
 
 ### App 搜索、分类与保存条件表族 `[服务端开发完成，默认关闭]`
 
@@ -1122,15 +1327,59 @@ CREATE TABLE gallery_likes (
 CREATE TABLE import_jobs (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL DEFAULT 'zip', -- zip/legacy
-  status TEXT NOT NULL DEFAULT 'queued', -- queued/processing/completed/failed
-  source_key TEXT, -- R2 key
+  status TEXT NOT NULL DEFAULT 'queued', -- queued/uploading/validating/processing/finalizing/partial_failure/paused/completed
+  source_key TEXT, -- 私有 R2 原包 key
+  source_name TEXT,
+  package_size INTEGER,
+  package_etag TEXT,
+  multipart_upload_id TEXT,
+  upload_session_id TEXT,
+  upload_part_size INTEGER,
+  upload_part_count INTEGER,
+  schema_version TEXT NOT NULL DEFAULT 'gallery_zip_v1',
+  mapping_version TEXT NOT NULL DEFAULT 'gallery_mapping_v1',
   total_count INTEGER NOT NULL DEFAULT 0,
   success_count INTEGER NOT NULL DEFAULT 0,
   failure_count INTEGER NOT NULL DEFAULT 0,
   error_report_key TEXT, -- R2 key
   created_by INTEGER NOT NULL REFERENCES users(id),
+  processing_requested_by INTEGER REFERENCES users(id),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  legacy_processing_token TEXT, -- 仅 legacy processing 执行租约使用
+  legacy_processing_expires_at TEXT,
+  last_error_code TEXT,
+  last_error_message TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  uploaded_at TEXT,
+  started_at TEXT,
+  updated_at TEXT,
   completed_at TEXT
+);
+
+CREATE TABLE import_job_upload_parts (
+  job_id TEXT NOT NULL REFERENCES import_jobs(id),
+  upload_session_id TEXT NOT NULL,
+  part_number INTEGER NOT NULL,
+  etag TEXT NOT NULL,
+  part_size INTEGER NOT NULL,
+  PRIMARY KEY (job_id, upload_session_id, part_number)
+);
+
+CREATE TABLE import_job_items (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES import_jobs(id),
+  folder TEXT NOT NULL,
+  title TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  manifest_json TEXT NOT NULL,
+  status TEXT NOT NULL, -- pending/processing/completed/failed
+  stage TEXT NOT NULL, -- preflight/content/media/commit/completed
+  gallery_id TEXT REFERENCES galleries(id),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  retryable INTEGER NOT NULL DEFAULT 0,
+  error_code TEXT,
+  error_message TEXT,
+  UNIQUE(job_id, folder)
 );
 ```
 
@@ -1165,6 +1414,11 @@ CREATE TABLE external_import_records (
   fetched_count INTEGER NOT NULL DEFAULT 0,
   failed_count INTEGER NOT NULL DEFAULT 0,
   retry_count INTEGER NOT NULL DEFAULT 0,
+  processing_token TEXT,
+  processing_started_at TEXT,
+  processing_heartbeat_at TEXT,
+  processing_lease_expires_at TEXT,
+  processing_target_id TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   completed_at TEXT
 );
@@ -1217,9 +1471,11 @@ Audit-2 在 `0091_app_audit_controlled_exports.sql` 中新增受控导出工作�
 
 复核通过后，API Worker 最多读取 5,000 行，复用 Audit-1 before/after 脱敏器并为每行写申请、生成、申请人、复核人、用途、案件和范围水印；CSV 全字段引用、转义并阻断公式前缀，最大 25,000,000 字节。Worker 以已知长度 `Uint8Array`、SHA-256 checksum、`no-store` metadata 写入既有私有 R2 固定 key `audit/exports/{requestId}/events.csv`，D1 只保存 key、ETag、SHA、大小、行数和有效期，管理 API 不返回 key/ETag 或对象 URL。原申请人重新验证密码后取得五分钟一次性 HMAC 票据；下载使用 header 提交给 Worker，Worker 核对管理员、申请版本/有效期、文件/范围摘要及 R2 metadata，在 D1 条件消费票据并追加审计后才流式响应。当前文件逻辑有效期 24 小时只是开发安全默认值，正式保留与物理清理、`0091` 执行和专项测试统一后置。完整契约见 `docs/app/AUDIT_2_CONTROLLED_EXPORT_INTEGRATION.md`。
 
-Operations-1 在 `0092_app_operations_and_incidents.sql` 中新增指标定义/快照、Runbook、检测运行/finding、事件/时间线、跨域安全控制和管理员幂等命令。指标定义与快照只追加，每项值必须携带 `known / unknown / delayed / partial / invalid / unconfigured`，只有 `known` 可以返回数值；首批 18 项定义的保留决策仍为 `unresolved`、`production_ready=0`，Cloudflare Worker/D1/R2 技术指标未接入时为 `unconfigured`。事件使用稳定 `incident_key` 聚合重复检测，状态通过 D1 trigger 和服务端 `expectedVersion` 双重限制；关闭必须提供结论摘要和证据。检测当前覆盖未授权公开、运营身份事实缺失、重复 grant、钱包不平、调币独立复核缺失、审计完整性/敏感字段和通知积压；钱包不平只保护性冻结，不自动补账或修改分录。
+Operations-1 在 `0092_app_operations_and_incidents.sql` 中新增指标定义/快照、Runbook、检测运行/finding、事件/时间线、跨域安全控制和管理员幂等命令。指标定义与快照只追加，每项值必须携带 `known / unknown / delayed / partial / invalid / unconfigured`，只有 `known` 可以返回数值；首批 18 项定义的保留决策仍为 `unresolved`、`production_ready=0`。Operations-4 已为 Cloudflare Worker/D1/R2 三项技术指标补齐采集器：配置缺失/非法时为 `unconfigured`，来源或空样本为 `unknown`，结构/数值违约为 `invalid`。事件使用稳定 `incident_key` 聚合重复检测，状态通过 D1 trigger 和服务端 `expectedVersion` 双重限制；关闭必须提供结论摘要和证据。
 
-五类安全控制为 `person_publication`、`recommendation_delivery`、`operator_messaging`、`membership_grants` 和 `wallet_adjustments`。每个受控写路径在服务入口 fail-closed 读取控制，并在最终业务 SQL 以 `EXISTS state='available'` 原子重验；暂停不影响下线、撤销、拒绝、回滚、调查或只读对账。只有 Owner 可用未关闭 P0/P1 事件暂停控制，恢复必须来自原事件且有验证证据。管理 API 位于 `/api/admin/app/operations`，所有响应 `private, no-store`；普通 admin 可读/领取并仅处置本人事件，Owner 可跨事件且独占刷新、检测和控制。完整数据表、路由、交互与 Runbook 见 `docs/app/OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md`；`0092` 执行、正式指标/Action/保留政策、Cloudflare 可观测接入、调度、专项测试和恢复演练统一后置。
+当前 `operations-detectors-v3` 累计覆盖 10 类 D1 权威检测和 1 类 Cloudflare 官方公共状态检测。`0106_app_operations_membership_expiry_detector.sql` 只为观看者消息反向核权增加局部覆盖索引；检测把正常自然到期与“到期后仍产生新话题或观看者消息”分开，只保存聚合数量且不自动改 grant、撤销记录、话题或消息。Operations-3 并行读取无需鉴权的官方 Status API Summary，只匹配 API、D1、Durable Objects、Email Sending、Queues、R2、Turnstile、Workers 与 Workers Assets；相关组件或未解决事件异常时复用 `platform_health_anomaly`，来源不可读或载荷不合法时不制造事故，只令本次运行 `partial` 且 `unavailableDetectorCount=1`。来源健康时为 `completed / 0`。`0108_app_operations_cloudflare_status_runbook.sql` 只追加第八份不可变 Runbook，不增加 secret 或 binding。公共状态不替代账户级遥测；Operations-4 的 `operations-metrics-v2` 通过一次有界 GraphQL 请求采集指定 Worker 最近 5 分钟错误率、D1 当日 UTC `queryBatchTimeMsP95` 和指定 R2 最近 5 分钟内部错误率，HTTP 200 但含 GraphQL errors 时也拒绝整次账户级结果，空样本不按 0。D1 P95 在配置阶段必须经 introspection 复核，不允许悄然降为 P90。钱包不平仍只保护性冻结，不自动补账或修改分录。完整增量边界见 `docs/app/OPERATIONS_2_MEMBERSHIP_EXPIRY_INTEGRITY.md`、`docs/app/OPERATIONS_3_CLOUDFLARE_STATUS_INTEGRATION.md` 与 `docs/app/OPERATIONS_4_CLOUDFLARE_ANALYTICS_INTEGRATION.md`；`0106/0108` 执行、Analytics 凭据/资源配置、调度、构建和专项验证统一后置。
+
+五类安全控制为 `person_publication`、`recommendation_delivery`、`operator_messaging`、`membership_grants` 和 `wallet_adjustments`。每个受控写路径在服务入口 fail-closed 读取控制，并在最终业务 SQL 以 `EXISTS state='available'` 原子重验；暂停不影响下线、撤销、拒绝、回滚、调查或只读对账。只有 Owner 可用未关闭 P0/P1 事件暂停控制，恢复必须来自原事件且有验证证据；平台状态检测和账户级指标都不会自动暂停任一控制。管理 API 位于 `/api/admin/app/operations`，所有响应 `private, no-store`；普通 admin 可读/领取并仅处置本人事件，Owner 可跨事件且独占刷新、检测和控制。账户级 Analytics Token 只允许 Account Analytics Read，Token 与账号/资源标识不得进入快照、日志或审计详情。完整数据表、路由、交互与 Runbook 见 `docs/app/OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md`；`0092/0108` 执行、正式指标/Action/保留政策、Cloudflare Analytics 配置、调度、专项测试和恢复演练统一后置。
 
 Audit-3 在 `0093_app_audit_action_registry_governance.sql` 中补齐受控 Action Registry：`app_audit_governance_policy_registry` 以不可变版本登记 retention/quality 稳定引用，`app_audit_production_action_registry` 只暴露当前 active、两类引用均已批准且 production-ready、并包含 Owner 可见角色的 Action。当前 migration 不 seed 策略；任意引用字符串都不会被隐式视为已批准。
 
@@ -1464,6 +1720,12 @@ CREATE TABLE legacy_import_items (
   status TEXT NOT NULL DEFAULT 'pending', -- pending/imported/failed
   review_status TEXT NOT NULL DEFAULT 'pending', -- pending/approved/rejected
   review_flags TEXT, -- JSON: ["sensitive_word", "missing_media", ...]
+  source_snapshot_json TEXT, -- 私有 JSON，最大 512 KiB
+  review_note TEXT,
+  reviewed_by INTEGER REFERENCES users(id),
+  reviewed_at TEXT,
+  error_code TEXT, -- failed 条目必填
+  error_message TEXT, -- failed 条目必填，安全摘要
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -1481,69 +1743,48 @@ CREATE TABLE legacy_url_redirects (
 );
 ```
 
-## 9. 批量导入流程 `[部分实现 / 后续规划]`
+## 9. ZIP 批量导入流程 `[开发实现，待统一验证]`
 
-### 当前实现范围 `[当前实现]`
+### 当前源码范围
 
-当前后台导入接口提供任务记录和已解析数据处理能力，不直接接收、保存或解压 zip 文件。
-
-```text
-1. 管理员创建导入任务：POST /api/admin/import-jobs
-2. API 检查 processing 状态任务数，超过 3 个返回 429
-3. API 创建 import_jobs 记录，type = zip，status = queued
-4. 管理员或后台工具提交已解析后的 JSON galleries 数据：POST /api/admin/import-jobs/:id/process
-5. API 将任务置为 processing
-6. API 逐条处理 galleries：
-   - 校验 title、slug
-   - 校验 slug 唯一性
-   - Admin 强制 draft；Owner 可将 manifest 中的 published 写入发布状态
-   - 创建 galleries、gallery_tags、media_assets 记录
-   - 未存在标签按当前实现自动创建
-7. 单个图库失败时记录错误，继续处理下一个
-8. 如有失败项，生成 imports/{jobId}/errors.csv 写入 R2
-9. 更新 import_jobs 的 success_count、failure_count、total_count、error_report_key 和 completed_at
-```
-
-当前辅助解析能力：
-
-- `packages/api/src/utils/import-parser.ts` 可解析 `manifest.csv` 文本。
-- 当前解析校验覆盖必填列 `folder`、`title`、`slug`，以及 `slug` 格式、`required_level`、`status`。
-- 当前不会在 API 内部解压 zip，也不会在 API 内部校验 zip 目录中的 `content.md`、`cover.jpg` 或图片文件存在性。
-
-### 状态机 `[当前实现]`
+`ADM-PER-04` 已实现完整的服务端 ZIP 导入链路；当前阶段只完成开发，不代表环境已启用。`0101_zip_import_packages.sql`、Queue binding、Cloudflare Stream 配置、构建、测试和环境 QA 统一后置。
 
 ```text
-queued → processing → completed
-                   ↘ failed（全部失败或系统错误）
+创建任务 queued
+  → 初始化 multipart uploading
+  → 8 MiB 分片上传与服务端 ETag 持久化
+  → R2 合并并锁定不可变原包 queued
+  → ZIP 校验 validating
+  → Queue 逐项处理 processing
+  → 汇总 finalizing
+  → completed / partial_failure / paused
 ```
 
-图库级别状态：`pending → success / failed / partial`
+1. `POST /api/admin/import-jobs` 创建 `type=zip` 的任务并写审计。
+2. `POST .../package/init` 生成随机 R2 key 和一次性 upload session；真实 R2 `uploadId` 仅保存在 D1，不返回浏览器。
+3. 浏览器把文件切成 8 MiB 分片，经同源 Web 代理和 API Worker 流式写入 R2。每片实际字节数由 `TransformStream` 计数，ETag 与大小写入 `import_job_upload_parts`；分片重传为幂等覆盖。
+4. `POST .../package/complete` 只使用服务端保存的 ETag 清单合并对象，核对连续序号、单片大小、总大小和 R2 对象大小后清空 multipart 会话。256 MiB 应用上限不依赖 Free/Pro 100 MB 或 Business 200 MB 的单请求上限。
+5. `POST .../process` 读取 ZIP EOCD 与中央目录，仅按 R2 range 流式读取条目；压缩输入不整体驻留内存，解压流在超过中央目录声明大小时立即终止，不把事后大小检查当作压缩炸弹防线。
+6. 包级拒绝 Zip64、分卷、加密、符号链接、路径穿越、大小写重复路径、不支持压缩方式、异常压缩比和越界偏移。应用边界为 1,024 个 ZIP 条目、200 个 manifest 行、512 MiB 解压总量、1 MiB 文本、10 MiB 图片、48 MiB 其他媒体。
+7. `manifest.csv` 必须精确包含 `folder,title,slug,region,personality,style,tags,required_level,status`；逐项目录必须包含 `content.md`、`cover.jpg` 和至少一张 `images/` 图片，可选 `videos/preview.mp4`、`videos/full.mp4`。
+8. 图片校验扩展名、魔数、容器结束、尺寸和像素量，并从提取后的 JPEG/PNG/WebP 中剥离 EXIF、定位、作者、文本、ICC/XMP 等元数据；私有 ZIP 原包继续作为受控证据快照。
+9. Queue 每次领取一个 `pending` 项。图片写入私有 R2；视频仅在 Stream 配置完整时上传并强制 signed URL，否则该项以 retryable 错误收敛。
+10. Gallery、媒体、标签关联、项目完成标记和 `gallery.create` 审计使用同一个 D1 batch。未知标签先按 `type + name` 复用，否则生成稳定纯 ASCII slug，并条件写 `create_tag` 审计。
+11. Admin 导入永远强制 Gallery 为 `draft`；仅 Owner 可遵守 manifest 的 `published`。单项失败不回滚其他成功项，最多自动尝试 3 次；可恢复失败支持手动 retry，运行时故障转为 paused 后 resume。
+12. 汇总生成 `imports/{jobId}/errors.csv`，包含 folder、stage、retryable、错误码、说明和修复建议，并对表格公式前缀做文本化处理；下载始终经鉴权 Worker 代理，不返回私有 R2 key。
 
-### 后续完整 zip 异步流程 `[后续规划]`
+### Gallery 与 Person 的边界
 
-完整 zip 导入不是当前上线阻断项。后续实现时，API 不直接承载大文件请求体，应使用 R2 直传和异步处理：
+ZIP schema 是 Gallery 内容包，不包含真人主体所需的授权来源、身份校验、认证版本与独立发布证据。因此导入成功只创建 Gallery 和媒体，不自动创建 Person/Profile，也绝不直接进入公开推荐。若要把某个 Gallery 用作真人候选来源，管理员必须在独立的人物来源/授权/认证工作流中显式选择并完成双重发布门禁。
 
-1. 管理员创建导入任务。
-2. API 签发 R2 上传入口或等价的受控上传流程。
-3. 管理员将 zip 源文件上传到 R2 `imports/{jobId}/source.zip`。
-4. API 记录 source key，将任务状态置为 `queued`。
-5. 后台异步处理器（Queues、Workflows 或分片任务）处理：
-   - 解压 zip，读取 `manifest.csv`。
-   - 校验图库数不超过 200。
-   - 逐个图库目录校验：`content.md` 存在、`cover.jpg` 存在、至少一张图片。
-   - 校验通过后写入图片到 R2；视频在 Stream 接入后上传到 Stream。
-   - 创建 gallery 和 media_assets 记录。
-   - 处理标签：已存在则关联，不存在且类型合法则自动创建。
-   - 状态判定：Admin 强制 `draft`；Owner 可按 manifest 中的 `status` 设置。
-6. 单个图库失败时记录错误，继续处理下一个。
-7. 全部完成后更新 `import_jobs`（success_count、failure_count）。
-8. 生成错误报告 CSV 存入 R2。
-9. 管理员查看草稿 → 预览 → 发布。
+### 状态与恢复
 
-### 并发控制 `[当前实现 / 后续规划]`
-
-- 当前实现：新任务提交时检查 `processing` 状态任务数，超过 3 个返回 429。
-- 后续完整 zip 异步导入：异步处理器继续沿用同时处理任务数 <= 3 的约束，并按 Cloudflare Queues / Workflows / 分片任务的实际能力设计重试和超时策略。
+- 任务状态：`queued → uploading → queued → validating → processing → finalizing → completed|partial_failure`；可恢复故障进入 `paused`。
+- 项目状态：`pending → processing → completed|failed`，阶段为 `preflight → content → media → commit → completed`。
+- upload session 防止旧页面与新页面的分片混入同一 multipart；新会话会中止旧 multipart，未完成 multipart 仍受 R2 默认生命周期兜底。
+- 暂停迁移必须同时匹配预期状态，并按场景匹配执行轮次或 upload session；过期执行器不能把新会话、终态或后续轮次覆盖为 paused，暂停审计只在条件更新真实生效后写入。
+- 成功项目永不因失败项重试而重复创建；替换原包仅允许尚无成功项目的 queued、uploading 或 paused 任务。
+- `validating|processing|finalizing` 的同时运行任务最多 3 个，状态认领 SQL 内再次检查上限，避免仅在创建时检查造成竞态。
 
 ### Telegram 外部导入 `[当前实现]`
 
@@ -1553,36 +1794,61 @@ queued → processing → completed
 - 当前项目不内置 Telegram Bot；外部 Bot / Ops Hub 负责监听 Telegram 和提交结构化 JSON，平台只提供接收、拉取、入库、状态查询和重试能力。
 - Ops Hub 自动导入中的 `#gallery`、`#case`、`标题`、`slug`、`标签`、`等级` 是上游 caption 解析约定；MeiGallery API 不解析 caption，只校验标准化 JSON。
 - 同一 `token + source + externalMessageId` 重复提交返回 `duplicate`，不创建第二个草稿；Ops Hub 需要继续查询原 `importId`。
+- 接收记录、全部文件行与 accepted 审计通过单个 D1 `batch` 原子写入；每日 token 限额也在 INSERT 条件内复核，唯一键并发冲突重新读取既有记录，不能并发超额或留下只有主记录/缺文件行的半成品。
+- JSON 请求体按 64 KiB 有界流读取；payload 从 `unknown` 逐字段验证并只构造白名单 DTO。超限/无效 JSON、错误运行时类型、空白必填值、长度越界、重复封面与规范化后重复标签不得变成 500 或进入 metadata 快照。
 - `sourceBotKey` 对应 API Worker secret，命名规则为 `TELEGRAM_BOT_TOKEN_${sourceBotKey.toUpperCase()}`，例如 `ops_gallery_bot` 对应 `TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT`。
-- Bot 侧可调用 `/api/imports/:importId/retry` 重试失败记录；后台详情页也可调用 `/api/admin/external-import-records/:id/retry` 手动重试。
+- 异步处理只使用专用 `TELEGRAM_IMPORT_QUEUE`；HTTP 请求不再用 `waitUntil` 承担媒体抓取。Queue 消息携带一次性 processing token，pending 派发、failed 清理和 fetching 处理均持有可过期的 30 分钟租约；处理中在每次远端读取、R2 写入和 D1 状态推进前后续租。fetching 租约仍有效时的重复投递只请求 Queue 延迟重试，不并行抓取；租约为空或过期后才可通过条件更新接管。
+- 每个文件在远端抓取前先持久化本次尝试的目标文件 ID 与确定性 R2 key；同一 Queue 消息重投时复用该 key，避免“R2 已写入、D1 未落账”形成不可定位孤儿。
+- Gallery/媒体/标签关系或 Case/图片使用 D1 batch 原子创建；目标 batch 已成功但导入终态响应中断时，重投以同一 `processing_target_id` 幂等完成收敛。缺失标签先按类型/规范化名称复用，新增项使用稳定 ASCII 摘要 slug，条件创建与审计同批提交并在竞争后重新读取权威标签 ID。
+- Telegram `getFile` 与文件下载均为 60 秒超时、有界流读取；实际图片必须通过 JPEG/PNG/WebP 魔数、容器、尺寸和像素边界校验并剥离元数据，且必须与 payload 声明 MIME 一致。
+- Bot 侧可调用 `/api/imports/:importId/retry` 重试失败记录；后台详情页也可调用 `/api/admin/external-import-records/:id/retry` 手动重试。重试会先按持久化 key/处理中目标再次清理，只有 R2 与 D1 均清理成功才回到 pending。
+- `pending_media_fetch` 没有有效派发租约，或 `fetching_media` 的租约为空/已过期时，Bot/后台可调用对应 `recover-stale`；有效租约必须返回 409。远端异常后的旧执行器在清理/失败落账前必须重新证明 token 所有权，不能覆盖新尝试。
+- 对外状态和后台错误摘要只保存稳定 code 与用户安全说明；D1、R2、Telegram SDK/网络异常原文、Bot Token、下载 URL 和私有 R2 key 不得进入响应、文件错误、审计 afterValue 或结构化日志。
+- 升级前历史 `error_json/error_message` 读取时也必须经过固定 code/message 白名单；未知历史文本降为通用错误，不因数据库已有旧值继续泄漏。
 - `case` 导入写入 `cases` / `case_images`，R2 key 使用 `cases/{caseId}/{imageId}.{ext}`。
+- `0118_external_import_queue_integrity.sql` 仅增加兼容列与租约索引，发布顺序必须是 `0118 → 新运行时 → TELEGRAM_IMPORT_QUEUE 配置/启用`；当前按统一开发要求只完成源码和 migration 文件，不执行 migration 或 Queue 配置。
 - 详细对接契约见 `docs/TELEGRAM_IMPORT_API.md`。
 
-## 10. WordPress 迁移流程 `[部分实现 / 历史参考 / 后续规划]`
+## 10. WordPress 迁移流程 `[开发实现，待统一验证 / 历史参考 / 后续规划]`
 
 旧站 `zuole.me` 当前可通过 WordPress REST API 获取公开数据。
 
-### 迁移步骤 `[部分实现 / 后续规划]`
+### 迁移步骤 `[开发实现，待统一验证 / 后续规划]`
 
 1. 创建来源：记录旧站 base URL、导入模式、分类映射、标签映射。
 2. 拉取元数据：读取文章总数、分类、标签、sitemap。
-3. 拉取文章：分页读取 `/wp-json/wp/v2/posts`（每页 100 条）。
+3. 拉取文章：分页读取 `/wp-json/wp/v2/posts`（当前每页 50 条，最多 100 页）。
 4. 解析正文：从 HTML 中提取图片、视频、正文段落。
-5. 媒体入库：图片下载到 R2，视频上传到 Stream。
+5. 媒体入库：图片以安全外部 URL 进入 pending，后续有界下载到 R2；视频只保留待处理元数据，Stream 接入后再上传。
 6. 标签映射：分类转地区标签，post_tag 转身份、风格、场景等标签。
 7. 风险标记：发现敏感词、年龄风险、授权未知、媒体失败时进入待审核。
 8. 草稿生成：创建图库草稿并记录旧 URL。
 9. SEO 映射：生成旧 URL → 新图库 URL 的 redirect 记录。
 
-### 正文解析要求 `[当前实现 / 部分实现]`
+### 正文解析要求 `[开发实现，待统一验证]`
 
 - 支持 WordPress block HTML（`<figure class="wp-block-image">`、`<figure class="wp-block-video">`）。
-- 保留原始 HTML 快照用于审计。
-- 转换后的正文以 Markdown 存储到 `galleries.body_md`。
+- `0116` 以不超过 512 KiB 的 `source_snapshot_json` 私有保存原始 HTML、旧分类/标签 ID 与媒体描述，用于单条审核；列表接口不返回该快照。
+- `galleries.body_md` 只保存清洗后的文本说明，不保留源站图片/视频 Markdown，防止绕过 R2/Stream 访问控制。
 - `<img>` 提取为 `media_assets`（type=image）。
 - `<video>` 提取为 `media_assets`（type=video）。
 
-### 审核机制 `[部分实现 / 后续规划]`
+### 运行完整性 `[开发实现，待统一验证]`
+
+- 后台任务页使用专用 `GET /api/admin/legacy-import/jobs`，不再复用 ZIP 导入列表；任务和条目按 Owner 全部、Admin 本人边界读取与操作。
+- 同一来源最多一个 processing 任务；已迁移内容同时按 `source_id + legacy_post_id` 和 Gallery slug 去重。
+- legacy 执行使用 30 分钟 D1 权威租约和不可猜测 token；WordPress 文章/分类/标签每页通过完整性校验后同步续租，逐篇落库每 10 条续租，完成与失败状态都以当前 token 条件收敛。`recover-stale` 只回收已过期或历史缺失租约的 processing 任务并要求创建新任务安全重试，不能抢占有效执行。
+- 来源显式分类/标签映射解析到既有权威 `tags.id`；损坏 JSON、缺失目标标签、分类/标签接口失败、异常响应或分页超过安全上限都 fail closed，不产生无标签的伪成功。
+- WordPress JSON 采用 16 MiB 流式有界读取；即使 Content-Length 缺失或不可信，也会在实际越界时取消上游响应。
+- 每个 WordPress REST 请求携带 60 秒截止信号；超时中止上游读取并进入带安全错误的任务失败收敛，不允许请求无限占用 processing 租约。
+- 单篇 Gallery、标签、媒体、legacy 条目、redirect 和最小审计在同一 D1 batch 中提交；任一语句失败整篇回滚，再以独立原子 batch 持久化 `failed` 条目、结构化错误、安全失败快照和最小审计后继续。失败事实无法提交时任务整体失败，不返回无法追溯的部分成功。
+- 媒体 INSERT 按每条 14 行/98 个绑定参数分块，遵守 D1 每条查询最多 100 个绑定参数的当前限制。
+- 任务级和全局媒体入口、状态、失败重置、封面设置都限定到 legacy 任务关联 Gallery，不能误处理 ZIP 或手工上传内容。
+- 远程图片限制为 10 MiB 和单请求 60 秒，只接受通过魔数、容器、尺寸/像素检查的 JPEG/PNG/WebP，并在写 R2 前剥离元数据；Content-Type 不作为可信格式依据。媒体状态变化与最小审计同批提交，网络、R2 与 Stream 原始异常不进入 HTTP 响应或审计。
+- `0116_legacy_import_operational_integrity.sql` 增加来源快照、结构化审核/失败证据、兼容回填、查询索引、终态完整性、不可改写触发器和 legacy 租约列；`0117_legacy_import_processing_lease_guards.sql` 在兼容代码发布后约束 processing 与租约字段一致。两者尚未执行，部署顺序固定为 `0116 → 兼容代码 → 0117`。
+- 完整开发边界见 `docs/app/LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md`。
+
+### 审核机制 `[开发实现，待统一验证 / 后续规划]`
 
 触发待审核的条件：
 - 标题或正文包含敏感词（需维护敏感词列表）。
@@ -1590,7 +1856,7 @@ queued → processing → completed
 - 媒体 URL 下载失败。
 - 授权来源不明确。
 
-审核操作：通过 / 退回 / 修改标签 / 修改标题 / 删除敏感文案。
+当前审核操作形成通过/拒绝不可改写终态，保存审核人、时间、备注和追加审计，但不会直接发布 Gallery。修改标签、标题、删除敏感文案与最终发布继续使用独立 Gallery 管理流程。XML 上传/解析仍为后续规划；REST API 是当前唯一可执行旧站来源模式。
 
 ## 11. 缓存策略 `[当前实现 / 后续规划]`
 
@@ -1613,16 +1879,22 @@ queued → processing → completed
 - **图库互动**：galleries 表新增 `like_count`，`gallery_likes` 记录用户点赞关系（migration 0013）。
 - **真实案例命名**：当前使用 `cases` / `case_images`、公开路由 `/cases`、后台路由 `/admin/cases`，旧 `testimonial_*` 命名已通过 migration 0017 清理。
 - **Telegram 外部导入**：当前导入类型为 `gallery` / `case`，权限为 `gallery:create` / `case:create`，不再接受旧 `testimonial_case`。
+- **External Import-2 运行完整性**：`0118` 追加 Queue processing token、30 分钟租约、心跳和处理中目标；主记录/文件行/accepted 审计及每日限额原子接收，payload 只保留逐字段验证后的白名单，专用 Queue 替代 HTTP `waitUntil`。pending/failed/fetching 租约、确定性 R2 key、稳定标签 slug 与旧执行器所有权复核支持安全重投恢复；远端请求使用 60 秒超时、有界图片验证和安全错误码。Queue 配置、migration、构建与专项验证后置。
 - **Ops Hub 自动导入对接**：MeiGallery 只接收 Ops Hub 已解析好的 JSON payload；caption 触发、slug 缺省生成、图片排序和类型选择由 Ops Hub 保证，平台侧通过 Import Token、`sourceBotKey`、payload 校验和幂等约束兜底。
 - **生产域名**：Web 站点 `616618.xyz`，API 服务 `api.616618.xyz`。
 - **Dev 环境 Worker**：当前配置为 `meigallery-web-dev` / `meigallery-api-dev`，仅使用 Workers dev 子域，不绑定生产域名。
-- **Interaction-2 跨仓开发基线**：App API v2 `1.11.0` 已完成多文件夹收藏、浏览历史显式开关/版本化清除、屏蔽联动和默认关闭门禁；KMP 已完成收藏夹、人物归属、浏览记录与成功详情记录闭环，配置、migration、专项测试、模拟器/真机与远端联调后置。
-- **Interaction-3 跨仓开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 已接入严格 transport、“更新 / 已关注 / 喜欢”关注页、取消关注回收与通知目标跳转。配置、migration、专项测试、模拟器/真机与远端联调后置，所有环境继续默认关闭。
+- **Interaction-2/4 跨仓开发基线**：能力引入于 App API v2 `1.11.0`；累计 `1.21.0` 已补齐收藏夹四图预览、搜索/地区/风格筛选、20 字名称上限和删除保留默认收藏语义。KMP 已按 Figma `APP-INT-03/04/05/06` 完成收藏夹、人物归属、浏览记录与成功详情记录闭环；Interaction-4 又补齐批准后有界到期清理，能力关闭不撤销既有删除义务。无 API、KMP 或 Figma 增量；配置、migration、构建、专项测试、模拟器/真机、`android-cli` 截图与远端联调后置。
+- **Interaction-3 跨仓开发基线**：App API v2 `1.12.0` 已完成关注后公开发布更新流、独立 capability、惰性去重站内通知和投递前资格复核；KMP 已按 Figma 接入“全部 / 有更新 / 最近关注”筛选、取消关注回收与通知目标跳转，喜欢由独立 `APP-INT-02` 承载。配置、migration、专项测试、模拟器/真机与远端联调后置，所有环境继续默认关闭。
 - **Search-1 跨仓开发基线**：App API v2 `1.13.0` 已完成 POST 人物搜索、公开字段/屏蔽边界、账号绑定游标和默认关闭、版本化清除的私有搜索历史；KMP 已完成严格 transport、搜索分页和账号历史全交互，配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Taxonomy-1 跨仓开发基线**：App API v2 `1.14.0` 已完成稳定词条、不可变目录、合并重定向、legacy 待复核映射、公共 ETag 目录、人物内容版本关联和发布投影；KMP 已完成 Recommendation/Search 共用目录、缓存和 ETag 重验证；Nuxt 已完成 `ADM-TAX-01/02/03` 目录、词条和发布工作区，并在 `ADM-PER-03` 接通稳定分类标注。真实目录、配置、migration、专项测试、模拟器/真机与远端联调后置。
 - **Search-2 跨仓开发基线**：App API v2 `1.15.0` 已完成 taxonomy 分组筛选、父子/合并闭包、会员分层、结果预估和本人保存条件；KMP 已完成筛选、预估、权益、保存条件和完整来源重验交互；Nuxt 已完成只读搜索运营核查、跨目录引用诊断和 entitlement 矩阵。真实目录与 grant 迁移、配置、migration、专项测试、模拟器/真机与远端联调后置。
-- **Recommendation-1 跨仓开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；KMP 已完成推荐 Feed、推荐解释、精选披露和本人偏好页面，配置、migration、专项测试、热度/证据决策与远端联调后置。
-- **Privacy-1 跨仓开发基线**：App API v2 `1.17.0` 已完成二次验证、数据副本/注销申请、请求级状态访问和取消；D1 已建立默认关闭策略、不可变事件、幂等与注销待处理写入阻断；Nuxt 已完成 `ADM-PRI-01/02` 队列和详情，KMP 已完成系统安全凭证与响应式页面。真实制品、不可逆删除、配置、migration、专项测试与联调后置。
+- **Recommendation-1/2/3/4/5/6 跨仓开发基线**：App API v2 `1.16.0` 已完成版本化推荐、主动 taxonomy 偏好、运营精选固定披露、稳定灰度、计划生效、Dry-run、职责分离、暂停和回滚；Recommendation-2/3/4 在不改变 DTO 的前提下补齐客户端版本、地区作用域、完整依赖与安全回退，Recommendation-5 以 `0113` 补齐默认关闭的目标/反指标策略、聚合评估、不可变自动停止和运行时完整回退，Recommendation-6 再以 `0114` 补齐批准后的有界到期清理、证据不可改写和 Privacy-2B 账号关联零残留删除。KMP 无需解析内部守护或生命周期事实；配置、`0083/0113/0114`、真实来源/阈值/保留决策、专项测试与远端联调后置。
+- **Privacy-1/2A/2B/2C 跨仓开发基线**：App API v2 `1.17.0` 已完成二次验证、数据副本/注销申请、请求级状态访问和取消；D1 已建立默认关闭策略、不可变事件、幂等与注销待处理写入阻断；Nuxt 已完成 `ADM-PRI-01/02` 队列和详情，KMP 已完成系统安全凭证与响应式页面。真实制品和不可逆删除分别由 Privacy-2A/2B 承接，Privacy-2C 把当前副本范围补齐到 41 类并兼容旧 35-scope artifact；配置、migration、专项测试与联调后置。
+- **Privacy Figma 门禁**：`ADM-PRI-01/02` 已在正式 Figma Section `936:15995` 完成 13 个状态、125 个页面动作和 17 个流程动作，并进入 Delivery Index 与 QA。Privacy-2B 复用现有后台 executor 区；移动端 `APP-SET-10` 没有 completed 正式 Frame，因此完成后必须退出到未登录“我的”。任何完成证明下载、批量处置或新门禁 UI 都必须先取得正式 Figma Node ID。
+- **Message-5 数据权利通知基线**：`0109` 已把 Privacy-2A 的导出就绪事实和 Privacy-2B 可恢复取消结果接入 Message-3 可靠 Outbox；不可逆注销期间/完成后的通知继续抑制，KMP 复用已有 `open_data_task` 权威跳转。无新增公共 DTO、Page ID 或 Figma 状态，migration、模板审批、配置与验证后置。
+- **Message-7 导出失败通知基线**：`0110` 新增 `data.export_failed` 必要事件与固定模板；Privacy-2A 失败批次改为申请、制品、任务先收敛，再插入用户可见失败事件并由 trigger 写 Outbox。内部 failure code、R2 引用和查询细节不进入通知；无公共 DTO、Page ID 或 Figma 状态增量，migration、模板审批、配置与验证后置。
+- **Message-8 文本审核基线**：`0112` 以默认关闭策略把既有消息四态接到无正文评估、人工复核租约和审核结果/会话限制通知。正常会话查询只读取 accepted/recalled，发送者仍可看本人待审/拒绝状态；没有正式 Figma 的后台审核工作台和召回动作均未自行补 UI。无公共 DTO 或状态增量，migration、真实规则、配置与验证后置。
+- **Message-9 通知内容生命周期基线**：`0115` 为新投递增加不可变到期边界，并为 explicit/legacy 通知提供批准后有界清理；延迟过期事件不再生成正文，单条已读事件先行清理而 Outbox 去重墓碑保留。无公共 DTO、KMP、Nuxt、Page ID 或 Figma 增量；OQ-020、migration、配置、构建与专项验证后置。
 - **Media-1 跨仓开发基线**：App API v2 `1.18.0` 复用现有图库和公开人物投影，完成图片清单、公开/会员取图、5 分钟会话绑定凭证和四项认证说明；KMP 已完成严格二进制校验、仅内存受保护图片、自适应媒体页、认证页和媒体举报。无新增 migration，视频、配置、专项测试、Gradle 与联调后置。
 
 ## 13. 测试范围 `[当前实现 / 后续规划]`
@@ -1631,8 +1903,7 @@ queued → processing → completed
 
 - 权限校验：不同 rank 访问不同等级媒体。
 - 会员有效期：过期后立即失效。
-- 导入校验当前范围：manifest CSV 解析、必填字段、slug 格式、required_level/status 枚举、重复 slug、部分失败。
-- 后续完整 zip 导入校验：合法包、缺失 `content.md`、缺失 `cover.jpg`、缺失图片、非法文件类型、资源大小限制。
+- ZIP 导入校验：multipart 会话隔离、分片大小/连续性/ETag、EOCD 与中央目录、路径和压缩炸弹边界、CRC、精确 manifest schema、重复 folder/slug、缺失必需文件、图片容器/尺寸/元数据净化、可选 MP4、标签去重与纯 ASCII slug、部分失败、幂等重试和暂停恢复。
 - 标签搜索：单标签、多标签组合、空结果。
 - 密码哈希与验证。
 - Turnstile token 校验：登录、发送验证码、无邮箱验证码注册、后台导入任务创建和处理。
@@ -1649,11 +1920,11 @@ queued → processing → completed
 | 用户头像 | 2MB/张 | JPG/PNG/WebP | `packages/api/src/routes/me.ts`、`packages/web/app/pages/settings.vue` |
 | 联系方式二维码 | 2MB/张 | PNG/JPEG/WebP | `packages/api/src/routes/admin/contact-methods.ts` |
 | 站点图标 | 1MB/张 | PNG/JPEG/WebP/ICO | `packages/api/src/routes/admin/settings.ts` |
+| ZIP 导入原包 | 256MiB/包，8MiB/分片 | ZIP（stored/deflate；不支持 Zip64/分卷/加密） | `admin-zip-package.ts`、`admin-zip-import.ts`、`0101_zip_import_packages.sql` |
 
 ### 集成测试 `[部分实现 / 后续规划]`
 
-- 当前导入流程：创建任务 → 提交已解析 JSON → 校验 → 草稿生成 → 错误报告。
-- 后续完整 zip 导入流程：R2 直传 zip → 异步解压校验 → 草稿生成 → 预览发布。
+- ZIP 导入流程：创建任务 → R2 multipart → 服务端合并 → range 校验 → Queue 逐项导入 → 部分失败/安全重试 → 错误报告。
 - 完整迁移流程：拉取 → 解析 → 入库 → 审核。
 - 媒体签名流程：请求 → 校验 → 签发 → 过期。
 - 审计日志：admin 写操作后检查日志记录；重点覆盖导入任务处理结果、旧站迁移批量入口、会员发放、媒体变更和站点设置。

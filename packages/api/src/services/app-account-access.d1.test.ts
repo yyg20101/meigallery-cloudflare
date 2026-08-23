@@ -72,6 +72,26 @@ beforeAll(async () => {
     CREATE TABLE persons (id TEXT PRIMARY KEY);
   `))
   await db.exec(executableSql(MIGRATION))
+  await db.exec(executableSql(`
+    ALTER TABLE app_account_security
+      ADD COLUMN restriction_version INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE app_account_security
+      ADD COLUMN restriction_reference TEXT;
+    CREATE TABLE app_data_rights_identity_seals (
+      provider TEXT NOT NULL,
+      subject_hmac TEXT NOT NULL,
+      release_after TEXT
+    );
+    CREATE TABLE app_realtime_tickets (
+      id TEXT PRIMARY KEY,
+      account_id INTEGER NOT NULL,
+      session_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      consumed_at TEXT,
+      cancelled_at TEXT,
+      cancellation_reason TEXT
+    );
+  `))
 })
 
 beforeEach(async () => {

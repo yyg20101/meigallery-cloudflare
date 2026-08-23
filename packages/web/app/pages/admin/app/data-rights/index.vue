@@ -76,16 +76,9 @@ function clearFilters() {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <h1 class="text-xl font-bold text-gray-950">App 数据权利控制面</h1>
-          <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">ADM-PRI-01</span>
-        </div>
-        <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">集中处理账号数据导出与注销申请。列表仅展示最小账号信息，不展示导出内容、密码、状态凭证或用户私密正文。</p>
-      </div>
-      <button type="button" :disabled="loading" class="min-h-11 w-full shrink-0 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 sm:w-auto" @click="loadData">{{ loading ? '刷新中…' : '刷新权威状态' }}</button>
-    </header>
+    <AdminAppPageHeader page-id="ADM-PRI-01" route="/admin/app/data-rights" title="数据权利队列" description="集中处理数据导出与账号注销申请；列表仅展示最小必要账号信息。" :state="errorMessage ? '加载失败' : loading ? '加载中' : queue?.items.length ? '正常' : '空队列'" :figma-state="errorMessage ? '加载失败' : loading ? '加载中' : queue?.items.length ? '正常' : '空队列'" :state-tone="errorMessage ? 'danger' : loading ? 'warning' : 'info'">
+      <template #actions><button type="button" :disabled="loading" class="min-h-10 rounded-lg border border-[#eaded8] bg-white px-4 text-sm font-medium text-stone-700 hover:bg-[#fff7f2] disabled:opacity-50" @click="loadData">{{ loading ? '刷新中…' : '刷新权威状态' }}</button></template>
+    </AdminAppPageHeader>
 
     <p v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ errorMessage }}</p>
 

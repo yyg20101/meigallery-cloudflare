@@ -8,10 +8,50 @@ import type {
   AdminWalletReasonCode,
   AdminWalletState,
 } from '~/types/admin-app-wallet'
+import type { AdminFigmaPageId } from '~/utils/admin-figma-pages'
 
 definePageMeta({ layout: 'admin' })
 
+const route = useRoute()
 const { api } = useApi()
+type WalletPageMode = 'search' | 'detail' | 'request' | 'review'
+const pageMode = computed<WalletPageMode>(() => {
+  if (route.path === '/admin/app/coin-adjustments/new') return 'request'
+  if (route.path.startsWith('/admin/app/coin-adjustments/') && route.path.endsWith('/review')) return 'review'
+  if (typeof route.params.accountId === 'string') return 'detail'
+  return 'search'
+})
+type WalletPageContext = { pageId: AdminFigmaPageId; route: string; title: string; description: string }
+const routeAccountId = computed(() => typeof route.params.accountId === 'string'
+  ? route.params.accountId
+  : typeof route.query.accountId === 'string' ? route.query.accountId : null)
+const routeAdjustmentId = computed(() => typeof route.params.adjustmentId === 'string' ? route.params.adjustmentId : null)
+const pageContext = computed<WalletPageContext>(() => ({
+  search: {
+    pageId: 'ADM-WAL-01',
+    route: '/admin/app/wallets',
+    title: '钱包查询',
+    description: '按稳定账号搜索余额、有效分录和对账状态。',
+  },
+  detail: {
+    pageId: 'ADM-WAL-02',
+    route: route.path,
+    title: '钱包详情',
+    description: '展示余额、账本版本、追加式分录与冲正关系，不允许直接编辑余额。',
+  },
+  request: {
+    pageId: 'ADM-WAL-03',
+    route: '/admin/app/coin-adjustments/new',
+    title: '调币申请',
+    description: '填写加币或扣币数量、标准原因、用户说明、内部备注与业务单号。',
+  },
+  review: {
+    pageId: 'ADM-WAL-04',
+    route: route.path,
+    title: '调币复核',
+    description: '由不同管理员复核余额变化、阈值、原因与业务证据，批准后才追加分录。',
+  },
+}[pageMode.value]))
 const query = ref('')
 const accounts = ref<AdminWalletAccountSummary[]>([])
 const selected = ref<AdminWalletState | null>(null)
@@ -26,7 +66,15 @@ const reviewingId = ref<string | null>(null)
 const errorMessage = ref('')
 const successMessage = ref('')
 const preview = ref<AdminWalletAdjustmentPreview | null>(null)
+const focusedAdjustmentId = ref<string | null>(routeAdjustmentId.value)
 const reviewNotes = reactive<Record<string, string>>({})
+const visibleAdjustments = computed(() => focusedAdjustmentId.value
+  ? adjustments.value.filter(item => item.adjustmentId === focusedAdjustmentId.value)
+  : adjustments.value)
+const showAccountSearch = computed(() => pageMode.value === 'search' || (pageMode.value === 'request' && !selected.value))
+const showAdjustmentForm = computed(() => Boolean(selected.value) && pageMode.value === 'request')
+const showEntries = computed(() => Boolean(selected.value) && ['detail', 'request'].includes(pageMode.value))
+const showQueue = computed(() => pageMode.value === 'search' || pageMode.value === 'review')
 
 const form = reactive({
   actionType: 'admin_credit' as AdminWalletEntryType,
@@ -62,9 +110,18 @@ watch(() => form.actionType, (value) => {
   else if (value !== 'reversal' && form.reasonCode === 'service_compensation') form.reasonCode = 'manual_adjustment'
 })
 watch(form, () => { preview.value = null }, { deep: true })
-watch(queueStatus, () => refreshQueue())
+watch(queueStatus, () => {
+  if (pageMode.value === 'search') refreshQueue()
+})
 
-onMounted(() => refreshQueue())
+onMounted(async () => {
+  if (pageMode.value === 'review' && routeAdjustmentId.value) {
+    await loadFocusedAdjustment(routeAdjustmentId.value)
+    return
+  }
+  if (showQueue.value) await refreshQueue()
+  if (routeAccountId.value) await openAccount(routeAccountId.value)
+})
 
 async function searchAccounts() {
   searching.value = true
@@ -74,7 +131,7 @@ async function searchAccounts() {
       query: { query: query.value.trim() || undefined },
     })
     accounts.value = response.data
-    if (accounts.value.length === 1) await openAccount(accounts.value[0]!.accountId)
+    if (accounts.value.length === 1) await navigateTo(`/admin/app/wallets/${accounts.value[0]!.accountId}`)
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, '账号查询失败。')
@@ -111,6 +168,23 @@ async function refreshQueue() {
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, '金币管理能力当前不可用。')
+  }
+  finally {
+    loadingQueue.value = false
+  }
+}
+
+async function loadFocusedAdjustment(adjustmentId: string) {
+  loadingQueue.value = true
+  clearMessages()
+  try {
+    const response = await api<{ data: AdminWalletAdjustment }>(`/api/admin/app/wallets/adjustments/${adjustmentId}`)
+    focusedAdjustmentId.value = adjustmentId
+    adjustments.value = [response.data]
+    await openAccount(response.data.account.accountId)
+  }
+  catch (error) {
+    errorMessage.value = apiErrorMessage(error, '调币申请详情读取失败。')
   }
   finally {
     loadingQueue.value = false
@@ -191,7 +265,8 @@ async function reviewAdjustment(item: AdminWalletAdjustment, decision: 'approve'
     })
     successMessage.value = decision === 'approve' ? '复核通过，金币分录已入账。' : '调币申请已拒绝。'
     reviewNotes[item.adjustmentId] = ''
-    await refreshQueue()
+    if (pageMode.value === 'review') await loadFocusedAdjustment(item.adjustmentId)
+    else await refreshQueue()
     if (selected.value?.account.accountId === item.account.accountId) {
       await openAccount(item.account.accountId)
     }
@@ -262,12 +337,12 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <section class="min-w-0">
-      <h1 class="text-xl font-semibold text-gray-900">App 金币钱包</h1>
-      <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">
-        查询账号权威余额与追加式明细，创建单笔加币、扣币、补偿或完整冲正申请。所有申请必须由另一位管理员复核；金币当前不可购买、消费、转赠、兑换或提现。
-      </p>
-    </section>
+    <AdminAppPageHeader :page-id="pageContext.pageId" :route="pageContext.route" :title="pageContext.title" :description="pageContext.description" figma-state="正常">
+      <template #actions>
+        <NuxtLink v-if="pageMode !== 'search'" to="/admin/app/wallets" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#eaded8] bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-[#fff7f2]">返回钱包查询</NuxtLink>
+        <NuxtLink v-if="pageMode === 'detail' && selected" :to="{ path: '/admin/app/coin-adjustments/new', query: { accountId: selected.account.accountId } }" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-[#d62f65] px-4 py-2 text-sm font-medium text-white hover:bg-[#bd2756]">新建调币申请</NuxtLink>
+      </template>
+    </AdminAppPageHeader>
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
       Wallet-1 默认关闭且尚未通过生产门禁。此页面不提供批量调币、直接改余额、自动修账或绕过独立复核的入口。
@@ -275,7 +350,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
     <p v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 [overflow-wrap:anywhere]">{{ errorMessage }}</p>
     <p v-if="successMessage" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 [overflow-wrap:anywhere]">{{ successMessage }}</p>
 
-    <section class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+    <section v-if="showAccountSearch" class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
       <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
         <label class="min-w-0 flex-1 text-sm font-medium text-gray-700">
           账号查询
@@ -286,7 +361,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
         </button>
       </div>
       <div v-if="accounts.length" class="mt-4 grid min-w-0 gap-3 lg:grid-cols-2">
-        <button v-for="account in accounts" :key="account.accountId" class="min-w-0 rounded-xl border p-4 text-left hover:border-gray-400" :class="selected?.account.accountId === account.accountId ? 'border-gray-900 bg-gray-50' : 'border-gray-200'" @click="openAccount(account.accountId)">
+        <button v-for="account in accounts" :key="account.accountId" class="min-w-0 rounded-xl border p-4 text-left hover:border-gray-400" :class="selected?.account.accountId === account.accountId ? 'border-gray-900 bg-gray-50' : 'border-gray-200'" @click="navigateTo(`/admin/app/wallets/${account.accountId}`)">
           <span class="block truncate font-medium text-gray-900">{{ account.nickname || '未设置昵称' }}</span>
           <span class="mt-1 block break-all text-xs text-gray-500">{{ account.accountId }} · {{ account.emailMasked }}</span>
           <span class="mt-3 block text-sm text-gray-700">余额 {{ account.balance }} · 账本版本 {{ account.ledgerVersion }}</span>
@@ -306,8 +381,8 @@ function apiErrorMessage(error: unknown, fallback: string) {
         <article class="rounded-xl border border-gray-200 bg-white p-4"><p class="text-xs text-gray-500">最近入账</p><p class="mt-2 text-sm font-medium text-gray-900">{{ formatTime(selected.wallet.lastEntryAt) }}</p></article>
       </section>
 
-      <section class="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
-        <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+      <section class="grid min-w-0 gap-5" :class="showAdjustmentForm && showEntries ? 'xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]' : 'xl:grid-cols-1'">
+        <div v-if="showAdjustmentForm" class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
           <h2 class="font-semibold text-gray-900">创建调币申请</h2>
           <p class="mt-1 text-xs leading-5 text-gray-500">所见余额只是预览快照；复核入账时会再次执行版本、余额、账号状态和冲正关系校验。</p>
           <div class="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
@@ -330,7 +405,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
           </div>
         </div>
 
-        <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+        <div v-if="showEntries" class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
           <h2 class="font-semibold text-gray-900">最近金币明细</h2>
           <div v-if="selected.entries.length" class="mt-3 divide-y divide-gray-100">
             <article v-for="entry in selected.entries" :key="entry.entryId" class="min-w-0 py-3 first:pt-0">
@@ -344,14 +419,14 @@ function apiErrorMessage(error: unknown, fallback: string) {
       </section>
     </template>
 
-    <section class="min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
+    <section v-if="showQueue" class="min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div class="flex min-w-0 flex-col gap-3 border-b border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="min-w-0"><h2 class="font-semibold text-gray-900">调币复核队列</h2><p class="mt-1 text-xs text-gray-500">发起人与复核人必须不同；批准时才追加分录并更新余额。</p></div>
-        <select v-model="queueStatus" class="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm sm:w-auto"><option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select>
+        <select v-if="pageMode !== 'review'" v-model="queueStatus" class="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm sm:w-auto"><option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select>
       </div>
       <div v-if="loadingQueue" class="p-8 text-center text-sm text-gray-500">复核队列读取中…</div>
-      <div v-else-if="adjustments.length" class="grid min-w-0 gap-3 p-4 xl:grid-cols-2">
-        <article v-for="item in adjustments" :key="item.adjustmentId" class="min-w-0 rounded-xl border border-gray-200 p-4">
+      <div v-else-if="visibleAdjustments.length" class="grid min-w-0 gap-3 p-4" :class="pageMode === 'review' ? 'xl:grid-cols-1' : 'xl:grid-cols-2'">
+        <article v-for="item in visibleAdjustments" :key="item.adjustmentId" class="min-w-0 rounded-xl border border-gray-200 p-4">
           <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div class="min-w-0"><p class="font-medium text-gray-900">{{ actionLabel(item.actionType) }} · {{ item.amount }} 金币</p><p class="mt-1 break-all text-xs text-gray-500">{{ item.account.accountId }} · {{ item.businessReference }}</p></div><span class="w-fit shrink-0 rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">{{ statusLabel(item.status) }}</span></div>
           <dl class="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-3 text-sm"><div><dt class="text-xs text-gray-500">余额预览</dt><dd class="mt-1 text-gray-900">{{ item.balanceBefore }} → {{ item.balanceAfter }}</dd></div><div><dt class="text-xs text-gray-500">当前余额</dt><dd class="mt-1 text-gray-900">{{ item.currentBalance }}</dd></div></dl>
           <p class="mt-3 text-sm leading-6 text-gray-700 [overflow-wrap:anywhere]">用户可见：{{ item.userVisibleNote }}</p>

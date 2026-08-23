@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Miniflare } from 'miniflare'
 import {
   grantAdminAppMembership,
@@ -22,6 +22,7 @@ import {
   claimAdminAppMembershipApplication,
   transitionAdminAppMembershipApplication,
 } from './admin-app-membership-applications'
+import { reviewAdminAppMembershipChangeRequest } from './admin-app-membership-reviews'
 
 const MIGRATION = readFileSync(
   new URL('../../migrations/0071_app_membership_catalog_and_grants.sql', import.meta.url),
@@ -31,17 +32,21 @@ const APPLICATION_MIGRATION = readFileSync(
   new URL('../../migrations/0075_app_membership_applications.sql', import.meta.url),
   'utf8',
 )
+const REVIEW_MIGRATION = readFileSync(
+  new URL('../../migrations/0088_app_membership_change_reviews.sql', import.meta.url),
+  'utf8',
+)
 const NOW = new Date('2026-08-06T08:00:00.000Z')
 
 let miniflare: Miniflare
 let db: D1Database
 
-beforeAll(async () => {
+beforeEach(async () => {
   miniflare = new Miniflare({
     modules: true,
     script: 'export default { fetch() { return new Response("ok") } }',
     compatibilityDate: '2026-07-12',
-    d1Databases: { DB: 'app-membership' },
+    d1Databases: { DB: `app-membership-${crypto.randomUUID()}` },
   })
   db = (await miniflare.getBindings<{ DB: D1Database }>()).DB
   await db.exec(executableSql(`
@@ -49,12 +54,15 @@ beforeAll(async () => {
     CREATE TABLE users (
       id INTEGER PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
+      nickname TEXT,
+      role TEXT NOT NULL DEFAULT 'user',
       status TEXT NOT NULL DEFAULT 'active',
       email_verified INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE app_account_security (
-      user_id INTEGER PRIMARY KEY REFERENCES users(id),
-      account_public_id TEXT NOT NULL UNIQUE
+      account_id INTEGER PRIMARY KEY REFERENCES users(id),
+      account_public_id TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'active'
     );
     CREATE TABLE membership_levels (
       id TEXT PRIMARY KEY,
@@ -82,30 +90,44 @@ beforeAll(async () => {
   `))
   await db.exec(executableSql(MIGRATION))
   await db.exec(executableSql(APPLICATION_MIGRATION))
-})
-
-beforeEach(async () => {
+  await db.exec(executableSql(REVIEW_MIGRATION))
   await db.exec(executableSql(`
-    DELETE FROM app_membership_application_requests;
-    DELETE FROM app_membership_application_events;
-    DELETE FROM app_membership_applications;
-    DELETE FROM app_membership_admin_requests;
-    DELETE FROM app_membership_grant_revocations;
-    DELETE FROM app_membership_grants;
-    DELETE FROM admin_audit_logs;
-    DELETE FROM user_memberships;
-    DELETE FROM membership_levels;
-    DELETE FROM app_account_security;
-    DELETE FROM users;
-    INSERT INTO users (id, email, status, email_verified) VALUES
-      (1, 'admin@example.com', 'active', 1),
-      (2, 'viewer@example.com', 'active', 1);
-    INSERT INTO app_account_security (user_id, account_public_id)
+    CREATE TABLE app_operational_safety_controls (
+      control_key TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      state TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      incident_id TEXT,
+      reason_code TEXT,
+      reason_summary TEXT,
+      changed_by INTEGER,
+      changed_at TEXT NOT NULL
+    );
+    INSERT INTO users (id, email, nickname, role, status, email_verified) VALUES
+      (1, 'admin@example.com', '申请管理员', 'admin', 'active', 1),
+      (2, 'viewer@example.com', '观看者', 'user', 'active', 1),
+      (3, 'reviewer@example.com', '复核管理员', 'admin', 'active', 1);
+    INSERT INTO app_account_security (account_id, account_public_id)
       VALUES (2, 'acc_membership_viewer');
+    INSERT INTO app_membership_review_policies (
+      id, version_code, state, production_ready, risk_decision_status, review_mode,
+      grant_rank_threshold, grant_duration_days_threshold, review_lower_rank_grant,
+      review_revocation, created_by, created_at, published_at
+    ) VALUES (
+      'amrp_legacy_fixture', 'legacy-fixture-v1', 'published', 1, 'approved', 'risk_based',
+      1000, 366, 0, 0, 1, '2026-08-06T00:00:00.000Z', '2026-08-06T00:00:00.000Z'
+    );
+    INSERT OR REPLACE INTO app_operational_safety_controls (
+      control_key, display_name, state, version, incident_id, reason_code,
+      reason_summary, changed_by, changed_at
+    ) VALUES (
+      'membership_grants', '会员发放', 'available', 1, NULL, NULL,
+      NULL, NULL, '2026-08-06T00:00:00.000Z'
+    );
   `))
 })
 
-afterAll(async () => {
+afterEach(async () => {
   await miniflare.dispose()
 })
 
@@ -209,6 +231,12 @@ describe('App 五级会员目录与手动发放', () => {
       status: 'active',
       tier: { displayName: '心知', rank: 30 },
       grant: { grantId: first.grantId, sourceType: 'manual_admin' },
+      lifecycle: {
+        state: 'expiring_soon',
+        expiringSoonWindowDays: 30,
+        remainingDays: 30,
+        endedGrant: null,
+      },
     })
     expect(snapshot.entitlements.every(entitlement => !entitlement.executable)).toBe(true)
   })
@@ -295,7 +323,68 @@ describe('App 五级会员目录与手动发放', () => {
       2,
       APP_MEMBERSHIP_DRAFT_CATALOG_ID,
       NOW,
-    )).resolves.toMatchObject({ status: 'free', tier: null, grant: null })
+    )).resolves.toMatchObject({
+      status: 'free',
+      tier: null,
+      grant: null,
+      lifecycle: {
+        state: 'revoked',
+        remainingDays: null,
+        endedGrant: {
+          tier: { displayName: '心知', rank: 30 },
+          grant: { grantId: grant.grantId },
+          endedAt: NOW.toISOString(),
+          userVisibleNote: revokeInput.userVisibleNote,
+        },
+      },
+    })
+  })
+
+  it('会员快照区分有效、即将到期与已到期，历史 grant 不恢复任何权限', async () => {
+    const grant = await grantAdminAppMembership(
+      db,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      1,
+      'membership.grant.lifecycle.0001',
+      {
+        ...grantInput(),
+        durationDays: 60,
+        businessReference: 'CASE-LIFECYCLE-0001',
+      },
+      NOW,
+    )
+
+    await expect(resolveAppMembershipSnapshot(
+      db,
+      2,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      NOW,
+    )).resolves.toMatchObject({
+      status: 'active',
+      lifecycle: { state: 'active', remainingDays: 60, endedGrant: null },
+    })
+
+    const expiredAt = new Date(NOW.getTime() + 60 * 86_400_000)
+    await expect(resolveAppMembershipSnapshot(
+      db,
+      2,
+      APP_MEMBERSHIP_DRAFT_CATALOG_ID,
+      expiredAt,
+    )).resolves.toMatchObject({
+      status: 'free',
+      tier: null,
+      grant: null,
+      lifecycle: {
+        state: 'expired',
+        remainingDays: null,
+        endedGrant: {
+          tier: { displayName: '心知', rank: 30 },
+          grant: { grantId: grant.grantId },
+          endedAt: grant.expiresAt,
+          userVisibleNote: null,
+        },
+      },
+    })
   })
 
   it('会员申请重复提交返回同一工单，且申请期间不产生任何 grant 或 entitlement', async () => {
@@ -421,7 +510,7 @@ describe('App 五级会员目录与手动发放', () => {
     )).rejects.toMatchObject({ code: 'MEMBERSHIP_APPLICATION_CATALOG_CHANGED', status: 409 })
     await expect(count('app_membership_grants')).resolves.toBe(0)
 
-    const approved = await approveAdminAppMembershipApplication(
+    const submittedForReview = await approveAdminAppMembershipApplication(
       db,
       APP_MEMBERSHIP_DRAFT_CATALOG_ID,
       applicationId,
@@ -434,20 +523,31 @@ describe('App 五级会员目录与手动发放', () => {
       },
       NOW,
     )
-    expect(approved.application.application).toMatchObject({
-      status: 'approved',
-      version: 6,
-      canCancel: false,
-      grantId: approved.grant.grantId,
+    expect(submittedForReview).toMatchObject({
+      application: {
+        application: { status: 'processing', version: 5, grantId: null },
+        grantReview: { status: 'pending_review', version: 1 },
+      },
+      review: { status: 'pending_review', version: 1, resultGrantId: null },
+      replayed: false,
     })
-    expect(approved.application.application.timeline.map(item => item.status)).toEqual([
-      'submitted',
-      'processing',
-      'needs_information',
-      'submitted',
-      'processing',
-      'approved',
-    ])
+    await expect(count('app_membership_grants')).resolves.toBe(0)
+
+    const reviewed = await reviewAdminAppMembershipChangeRequest(
+      db,
+      submittedForReview.review.requestId,
+      3,
+      'approve',
+      'membership.review.approve.01',
+      { expectedVersion: 1, reviewNote: '独立复核通过，资料与发放范围一致。' },
+      NOW,
+    )
+    expect(reviewed).toMatchObject({
+      request: { status: 'approved', version: 2, resultGrantId: expect.any(String) },
+      replayed: false,
+    })
+    const grantId = reviewed.request.resultGrantId!
+
     const approvedReplay = await approveAdminAppMembershipApplication(
       db,
       APP_MEMBERSHIP_DRAFT_CATALOG_ID,
@@ -462,9 +562,22 @@ describe('App 五级会员目录与手动发放', () => {
       NOW,
     )
     expect(approvedReplay).toMatchObject({
-      grant: { replayed: true, grantId: approved.grant.grantId },
       application: { application: { status: 'approved', version: 6 } },
+      review: { status: 'approved', resultGrantId: grantId },
+      replayed: true,
     })
+    expect(approvedReplay.application.application).toMatchObject({
+      canCancel: false,
+      grantId,
+    })
+    expect(approvedReplay.application.application.timeline.map(item => item.status)).toEqual([
+      'submitted',
+      'processing',
+      'needs_information',
+      'submitted',
+      'processing',
+      'approved',
+    ])
     await expect(count('app_membership_grants')).resolves.toBe(1)
     await expect(resolveAppMembershipSnapshot(
       db,

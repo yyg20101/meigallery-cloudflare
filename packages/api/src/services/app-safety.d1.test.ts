@@ -43,6 +43,9 @@ const MEMBERSHIP_MIGRATION = migration('0071_app_membership_catalog_and_grants.s
 const MESSAGE_MIGRATION = migration('0072_app_managed_conversations.sql')
 const SAFETY_MIGRATION = migration('0073_app_messaging_safety_operations.sql')
 const APPEAL_MIGRATION = migration('0074_app_safety_appeals.sql')
+const COLLECTION_MIGRATION = migration('0078_app_favorites_and_view_history.sql')
+const TAXONOMY_MIGRATION = migration('0081_app_taxonomy_catalog.sql')
+const ROUTING_MIGRATION = migration('0086_app_conversation_routing_and_shifts.sql')
 const NOW = new Date('2026-08-07T08:00:00.000Z')
 
 let miniflare: Miniflare
@@ -78,7 +81,8 @@ beforeAll(async () => {
       source_gallery_id TEXT NOT NULL REFERENCES galleries(id),
       display_name TEXT NOT NULL,
       content_version INTEGER NOT NULL DEFAULT 1,
-      publication_status TEXT NOT NULL DEFAULT 'published'
+      publication_status TEXT NOT NULL DEFAULT 'published',
+      region_code TEXT
     );
     CREATE TABLE profile_public_projections (
       profile_id TEXT PRIMARY KEY REFERENCES person_profiles(id),
@@ -133,6 +137,42 @@ beforeAll(async () => {
   await db.exec(executableSql(MESSAGE_MIGRATION))
   await db.exec(executableSql(SAFETY_MIGRATION))
   await db.exec(executableSql(APPEAL_MIGRATION))
+  await db.exec(executableSql(COLLECTION_MIGRATION))
+  await db.exec(executableSql(TAXONOMY_MIGRATION))
+  await db.exec(executableSql(ROUTING_MIGRATION))
+  await db.exec(executableSql(`
+    ALTER TABLE app_safety_appeal_policies ADD COLUMN review_sla_hours INTEGER;
+    ALTER TABLE app_safety_appeal_policies
+      ADD COLUMN review_sla_decision_status TEXT NOT NULL DEFAULT 'unresolved';
+    ALTER TABLE app_safety_appeals ADD COLUMN review_state TEXT NOT NULL DEFAULT 'normal';
+    ALTER TABLE app_safety_appeals ADD COLUMN review_due_at TEXT;
+    ALTER TABLE app_safety_appeals ADD COLUMN supplement_due_at TEXT;
+    CREATE TABLE app_appeal_review_events (
+      id TEXT PRIMARY KEY,
+      appeal_kind TEXT NOT NULL,
+      appeal_id TEXT NOT NULL,
+      appeal_version INTEGER NOT NULL,
+      actor_type TEXT NOT NULL,
+      actor_account_id INTEGER,
+      actor_admin_id INTEGER,
+      event_type TEXT NOT NULL,
+      review_state_from TEXT NOT NULL,
+      review_state_to TEXT NOT NULL,
+      reason_code TEXT NOT NULL,
+      user_visible_message TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE app_safety_appeal_supplements (
+      id TEXT PRIMARY KEY,
+      appeal_id TEXT NOT NULL REFERENCES app_safety_appeals(id),
+      sequence INTEGER NOT NULL,
+      account_id INTEGER NOT NULL REFERENCES users(id),
+      note_text TEXT NOT NULL,
+      note_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (appeal_id, sequence)
+    );
+  `))
 })
 
 beforeEach(async () => {

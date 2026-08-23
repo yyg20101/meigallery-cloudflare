@@ -17,12 +17,29 @@ import type {
   AdminConversationSafetyEscalationReason,
   AdminConversationSafetyEscalationSummary,
 } from '~/types/admin-app-safety'
+import type { AdminFigmaPageId } from '~/utils/admin-figma-pages'
 
 definePageMeta({ layout: 'admin' })
 
+const route = useRoute()
 const { api } = useApi()
-const queueStatus = ref<AdminConversationQueueStatus | ''>('awaiting_operator')
-const selectedId = ref<string | null>(null)
+const routeConversationId = computed(() => typeof route.params.conversationId === 'string' ? route.params.conversationId : null)
+const isDetailRoute = computed(() => Boolean(routeConversationId.value))
+const pageContext = computed<{ pageId: AdminFigmaPageId; route: string; title: string; description: string }>(() => isDetailRoute.value
+  ? {
+      pageId: 'ADM-MSG-02',
+      route: route.path,
+      title: '会话工作台',
+      description: '以固定平台身份回复，记录内部备注、转派协作，并在必要时升级安全审核。',
+    }
+  : {
+      pageId: 'ADM-MSG-01',
+      route: '/admin/app/conversations',
+      title: '会话队列',
+      description: '按等待状态与运营归属分配平台话题，领取后才可读取正文和执行服务操作。',
+    })
+const queueStatus = ref<AdminConversationQueueStatus | ''>(isDetailRoute.value ? '' : 'awaiting_operator')
+const selectedId = ref<string | null>(routeConversationId.value)
 const detail = ref<AdminConversationDetail | null>(null)
 const messages = ref<AdminConversationMessage[]>([])
 const replyText = ref('')
@@ -74,11 +91,19 @@ const conversations = computed(() => data.value?.data ?? [])
 const selectedSummary = computed(() => conversations.value.find(item => item.conversationId === selectedId.value) ?? null)
 
 watch(conversations, (items) => {
+  if (routeConversationId.value) {
+    selectedId.value = routeConversationId.value
+    return
+  }
   if (selectedId.value && items.some(item => item.conversationId === selectedId.value)) return
   selectedId.value = items[0]?.conversationId ?? null
 }, { immediate: true })
 
-watch(selectedId, async (conversationId) => {
+watch(routeConversationId, (conversationId) => {
+  selectedId.value = conversationId || conversations.value[0]?.conversationId || null
+})
+
+watch(selectedId, () => {
   detail.value = null
   messages.value = []
   detailError.value = ''
@@ -96,11 +121,16 @@ watch(selectedId, async (conversationId) => {
   escalationForm.reasonCode = 'harassment_threat'
   escalationForm.targetMessageId = ''
   escalationForm.summary = ''
+}, { immediate: true })
+
+watch([selectedId, selectedSummary, status], async ([conversationId, summary, listStatus]) => {
   if (!conversationId) return
-  if (selectedSummary.value?.assignment.status === 'mine') {
+  if (summary?.assignment.status === 'mine' || (isDetailRoute.value && listStatus === 'success' && !summary)) {
     await loadConversation(conversationId)
   }
-})
+}, { immediate: true })
+
+const selectedConversation = computed(() => detail.value ?? selectedSummary.value)
 
 async function loadConversation(conversationId = selectedId.value) {
   if (!conversationId) return
@@ -432,17 +462,10 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <div class="flex min-w-0 flex-wrap items-center gap-2">
-          <h1 class="text-xl font-bold text-gray-950">App 平台话题</h1>
-          <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">ADM-MSG-01 / 02</span>
-        </div>
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">
-          处理由观看者发起的平台话题。所有回复固定显示为“平台运营”，不得冒充真人本人或承诺见面、回复时效与关系结果。
-        </p>
-      </div>
-      <div class="flex shrink-0 flex-wrap gap-2">
+    <AdminAppPageHeader :page-id="pageContext.pageId" :route="pageContext.route" :title="pageContext.title" :description="pageContext.description" figma-state="正常">
+      <template #actions>
+        <div class="flex min-w-0 flex-wrap gap-2">
+          <NuxtLink v-if="isDetailRoute" to="/admin/app/conversations" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#eaded8] bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-[#fff7f2]">返回队列</NuxtLink>
         <NuxtLink to="/admin/app/conversation-quality" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
           质量与抽检
         </NuxtLink>
@@ -456,16 +479,17 @@ function apiErrorMessage(error: unknown, fallback: string) {
         >
           刷新队列
         </button>
-      </div>
-    </div>
+        </div>
+      </template>
+    </AdminAppPageHeader>
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
       <span class="font-semibold">服务边界：</span>
       当前真人资料并非本人入驻，消息由平台运营统一接收与处理。Message-2 要求先领取限时会话分配才能读取正文、已读、回复或关闭；不含实时消息、媒体、礼物、支付或自动回复。
     </div>
 
-    <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(18rem,23rem)_minmax(0,1fr)]">
-      <section class="min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
+    <div class="grid min-w-0 gap-4" :class="isDetailRoute ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(18rem,23rem)_minmax(0,1fr)]'">
+      <section v-if="!isDetailRoute" class="min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
         <div class="border-b border-gray-200 p-3 sm:p-4">
           <label class="block min-w-0">
             <span class="mb-1.5 block text-xs font-medium text-gray-600">队列状态</span>
@@ -492,7 +516,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
             :key="item.conversationId"
             class="block min-h-24 w-full min-w-0 p-4 text-left transition-colors hover:bg-gray-50"
             :class="selectedId === item.conversationId ? 'bg-rose-50 ring-1 ring-inset ring-rose-200' : ''"
-            @click="selectedId = item.conversationId"
+            @click="navigateTo(`/admin/app/conversations/${item.conversationId}`)"
           >
             <span class="flex min-w-0 items-start justify-between gap-3">
               <span class="min-w-0">
@@ -530,7 +554,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
                 <span class="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700 ring-1 ring-inset ring-rose-200">平台运营接收</span>
                 <span v-if="detail" class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700">{{ statusLabel(detail.status) }}</span>
                 <button
-                  v-if="selectedSummary?.assignment.status === 'mine'"
+                  v-if="selectedConversation?.assignment.status === 'mine'"
                   type="button"
                   class="min-h-8 rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   :disabled="claiming || releasing || closing"
@@ -539,7 +563,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
                   {{ claiming ? '续租中…' : '续租' }}
                 </button>
                 <button
-                  v-if="selectedSummary?.assignment.status === 'mine'"
+                  v-if="selectedConversation?.assignment.status === 'mine'"
                   type="button"
                   class="min-h-8 rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   :disabled="claiming || releasing || closing"
@@ -548,7 +572,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
                   {{ releasing ? '释放中…' : '释放' }}
                 </button>
                 <button
-                  v-if="selectedSummary?.assignment.status === 'mine' && detail?.status === 'active'"
+                  v-if="selectedConversation?.assignment.status === 'mine' && detail?.status === 'active'"
                   type="button"
                   class="min-h-8 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
                   :disabled="claiming || releasing || closing"
@@ -558,8 +582,8 @@ function apiErrorMessage(error: unknown, fallback: string) {
                 </button>
               </div>
             </div>
-            <p v-if="selectedSummary?.assignment.status === 'mine' && selectedSummary.assignment.leaseExpiresAt" class="mt-2 text-xs text-gray-500">
-              当前分配有效至 {{ formatDate(selectedSummary.assignment.leaseExpiresAt) }}；到期后正文与写权限立即失效。
+            <p v-if="selectedConversation?.assignment.status === 'mine' && selectedConversation.assignment.leaseExpiresAt" class="mt-2 text-xs text-gray-500">
+              当前分配有效至 {{ formatDate(selectedConversation.assignment.leaseExpiresAt) }}；到期后正文与写权限立即失效。
             </p>
           </header>
 
@@ -571,19 +595,19 @@ function apiErrorMessage(error: unknown, fallback: string) {
             <button class="ml-2 font-medium underline" @click="loadConversation()">重试</button>
           </div>
           <div v-else-if="detailLoading" class="grid flex-1 place-items-center p-8 text-sm text-gray-500">正在读取话题正文并记录访问审计…</div>
-          <div v-else-if="selectedSummary?.assignment.status !== 'mine'" class="grid flex-1 place-items-center p-8 text-center">
+          <div v-else-if="selectedConversation?.assignment.status !== 'mine'" class="grid flex-1 place-items-center p-8 text-center">
             <div class="max-w-md">
               <h3 class="text-base font-semibold text-gray-950">
-                {{ selectedSummary?.assignment.status === 'other' ? '该话题正在由其他运营处理' : '领取后才能查看正文' }}
+                {{ selectedConversation?.assignment.status === 'other' ? '该话题正在由其他运营处理' : '领取后才能查看正文' }}
               </h3>
               <p class="mt-2 text-sm leading-6 text-gray-600">
                 未领取时列表仅显示账号、人物、队列和时间信息，不返回任何消息正文。领取为限时权限，所有访问都会写入审计。
               </p>
-              <p v-if="selectedSummary && !selectedSummary.assignment.canClaim && selectedSummary.assignment.status === 'unassigned'" class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800">
-                {{ routingAccessLabel(selectedSummary) }}。请由运营组长调整规则、成员或班次，当前账号不能绕过范围直接领取。
+              <p v-if="selectedConversation && !selectedConversation.assignment.canClaim && selectedConversation.assignment.status === 'unassigned'" class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800">
+                {{ routingAccessLabel(selectedConversation) }}。请由运营组长调整规则、成员或班次，当前账号不能绕过范围直接领取。
               </p>
               <button
-                v-if="selectedSummary?.assignment.canClaim"
+                v-if="selectedConversation?.assignment.canClaim || (isDetailRoute && !selectedConversation)"
                 type="button"
                 class="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg bg-rose-500 px-5 py-2 text-sm font-medium text-white hover:bg-rose-600 disabled:opacity-50"
                 :disabled="claiming"

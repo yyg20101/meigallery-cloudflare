@@ -57,7 +57,7 @@ adminAppDataRightsRoutes.get('/requests/:requestId', async (c) => {
   try {
     return c.json({
       data: await getAdminAppDataRightsRequest(
-        c.env.DB,
+        c.env,
         c.req.param('requestId'),
         actor(c),
       ),
@@ -72,7 +72,7 @@ adminAppDataRightsRoutes.post('/requests/:requestId/claim', requireOwner, async 
   try {
     const body = await c.req.json<AdminDataRightsClaimInput>().catch(() => ({}))
     const result = await claimAdminAppDataRightsRequest(
-      c.env.DB,
+      c.env,
       adminDataRightsConfig(c.env),
       c.req.param('requestId'),
       actor(c),
@@ -90,7 +90,7 @@ adminAppDataRightsRoutes.post('/requests/:requestId/actions', requireOwner, asyn
   try {
     const body = await c.req.json<AdminDataRightsActionInput>().catch(() => ({}))
     const result = await actOnAdminAppDataRightsRequest(
-      c.env.DB,
+      c.env,
       adminDataRightsConfig(c.env),
       c.req.param('requestId'),
       actor(c),

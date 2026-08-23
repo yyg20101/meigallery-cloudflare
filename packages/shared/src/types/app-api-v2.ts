@@ -1,6 +1,6 @@
 /**
  * App API v2 公共发现、账号访问、互动、会员申请、平台话题、
- * Message-2 安全、Safety-2 申诉、Message-3 站内通知、Wallet-1 与
+ * Message-2 安全、Safety-2 申诉、Message-3 站内通知、Message-4 实时刷新、Wallet-1 与
  * Interaction-2 收藏历史、Interaction-3 关注更新、Search-1 搜索、
  * Taxonomy-1 稳定分类目录、Search-2 结构化筛选、Recommendation-1 与
  * Media-1 人物媒体浏览及认证详情契约。
@@ -17,7 +17,7 @@ export interface AppApiMeta {
   requestId: string
   serverTime: string
   apiVersion: '2'
-  contractVersion: '1.19.0'
+  contractVersion: '1.26.0'
 }
 
 export interface AppApiSuccess<T> {
@@ -92,6 +92,7 @@ export interface AppSupportTopic {
     body: string
   }>
   keywords: string[]
+  action: 'open_data_export' | 'open_account_deletion' | null
 }
 
 export interface AppSupportContact {
@@ -161,12 +162,15 @@ export interface AppBootstrapConfig {
     }
     messaging: boolean
     notifications: boolean
+    realtime: boolean
     wallet: boolean
     safety: {
       reports: boolean
       blocks: boolean
       conversationClose: boolean
       appeals: boolean
+      accountRestrictionAppeals: boolean
+      walletEntryAppeals: boolean
     }
     dataRights: {
       overview: boolean
@@ -243,6 +247,8 @@ export interface AppBootstrapConfig {
     methods: Array<'email'>
     registrationEnabled: boolean
     deviceManagementEnabled: boolean
+    accountProfileEnabled: boolean
+    initialPreferencesEnabled: boolean
     accessTokenTtlSeconds: number
     challenge: { type: 'none' } | {
       type: 'turnstile'
@@ -277,6 +283,7 @@ export interface AppBootstrapConfig {
     disclosureText: string
     transport: 'http_pull'
     maxTextLength: number
+    conversationSettingsEnabled: boolean
   }
   notifications: {
     policyVersion: string
@@ -287,6 +294,18 @@ export interface AppBootstrapConfig {
       label: string
       preference: 'optional' | 'required'
     }>
+  }
+  realtime: {
+    policyVersion: string
+    transport: 'websocket_refresh'
+    protocol: 'meigallery.realtime.v1'
+    ticketPath: '/api/v2/realtime/tickets'
+    connectPath: '/api/v2/realtime/connect'
+    eventSchemaVersion: 1
+    ticketTtlSeconds: number
+    reconnectMinDelayMs: number
+    reconnectMaxDelayMs: number
+    maxConnectionsPerAccount: number
   }
   wallet: {
     policyVersion: string
@@ -315,12 +334,63 @@ export interface AppBootstrapConfig {
     transport: 'http_poll'
     stepUpTtlSeconds: number
     statusAccessHeader: 'X-Data-Rights-Token'
+    downloadTicketHeader: 'X-Data-Rights-Download-Ticket'
+    exportFormat: 'tar'
     systemPush: false
     exportProcessing: boolean
     deletionProcessing: boolean
     cancellationEnabled: boolean
   }
 }
+
+export type AppRealtimeRefreshScope =
+  | 'account'
+  | 'conversations'
+  | 'messages'
+  | 'notifications'
+  | 'membership'
+  | 'wallet'
+
+export interface AppRealtimeTicket {
+  ticket: string
+  protocol: 'meigallery.realtime.v1'
+  connectPath: '/api/v2/realtime/connect'
+  expiresAt: string
+}
+
+export interface AppRealtimeClientHelloFrame {
+  type: 'client.hello'
+  schemaVersion: 1
+  lastCursor: number
+}
+
+export interface AppRealtimeServerReadyFrame {
+  type: 'server.ready'
+  schemaVersion: 1
+  protocol: 'meigallery.realtime.v1'
+  serverTime: string
+}
+
+export interface AppRealtimeRefreshRequiredFrame {
+  type: 'refresh.required'
+  schemaVersion: 1
+  eventId: string
+  cursor: number
+  occurredAt: string
+  scopes: AppRealtimeRefreshScope[]
+}
+
+export interface AppRealtimeServerSyncedFrame {
+  type: 'server.synced'
+  schemaVersion: 1
+  cursor: number
+  serverTime: string
+}
+
+export type AppRealtimeServerFrame =
+  | AppRealtimeServerReadyFrame
+  | AppRealtimeRefreshRequiredFrame
+  | AppRealtimeServerSyncedFrame
 
 export type AppTaxonomyType =
   | 'region_scope'
@@ -377,6 +447,25 @@ export interface AppAccountSummary {
   status: 'active' | 'restricted'
 }
 
+export type AppAccountAvatarStyle = 'rose' | 'coral' | 'lilac' | 'sky' | 'mint' | 'sand'
+
+export interface AppAccountProfile {
+  accountId: string
+  nickname: string | null
+  avatarStyle: AppAccountAvatarStyle
+  avatarLabel: string
+  loginIdentity: {
+    provider: 'email'
+    maskedValue: string
+    verified: boolean
+  }
+  visibility: 'private'
+  publicPersonProfileCreated: false
+  requiresReauthenticationForUpdate: true
+  version: number
+  updatedAt: string | null
+}
+
 export interface AppDeviceSummary {
   deviceId: string
   platform: 'android' | 'ios'
@@ -423,7 +512,7 @@ export type AppAccountRestrictionReasonCategory =
   | 'policy'
   | 'administrative'
 
-export type AppAccountRestrictionAction = 'help' | 'data_rights' | 'logout'
+export type AppAccountRestrictionAction = 'appeal' | 'help' | 'data_rights' | 'logout'
 
 export interface AppAccountRestrictionSummary {
   mode: AppAccountRestrictionMode
@@ -431,6 +520,8 @@ export interface AppAccountRestrictionSummary {
   title: string
   message: string
   restrictedUntil: string | null
+  appealReference: string | null
+  sourceVersion: string | null
   actions: AppAccountRestrictionAction[]
 }
 
@@ -481,8 +572,32 @@ export interface AppDataRightsTimelineItem {
   createdAt: string
 }
 
+export type AppDataRightsExportArtifactStatus =
+  | 'queued'
+  | 'collecting'
+  | 'finalizing'
+  | 'ready'
+  | 'expired'
+  | 'failed'
+
+export interface AppDataRightsExportArtifactSummary {
+  artifactId: string
+  status: AppDataRightsExportArtifactStatus
+  format: 'tar'
+  fileName: string
+  schemaVersion: number
+  recordCount: number
+  sizeBytes: number | null
+  manifestSha256: string | null
+  generatedAt: string | null
+  expiresAt: string | null
+  canDownload: boolean
+  downloadRequiresStepUp: true
+}
+
 export interface AppDataRightsRequestDetail extends AppDataRightsRequestSummary {
   timeline: AppDataRightsTimelineItem[]
+  exportArtifact: AppDataRightsExportArtifactSummary | null
 }
 
 export interface AppDataRightsStepUpResult {
@@ -501,6 +616,14 @@ export interface AppDataRightsMutationResult {
   statusAccess: AppDataRightsStatusAccess | null
   replayed: boolean
   sessionRevoked: boolean
+}
+
+export interface AppDataRightsDownloadTicketResult {
+  ticket: string
+  expiresAt: string
+  fileName: string
+  manifestSha256: string
+  replayed: boolean
 }
 
 export type AppMembershipCatalogState = 'development' | 'published'
@@ -598,6 +721,23 @@ export interface AppMembershipSnapshot {
     startsAt: string
     expiresAt: string
     userVisibleNote: string
+  }
+  lifecycle: {
+    state: 'free' | 'active' | 'expiring_soon' | 'expired' | 'revoked'
+    expiringSoonWindowDays: number
+    remainingDays: number | null
+    endedGrant: null | {
+      tier: AppMembershipTierSummary
+      grant: {
+        grantId: string
+        sourceType: 'manual_admin'
+        startsAt: string
+        expiresAt: string
+        userVisibleNote: string
+      }
+      endedAt: string
+      userVisibleNote: string | null
+    }
   }
   entitlements: AppMembershipResolvedEntitlement[]
 }
@@ -714,6 +854,16 @@ export interface AppConversationMessagesPage {
   hasMore: boolean
 }
 
+export interface AppConversationViewerSettings {
+  conversationId: string
+  muted: boolean
+  editable: boolean
+  lockedReason: 'CONVERSATION_CLOSED' | null
+  closedAt: string | null
+  version: number
+  updatedAt: string | null
+}
+
 export type AppSafetyReportTargetType = 'person_profile' | 'media' | 'conversation' | 'message'
 export type AppSafetyPriority = 'p0' | 'p1' | 'p2' | 'p3'
 export type AppSafetyReportStatus = 'submitted' | 'processing' | 'actioned' | 'no_violation' | 'closed'
@@ -789,16 +939,23 @@ export interface AppSafetyAppealSummary {
   reportId: string
   type: 'report_no_violation_review'
   status: AppSafetyAppealStatus
+  reviewState: AppAppealReviewState
   userVisibleMessage: string
   originalReportVersion: number
   version: number
   submittedAt: string
   updatedAt: string
+  supplementDueAt: string | null
   resolvedAt: string | null
 }
 
 export interface AppSafetyAppealDetail extends AppSafetyAppealSummary {
   statement: string
+  supplements: Array<{
+    sequence: number
+    note: string
+    createdAt: string
+  }>
   timeline: Array<{
     sequence: number
     status: AppSafetyAppealStatus
@@ -809,6 +966,66 @@ export interface AppSafetyAppealDetail extends AppSafetyAppealSummary {
 
 export interface AppSafetyAppealCreateResult {
   appeal: AppSafetyAppealDetail
+  replayed: boolean
+}
+
+export interface AppSafetyAppealSupplementResult {
+  appeal: AppSafetyAppealDetail
+  replayed: boolean
+}
+
+export type AppServiceAppealSourceType =
+  | 'account_restriction'
+  | 'wallet_entry'
+
+export type AppAppealReviewState =
+  | 'normal'
+  | 'evidence_insufficient'
+  | 'needs_escalation'
+
+export interface AppServiceAppealSourceSummary {
+  type: AppServiceAppealSourceType
+  sourceId: string
+  sourceVersion: string
+  reference: string
+  label: string
+}
+
+export interface AppServiceAppealSummary {
+  appealId: string
+  source: AppServiceAppealSourceSummary
+  status: AppSafetyAppealStatus
+  reviewState: AppAppealReviewState
+  userVisibleMessage: string
+  version: number
+  submittedAt: string
+  updatedAt: string
+  supplementDueAt: string | null
+  resolvedAt: string | null
+}
+
+export interface AppServiceAppealDetail extends AppServiceAppealSummary {
+  statement: string
+  supplements: Array<{
+    sequence: number
+    note: string
+    createdAt: string
+  }>
+  timeline: Array<{
+    sequence: number
+    status: AppSafetyAppealStatus
+    message: string
+    createdAt: string
+  }>
+}
+
+export interface AppServiceAppealCreateResult {
+  appeal: AppServiceAppealDetail
+  replayed: boolean
+}
+
+export interface AppServiceAppealSupplementResult {
+  appeal: AppServiceAppealDetail
   replayed: boolean
 }
 
@@ -1297,6 +1514,11 @@ export interface AppFollowUpdateItem {
 
 export type AppFavoriteFolderType = 'default' | 'custom'
 
+export interface AppFavoriteFolderPreview {
+  profileId: string
+  coverUrl: string | null
+}
+
 export interface AppFavoriteFolderSummary {
   folderId: string
   type: AppFavoriteFolderType
@@ -1304,12 +1526,14 @@ export interface AppFavoriteFolderSummary {
   sortOrder: number
   version: number
   itemCount: number
+  previewProfiles: AppFavoriteFolderPreview[]
   createdAt: string
   updatedAt: string
 }
 
 export interface AppFavoriteFolderCollection {
   folders: AppFavoriteFolderSummary[]
+  totalFavoriteCount: number
   customFolderCount: number
   customFolderLimit: number
   canCreateCustomFolder: boolean
@@ -1334,6 +1558,7 @@ export interface AppFavoriteFolderDeleteResult {
   folderId: string
   deleted: boolean
   removedItemCount: number
+  /** 兼容字段；自 1.21.0 起删除自定义收藏夹会把条目保留到默认收藏，因此固定为 0。 */
   removedGlobalFavoriteCount: number
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""校验 92 页、349 个 Figma 最终状态及 169 个客户文档图片映射。"""
+"""校验 99 页、408 个 Figma 最终状态及 179 个客户文档图片映射。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 from collections import OrderedDict
+from datetime import date
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -45,35 +46,64 @@ def image_hash(path: Path) -> str:
 def validate_counts(manifest: dict) -> None:
     counts = manifest["counts"]
     expected = {
-        "pages": 92,
-        "mobilePages": 49,
-        "adminPages": 43,
-        "p0Pages": 54,
-        "p1Pages": 31,
-        "p2Pages": 7,
-        "defaultCaptures": 92,
-        "keyStateCaptures": 54,
-        "totalCaptures": 146,
+        "pages": 99,
+        "mobilePages": 50,
+        "adminPages": 49,
+        "p0Pages": 57,
+        "p1Pages": 32,
+        "p2Pages": 10,
+        "defaultCaptures": 99,
+        "keyStateCaptures": 57,
+        "totalCaptures": 156,
         "detailedFigmaPages": 5,
         "detailedFigmaStateCaptures": 23,
-        "documentPrototypeMappings": 169,
-        "figmaDesignedPages": 92,
-        "figmaDesignedStates": 349,
-        "figmaMobileStates": 186,
-        "figmaAdminStates": 163,
-        "figmaFlowPreviews": 92,
-        "figmaPageActions": 1790,
-        "figmaFlowActions": 494,
-        "figmaTotalActions": 2284,
-        "groups": 14,
+        "documentPrototypeMappings": 179,
+        "figmaDesignedPages": 99,
+        "figmaDesignedStates": 408,
+        "figmaMobileStates": 208,
+        "figmaAdminStates": 200,
+        "figmaFlowPreviews": 99,
+        "figmaHistoricalPageActionBaseline": 2957,
+        "figmaHistoricalFlowActionBaseline": 614,
+        "figmaHistoricalActionBaseline": 3571,
+        "supplementalFigmaCaptures": 136,
+        "groups": 15,
     }
     for key, value in expected.items():
         if counts.get(key) != value:
             raise ValueError(f"{key} 数量错误：期望 {value}，实际 {counts.get(key)}")
 
-    page_ids = [page["pageId"] for page in manifest["pages"]]
+    pages = manifest.get("pages", [])
+    page_ids = [page["pageId"] for page in pages]
     if len(page_ids) != len(set(page_ids)):
         raise ValueError("Page ID 存在重复")
+    state_totals = {"mobile": 0, "admin": 0}
+    for page in pages:
+        states = page.get("states")
+        if not isinstance(states, list) or not states:
+            raise ValueError(f"{page['pageId']} 缺少正式状态")
+        if any(
+            not isinstance(state, str) or not state or state.strip() != state
+            for state in states
+        ):
+            raise ValueError(f"{page['pageId']} 存在空白或未规范化的正式状态名称")
+        if len(states) != len(set(states)):
+            raise ValueError(f"{page['pageId']} 存在重复正式状态")
+        platform = page.get("platform")
+        if platform not in state_totals:
+            raise ValueError(f"{page['pageId']} 平台类型无效：{platform!r}")
+        state_totals[platform] += len(states)
+    derived = {
+        "figmaDesignedPages": len(pages),
+        "figmaDesignedStates": sum(state_totals.values()),
+        "figmaMobileStates": state_totals["mobile"],
+        "figmaAdminStates": state_totals["admin"],
+    }
+    for key, value in derived.items():
+        if counts.get(key) != value:
+            raise ValueError(
+                f"{key} 与逐页正式状态不一致：清单 {counts.get(key)}，实际 {value}"
+            )
     if int(manifest.get("schemaVersion", 0)) < 4:
         raise ValueError("原型清单缺少 Figma 全量最终交付 schema")
 
@@ -82,6 +112,7 @@ def all_captures(manifest: dict) -> list[dict]:
     return [
         *manifest["captures"],
         *manifest.get("figmaStateCaptures", []),
+        *manifest.get("supplementalFigmaCaptures", []),
     ]
 
 
@@ -154,7 +185,7 @@ def validate_images(manifest: dict) -> None:
         formatted = "、".join(str(path.relative_to(ROOT)) for path in extra)
         raise ValueError(f"存在未被清单引用的原型图：{formatted}")
 
-    manifest["verifiedAt"] = "2026-07-30"
+    manifest["verifiedAt"] = date.today().isoformat()
     manifest["status"] = "verified"
     MANIFEST_PATH.write_text(
         f"{json.dumps(manifest, ensure_ascii=False, indent=2)}\n",

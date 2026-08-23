@@ -171,14 +171,9 @@ function toIso(value: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <NuxtLink to="/admin/app/recommendation/rules" class="text-sm font-medium text-blue-600 hover:underline">返回推荐规则</NuxtLink>
-        <h1 class="mt-2 text-xl font-bold text-gray-950">运营精选排期</h1>
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">将满足公开资格的真人资料插入推荐首屏。服务端固定披露“平台精选”，同位置、地区与优先级的时间窗口不得重叠。</p>
-      </div>
-      <button class="inline-flex min-h-10 items-center justify-center self-start rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white hover:bg-black" @click="showCreate = !showCreate">{{ showCreate ? '收起创建表单' : '新建精选排期' }}</button>
-    </div>
+    <AdminAppPageHeader page-id="ADM-REC-04" route="/admin/app/recommendation/placements" title="运营精选" description="配置精选位置、时间和用户可见披露，并在生效前复核公开资格。" :state="error ? '加载失败' : status === 'pending' ? '加载中' : '正常'" figma-state="正常" :state-tone="error ? 'danger' : status === 'pending' ? 'warning' : 'success'">
+      <template #actions><NuxtLink to="/admin/app/recommendation/rules" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">返回规则</NuxtLink><button class="inline-flex min-h-10 items-center justify-center rounded-[10px] bg-[#d63363] px-4 text-sm font-medium text-white hover:bg-[#bd2756]" @click="showCreate = !showCreate">{{ showCreate ? '收起创建表单' : '创建排期' }}</button></template>
+    </AdminAppPageHeader>
 
     <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-950"><span class="font-semibold">不可隐藏的披露：</span>所有精选项固定显示“平台精选”，运营原因不会替代用户可见披露。排期生效时再次校验授权、认证、发布和来源图库状态。</div>
     <div v-if="error" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{{ recommendationApiError(error, '运营精选列表加载失败。') }} <button class="ml-2 font-semibold underline" @click="refresh()">重试</button></div>

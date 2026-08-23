@@ -125,6 +125,81 @@ export interface AdminDataRightsTimelineEvent {
 
 export interface AdminDataRightsRequestDetail extends AdminDataRightsRequestSummary {
   timeline: AdminDataRightsTimelineEvent[]
+  exportExecutor: null | {
+    ready: boolean
+    profileVersion: string | null
+    reasonCode: string | null
+  }
+  exportArtifact: null | {
+    artifactId: string
+    status: 'queued' | 'collecting' | 'finalizing' | 'ready' | 'expired' | 'failed'
+    version: number
+    requestVersion: number
+    profileVersion: string
+    schemaVersion: number
+    snapshotAt: string
+    progress: {
+      completedCategories: number
+      totalCategories: number
+      currentCategory: string | null
+      parts: number
+      records: number
+      payloadBytes: number
+    }
+    job: {
+      status: 'pending' | 'processing' | 'finalizing' | 'completed' | 'failed'
+      attempts: number
+      lastErrorCode: string | null
+    }
+    manifestSha256: string | null
+    archiveSize: number | null
+    generatedAt: string | null
+    expiresAt: string | null
+    failureCode: string | null
+  }
+  deletionExecutor: null | {
+    ready: boolean
+    profileVersion: string | null
+    executorVersion: string | null
+    identityReuseMode: 'unresolved' | 'release' | 'seal' | null
+    expectedSteps: number
+    reasonCode: string | null
+  }
+  deletionExecution: null | {
+    executionId: string
+    status: 'pending' | 'processing' | 'completed' | 'failed'
+    profileVersion: string
+    executorVersion: string
+    identityReuseMode: 'unresolved' | 'release' | 'seal'
+    progress: {
+      completedSteps: number
+      totalSteps: number
+      currentStep: string | null
+    }
+    attempts: number
+    lastErrorCode: string | null
+    startedAt: string | null
+    completedAt: string | null
+    failedAt: string | null
+    steps: Array<{
+      ordinal: number
+      stepCode: string
+      disposition: 'delete' | 'anonymize' | 'revoke' | 'close' | 'retain_isolated' | 'external_purge'
+      status: 'pending' | 'processing' | 'completed'
+      attempts: number
+      initialItemCount: number | null
+      finalItemCount: number | null
+      affectedItemCount: number | null
+      evidenceDigest: string | null
+      startedAt: string | null
+      completedAt: string | null
+    }>
+    evidence: null | {
+      rootSha256: string
+      retainedDomainCount: number
+      completedAt: string
+    }
+  }
   permissions: {
     canClaim: boolean
     canAct: boolean

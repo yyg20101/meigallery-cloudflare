@@ -23,6 +23,10 @@ import {
 } from '../services/email-verification'
 import { appApiError, appApiSuccess } from '../utils/app-api-v2'
 import { validateTurnstile } from '../utils/turnstile'
+import {
+  disconnectAppRealtimeSession,
+  scheduleAppRealtimeTask,
+} from '../services/app-realtime'
 
 export const appAuthRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>
@@ -164,6 +168,17 @@ appAuthRoutes.post('/refresh', async (c) => {
     )
   }
   catch (error) {
+    if (error instanceof AppAccountAccessError && error.revokedRealtimeSession) {
+      scheduleAppRealtimeTask(
+        c.executionCtx,
+        disconnectAppRealtimeSession(
+          c.env,
+          error.revokedRealtimeSession.accountId,
+          error.revokedRealtimeSession.sessionId,
+        ),
+        'account.refresh_token_reuse',
+      )
+    }
     return appAccountError(c, error)
   }
 })
@@ -173,7 +188,14 @@ appAuthRoutes.post('/logout', async (c) => {
     const config = getAppAuthRuntimeConfig(c.env)
     requireAppAuthEnabled(config)
     const accessToken = readBearerToken(c.req.header('Authorization'))
-    await revokeCurrentAppSession(c.env.DB, accessToken, requestId(c))
+    const revoked = await revokeCurrentAppSession(c.env.DB, accessToken, requestId(c))
+    if (revoked) {
+      scheduleAppRealtimeTask(
+        c.executionCtx,
+        disconnectAppRealtimeSession(c.env, revoked.accountId, revoked.sessionId),
+        'account.current_session_logout',
+      )
+    }
     return appApiSuccess(c, { loggedOut: true })
   }
   catch (error) {
@@ -347,7 +369,7 @@ function turnstileChallengePage(input: {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
   <title>安全验证</title>
-  <style nonce="${input.nonce}">:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#fff8f9;color:#2b1a20;font:16px system-ui,-apple-system,sans-serif;display:grid;place-items:center}.card{width:min(100% - 32px,420px);padding:24px;border:1px solid #f1dde4;border-radius:24px;background:#fff;box-shadow:0 12px 40px rgba(98,45,65,.08)}h1{margin:0;font-size:20px}.hint{margin:8px 0 20px;color:#80656e;font-size:14px;line-height:1.6}#turnstile-container{min-height:68px;display:grid;place-items:center}.privacy{margin:18px 0 0;color:#a5838e;font-size:12px;line-height:1.5;text-align:center}</style>
+  <style nonce="${input.nonce}">:root{color-scheme:light}*{box-sizing:border-box}html,body{width:100%;height:100%;overflow:hidden}body{margin:0;background:#f6eef1;color:#2b1a20;font:16px system-ui,-apple-system,sans-serif;display:grid;place-items:center}.card{width:100%;height:100%;padding:14px;background:#f6eef1;display:grid;place-items:center}#turnstile-container{width:100%;min-height:68px;display:grid;place-items:center}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}</style>
   <script nonce="${input.nonce}">
     window.__meigalleryTurnstileReady = function () {
       turnstile.render('#turnstile-container', {
@@ -370,10 +392,10 @@ function turnstileChallengePage(input: {
 </head>
 <body>
   <main class="card">
-    <h1>完成安全验证</h1>
-    <p class="hint">验证完成后会自动返回 App。请勿关闭当前页面。</p>
+    <h1 class="sr-only">完成安全验证</h1>
+    <p class="sr-only">验证完成后会自动返回 App。</p>
     <div id="turnstile-container" aria-live="polite"></div>
-    <p class="privacy">验证凭证只用于当前一次账号操作，不会保存在设备中。</p>
+    <p class="sr-only">验证凭证只用于当前一次账号操作，不会由 MeiGallery 持久保存。</p>
   </main>
 </body>
 </html>`

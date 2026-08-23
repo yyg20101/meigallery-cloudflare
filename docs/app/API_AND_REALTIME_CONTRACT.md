@@ -2,9 +2,9 @@
 
 App 版本：1.0
 
-日期：2026-08-10
+日期：2026-08-23
 
-状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Privacy-1、Media-1、Membership-1/2/3/4、Message-1/2/3、Safety-2、Wallet-1、Audit-1/2/3 与 Operations-1 进入默认关闭或未配置的保守开发验证
+状态：整体需求讨论中；M0 公共发现已冻结，M1、Auth-1、Interaction-1/2/3、Search-1/2、Taxonomy-1、Recommendation-1、Privacy-1/2A/2B、Media-1、Membership-1/2/3/4/5/6/7、Message-1/2/3/4/5/6/7/8、Safety-2/3、Wallet-1/2/3/4、Audit-1/2/3 与 Operations-1/2/3/4 进入默认关闭或未配置的保守开发验证
 
 ## 1. 契约原则
 
@@ -31,7 +31,7 @@ App 版本：1.0
 - `GET /api/v2/person-profiles/:profileId`：返回同一公开资格边界下的基础详情投影。
 - 四个 M0 响应统一返回 `Cache-Control: no-store`，避免资格撤回、授权到期或源图库下线后被中间缓存继续展示；后续只有在完成可撤销缓存设计后才能调整。
 
-账号体系不属于 M0 冻结范围；Auth-1 只以默认关闭的开发基线独立推进。通知与 Wallet-1 已形成默认关闭的开发契约和代码闭环，真人认领、媒体访问及其生产启用仍按开放问题与专业门禁逐项冻结。M0 migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
+账号体系不属于 M0 冻结范围；Auth-1 只以默认关闭的开发基线独立推进。通知、Message-4 最小实时刷新与 Wallet-1 已形成默认关闭的开发契约和代码闭环，真人认领、媒体访问及其生产启用仍按开放问题与专业门禁逐项冻结。M0 migration 只创建空的可重建读投影，不自动迁移或公开任何现有图库，也不代表允许直接部署生产。
 
 ### 1.3 M1 人物供给开发边界
 
@@ -46,9 +46,9 @@ Membership-1 以兼容新增方式把契约提升为 `1.4.0`，只冻结并实�
 - `GET /api/v2/membership/catalog`：公开读取当前明确配置的五级目录和 typed entitlement。
 - `GET /api/v2/me/entitlements`：使用 App Bearer 会话读取本人最高有效 App grant 与权威快照。
 - bootstrap 增加 `membership.catalog`、`membership.entitlements` 和 `membership.applications`；本阶段申请能力固定为 `false`。
-- Nuxt 后台暂时复用受保护的 `/api/admin/app/memberships`，覆盖目录、账号状态、发放/续期/撤销预览、独立复核申请、队列、逐单批准/拒绝和策略允许时的低风险直达执行。
+- 管理后台复用受保护的 `/api/admin/app/memberships`，覆盖目录、账号状态、发放/续期/撤销预览、独立复核申请、队列、逐单批准/拒绝，以及默认关闭的批量预览、逐行复核提交、恢复和 draft 取消。
 
-当前五级数值全部是 `development + planned`，不构成正式额度承诺或可执行业务权限。`user_memberships` 的旧 `vip/svip` 不进入 App 权益解析。Membership-2 已冻结用户申请，Membership-3 已实现管理员单账号独立复核；没有正式策略时全部复核。Membership-4 已实现目录与 typed entitlement 管理平面，不改变 App API v2 响应结构或运行目录。批量操作、额度消耗和迁移仍未冻结为实现契约。
+当前五级数值全部是 `development + planned`，不构成正式额度承诺或可执行业务权限。`user_memberships` 的旧 `vip/svip` 不进入 App 权益解析。Membership-2 已冻结用户申请，Membership-3 已实现管理员单账号独立复核；没有正式策略时全部复核。Membership-4 已实现目录与 typed entitlement 管理平面，不改变 App API v2 响应结构或运行目录。Membership-5 已实现但尚未执行旧会员显式迁移；Membership-6 已实现默认关闭的管理员批量服务端契约，每行仍进入 Membership-3 普通复核，不新增公共 App API 或 transport 版本。Message-1 已独立实现 `direct_message.new_threads_per_day` 的上海自然日原子消耗。
 
 #### Membership-4 管理平面开发补充
 
@@ -78,7 +78,7 @@ Audit-3 新增 `/api/admin/app/audit/registry/*` Owner-only 管理接口，不�
 
 Operations-1 只新增 `/api/admin/app/operations/*` 管理接口，不修改 App API v2 和 KMP capability。读取接口提供全局总览、Runbook、事件列表/详情和安全控制影响预览；Owner 写接口生成人工指标快照、运行检测以及暂停/恢复控制；负责人或 Owner 可领取、追加记录、关联 Runbook 和迁移事件状态。所有响应 `private, no-store`，写命令要求 `Idempotency-Key`，事件与控制更新要求服务端乐观版本。
 
-当前指标只返回全局聚合及显式质量状态，不返回个人排行、消息正文、证件、内部备注或未来商业化指标。事件详情读取本身留审计；关闭必须提供结论和证据。五类安全控制同时接入管理预览与真实业务写路径，表缺失或状态非法时 fail-closed；`available` 不会开启底层已关闭 capability。完整路由、状态机和影响矩阵见 [Operations-1 运营总览、事件处置与跨域安全控制开发基线](./OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md)。`0092`、Cloudflare 可观测接入、调度和专项测试统一后置。
+当前指标只返回全局聚合及显式质量状态，不返回个人排行、消息正文、证件、内部备注或未来商业化指标。事件详情读取本身留审计；关闭必须提供结论和证据。Operations-2/3 不增加管理路由：同一个检测命令并行核对 10 类 D1 事实和 Cloudflare 官方 Status API，外部来源不可用时保留 D1 发现并把运行标记为 `partial`，相关公共组件异常才形成 `platform_health_anomaly`。Operations-4 同样不增加路由或响应字段；Owner 刷新既有总览时，`operations-metrics-v2` 一次读取账户级 Cloudflare GraphQL，把 Workers/D1/R2 指标写入既有 18 项快照。配置缺失为 `unconfigured`，来源/空样本为 `unknown`，结构违约为 `invalid`，只有 `known` 返回数值；公共 Status 与账户级指标互不替代。五类安全控制同时接入管理预览与真实业务写路径，表缺失或状态非法时 fail-closed；`available` 不会开启底层已关闭 capability，平台来源也不会自动暂停控制。完整路由、状态机和影响矩阵见 [Operations-1](./OPERATIONS_1_OVERVIEW_AND_INCIDENTS_INTEGRATION.md)、[Operations-3](./OPERATIONS_3_CLOUDFLARE_STATUS_INTEGRATION.md)与 [Operations-4](./OPERATIONS_4_CLOUDFLARE_ANALYTICS_INTEGRATION.md)。`0092/0108`、Cloudflare Analytics 配置、调度和专项测试统一后置。
 
 ### 1.5 Message-1 局部冻结记录
 
@@ -132,13 +132,15 @@ production/dev 的用户、管理员和 production-ready 开关均保持关闭�
 
 ### 1.9 Interaction-2 局部冻结记录
 
-Interaction-2 以兼容新增方式把累计契约提升为 `1.11.0`，只冻结并实现默认关闭的服务端收藏夹与浏览历史边界：
+Interaction-2 在 `1.11.0` 首次冻结默认关闭的服务端收藏夹与浏览历史边界；该切片在累计 `1.21.0` 且不改变 capability 默认关闭前提下补齐 Figma-first 列表契约，仓库当前累计为 `1.26.0`：
 
-- 收藏独立于喜欢和关注，使用默认收藏夹、多自定义收藏夹和“全部收藏”去重聚合视图；同一人物可进入多个文件夹，全局取消收藏才移除全部关系。
-- 自定义收藏夹以客户端随机稳定 ID 幂等创建，编辑和删除使用 `expectedVersion`；当前数量额度来自可执行 `favorite.folder_count` entitlement，降级保留已有数据并拒绝继续超额创建。
+- 收藏独立于喜欢和关注，使用默认收藏夹、多自定义收藏夹和 API 去重聚合能力；同一人物可进入多个文件夹，全局取消收藏才移除全部关系。移动端 Figma 不提供独立“全部收藏”卡片。
+- 自定义收藏夹以客户端随机稳定 ID 幂等创建，编辑和删除使用 `expectedVersion`，名称最多 20 字；当前数量额度来自可执行 `favorite.folder_count` entitlement，降级保留已有数据并拒绝继续超额创建。
+- 收藏夹集合返回去重总数和每夹最多四张当前公开封面；收藏列表支持最多 40 字搜索、单地区 code 与单风格 term ID，游标绑定完整筛选上下文。
+- `0096` 保证删除自定义收藏夹时把条目保留到默认收藏；兼容字段 `removedGlobalFavoriteCount` 固定为 `0`，删除操作不取消喜欢。
 - 浏览历史默认关闭；详情成功呈现后才提交 `viewId + expectedHistoryVersion`。逐条删除和清空都会原子提升版本并删除记录，防止操作前的在途写请求重新写回。
 - bootstrap 增加 `interactionCollections` 配置，并由 Auth、独立运行开关、策略版本和 production-ready 共同控制 `interactions.favorite|history`。当前未配置任何环境，因此两项继续为 `false`。
-- OQ-014、OQ-020、OQ-023 保持未决；当前不执行 migration、不生成 purge、不接推荐信号、搜索历史或关注更新。KMP 客户端、专项测试和远端联调按开发顺序后置。
+- OQ-014、OQ-020、OQ-023 保持未决；当前不执行 `0078`/`0096` migration、不生成 purge、不接推荐信号、搜索历史或关注更新。KMP 构建、专项测试、`android-cli` 截图和远端联调按开发顺序后置。
 
 完整边界见 [Interaction-2 收藏夹与浏览历史开发基线](./INTERACTION_2_FAVORITES_HISTORY_INTEGRATION.md)。
 
@@ -150,7 +152,7 @@ Interaction-3 以兼容新增方式把累计契约提升为 `1.12.0`，并完成
 - 响应使用账号绑定不透明游标，携带稳定更新 ID、发布/投影版本、发布时间和当前仍满足公开资格的人物卡片；不返回内部审核信息和受保护媒体。
 - bootstrap 增加独立 `interactions.followUpdates` 与 `followUpdates` 配置；能力必须通过 Auth、运行时、版本化策略和 production-ready 门禁，不能由 `follow=true` 推导。
 - Message-3 在 HTTP pull 前按账号惰性投影关注更新 Outbox，以 `(account,event type,publication)` 去重；投递前重验当前关注、屏蔽与公开资格，取消关注或失效后抑制且不补发。
-- KMP 已实现独立 capability/transport、“更新 / 已关注 / 喜欢”三段式关注页、取消关注回收、详情返回刷新和现有 Message-3 通知目标跳转；当前仍不执行 `0079`、不配置环境、不接系统推送，也不运行专项测试、模拟器/真机或远端联调。所有现有环境继续返回 `followUpdates=false`。
+- KMP 已实现独立 capability/transport；底部“关注”页按 Figma 使用“全部 / 有更新 / 最近关注”筛选，喜欢由独立 `APP-INT-02` 承载，并保留取消关注回收、详情返回刷新和现有 Message-3 通知目标跳转。当前仍不执行 `0079`、不配置环境、不接系统推送，也不运行专项测试、模拟器/真机或远端联调。所有现有环境继续返回 `followUpdates=false`。
 
 完整边界见 [Interaction-3 关注更新流与站内通知开发基线](./INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md)。
 
@@ -202,7 +204,7 @@ Recommendation-1 以兼容新增方式把累计契约提升为 `1.16.0`，冻结
 - 小于 100% 的灰度必须绑定已生效过的同模式回退版本；个性化目标与回退目录一致，并按服务端生成的会话稳定分桶。推荐游标使用短期 HMAC 签名，客户端不能改写会话 ID 选择灰度桶；未来生效规则不会提前暂停当前 active 版本。
 - 运营精选固定披露“平台精选”，并与规则候选复用统一公开资格和账号屏蔽过滤。
 - 过渡管理路由 `/api/admin/app/recommendations` 和 Nuxt 四页工作台覆盖规则版本、Dry-run、复核、排期、启用、暂停、回滚和精选。
-- 当前不配置环境、不执行 `0083`、不写推荐证据、不运行专项测试；KMP 已接入版本化推荐、实际模式、理由和显式偏好，热度公式、证据保留、跨会话频控和监控自动停止仍未冻结。
+- 当前不配置环境、不执行 `0083/0113/0114`、不写真实推荐证据、不运行专项测试；KMP 已接入版本化推荐、实际模式、理由和显式偏好。Recommendation-5 已补齐默认关闭的守护策略、聚合评估与自动停止执行器，Recommendation-6 已补齐批准后到期清理和 Privacy-2B 账号关联删除，但真实热度公式、来源、阈值、保留决策和生产启用仍未冻结。
 
 完整边界见 [Recommendation-1 版本化推荐与运营精选开发基线](./RECOMMENDATION_1_RULES_AND_EDITORIAL_INTEGRATION.md)。
 
@@ -244,6 +246,190 @@ App Core-1 以兼容新增方式把累计契约提升为 `1.19.0`：
 
 完整边界见 [App Core-1 运行策略、帮助与系统状态跨仓开发基线](./APP_CORE_1_RUNTIME_SUPPORT_SYSTEM_INTEGRATION.md)。
 
+### 1.18 Account/Settings-2 局部冻结记录
+
+Account/Settings-2 以兼容新增方式把累计契约提升为 `1.20.0`：
+
+- bootstrap `auth` 新增 `accountProfileEnabled`、`initialPreferencesEnabled`，`messaging` 新增 `conversationSettingsEnabled`；三者由独立环境开关与底层能力共同决定，默认均为 `false`。
+- `GET/PUT /api/v2/me/account-profile` 提供观看者私有昵称、受控头像样式、脱敏登录标识和乐观版本；修改要求当前密码二次验证。
+- `GET/PUT /api/v2/conversations/{conversationId}/settings` 提供本人单会话免打扰、关闭锁定原因与乐观版本。
+- 免打扰只影响之后尚未投递的消息类站内通知；不改变消息事实、已读状态、接收主体或历史通知。
+- API 不返回公开真人 ID、真人认证状态、上传头像 URL、完整邮箱、密码、内部账号主键或运营处理信息。
+
+完整边界与 Figma 节点映射见 [Account/Settings-2 账号资料、初始偏好与会话设置跨仓开发基线](./ACCOUNT_SETTINGS_2_FIGMA_CROSS_REPO_INTEGRATION.md)。
+
+### 1.19 Privacy-2A 局部冻结记录
+
+Privacy-2A 以兼容新增方式把累计契约提升为 `1.24.0`，在 Privacy-1 申请控制面上冻结默认关闭的私有导出执行边界：
+
+- bootstrap `dataRights` 新增固定 `downloadTicketHeader=X-Data-Rights-Download-Ticket` 与 `exportFormat=tar`；未知、缺失或矛盾时客户端不得开放下载。
+- 申请详情新增可空 `exportArtifact`，只返回制品状态、固定格式/文件名、schema、记录数、长度、manifest SHA-256、生成/到期时间和下载资格，不返回 R2 key、ETag 或内部任务信息。
+- `POST /api/v2/me/data-rights/requests/:requestId/download-tickets` 需要当前 Bearer、`export_download` step-up 和 `Idempotency-Key`，签发短期一次性 `drdl_` 票据；明文票据只出现在当前响应。
+- `GET /api/v2/me/data-rights/requests/:requestId/download` 通过专用 Header 提交票据，原子消费后流式返回 `application/x-tar`，并固定 `no-store`、Content-Length、附件文件名和 manifest 摘要 Header。
+- 服务端下载前重新核验当前 session、账号、申请/制品版本、R2 ETag、长度、manifest/aggregate SHA-256 和到期时间；并发重放、过期、对象不一致或状态变化均 fail closed。
+- `0102`、Queue/R2 配置、构建、测试和设备 QA 后置；不可逆注销处理器不在本契约内，继续保持关闭。
+
+完整边界见 [Privacy-2A 私有数据导出制品跨仓交付基线](./PRIVACY_2A_PRIVATE_EXPORT_INTEGRATION.md)。
+
+### 1.20 Message-4 局部冻结记录
+
+Message-4 以兼容新增方式把累计契约提升到 `1.25.0`，实现默认关闭的账号级无正文实时刷新：
+
+- `POST /api/v2/realtime/tickets` 使用当前 Bearer session 签发绑定账号、session、设备的一次性短票据；明文只出现在当前响应。
+- `GET /api/v2/realtime/connect` 使用 `Authorization: Realtime <ticket>` 升级 WebSocket；协议固定为 `meigallery.realtime.v1`。
+- 事件只包含单调游标、发生时间和六类刷新范围，不含消息/通知正文、账号资料、内部 ID、管理员信息或 Token。
+- 一个内部账号对应一个 Hibernation Durable Object；SQLite 只保留有限无正文事件以支持断线重放，D1/HTTP 始终是业务权威。
+- KMP 在前台连接、后台停连，按服务端有界区间指数退避；恢复后先按游标补偿并重新读取当前可见 HTTP 资源。
+- OQ-028 未关闭，`0105` seed 保持 `unresolved + disabled + production_ready=0`，本阶段不增加 Wrangler binding 或环境配置。
+
+完整边界见 [Message-4 账号级实时刷新跨仓交付基线](./MESSAGE_4_REALTIME_REFRESH_INTEGRATION.md)。
+
+### 1.21 Message-5 数据权利通知行为增量
+
+Message-5 交付时不改变当时累计 App API `1.25.0` 的响应形状，只启用既有受控目标契约：
+
+- `data.export_ready` 仅由 Privacy-2A 用户可见 ready 事实原子写 Outbox；`account.deletion_updated` 仅表示已验证取消且账号访问已经恢复。
+- 两者均使用 `targetType=data_task`、`targetId=requestId`、`action=open_data_task`；返回前重验当前数据权利 overview capability 和申请账号归属。
+- 注销待处理、执行、失败和完成后的账号不能使用普通通知中心，继续由 Privacy-2B 申请级状态访问承载；通知不得绕过 `deletion_pending` 抑制。
+- 固定模板不包含导出内容、R2 引用、下载票据、旧 session 或设备凭证。
+
+完整边界见 [Message-5 数据权利结果通知跨仓交付基线](./MESSAGE_5_DATA_RIGHTS_NOTIFICATION_INTEGRATION.md)。
+
+### 1.21A Message-6 通知偏好策略换绑行为增量
+
+Message-6 交付时不改变当时累计 App API `1.25.0` 的路径或响应 DTO，只保证既有 `policyId + version` 契约在策略切换后仍可执行：
+
+- 账号偏好仍是唯一当前记录；发现其策略落后时保留三个可选布尔值，换绑当前已就绪策略并把版本加一。
+- 换绑追加旧策略基线（缺失时）和新策略生效事件，内部事件不伪装成某台设备的用户修改。
+- GET、PUT 与通知投递前的可选类别判断复用同一收敛逻辑；重复读取不会继续增加版本。
+- 并发旧版本 PUT 继续收到 `VERSION_CONFLICT`，刷新后使用新 `policyId/version` 重试；无法安全收敛时返回可重试不可用，不恢复默认偏好。
+
+完整边界见 [Message-6 通知偏好策略换绑开发基线](./MESSAGE_6_NOTIFICATION_POLICY_REBIND_INTEGRATION.md)。
+
+### 1.21B Message-7 数据导出失败通知行为增量
+
+Message-7 交付时不改变当时累计 App API `1.25.0` 的响应形状，只增加一个由权威失败事实生成的 eventType：
+
+- `data.export_failed` 只有在 export 申请、失败制品、失败任务和系统用户可见 `processing_failed` 事件按版本收敛后写 Outbox。
+- 该事件是 `system_security` 必要通知，不受三个可选偏好关闭影响；目标继续为 `data_task + requestId + open_data_task`。
+- 固定模板只提示查看权威状态和下一步，不携带 failure code、artifact/R2 引用、查询细节或导出内容。
+- 申请已经重试或状态改变时，点击历史通知只展示当前权威页面；目标归属或 capability 失效时动作不可用。
+
+完整边界见 [Message-7 数据导出失败必要通知开发基线](./MESSAGE_7_DATA_EXPORT_FAILURE_NOTIFICATION_INTEGRATION.md)。
+
+### 1.21C Message-8 文本审核行为增量
+
+Message-8 交付时不改变当时累计 App API `1.25.0` 的路径、请求或响应 DTO，只开始执行既有消息状态：
+
+- 未配置审核策略时发送行为保持 `accepted`；显式选中且通过环境/数据库门禁的规则可返回 `review_pending` 或 `rejected`。
+- 观看者消息列表保留本人三种审核状态；平台运营与系统消息只有 `accepted/recalled` 才对观看者可见。普通运营工作台同样只读取 `accepted/recalled`，待审正文只能从独立审核案件领取后访问。
+- `review_pending/rejected` 只保留内部 sequence，不推进业务活跃时间，也不产生接收方未读、正常 queue flip 或自动分配；最终通过时重排到当前末尾，再按发送方形成接收方交付与队列方向。
+- 管理内部接口 `/api/admin/app/message-moderation/cases*` 提供无正文列表、租约、用途化正文访问与独立裁决；不属于 KMP 公共 transport。
+- 审核案件可按内部 `cancelled` 终态查询，但该状态只由 Privacy-2B 账号注销执行器写入；它不改变公开消息 DTO，也不产生审核结果通知。
+- 召回路径仍是 OQ-033/Figma 阻断的后续契约，本次没有实现或下发 capability。
+
+完整边界见 [Message-8 文本消息审核与结果通知开发基线](./MESSAGE_8_TEXT_MODERATION_INTEGRATION.md)。
+
+### 1.22 Recommendation-2 客户端版本门禁行为增量
+
+Recommendation-2 交付时不改变当时累计 App API `1.25.0` 的响应 DTO，只把既有版本字段收敛为真实服务端门禁：
+
+- `GET /api/v2/app/bootstrap` 使用可选 `X-Client-Version` 计算推荐 capability；缺失或非法时只安全关闭推荐域，不影响其他独立能力。
+- `POST /api/v2/discovery/recommendations` 与本人推荐偏好 GET/PUT 要求两段或三段数字 `X-Client-Version`。
+- 策略、实际规则和灰度回退均执行最低版本比较；高版本排期不会覆盖旧客户端仍可执行的 active 版本。
+- 规则无兼容版本时不放宽公开资格，也不执行不兼容配置；直接请求返回稳定错误，bootstrap capability 保持关闭。
+
+完整边界见 [Recommendation-2 客户端版本门禁与安全回退开发基线](./RECOMMENDATION_2_CLIENT_VERSION_GUARD_INTEGRATION.md)。
+
+### 1.23 Recommendation-3 地区作用域行为增量
+
+Recommendation-3 交付时不改变当时累计 App API `1.25.0` 的请求或响应 DTO，只收敛既有 `regionCode` 与规则 `targetRegionCodes` 的服务端执行语义：
+
+- `targetRegionCodes=[]` 表示全局规则；非空数组只匹配明确地区，请求不带 `regionCode` 时只允许全局规则。
+- scheduled、active 和显式历史回退均在选中前同时校验地区和客户端版本；非目标地区不会执行错误规则。
+- 到点排期不覆盖当前地区时可继续使用兼容 active；灰度或版本降级命中回退时会再次校验地区范围。
+- 地区规则启用时必须登记覆盖目标范围的回退；全局目标不能使用地区子集作为回退。非法范围或无安全规则时返回明确未就绪/维护错误，不放宽公开资格。
+
+完整边界见 [Recommendation-3 地区作用域选择与安全回退开发基线](./RECOMMENDATION_3_REGION_SCOPE_AND_FALLBACK_INTEGRATION.md)。
+
+### 1.24 Recommendation-4 可执行规则选择行为增量
+
+Recommendation-4 交付时不改变当时累计 App API `1.25.0` 的 DTO，只让既有 capability、模式和 fallback 字段反映完整运行真值：
+
+- scheduled、active 与显式历史回退按优先级逐条校验权重、理由、App 渠道、taxonomy/heatVersion 和 production-ready 依赖。
+- 高优先候选不可执行时继续尝试下一条完整版本；全部不可用时返回明确未就绪/维护状态。
+- 个性化规则选择绑定账号当前偏好的不可变 taxonomy 目录；`auto` 没有同目录安全规则时返回既有 `PERSONALIZATION_NOT_READY` 并执行非个性化。
+- bootstrap 的推荐 capability 和 `activeRuleVersionId` 会再次执行完整规则校验，不能只凭数据库状态宣称可用。
+
+完整边界见 [Recommendation-4 可执行规则选择与依赖降级开发基线](./RECOMMENDATION_4_EXECUTABLE_RULE_SELECTION_INTEGRATION.md)。
+
+### 1.25 Recommendation-5 灰度守护与自动停止行为增量
+
+Recommendation-5 交付时不改变当时累计 App API `1.25.0` 的公开 DTO，只增加过渡管理员控制面和推荐规则内部执行门禁：
+
+- `rolloutPercent=1..99` 必须绑定 approved 守护策略；来源、保留、purge 或 production-ready 任一门禁缺失时目标规则不可执行。
+- 评估只接受 `aggregate:recommendation:` 内部快照引用、SHA-256、时间窗、样本量和登记指标的整数聚合值，不接收账号、会话、真人资料或逐用户样本。
+- 低样本保持 observing；批准来源缺少必需指标立即 `source_incomplete`，停止级反指标达到连续次数后为 `breached`。
+- 停止结果追加不可变 block，不伪造规则 paused 状态；运行时排除 blocked 版本并只使用已登记、完整投放且仍兼容的回退。
+- `/api/admin/app/recommendations/guardrails*` 提供策略创建/复核/退休、聚合评估与详情；创建/评估幂等、策略复核职责分离、所有写操作审计。
+
+完整边界见 [Recommendation-5 灰度目标、反指标与自动停止开发基线](./RECOMMENDATION_5_GUARDRAIL_AND_AUTOMATIC_STOP_INTEGRATION.md)。
+
+### 1.26 Recommendation-6 推荐解释证据生命周期增量
+
+Recommendation-6 交付时不改变当时累计 App API `1.25.0` 的公开或管理员 DTO，只补齐内部物理生命周期：
+
+- 已批准保留期和 purge 门禁完整时，既有 15 分钟调度按 `expires_at` 有界删除推荐会话并级联条目；
+- 会话与条目在删除前不可原地更新，分页仍可追加唯一条目；
+- Privacy-2B 使用与写入一致的账号 HMAC 删除关联会话/条目，并把两类事实纳入注销步骤零残留计数；
+- 不新增证据列表、反查、手工删除或保留策略编辑 API，也不把生命周期内部字段暴露给 KMP/Nuxt。
+
+完整边界见 [Recommendation-6 推荐解释证据生命周期开发基线](./RECOMMENDATION_6_EVIDENCE_LIFECYCLE_INTEGRATION.md)。
+
+### 1.27 Privacy-2C 个人数据副本覆盖增量
+
+Privacy-2C 交付时不改变当时累计 App API `1.25.0`、公开/管理员 DTO、TAR schema、下载 Header 或客户端行为，只扩充服务端私有制品内容：
+
+- 新 artifact 的显式白名单由 35 类追加为 41 类，新增推荐偏好、人物拉黑状态/事件、旧版图库点赞和推荐会话/条目；
+- 前 35 类 code 与 ordinal 保持不变，执行器按 artifact 自身 scope 数完成，升级前的 35-scope 任务可继续恢复；
+- 推荐证据以与写入一致的账号 HMAC 定位，但 `account_hash`、`context_hash`、密钥与内部映射绝不进入下载内容或 API；
+- executor readiness 与开始/分页阶段对稳定签名密钥 fail closed；分类增加不创建新 capability、路由、错误展示状态或 Figma 节点。
+
+完整边界见 [Privacy-2C 个人数据副本覆盖补全开发基线](./PRIVACY_2C_DATA_COPY_COVERAGE_INTEGRATION.md)。
+
+### 1.28 Interaction-4 浏览历史生命周期增量
+
+Interaction-4 交付时不改变当时累计 App API `1.25.0`、浏览历史 DTO、KMP 或可见页面，只补齐内部物理保留义务：
+
+- 环境必须显式配置 Interaction-2 策略 ID，development 默认 ID 不构成删除授权；
+- D1 保留决策批准且 purge 开启后，每日任务按行级 `expires_at` 稳定、有界删除并报告积压；
+- 收藏/历史 capability、本人记录开关或会员权益后来关闭，不阻止已经批准的到期删除；
+- 清理不改变偏好版本、收藏、会员 entitlement，也不产生通知、分析或公共错误状态。
+
+完整边界见 [Interaction-4 浏览历史到期生命周期开发基线](./INTERACTION_4_VIEW_HISTORY_LIFECYCLE_INTEGRATION.md)。
+
+### 1.29 Message-9 站内通知内容生命周期增量
+
+Message-9 交付时不改变当时累计 App API `1.25.0`、通知 DTO、游标、未读计算、KMP 或管理员响应，只补齐内部正文保留义务：
+
+- 策略已批准且保留天数有效时，新通知以原始业务事件 `createdAt` 计算并保存不可变到期边界；公开 DTO 继续使用既有 `expiresAt` 字段。
+- 消费时已经超过到期边界的延迟 Outbox 收敛为 `suppressed`，不创建通知正文、不增加未读数，也不发送实时刷新。
+- 环境显式选择策略且 `approved + purge_enabled=1` 后，每日任务有界删除到期 explicit 行，并以当前批准窗口兼容清理旧 `expiresAt=null` 行。
+- 单条已读事件随对应通知删除；分类全部已读聚合和 Outbox 去重墓碑保留。清理不产生新的用户 API 状态、通知、分析事件或任意管理员删除入口。
+
+完整边界见 [Message-9 站内通知内容生命周期开发基线](./MESSAGE_9_NOTIFICATION_CONTENT_LIFECYCLE_INTEGRATION.md)。
+
+### 1.30 Membership-7 会员生命周期呈现增量
+
+Membership-7 以兼容新增方式把累计 App API 提升到 `1.26.0`，只扩展本人会员快照的用户可见生命周期：
+
+- `lifecycle.state` 固定为 `free|active|expiring_soon|expired|revoked`，并返回服务端使用的即将到期窗口与剩余天数；
+- 自然到期或提前撤销时，最近结束记录只进入 `lifecycle.endedGrant`；顶层 `status=free`、`tier=null`、`grant=null`，全部 entitlement 使用安全默认值；
+- 有效会员的顶层授权语义不变，KMP 不得根据历史摘要、等级名称或本地时间放行；
+- KMP 使用现有 `APP-MBR-02` 正式节点呈现五态，不增加 Page ID 或 Figma 状态。
+
+完整边界见 [Membership-7 会员生命周期呈现跨仓开发基线](./MEMBERSHIP_7_LIFECYCLE_PRESENTATION_INTEGRATION.md)。
+
 ## 2. 通用请求
 
 建议请求头：
@@ -272,7 +458,7 @@ Accept-Language: zh-CN
     "requestId": "req_xxx",
     "serverTime": "2026-08-02T00:00:00.000Z",
     "apiVersion": "2",
-    "contractVersion": "1.19.0"
+    "contractVersion": "1.26.0"
   }
 }
 ```
@@ -339,6 +525,8 @@ Accept-Language: zh-CN
 | `RECOMMENDATION_CURSOR_EXPIRED` | 409 | 推荐签名游标到期、被改写或与当前规则/条件不一致 |
 | `RECOMMENDATION_RULE_NOT_READY` | 503 | 当前模式没有通过运行门禁的安全规则 |
 | `MODERATION_RESTRICTED` | 403 | 账号、内容或会话受安全限制 |
+| `MESSAGE_MODERATION_POLICY_UNAVAILABLE` | 503 | 显式文本审核策略不存在、未生效或未通过生产门禁 |
+| `MODERATION_CASE_VERSION_CONFLICT` | 409 | 管理员文本审核案件版本或租约已变化 |
 
 错误文案由客户端本地化或服务端文案键渲染，不能暴露内部表名、策略阈值或操作员隐私。
 
@@ -369,11 +557,17 @@ Accept-Language: zh-CN
 | GET | `/api/v2/person-profiles/:profileId/verification` | Media-1：最小公开认证范围与运营主体说明 |
 | POST | `/api/v2/person-profiles/:profileId/media/:mediaId/access` | Media-1：签发 5 分钟会话/人物/单图绑定会员凭证 |
 | GET | `/api/v2/person-profiles/:profileId/media/:mediaId/content` | Media-1：逐次资格核验后代理 R2 图片字节 |
+| GET | `/api/v2/me/account-profile` | Account/Settings-2：本人私有账号资料、受控头像样式和脱敏登录标识 |
+| PUT | `/api/v2/me/account-profile` | Account/Settings-2：密码二次验证与乐观版本更新 |
+| GET | `/api/v2/conversations/:conversationId/settings` | Account/Settings-2：本人单会话免打扰和关闭锁定状态 |
+| PUT | `/api/v2/conversations/:conversationId/settings` | Account/Settings-2：乐观版本更新本人单会话免打扰 |
 | POST | `/api/v2/me/data-rights/step-up` | Privacy-1：按固定 purpose 进行密码二次验证 |
 | GET | `/api/v2/me/data-rights/requests` | Privacy-1：本人申请游标列表 |
 | POST | `/api/v2/me/data-rights/export-requests` | Privacy-1：二次验证后幂等创建导出申请 |
 | POST | `/api/v2/me/data-rights/deletion-requests` | Privacy-1：三项确认和二次验证后创建注销申请；原幂等键可窄化恢复丢失响应 |
 | GET | `/api/v2/me/data-rights/requests/:requestId` | Privacy-1：本人申请详情和用户可见时间线 |
+| POST | `/api/v2/me/data-rights/requests/:requestId/download-tickets` | Privacy-2A：重新验证后幂等签发短期一次性下载票据 |
+| GET | `/api/v2/me/data-rights/requests/:requestId/download` | Privacy-2A：专用 Header 原子消费票据并流式返回私有 TAR |
 | POST | `/api/v2/me/data-rights/requests/:requestId/cancel` | Privacy-1：二次验证并按版本取消本人申请 |
 | GET | `/api/v2/data-rights/requests/:requestId` | Privacy-1：使用 `X-Data-Rights-Token` 读取绑定申请 |
 | POST | `/api/v2/data-rights/requests/:requestId/step-up` | Privacy-1：用状态凭证为取消申请重新验证 |
@@ -385,7 +579,9 @@ Auth-1 当前是默认关闭的开发基线：`APP_AUTH_ENABLED`、注册开关�
 
 Access Token 为短期不透明凭证，Refresh Token 旋转使用；两者在 D1 只保存 SHA-256 摘要。每次授权校验账号、设备、App session version、状态、有效期和当前文档同意。成功刷新会替换当前 Access/Refresh Token，使旧 Access Token 立即失效；旧 Refresh Token 重放将撤销该会话并写安全事件。客户端必须串行刷新并把两种 Token 仅存入 Keystore/Keychain。
 
-Privacy-1 的账号路径和申请级路径均强制 `Cache-Control: private, no-store`。`restricted` 账号仍可访问必要 `/me` 与数据权利路径；`deletion_pending` 账号不能继续使用普通会话，只能凭服务端签发且绑定单一申请的 `X-Data-Rights-Token` 使用上表三条申请级路径。该凭证不是身份 Bearer token，不能换取或恢复普通会话。
+数据权利 JSON 账号路径和申请级路径均强制 `Cache-Control: private, no-store`。`restricted` 账号仍可访问必要 `/me` 与数据权利路径；`deletion_pending` 账号不能继续使用普通会话，只能凭服务端签发且绑定单一申请的 `X-Data-Rights-Token` 使用上表三条申请级路径。该凭证不是身份 Bearer token，不能换取或恢复普通会话。Privacy-2A 下载只接受仍有效的普通 Bearer 与专用 `X-Data-Rights-Download-Ticket`；状态 token 不能下载，下载票据也不能访问 JSON 或其他申请。
+
+Privacy-2A 下载响应固定为 `application/x-tar`、`Cache-Control: private, no-store, max-age=0`、权威 `Content-Length`、安全 `Content-Disposition` 和 `X-Data-Rights-Manifest-SHA256`。票据在 body 流开始前原子消费，网络中断后必须重新验证并签发新票据；客户端不得把票据写入 URL、日志、分析或持久化状态。
 
 请求级状态凭证的有效期从申请截止时间或注销计划执行时间中较晚者起计算策略 TTL，确保等待期不会先耗尽注销后的唯一自助状态窗口；过期后仍 fail-closed，不能由客户端延长。
 
@@ -456,10 +652,10 @@ Privacy-1 的账号路径和申请级路径均强制 `Cache-Control: private, no
 | GET | `/api/v2/me/likes` | 喜欢列表 |
 | GET | `/api/v2/me/follows` | Interaction-1：本人已关注关系列表 |
 | GET | `/api/v2/me/follow-updates` | Interaction-3：关注建立后的已审核公开发布更新流 |
-| GET | `/api/v2/me/favorites` | Interaction-2：全部收藏去重聚合列表 |
-| GET | `/api/v2/me/favorite-folders` | Interaction-2：收藏夹、条目数与当前额度 |
+| GET | `/api/v2/me/favorites` | Interaction-2：收藏去重聚合列表；支持 `query/region/styleTerm` |
+| GET | `/api/v2/me/favorite-folders` | Interaction-2：收藏夹、去重总数、四图预览与当前额度 |
 | PUT/PATCH/DELETE | `/api/v2/me/favorite-folders/:folderId` | Interaction-2：幂等创建、条件编辑或删除自定义收藏夹 |
-| GET | `/api/v2/me/favorite-folders/:folderId/items` | Interaction-2：指定收藏夹分页 |
+| GET | `/api/v2/me/favorite-folders/:folderId/items` | Interaction-2：指定收藏夹分页与账号私有单选筛选 |
 | PUT/DELETE | `/api/v2/me/favorite-folders/:folderId/items/:profileId` | Interaction-2：加入或移出指定收藏夹 |
 | GET/PUT | `/api/v2/me/view-history/settings` | Interaction-2：记录开关、版本与当前保留权益 |
 | GET | `/api/v2/me/view-history` | Interaction-2：未到期历史分页 |
@@ -475,14 +671,14 @@ Privacy-1 的账号路径和申请级路径均强制 `Cache-Control: private, no
 
 Interaction-1 契约版本为 `1.3.0`，只实现状态查询、喜欢/关注写入和本人喜欢/关注列表。新增关系必须重新校验资料当前公开资格；取消关系不依赖资料仍公开。列表中失效资料只返回 `profileId`、关系时间和 `PROFILE_NOT_AVAILABLE`，不返回历史公开内容。
 
-Interaction-2 契约版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`；Search-2 提升为 `1.15.0`；Recommendation-1 提升到 `1.16.0`；Privacy-1 提升到 `1.17.0`；Media-1 提升到 `1.18.0`；App Core-1 再提升到 `1.19.0`，新增全局运行门禁、帮助/法律和受限账号摘要。其他互动推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
+Interaction-2 能力引入版本为 `1.11.0`，已实现独立多文件夹收藏和默认关闭、版本化清除的浏览历史服务端契约。Interaction-3 契约版本为 `1.12.0`，已实现复用发布审核事实的关注更新流与去重站内通知投影；它不创建目标侧关注者通知。Search-1 契约版本为 `1.13.0`，已实现公开字段人物搜索和独立私有搜索历史。Taxonomy-1 把累计契约提升为 `1.14.0`；Search-2 提升为 `1.15.0`；Recommendation-1 提升到 `1.16.0`；Privacy-1 提升到 `1.17.0`；Media-1 提升到 `1.18.0`；App Core-1 提升到 `1.19.0`；Account/Settings-2 提升到 `1.20.0`；`1.21.0` 补齐收藏夹 Figma-first 列表语义，Account/Settings-3 到 `1.23.0`，Privacy-2A 到 `1.24.0`，Message-4 到 `1.25.0`，Membership-7 后仓库当前累计为 `1.26.0`。其他互动推荐信号仍后置。所有互动接口不返回 reciprocal/matched 等字段，也不创建匹配或普通用户会话。
 
 ## 8. 会员和目录 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/v2/membership/catalog` | Membership-1 已实现：五级开发目录、获取方式与 typed entitlement |
-| GET | `/api/v2/me/entitlements` | Membership-1 已实现：当前 App grant、等级、有效区间和已解析权益 |
+| GET | `/api/v2/me/entitlements` | Membership-1/7 已实现：当前 App grant、等级、有效区间、已解析权益与不参与授权的生命周期呈现 |
 | GET | `/api/v2/me/membership` | 后续：独立会员时间线；当前 `/me/entitlements` 已返回当前 grant 摘要 |
 | POST | `/api/v2/orders` | 未来：创建购买意图 |
 | POST | `/api/v2/orders/verify` | 未来：提交商店交易供服务端验证 |
@@ -506,6 +702,8 @@ Membership-1 原始目录 `amc_app_1_0_draft_1` 的七项权益全部为 `planne
 | POST | `/api/v2/conversations/:id/mute` | 后续：静音/取消静音 |
 | POST | `/api/v2/conversations/:id/close` | Message-2 已实现：幂等关闭本人话题，历史只读且不可重开 |
 | POST | `/api/v2/conversations/:id/handover-consent` | 未来：历史交接选择 |
+
+Message-8 复用 `POST .../messages` 的既有成功响应表达 `review_pending/rejected`，不新增公开路径。审核中或拒绝消息仍占用内部 sequence，客户端按服务端状态渲染；人工通过时服务端会把消息重排到当前末尾，以保证接收方分页和已读水位能够观察到迟到交付。发送者刷新后以稳定 `messageId` 合并最终 sequence/status。客户端不能因为补拉出现 sequence 间隙而把隐藏的运营待审消息推断为存在或已送达；会话摘要和游标也只使用当前主体可见消息投影。召回接口仍未实现。
 
 创建请求：
 
@@ -532,36 +730,24 @@ Message-1 的用户消息只接受 `contentType=text`，普通 Unicode 表情可
 
 ## 10. 实时通道
 
-连接过程：`POST /api/v2/realtime/tickets` 获取绑定账号、设备和允许会话范围的短期 WebSocket ticket → 连接会话 Durable Object → `hello` 携带最后确认 sequence → 服务端补发缺失事件。
+连接过程：`POST /api/v2/realtime/tickets` 获取绑定账号、session 和设备的一次性短票据 → 使用 `Authorization: Realtime <ticket>` 连接账号级 Durable Object → `client.hello` 携带最后确认游标 → 服务端补发缺失刷新提示或要求 HTTP 全量同步。
 
-通用事件：
+Message-4 冻结的刷新事件：
 
 ```json
 {
-  "eventId": "evt_xxx",
-  "eventType": "message.created",
+  "type": "refresh.required",
   "schemaVersion": 1,
-  "conversationId": "cv_xxx",
-  "sequence": 42,
-  "occurredAt": "2026-07-20T12:00:00Z",
-  "payload": {}
+  "eventId": "rte_xxx",
+  "cursor": 42,
+  "occurredAt": "2026-08-20T12:00:00.000Z",
+  "scopes": ["conversations", "messages"]
 }
 ```
 
-| 事件 | 说明 |
-|------|------|
-| `conversation.snapshot` | 当前状态、运营模式、接收主体和 sequence |
-| `message.created` | 新消息，含 `senderType: viewer/platform_operator/person/system` |
-| `message.status_changed` | 审核、送达、失败、撤回状态 |
-| `receipt.read` | 当前实际接收主体已读到某 sequence |
-| `operation_mode.changed` | 平台运营/本人运营切换，必须落系统消息 |
-| `conversation.restricted` | 拉黑、暂停、安全限制或关闭 |
-| `entitlement.changed` | 会员变化提示客户端刷新 HTTP 快照 |
-| `notification.created` | 新站内通知，提示客户端刷新通知列表/未读数 |
-| `notification.read_state_changed` | 多设备已读变化，提示刷新服务端未读数 |
-| `wallet.changed` | 钱包分录生效，提示刷新权威余额和明细 |
+当前只允许 `account|conversations|messages|notifications|membership|wallet`。服务端不通过 WebSocket发送业务对象或写命令；客户端收到提示后必须调用既有 Bearer HTTP API。`server.ready`、`refresh.required`、`server.synced` 和唯一客户端命令 `client.hello` 均要求精确字段集合与 `schemaVersion=1`。
 
-不为平台代运营会话发送 `person.typing`、`person.online` 或 `person.read` 事件。输入状态仅在真实发送主体主动产生且策略允许时短期发送，不持久化。
+不发送 `message.created` 正文事件，不为平台代运营会话发送 `person.typing`、`person.online` 或 `person.read`，也不发送真人位置或推断状态。未来完整消息事件传输仍受 OQ-028、保留治理、审核链路和独立契约版本约束，不能从当前刷新通道扩权。
 
 ## 11. 站内通知 API
 
@@ -574,7 +760,7 @@ Message-1 的用户消息只接受 `contentType=text`，普通 Unicode 表情可
 | POST | `/api/v2/notifications/read-all` | 按分类标记全部已读，幂等 |
 | GET/PUT | `/api/v2/me/notification-preferences` | 站内通知偏好；账号/安全/会员/金币/数据权利必要通知不可关闭 |
 
-Message-3 当前实现只通过 HTTP 拉取站内通知，不依赖 APNs、FCM、WebSocket 或其他系统推送；未来若单独启用已连接实时通道，也只能发送刷新提示，不能替代 HTTP 权威列表。通知 action 使用受控 `targetType + targetId + action`，打开时重新校验目标和客户端 capability；任何刷新提示都不得携带完整平台话题正文。
+Message-3 的通知权威仍通过 HTTP 拉取，不依赖 APNs、FCM 或其他系统推送；Message-4 在全部门禁通过后只能发送刷新提示，不能替代 HTTP 权威列表。通知 action 使用受控 `targetType + targetId + action`，打开时重新校验目标和客户端 capability；Message-5 已让既有 `data_task + open_data_task` 对导出就绪与注销取消恢复结果可用，Message-7 以同一目标补齐导出失败必要通知，不可逆注销期间仍禁止普通通知访问。Message-6 保证策略版本切换时保留账号可选偏好并返回单调的新版本，不改变必要通知规则。Message-8 增加审核通过/拒绝的可选消息通知和管理员会话限制的必要安全通知；待审平台回复只有最终通过后才产生平台回复事件。任何通知或刷新提示都不得携带完整平台话题正文、导出内容或访问凭证。
 
 ## 12. 钱包、礼物与装扮 API
 
@@ -615,7 +801,9 @@ Wallet-1 当前实现的用户路由只读，余额来自追加式分录/受控�
 
 管理路由使用 `/api/v2/admin`，强认证、RBAC、对象范围和审计必需。
 
-M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1/2/3/4 同样暂时复用 `/api/admin/app/memberships`，提供版本化目录与 Entitlement 管理、账号状态、会员申请、单账号变更预览、独立复核申请/队列/决定，以及策略允许时的低风险直达发放或撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Safety-2 在同一 safety 路由下增加申诉队列、领取、受控详情和结论。Wallet-1 暂时使用 `/api/admin/app/wallets` 提供账号确认、单笔预览/申请、独立批准/拒绝和完整冲正，不提供直接改余额、批量或复核绕过。Recommendation-1 暂时使用 `/api/admin/app/recommendations` 提供规则、Dry-run、复核、排期、暂停/回滚和固定披露精选。Privacy-1 暂时使用 `/api/admin/app/data-rights` 提供最小化总览、申请队列/详情及 Owner 领取、开始处理、失败、重试和凭证据取消；没有真实导出制品或不可逆删除证据时不提供完成动作。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
+M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情/创建/草稿更新，以及 `/authorization`、`/verification/submit`、`/verification/decision`、`/publication/submit`、`/publication/decision`、`/publication/pause` 和授权/认证撤销命令。Membership-1/2/3/4 同样暂时复用 `/api/admin/app/memberships`，提供版本化目录与 Entitlement 管理、账号状态、会员申请、单账号变更预览、独立复核申请/队列/决定，以及策略允许时的低风险直达发放或撤销。Message-2 暂时复用 `/api/admin/app/conversations` 的限时领取/续租/释放/正文/回复/关闭和 `/api/admin/app/safety` 的举报领取、最小证据、结论及 Owner 运行控制；Message-8 另以 `/api/admin/app/message-moderation` 提供无正文审核队列、领取、受控正文和独立裁决，但在正式后台 Figma 前不新增页面。Safety-2/3 在同一 safety 路由下增加统一申诉队列、领取、受控详情和结论。Wallet-1 暂时使用 `/api/admin/app/wallets` 提供账号确认、单笔预览/申请、独立批准/拒绝和完整冲正，不提供直接改余额或复核绕过；Wallet-2 另提供受控批量调币与对账，Wallet-3 增加 Owner 恢复预览和幂等快照重建/解冻，Wallet-4 在同一路由增加无 UI 的外部旧余额 Dry-run、逐项 Owner 复核与默认关闭执行。Wallet-4 只接受 `opaque:` 来源账号引用；冻结申请后目标事实变化时先拒绝申请再收敛 `stale`，已完成执行请求在门禁关闭后仍只读重放原结果。Recommendation-1/5 暂时使用 `/api/admin/app/recommendations` 提供规则、Dry-run、复核、排期、暂停/回滚、固定披露精选，以及无正式 UI 的守护策略与聚合评估接口。Privacy-1/2A 暂时使用 `/api/admin/app/data-rights` 提供最小化总览、申请队列/详情及 Owner 领取、开始处理、失败、重试和凭证据取消；导出 ready 只能由 Queue/R2 完整性事实推进，且不可逆删除仍不提供完成动作。过渡路由只供 admin+ Web 会话使用，全部写命令与敏感读取均审计；下表 `/api/v2/admin` 仍表示长期统一目标。
+
+`ADM-PER-04` 当前开发实现复用 `/api/admin/import-jobs`：`POST /:id/package/init` 建立私有 R2 multipart，`PUT /:id/package/parts/:partNumber` 按一次性会话上传固定分片，`POST /:id/package/complete` 使用服务端 ETag 清单合并，`POST /:id/process|retry|resume` 驱动 Queue 状态机，`GET /:id/errors` 代理错误报告。Admin 只能操作本人任务，Owner 可跨任务；响应不返回 R2 key、R2 uploadId、分片 ETag 或 manifest 原始快照。该 ZIP 契约只创建 Gallery，不自动创建 Person/Profile 或公开推荐资格。
 
 | 资源 | 主要能力 |
 |------|----------|
@@ -624,6 +812,7 @@ M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情
 | `/imports` | MeiGallery/批量导入任务 |
 | `/taxonomy`, `/taxonomy-catalogs` | 标签/地区/分类、alias、映射、合并和版本发布 |
 | `/recommendation-rules`, `/editorial-placements` | 规则版本、dry-run、精选、灰度、暂停和回滚 |
+| `/recommendation-guardrails` | 目标/反指标策略、独立复核、聚合评估和不可变停止事实 |
 | `/operation-assignments` | 真人运营模式和管理员组 |
 | `/managed-conversations`, `/conversation-assignments` | 队列、租约分配、平台回复、内部备注和安全升级 |
 | `/reviews`, `/reports`, `/appeals` | 举报案件、最小证据、审核、安全处置和申诉 |
@@ -664,6 +853,6 @@ M1 过渡实现复用现有 Nuxt 后台 `/api/admin/app/persons`：列表/详情
 - **API-AC-003**：无 entitlement 创建私信返回明确错误且不消耗额度。
 - **API-AC-004**：平台运营消息不能伪装为 `senderType=person`。
 - **API-AC-005**：App 1.0 重复会员发放、消息和调币请求不产生重复结果；订单和礼物在未来启用时遵循同一规则。
-- **API-AC-006**：资料暂停、会员到期或拉黑后，现有实时连接立即失去相关写权限。
+- **API-AC-006**：实时连接从不授予业务写权限；资料暂停、会员到期或拉黑后，后续 HTTP 写请求仍必须立即被权威校验拒绝。
 - **API-AC-007**：未知 schema 字段不会使旧客户端扩大权限或崩溃。
 - **API-AC-008**：管理写接口均能关联完整审计事件。

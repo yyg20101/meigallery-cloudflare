@@ -32,6 +32,7 @@ import { adminAppConversationQualityRoutes } from './app-conversation-quality'
 import { adminAppAuditRoutes } from './app-audit'
 import { adminAppOperationRoutes } from './app-operations'
 import { adminAppDataRightsRoutes } from './app-data-rights'
+import { adminAppMessageModerationRoutes } from './app-message-moderation'
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -80,6 +81,7 @@ adminRoutes.route('/attribution', adminAttributionRoutes)
 adminRoutes.route('/app/persons', adminAppPersonRoutes)
 adminRoutes.route('/app/memberships', adminAppMembershipRoutes)
 adminRoutes.route('/app/conversations', adminAppConversationRoutes)
+adminRoutes.route('/app/message-moderation', adminAppMessageModerationRoutes)
 adminRoutes.route('/app/conversation-groups', adminAppConversationGroupRoutes)
 adminRoutes.route('/app/conversation-quality', adminAppConversationQualityRoutes)
 adminRoutes.route('/app/safety', adminAppSafetyRoutes)

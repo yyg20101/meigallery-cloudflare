@@ -23,6 +23,18 @@ import {
   updateAdminRecommendationRule,
 } from '../../services/admin-app-recommendations'
 import {
+  createAdminRecommendationGuardrailPolicy,
+  decideAdminRecommendationGuardrailPolicy,
+  evaluateAdminRecommendationGuardrail,
+  getAdminRecommendationGuardrailEvaluation,
+  getAdminRecommendationGuardrailOverview,
+  getAdminRecommendationGuardrailPolicy,
+  listAdminRecommendationGuardrailPolicies,
+  retireAdminRecommendationGuardrailPolicy,
+  submitAdminRecommendationGuardrailPolicy,
+  updateAdminRecommendationGuardrailPolicy,
+} from '../../services/admin-app-recommendation-guardrails'
+import {
   AppRecommendationError,
   getAppRecommendationRuntimeConfig,
   requireAppRecommendationPolicy,
@@ -52,6 +64,137 @@ adminAppRecommendationRoutes.get('/overview', async (c) => {
   try {
     return c.json({
       data: await getAdminRecommendationOverview(c.env.DB, await policy(c.env)),
+    })
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.get('/guardrails/overview', async (c) => {
+  try {
+    return c.json({ data: await getAdminRecommendationGuardrailOverview(c.env.DB) })
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.get('/guardrails', async (c) => {
+  try {
+    return c.json({
+      data: await listAdminRecommendationGuardrailPolicies(c.env.DB, c.req.query('state')),
+    })
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.post('/guardrails', async (c) => {
+  try {
+    const result = await createAdminRecommendationGuardrailPolicy(
+      c.env.DB,
+      await c.req.json<unknown>(),
+      c.req.header('Idempotency-Key') ?? null,
+      actor(c),
+    )
+    return c.json({
+      message: result.replayed ? '已返回原推荐守护策略创建结果' : '推荐守护策略草稿已创建',
+      data: result,
+    }, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.get('/guardrails/:policyId', async (c) => {
+  try {
+    return c.json({
+      data: await getAdminRecommendationGuardrailPolicy(c.env.DB, c.req.param('policyId')),
+    })
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.patch('/guardrails/:policyId', async (c) => {
+  try {
+    return c.json({
+      message: '推荐守护策略草稿已更新',
+      data: await updateAdminRecommendationGuardrailPolicy(
+        c.env.DB,
+        c.req.param('policyId'),
+        await c.req.json<unknown>(),
+        actor(c),
+      ),
+    })
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.post('/guardrails/:policyId/submit', async (c) => {
+  try {
+    return c.json({
+      message: '推荐守护策略已提交独立复核',
+      data: await submitAdminRecommendationGuardrailPolicy(
+        c.env.DB,
+        c.req.param('policyId'),
+        await c.req.json<unknown>(),
+        actor(c),
+      ),
+    })
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.post('/guardrails/:policyId/decision', async (c) => {
+  try {
+    return c.json({
+      message: '推荐守护策略复核决定已记录',
+      data: await decideAdminRecommendationGuardrailPolicy(
+        c.env.DB,
+        c.req.param('policyId'),
+        await c.req.json<unknown>(),
+        actor(c),
+      ),
+    })
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.post('/guardrails/:policyId/retire', async (c) => {
+  try {
+    return c.json({
+      message: '推荐守护策略已退休',
+      data: await retireAdminRecommendationGuardrailPolicy(
+        c.env.DB,
+        c.req.param('policyId'),
+        await c.req.json<unknown>(),
+        actor(c),
+      ),
+    })
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.get('/guardrail-evaluations/:evaluationId', async (c) => {
+  try {
+    return c.json({
+      data: await getAdminRecommendationGuardrailEvaluation(
+        c.env.DB,
+        c.req.param('evaluationId'),
+      ),
     })
   }
   catch (error) {
@@ -221,6 +364,26 @@ adminAppRecommendationRoutes.post('/rules/:ruleVersionId/dry-run', async (c) => 
         c.req.url,
       ),
     })
+  }
+  catch (error) {
+    return handleRecommendationError(c, error)
+  }
+})
+
+adminAppRecommendationRoutes.post('/rules/:ruleVersionId/guardrail-evaluations', async (c) => {
+  try {
+    const result = await evaluateAdminRecommendationGuardrail(
+      c.env.DB,
+      c.req.param('ruleVersionId'),
+      await c.req.json<unknown>(),
+      c.req.header('Idempotency-Key') ?? null,
+      actor(c),
+      getAppRecommendationRuntimeConfig(c.env).requireProductionReady,
+    )
+    return c.json({
+      message: result.replayed ? '已返回原推荐守护评估结果' : '推荐守护评估已冻结',
+      data: result,
+    }, result.replayed ? 200 : 201)
   }
   catch (error) {
     return handleRecommendationError(c, error)

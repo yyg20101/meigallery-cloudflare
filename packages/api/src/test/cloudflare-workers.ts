@@ -8,6 +8,16 @@ export class WorkflowEntrypoint<Env, _Params> {
   }
 }
 
+export class DurableObject<Env> {
+  protected readonly ctx: DurableObjectState
+  protected readonly env: Env
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    this.ctx = ctx
+    this.env = env
+  }
+}
+
 export type WorkflowEvent<Params> = {
   payload: Params
   timestamp: Date

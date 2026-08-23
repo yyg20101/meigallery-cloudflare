@@ -9,7 +9,7 @@ import { safeContactLinkUrl } from '../utils/contact-link-url'
 import { safePublicSettingUrl } from '../utils/public-setting-url'
 import { getAppAuthRuntimeConfig } from './app-account-access'
 
-export const APP_SUPPORT_CONTENT_VERSION = 'app_core_help_1'
+export const APP_SUPPORT_CONTENT_VERSION = 'app_core_help_2'
 export const APP_SUPPORT_CENTER_PATH = '/api/v2/app/support' as const
 
 const DEFAULT_RUNTIME_POLICY_VERSION = 'app_core_default_1'
@@ -36,33 +36,34 @@ type RuntimeBindings = Pick<
 
 const SUPPORT_TOPICS: AppSupportTopic[] = [
   {
-    topicId: 'help_platform_operation',
+    topicId: 'help_account_devices',
     category: 'platform',
-    categoryLabel: '平台与人物',
-    title: '人物资料与平台运营边界',
-    summary: '了解人物资料来源、认证范围和平台代运营方式。',
+    categoryLabel: '账号与设备',
+    title: '登录、验证与远程退出',
+    summary: '账号安全状态和远程退出均以服务端实时结果为准。',
     sections: [
       {
-        heading: '人物资料如何出现',
-        body: '只有管理员创建或审核通过、仍具备公开资格的人物资料才会出现在 App；普通观看者不能上传人物资料。',
+        heading: '登录与验证',
+        body: '验证码、密码和当前设备状态由服务端校验；不要向任何人提供验证码或密码。',
       },
       {
-        heading: '认证代表什么',
-        body: '认证只说明平台完成了页面标示范围内的资料、用途授权和运营检查，不代表人物本人已经入驻、登录或亲自回复。',
+        heading: '设备管理',
+        body: '可查看已登录设备，并让其他设备退出。高风险操作可能要求重新验证。',
       },
       {
-        heading: '资料为什么会消失',
-        body: '资料可能因撤回授权、到期、重新审核、下线或不再符合公开规则而停止展示。客户端不会继续使用旧缓存冒充最新状态。',
+        heading: '异常处理',
+        body: '发现陌生设备时先远程退出并修改密码；无法处理时通过帮助中心联系平台。',
       },
     ],
-    keywords: ['人物', '真人', '认证', '授权', '平台运营', '资料下线'],
+    keywords: ['账号', '登录', '验证码', '密码', '设备', '远程退出'],
+    action: null,
   },
   {
     topicId: 'help_membership',
     category: 'membership',
-    categoryLabel: '会员',
-    title: '会员等级、有效期与功能权限',
-    summary: '会员权限以当前服务端目录和有效发放记录为准。',
+    categoryLabel: '会员与话题',
+    title: '人工申请与平台接收',
+    summary: '会员由管理员审核发放，人物话题由平台管理员统一接收。',
     sections: [
       {
         heading: '如何获得会员',
@@ -77,36 +78,15 @@ const SUPPORT_TOPICS: AppSupportTopic[] = [
         body: '客户端可以预留未来入口，但只有服务端明确返回可执行能力时才会开放操作；仅展示中的规划权益不代表已经上线。',
       },
     ],
-    keywords: ['会员', '等级', '有效期', '权限', '心遇', '心耀'],
-  },
-  {
-    topicId: 'help_messaging',
-    category: 'messaging',
-    categoryLabel: '私信与话题',
-    title: '私信由谁接收与回复',
-    summary: '话题由平台管理员统一接收，不代表真人本人在线。',
-    sections: [
-      {
-        heading: '接收方',
-        body: '观看者发起的人物话题统一进入平台运营工作台，由管理员接收、分配和回复；资料中的人物不一定能够看到消息。',
-      },
-      {
-        heading: '发送条件',
-        body: '是否可以发送由当前会员 entitlement、账号状态、话题状态和服务端安全策略共同决定，每次发送都会重新校验。',
-      },
-      {
-        heading: '回复时效',
-        body: '平台不承诺即时回复。请勿在消息中发送密码、验证码、身份证件、支付凭证或其他不必要的敏感信息。',
-      },
-    ],
-    keywords: ['私信', '消息', '话题', '管理员', '真人回复', '发送'],
+    keywords: ['会员', '等级', '有效期', '权限', '人工申请', '话题', '私信'],
+    action: null,
   },
   {
     topicId: 'help_wallet',
     category: 'wallet',
-    categoryLabel: '金币',
-    title: '金币余额与管理员调整',
-    summary: '金币仅记录管理员加币、扣币和冲正，不是支付账户。',
+    categoryLabel: '金币与账本',
+    title: '管理员调整与申诉',
+    summary: '金币只记录管理员加币、扣币、冲正及可追溯申诉。',
     sections: [
       {
         heading: '金币来源',
@@ -118,17 +98,18 @@ const SUPPORT_TOPICS: AppSupportTopic[] = [
       },
       {
         heading: '发现疑问',
-        body: '当前未开放独立金币申诉流程。请记录公开业务编号，通过本帮助中心的联系方式向平台说明，切勿公开账号安全信息。',
+        body: '对账本分录有疑问时，可从对应分录发起申诉；请使用公开业务编号，切勿提交密码或验证码。',
       },
     ],
     keywords: ['金币', '加币', '扣币', '余额', '明细', '冲正'],
+    action: null,
   },
   {
     topicId: 'help_safety',
     category: 'safety',
-    categoryLabel: '安全',
-    title: '举报、屏蔽与账号限制',
-    summary: '安全操作以服务端实时状态为准，并保护双方必要隐私。',
+    categoryLabel: '举报与申诉',
+    title: '案件进度与独立复核',
+    summary: '举报、屏蔽、账号限制与申诉均以服务端案件状态为准。',
     sections: [
       {
         heading: '举报与屏蔽',
@@ -144,28 +125,53 @@ const SUPPORT_TOPICS: AppSupportTopic[] = [
       },
     ],
     keywords: ['举报', '屏蔽', '限制', '安全中心', '申诉', '风控'],
+    action: null,
   },
   {
-    topicId: 'help_privacy',
+    topicId: 'help_data_export',
     category: 'privacy',
-    categoryLabel: '隐私与数据',
-    title: '数据导出与账号注销',
-    summary: '数据权利操作需要二次验证，并按服务端任务状态执行。',
+    categoryLabel: '数据导出',
+    title: '范围、验证与安全下载',
+    summary: '导出申请需要二次验证，并按服务端任务状态安全交付。',
     sections: [
       {
         heading: '为什么需要二次验证',
-        body: '数据导出和账号注销会影响本人数据与访问权限，提交或取消前需要重新验证密码，防止已登录设备被他人滥用。',
+        body: '数据导出涉及本人数据，提交前需要重新验证密码，防止已登录设备被他人滥用。',
       },
       {
         heading: '任务状态',
-        body: '申请提交后以服务端状态和截止时间为准。处理能力未正式开放时，客户端只展示控制面，不会声称已经生成导出包或完成删除。',
+        body: '申请提交后以服务端状态和截止时间为准。处理能力未开放时，客户端不会声称已经生成导出包。',
       },
       {
-        heading: '注销影响',
-        body: '注销进入待处理后普通会话会失效；如仍处于允许取消的窗口，可使用申请级安全凭证查询或取消本人任务。',
+        heading: '安全下载',
+        body: '导出包只通过短期安全凭证下载；链接到期后需要重新申请，客户端不会长期保存明文下载地址。',
       },
     ],
-    keywords: ['隐私', '数据导出', '账号注销', '删除', '二次验证'],
+    keywords: ['隐私', '数据导出', '安全下载', '导出包', '二次验证'],
+    action: 'open_data_export',
+  },
+  {
+    topicId: 'help_account_deletion',
+    category: 'privacy',
+    categoryLabel: '注销账号',
+    title: '影响、取消阶段与进度',
+    summary: '注销会影响访问权限，提交和取消均以服务端状态为准。',
+    sections: [
+      {
+        heading: '提交前确认',
+        body: '注销会影响账号、会话和相关服务记录；提交前需要重新验证密码并确认服务端列出的影响。',
+      },
+      {
+        heading: '处理与取消',
+        body: '注销进入待处理后普通会话会失效；仍在允许取消窗口时，可使用申请级安全凭证查询或取消本人任务。',
+      },
+      {
+        heading: '完成结果',
+        body: '完成时间、保留例外和失败原因以服务端政策及任务状态为准；客户端不会用本地状态宣称已完成删除。',
+      },
+    ],
+    keywords: ['隐私', '账号注销', '删除', '取消注销', '进度', '二次验证'],
+    action: 'open_account_deletion',
   },
 ]
 

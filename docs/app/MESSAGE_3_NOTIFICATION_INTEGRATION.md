@@ -6,7 +6,7 @@ App API：v2 / `1.9.0`
 
 日期：2026-08-08
 
-状态：代码闭环与本地验证完成；production/dev 默认关闭；未执行远端 migration、真实数据联调或生产发布
+状态：Message-3 历史代码与本地验证完成；Message-9 生命周期源码已补齐但新增测试尚未运行；production/dev 默认关闭；未执行后续 migration、真实数据联调或生产发布
 
 ## 1. 本阶段目标
 
@@ -14,7 +14,7 @@ Message-3 建立“业务状态变化 → D1 原子 Outbox → 固定安全模�
 
 不可改变的产品与安全事实：
 
-- App 1.0 不接入 APNs、FCM、厂商推送、短信、邮件、WebSocket 或后台常驻轮询。
+- Message-3 交付当时的基线不接入 APNs、FCM、厂商推送、短信、邮件、WebSocket 或后台常驻轮询。后续 Message-4 已增加默认关闭、只发送刷新提示的账号级 WebSocket；它不改变本通知投影与 HTTP 查询的权威性。
 - 通知由平台业务事件生成；观看者不能创建、编辑、撤回或伪造权威通知。
 - 通知只使用审核过的固定文案，不复制平台话题正文、申请说明、内部备注、安全证据、IP、精确位置或 Token。
 - 会员与金币、系统与安全属于必要通知，不能被消息、互动或营销偏好关闭。
@@ -47,22 +47,23 @@ Message-3 建立“业务状态变化 → D1 原子 Outbox → 固定安全模�
 | 账号安全 | `account.session_logged_in`、`account.device_revoked`、`account.refresh_token_reuse_detected` | `system_security` | 本人账号安全记录 |
 | 金币账本 | `wallet.entry_posted` | `membership_coin` | 本人钱包分录 |
 | 关注更新 | `interaction.followed_profile_updated` | `interaction` | 当前人物资料 |
+| 数据权利 | `data.export_ready`、`account.deletion_updated` | `system_security` | 本人数据权利申请 |
 
 业务表触发器只有在 D1 策略 `generation_enabled=1` 时才写 Outbox，因此默认 migration 不会对已有业务数据或新写入产生通知。会员到期没有原始写事件，由定时恢复任务按策略 `effective_at` 之后的到期记录补建稳定 Outbox；它不会扫描或补发策略生效前的历史。
 
 关注更新由后续 Interaction-3 `0079` 激活并增加固定 development 模板，不在人物发布事务内使用 trigger 全量扇出；用户 HTTP pull 时按当前关注关系惰性写入 Outbox，投递前再次校验关系和人物公开资格。其独立运行策略、API `1.12.0` 和后置边界见 `INTERACTION_3_FOLLOW_UPDATES_INTEGRATION.md`。
 
+数据权利事件由后续 Message-5 `0109` 激活并增加固定 development 模板。导出只在私有制品、申请和用户可见 `export_ready` 事件原子完成后写 Outbox；注销只在已验证取消并把账号安全状态从 `deletion_pending` 恢复后写一条状态通知。Message-7 `0110` 另以独立必要事件补齐申请、制品、任务和用户可见失败事件已收敛的 `data.export_failed`。不可逆注销处理中、失败和完成后的通知继续由 `0103` 抑制，用户只通过申请级状态凭证读取权威进度。完整边界见 `MESSAGE_5_DATA_RIGHTS_NOTIFICATION_INTEGRATION.md` 与 `MESSAGE_7_DATA_EXPORT_FAILURE_NOTIFICATION_INTEGRATION.md`。
+
 ### 3.2 已预留但保持 inactive
 
-- `data.export_ready`
-- `account.deletion_updated`
 - `marketing.campaign`
 
-这些定义只冻结 category、目标和 action 形状，不开放对应业务能力，不创建模板投影，也不代表数据权利或营销已经交付。未来启用前仍需完成各自业务事实、模板审批、权限、保留和验收。
+营销定义只冻结 category、目标和 action 形状，不开放对应业务能力，不创建模板投影，也不代表营销已经交付。未来启用前仍需完成业务事实、模板审批、权限、保留和验收。
 
 ## 4. D1 权威模型与可靠性
 
-Migration：`0076_app_in_app_notifications.sql`。
+基础 Migration：`0076_app_in_app_notifications.sql`；模板治理增量：`0097_app_notification_template_governance.sql`；内容生命周期增量：`0115_app_notification_content_lifecycle.sql`。
 
 | 表 | 责任 | 关键约束 |
 |----|------|----------|
@@ -72,7 +73,7 @@ Migration：`0076_app_in_app_notifications.sql`。
 | `app_notification_preferences` | 账号当前可选偏好 | 账号唯一、版本单调；必要通知没有关闭字段 |
 | `app_notification_preference_events` | 偏好变更审计 | 保存版本、布尔值、设备和请求，不保存敏感正文 |
 | `app_notification_outbox` | 可恢复投递事实 | `account + eventType + eventRef` 防重；状态机和重试次数受约束 |
-| `app_notifications` | 账号私有用户投影 | 保存当时固定模板快照，不保存任意业务正文或访问凭证 |
+| `app_notifications` | 账号私有用户投影 | 保存当时固定模板快照；批准保留策略下写入不可变 `expires_at`，不保存任意业务正文或访问凭证 |
 | `app_notification_read_events` | 单条/分类已读审计 | 已读更新和审计在同一 D1 batch 中原子收敛 |
 
 投递规则：
@@ -83,8 +84,9 @@ Migration：`0076_app_in_app_notifications.sql`。
 4. 通知 ID 由 Outbox ID 的 SHA-256 稳定派生；重复执行使用 `INSERT OR IGNORE`，不会生成第二条通知或重复增加未读。
 5. 可选类别在投影前读取服务端偏好，关闭时把 Outbox 标为 `suppressed`；必要类别不读取可选偏好。
 6. 单条已读和分类全部已读均幂等；首次读取时间保留，多设备重复请求的 `markedCount` 为 0。
+7. Message-9 在保留决策批准后按原始事件时间计算到期边界；延迟超过保留期的 Outbox 直接收敛为 `suppressed`，不会形成新的通知正文。
 
-本阶段不启用删除或归档。OQ-020 未关闭前 `retention_days=NULL`、`purge_enabled=0`，也不把“不清理”解释为永久保留承诺。
+Message-9 已实现默认关闭的物理清理器：只有环境显式选择策略、D1 决策批准、保留天数有效且 `purge_enabled=1` 时，每日维护才有界删除到期通知正文。升级前 `expires_at=NULL` 的 legacy 行按当前批准窗口处理；单条已读事件先删除，分类全部已读事件和不含正文的 Outbox 去重墓碑保留。能力或 generation 后来关闭不取消已批准删除义务。OQ-020 仍未关闭，当前 `retention_days=NULL`、`purge_enabled=0`，因此所有环境继续安全跳过。
 
 ## 5. App API
 
@@ -119,7 +121,7 @@ KMP 只有在 Auth、通知开关、策略 ID、HTTP 传输、分页范围和完
 - 会话、会员、申请、举报、申诉和账号安全记录必须属于当前账号。
 - 人物资料必须仍是公开且可见的权威投影。
 - 对应业务 capability 必须当前可用。
-- Wallet-1 开启时，钱包分录必须属于当前账号且仍为 posted；数据任务尚未交付，目标继续返回不可用。
+- Wallet-1 开启时，钱包分录必须属于当前账号且仍为 posted；Message-5 开启时，数据任务必须属于当前账号且数据权利 overview capability 当前可用。
 
 目标不可用时通知正文仍可安全读取，但 `available=false`，客户端不执行动作。客户端当前动作只进入已有权威页面；通知中的历史文案不直接改变会员、消息或安全状态。
 
@@ -130,7 +132,7 @@ KMP 只有在 Auth、通知开关、策略 ID、HTTP 传输、分页范围和完
 - 通知详情先拉取服务端安全详情；未读项打开后再幂等标记已读，并同步本地红点。
 - 设置页只允许修改消息、互动和活动；会员与金币、系统与安全明确显示为必要通知。
 - 所有请求通过 Auth-1 单航班续期和会话失效清理，不把 Token、通知正文或目标数据写入本地业务缓存。
-- App 不申请系统通知权限，不声称实时到达；用户进入通知页、切换分类或手动重试时通过 HTTP 获取最新状态。
+- App 不申请系统通知权限；Message-3 客户端进入通知页、切换分类或手动重试时通过 HTTP 获取最新状态。Message-4 开启后，前台 WebSocket 只触发同一 HTTP 补拉，断线时复用 Figma 的“实时离线”状态，不直接构造通知。
 
 ## 8. 管理后台
 
@@ -143,7 +145,9 @@ Nuxt 路由：`/admin/app/notifications`。
 - `GET /api/admin/app/notifications/templates`
 - `GET /api/admin/app/notifications/deliveries`
 
-当前后台是只读运行台，展示运行时/D1 双门禁、未决保留风险、事件定义、模板状态和投递状态。投递查询只返回 Outbox/通知引用、eventType、category、必要性、账号公开 ID、状态、尝试次数、错误码和时间，不返回模板正文、平台话题正文、举报说明、证据、内部备注或 Token。策略发布、模板审批、补发、撤回和营销群发仍未开放写入口。
+后台继续提供运行台，并由 `0097_app_notification_template_governance.sql` 增加受治理的模板版本工作流。模板只能使用事件定义登记的变量目录和允许列表；未知变量、缺失必需变量、重复 active 版本、创建人自审和过期复核均被服务端阻断。流程固定为草稿 → 提交复核 → 另一位 Owner 发布，模板和事件事实不可原地改写或删除。投递查询只返回 Outbox/通知引用、eventType、category、必要性、账号公开 ID、状态、尝试次数、错误码和时间，不返回平台话题正文、举报说明、证据、内部备注或 Token。补发、撤回和营销群发仍未开放写入口。
+
+Figma 页面状态：`ADM-NTF-02` 的正常、变量缺失、创建人自审等正式节点是模板编辑与复核页面的唯一可见基线；代码必须通过服务端错误码和模板状态映射到这些状态，不自行发明文案或布局。
 
 ## 9. 运行开关与启用门禁
 
@@ -161,7 +165,7 @@ Nuxt 路由：`/admin/app/notifications`。
 1. 关闭 OQ-020，审批通知、Outbox、已读、偏好、审计和备份的保留/删除政策及数据权利处理方式。
 2. 形成新的 published 策略和逐事件已审核模板，不原地提升 development 记录。
 3. 明确运营值班、dead letter、必要通知积压、模板回滚和安全事件处置 Runbook。
-4. 在隔离 dev 数据执行 `0076`，按事件逐项做真实 HTTP、重复消费、租约恢复、断网、多设备、目标失效和回滚演练。
+4. 在隔离 dev 数据连续执行 `0076/0097/0115`，按事件逐项做真实 HTTP、重复消费、租约恢复、断网、多设备、目标失效、到期批次和回滚演练。
 5. 完成 Android/iOS 真机、大字体、屏幕阅读器、窄屏、弱网和长中文验收。
 6. 先开启只读后台观察，再开启 generation 和用户 capability；production 需独立审批，不能由 dev 状态自动复制。
 
@@ -175,10 +179,21 @@ Nuxt 路由：`/admin/app/notifications`。
 - 目标 capability 关闭与目标归属失效时不执行受控动作。
 - App API 路由、OpenAPI、TypeScript、Nuxt 后台类型、API/Web 全量单元测试和 Android Host Test/Debug APK。
 - iOS Simulator Kotlin/Native 编译通过；本机 Framework 链接仍被未接受的 Xcode 许可导致的 `xcrun` 69 拦截，应继续由 macOS CI 完成链接门禁。
+- Message-9 已增加投递到期、延迟抑制、显式/legacy 有界清理、已读外键、Outbox 墓碑和不可变触发器测试源码；按当前开发顺序尚未运行。
 
 尚未完成：
 
-- dev/production `0076` migration、远程 Worker 部署、真实 HTTP smoke、真机 UI 与多设备验收。
+- dev/production `0076`/`0097`/`0115` migration、远程 Worker 部署、真实 HTTP smoke、真机 UI 与多设备验收。
 - OQ-020、生产模板审批、正式告警阈值、值班与数据权利 Runbook。
-- 实时刷新信号、APNs/FCM、数据导出/注销和营销事件的业务启用；Interaction-3 关注更新的 KMP 已完成，配置、migration、专项测试、模拟器/真机和远端联调仍后置；Wallet-1 远端 migration 与启用门禁仍需独立完成。
-- 模板/策略写后台、受控补发/撤回、统计看板和 production 发布。
+- APNs/FCM 和营销事件的业务启用；数据导出就绪、导出失败与注销取消恢复的通知源码已由 Message-5/7 完成，但 `0109/0110`、模板审批、配置与验证仍后置。实时刷新信号的源码已由 Message-4 完成，但 OQ-028、Durable Object 配置、`0105`、构建测试与设备验收仍后置。Interaction-3 关注更新的 KMP 已完成，配置、migration、专项测试、模拟器/真机和远端联调仍后置；Wallet-1 远端 migration 与启用门禁仍需独立完成。
+- 策略写后台、受控补发/撤回、统计看板和 production 发布；模板版本写入与独立复核代码已经完成但默认不可用于 production。
+
+后续实时恢复边界见 [Message-4 账号级实时刷新跨仓交付基线](./MESSAGE_4_REALTIME_REFRESH_INTEGRATION.md)。
+
+数据权利必要通知边界见 [Message-5 数据权利结果通知跨仓交付基线](./MESSAGE_5_DATA_RIGHTS_NOTIFICATION_INTEGRATION.md)。
+
+策略版本切换后的账号偏好连续性见 [Message-6 通知偏好策略换绑开发基线](./MESSAGE_6_NOTIFICATION_POLICY_REBIND_INTEGRATION.md)。
+
+数据导出失败必要通知边界见 [Message-7 数据导出失败必要通知开发基线](./MESSAGE_7_DATA_EXPORT_FAILURE_NOTIFICATION_INTEGRATION.md)。
+
+通知正文到期与物理清理边界见 [Message-9 站内通知内容生命周期开发基线](./MESSAGE_9_NOTIFICATION_CONTENT_LIFECYCLE_INTEGRATION.md)。

@@ -44,6 +44,21 @@ export const R2_KEY_PREFIX = {
   IMPORTS: 'imports',
 } as const
 
+/** 后台 ZIP 批量导入的应用级资源边界（不是 Cloudflare 平台额度）。 */
+export const IMPORT_PACKAGE_LIMITS = {
+  MAX_ACTIVE_JOBS: 3,
+  MULTIPART_PART_BYTES: 8 * 1024 * 1024,
+  MAX_ARCHIVE_BYTES: 256 * 1024 * 1024,
+  MAX_CENTRAL_DIRECTORY_BYTES: 4 * 1024 * 1024,
+  MAX_ENTRIES: 1_024,
+  MAX_MANIFEST_ROWS: 200,
+  MAX_TEXT_BYTES: 1024 * 1024,
+  MAX_IMAGE_ENTRY_BYTES: 10 * 1024 * 1024,
+  MAX_MEDIA_ENTRY_BYTES: 48 * 1024 * 1024,
+  MAX_TOTAL_UNCOMPRESSED_BYTES: 512 * 1024 * 1024,
+  MAX_COMPRESSION_RATIO: 200,
+} as const
+
 /** 受保护媒体访问响应/凭证 TTL（秒） */
 export const MEDIA_ACCESS_TTL = {
   PROTECTED_IMAGE_CACHE: 600, // Worker 代理图片响应私有缓存 10 分钟

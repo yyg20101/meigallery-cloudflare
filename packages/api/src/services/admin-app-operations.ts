@@ -5,6 +5,11 @@ import {
   type AppOperationalControl,
   type AppOperationalControlKey,
 } from './app-operational-safety'
+import {
+  readCloudflareOperationsAnalytics,
+  type CloudflareOperationsAnalyticsConfig,
+  type CloudflareOperationsMetricValues,
+} from './cloudflare-operations-analytics'
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{16,128}$/u
 const INCIDENT_ID = /^opinc_[A-Za-z0-9_-]{1,89}$/u
@@ -13,8 +18,22 @@ const REASON_CODE = /^[a-z0-9_]{3,80}$/u
 const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{2,239}$/u
 const MAX_INCIDENT_PAGE_SIZE = 100
 const DEFAULT_INCIDENT_PAGE_SIZE = 40
-const METRIC_RUN_VERSION = 'operations-metrics-v1'
-const DETECTOR_VERSION = 'operations-detectors-v1'
+const METRIC_RUN_VERSION = 'operations-metrics-v2'
+const DETECTOR_VERSION = 'operations-detectors-v3'
+const CLOUDFLARE_STATUS_SUMMARY_URL = 'https://www.cloudflarestatus.com/api/v2/summary.json'
+const CLOUDFLARE_STATUS_TIMEOUT_MS = 4_000
+const CLOUDFLARE_STATUS_MAX_RESPONSE_BYTES = 1_000_000
+const RELEVANT_CLOUDFLARE_COMPONENT_NAMES = [
+  'API',
+  'D1',
+  'Durable Objects',
+  'Email Sending',
+  'Queues',
+  'R2',
+  'Turnstile',
+  'Workers',
+  'Workers Assets',
+] as const
 
 const INCIDENT_STATUSES = [
   'open',
@@ -352,6 +371,8 @@ export async function refreshAdminAppOperationsOverview(
   actor: AdminOperationsActor,
   idempotencyKeyValue: string | null,
   now = new Date(),
+  cloudflareAnalyticsConfig: CloudflareOperationsAnalyticsConfig = {},
+  cloudflareAnalyticsReader: typeof readCloudflareOperationsAnalytics = readCloudflareOperationsAnalytics,
 ) {
   requireOwnerActor(actor)
   const idempotencyKey = requireIdempotencyKey(idempotencyKeyValue)
@@ -362,11 +383,14 @@ export async function refreshAdminAppOperationsOverview(
     return { overview: await getAdminAppOperationsOverview(db, now), replayed: true }
   }
 
-  const definitions = await listCurrentMetricDefinitions(db)
+  const [definitions, cloudflareMetricValues] = await Promise.all([
+    listCurrentMetricDefinitions(db),
+    readCloudflareOperationsMetricsSafely(cloudflareAnalyticsReader, cloudflareAnalyticsConfig, now),
+  ])
   const measuredAt = now.toISOString()
   const values = await Promise.all(definitions.map(async definition => ({
     definition,
-    value: await collectMetricValue(db, definition.metric_key, now),
+    value: await collectMetricValue(db, definition.metric_key, now, cloudflareMetricValues),
   })))
   const knownCount = values.filter(item => item.value.quality === 'known').length
   const failedCount = values.filter(item => ['unknown', 'invalid'].includes(item.value.quality)).length
@@ -526,12 +550,30 @@ function mapOverviewMetric(
   }
 }
 
-async function collectMetricValue(db: D1Database, metricKey: string, now: Date): Promise<MetricValue> {
+async function readCloudflareOperationsMetricsSafely(
+  reader: typeof readCloudflareOperationsAnalytics,
+  config: CloudflareOperationsAnalyticsConfig,
+  now: Date,
+): Promise<Partial<CloudflareOperationsMetricValues>> {
+  try {
+    return await reader(config, now)
+  }
+  catch {
+    return {}
+  }
+}
+
+async function collectMetricValue(
+  db: D1Database,
+  metricKey: string,
+  now: Date,
+  cloudflareMetricValues: Partial<CloudflareOperationsMetricValues>,
+): Promise<MetricValue> {
   if (metricKey.startsWith('platform.')) {
-    return {
-      quality: 'unconfigured',
+    return cloudflareMetricValues[metricKey as keyof CloudflareOperationsMetricValues] ?? {
+      quality: 'unknown',
       sourceWatermark: null,
-      details: { code: 'CLOUDFLARE_OBSERVABILITY_NOT_CONNECTED' },
+      details: { code: 'CLOUDFLARE_ANALYTICS_READER_FAILED' },
     }
   }
   try {
@@ -1427,11 +1469,49 @@ type DetectorFinding = {
   walletFreeze?: { walletId: string; currentStatus: string }
 }
 
+type CloudflareComponentStatus =
+  | 'operational'
+  | 'degraded_performance'
+  | 'partial_outage'
+  | 'major_outage'
+  | 'under_maintenance'
+
+type CloudflareStatusIndicator = 'none' | 'minor' | 'major' | 'critical'
+type CloudflareIncidentImpact = CloudflareStatusIndicator
+
+type CloudflarePlatformHealthEvidence = {
+  source: 'cloudflare_status_summary_v2'
+  availability: 'available' | 'unavailable'
+  observedAt: string
+  sourceUpdatedAt?: string
+  overallIndicator?: CloudflareStatusIndicator
+  relevantComponents?: Array<{ name: string; status: CloudflareComponentStatus }>
+  relevantIncidents?: Array<{
+    id: string
+    status: string
+    impact: CloudflareIncidentImpact
+    components: string[]
+  }>
+  unavailableReason?:
+    | 'timeout'
+    | 'network_error'
+    | 'http_error'
+    | 'response_too_large'
+    | 'invalid_payload'
+}
+
+type CloudflarePlatformHealthDetection =
+  | { available: true; finding: DetectorFinding | null; evidence: CloudflarePlatformHealthEvidence }
+  | { available: false; finding: null; evidence: CloudflarePlatformHealthEvidence }
+
+type CloudflarePlatformHealthReader = (now: Date) => Promise<CloudflarePlatformHealthDetection>
+
 export async function runAdminAppOperationalDetection(
   db: D1Database,
   actor: AdminOperationsActor,
   idempotencyKeyValue: string | null,
   now = new Date(),
+  platformHealthReader: CloudflarePlatformHealthReader = readCloudflarePlatformHealth,
 ) {
   requireOwnerActor(actor)
   const idempotencyKey = requireIdempotencyKey(idempotencyKeyValue)
@@ -1442,7 +1522,11 @@ export async function runAdminAppOperationalDetection(
     return { run: await getDetectionRun(db, replay.result_id), replayed: true }
   }
 
-  const findings = await collectOperationalFindings(db, now)
+  const [findings, platformHealth] = await Promise.all([
+    collectOperationalFindings(db, now),
+    readPlatformHealthSafely(platformHealthReader, now),
+  ])
+  if (platformHealth.finding) findings.push(platformHealth.finding)
   const existingPairs = await Promise.all(findings.map(async finding => ({
     finding,
     existing: await db.prepare(`${incidentSelect()} WHERE incident.incident_key = ? LIMIT 1`)
@@ -1450,11 +1534,13 @@ export async function runAdminAppOperationalDetection(
   })))
   const timestamp = now.toISOString()
   const runId = generateId('opdr')
-  // 会员到期撤销和 Cloudflare 平台健康仍待接入；数据权利逾期已由 Privacy-1 提供事实表。
-  const unavailableDetectorCount = 2
-  const evidenceDigest = await sha256Hex(JSON.stringify(findings
-    .map(item => ({ key: item.incidentKey, count: item.impactCount, severity: item.severity }))
-    .sort((a, b) => a.key.localeCompare(b.key))))
+  const unavailableDetectorCount = platformHealth.available ? 0 : 1
+  const evidenceDigest = await sha256Hex(JSON.stringify({
+    findings: findings
+      .map(item => ({ key: item.incidentKey, count: item.impactCount, severity: item.severity }))
+      .sort((a, b) => a.key.localeCompare(b.key)),
+    platformHealth: platformHealth.evidence,
+  }))
   const createdCount = existingPairs.filter(item => !item.existing).length
   const refreshedCount = existingPairs.length - createdCount
   const auditId = generateId('audit')
@@ -1486,6 +1572,9 @@ export async function runAdminAppOperationalDetection(
       detectorKey: finding.detectorKey,
       incidentKey: finding.incidentKey,
       count: finding.impactCount,
+      severity: finding.severity,
+      sourceReference: finding.sourceReference,
+      impactScope: finding.impactScope,
       observedAt: timestamp,
     }))
     if (!existing) {
@@ -1670,12 +1759,252 @@ export async function runAdminAppOperationalDetection(
   return { run: await getDetectionRun(db, runId), replayed: false }
 }
 
+async function readPlatformHealthSafely(
+  reader: CloudflarePlatformHealthReader,
+  now: Date,
+): Promise<CloudflarePlatformHealthDetection> {
+  try {
+    return await reader(now)
+  }
+  catch {
+    return unavailableCloudflarePlatformHealth(now, 'network_error')
+  }
+}
+
+export async function readCloudflarePlatformHealth(
+  now = new Date(),
+  fetcher: typeof fetch = fetch,
+): Promise<CloudflarePlatformHealthDetection> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), CLOUDFLARE_STATUS_TIMEOUT_MS)
+  let responseText: string
+  try {
+    const response = await fetcher(CLOUDFLARE_STATUS_SUMMARY_URL, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      redirect: 'error',
+      signal: controller.signal,
+    })
+    if (!response.ok) return unavailableCloudflarePlatformHealth(now, 'http_error')
+    const declaredLength = Number(response.headers.get('content-length'))
+    if (Number.isFinite(declaredLength) && declaredLength > CLOUDFLARE_STATUS_MAX_RESPONSE_BYTES) {
+      return unavailableCloudflarePlatformHealth(now, 'response_too_large')
+    }
+    responseText = await response.text()
+  }
+  catch {
+    return unavailableCloudflarePlatformHealth(
+      now,
+      controller.signal.aborted ? 'timeout' : 'network_error',
+    )
+  }
+  finally {
+    clearTimeout(timeout)
+  }
+  if (new TextEncoder().encode(responseText).byteLength > CLOUDFLARE_STATUS_MAX_RESPONSE_BYTES) {
+    return unavailableCloudflarePlatformHealth(now, 'response_too_large')
+  }
+
+  let payload: unknown
+  try {
+    payload = JSON.parse(responseText)
+  }
+  catch {
+    return unavailableCloudflarePlatformHealth(now, 'invalid_payload')
+  }
+  const normalized = normalizeCloudflareStatusPayload(payload)
+  if (!normalized) return unavailableCloudflarePlatformHealth(now, 'invalid_payload')
+
+  const evidence: CloudflarePlatformHealthEvidence = {
+    source: 'cloudflare_status_summary_v2',
+    availability: 'available',
+    observedAt: now.toISOString(),
+    sourceUpdatedAt: normalized.sourceUpdatedAt,
+    overallIndicator: normalized.overallIndicator,
+    relevantComponents: normalized.components,
+    relevantIncidents: normalized.incidents,
+  }
+  const degradedComponents = normalized.components.filter(component => component.status !== 'operational')
+  const impactedNames = new Set(degradedComponents.map(component => component.name))
+  for (const incident of normalized.incidents) {
+    for (const component of incident.components) impactedNames.add(component)
+  }
+  if (impactedNames.size === 0 && normalized.incidents.length === 0) {
+    return { available: true, finding: null, evidence }
+  }
+
+  const severity = platformHealthSeverity(degradedComponents, normalized.incidents)
+  return {
+    available: true,
+    finding: {
+      detectorKey: 'cloudflare.platform_health',
+      incidentKey: 'detector:platform_health_anomaly:global',
+      type: 'platform_health_anomaly',
+      domain: 'platform',
+      severity,
+      title: 'Cloudflare 相关平台服务状态异常',
+      summary: '官方状态显示 MeiGallery 依赖的 Cloudflare 服务存在降级、故障或维护；需结合项目自身症状核对影响。',
+      sourceReference: 'cloudflare_status:summary_v2',
+      impactCount: Math.max(1, impactedNames.size),
+      impactScope: {
+        scope: 'cloudflare_public_status',
+        overallIndicator: normalized.overallIndicator,
+        components: [...impactedNames].sort((a, b) => a.localeCompare(b)),
+        componentStatuses: degradedComponents,
+        incidentCount: normalized.incidents.length,
+      },
+      runbookId: 'oprb_cloudflare_platform_health_v1',
+    },
+    evidence,
+  }
+}
+
+function unavailableCloudflarePlatformHealth(
+  now: Date,
+  unavailableReason: NonNullable<CloudflarePlatformHealthEvidence['unavailableReason']>,
+): CloudflarePlatformHealthDetection {
+  return {
+    available: false,
+    finding: null,
+    evidence: {
+      source: 'cloudflare_status_summary_v2',
+      availability: 'unavailable',
+      observedAt: now.toISOString(),
+      unavailableReason,
+    },
+  }
+}
+
+function normalizeCloudflareStatusPayload(payload: unknown): {
+  sourceUpdatedAt: string
+  overallIndicator: CloudflareStatusIndicator
+  components: Array<{ name: string; status: CloudflareComponentStatus }>
+  incidents: Array<{
+    id: string
+    status: string
+    impact: CloudflareIncidentImpact
+    components: string[]
+  }>
+} | null {
+  if (!isRecord(payload) || !isRecord(payload.page) || !isRecord(payload.status)) return null
+  if (!Array.isArray(payload.components) || !Array.isArray(payload.incidents)) return null
+
+  const sourceUpdatedAt = payload.page.updated_at
+  const overallIndicator = payload.status.indicator
+  if (typeof sourceUpdatedAt !== 'string' || !Number.isFinite(Date.parse(sourceUpdatedAt))) return null
+  if (!isCloudflareStatusIndicator(overallIndicator)) return null
+
+  const relevantNames = new Set<string>(RELEVANT_CLOUDFLARE_COMPONENT_NAMES)
+  const relevantComponentIds = new Set<string>()
+  const relevantComponentNamesById = new Map<string, string>()
+  const components: Array<{ name: string; status: CloudflareComponentStatus }> = []
+  for (const component of payload.components) {
+    if (!isRecord(component) || typeof component.id !== 'string' || typeof component.name !== 'string') {
+      return null
+    }
+    if (!relevantNames.has(component.name)) continue
+    if (!isCloudflareComponentStatus(component.status)) return null
+    relevantComponentIds.add(component.id)
+    relevantComponentNamesById.set(component.id, component.name)
+    components.push({ name: component.name, status: component.status })
+  }
+  const discoveredNames = new Set(components.map(component => component.name))
+  if (RELEVANT_CLOUDFLARE_COMPONENT_NAMES.some(name => !discoveredNames.has(name))) return null
+  components.sort((a, b) => a.name.localeCompare(b.name) || a.status.localeCompare(b.status))
+
+  const incidents: Array<{
+    id: string
+    status: string
+    impact: CloudflareIncidentImpact
+    components: string[]
+  }> = []
+  for (const incident of payload.incidents) {
+    if (
+      !isRecord(incident)
+      || typeof incident.id !== 'string'
+      || incident.id.length < 1
+      || incident.id.length > 96
+      || !isCloudflareIncidentStatus(incident.status)
+      || !isCloudflareIncidentImpact(incident.impact)
+      || !Array.isArray(incident.components)
+    ) return null
+    if (incident.status === 'resolved' || incident.status === 'postmortem') continue
+
+    const affectedNames = new Set<string>()
+    for (const component of incident.components) {
+      if (!isRecord(component)) return null
+      const id = typeof component.id === 'string' ? component.id : null
+      const name = typeof component.name === 'string' ? component.name : null
+      if ((!id || !relevantComponentIds.has(id)) && (!name || !relevantNames.has(name))) continue
+      if (name && relevantNames.has(name)) affectedNames.add(name)
+      else if (id) {
+        const matchedName = relevantComponentNamesById.get(id)
+        if (matchedName) affectedNames.add(matchedName)
+      }
+    }
+    if (affectedNames.size === 0) continue
+    incidents.push({
+      id: incident.id.slice(0, 96),
+      status: incident.status.slice(0, 40),
+      impact: incident.impact,
+      components: [...affectedNames].sort((a, b) => a.localeCompare(b)),
+    })
+  }
+  incidents.sort((a, b) => a.id.localeCompare(b.id))
+  return { sourceUpdatedAt, overallIndicator, components, incidents }
+}
+
+function platformHealthSeverity(
+  components: Array<{ status: CloudflareComponentStatus }>,
+  incidents: Array<{ impact: CloudflareIncidentImpact }>,
+): IncidentSeverity {
+  if (
+    components.some(component => component.status === 'major_outage')
+    || incidents.some(incident => incident.impact === 'critical')
+  ) return 'p0'
+  if (
+    components.some(component => component.status === 'partial_outage')
+    || incidents.some(incident => incident.impact === 'major')
+  ) return 'p1'
+  return 'p2'
+}
+
+function isCloudflareComponentStatus(value: unknown): value is CloudflareComponentStatus {
+  return value === 'operational'
+    || value === 'degraded_performance'
+    || value === 'partial_outage'
+    || value === 'major_outage'
+    || value === 'under_maintenance'
+}
+
+function isCloudflareStatusIndicator(value: unknown): value is CloudflareStatusIndicator {
+  return value === 'none' || value === 'minor' || value === 'major' || value === 'critical'
+}
+
+function isCloudflareIncidentImpact(value: unknown): value is CloudflareIncidentImpact {
+  return isCloudflareStatusIndicator(value)
+}
+
+function isCloudflareIncidentStatus(value: unknown): value is string {
+  return value === 'investigating'
+    || value === 'identified'
+    || value === 'monitoring'
+    || value === 'resolved'
+    || value === 'postmortem'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 async function collectOperationalFindings(db: D1Database, now: Date): Promise<DetectorFinding[]> {
   const nowIso = now.toISOString()
   const backlogBoundary = new Date(now.getTime() - 15 * 60_000).toISOString()
   const [
     unauthorizedPublication,
     operatorIdentity,
+    membershipExpiryAccessLeaks,
     duplicateGrants,
     walletRows,
     unreviewedAdjustments,
@@ -1704,6 +2033,84 @@ async function collectOperationalFindings(db: D1Database, now: Date): Promise<De
       FROM app_conversation_messages message
       LEFT JOIN app_conversation_operator_message_facts fact ON fact.message_id = message.id
       WHERE message.sender_type = 'platform_operator' AND fact.message_id IS NULL
+    `).first<{ count: number }>(),
+    db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM (
+        SELECT quota.conversation_id || ':create' AS fact_id
+        FROM app_conversation_quota_consumptions quota
+        JOIN app_membership_grants grant_row ON grant_row.id = quota.membership_grant_id
+        WHERE grant_row.expires_at <= quota.consumed_at
+          AND NOT EXISTS (
+            SELECT 1
+            FROM app_membership_grants active_grant
+            JOIN app_membership_tier_entitlements create_entitlement
+              ON create_entitlement.catalog_version_id = active_grant.catalog_version_id
+             AND create_entitlement.tier_id = active_grant.tier_id
+             AND create_entitlement.entitlement_key = 'direct_message.create'
+            JOIN app_membership_tier_entitlements send_entitlement
+              ON send_entitlement.catalog_version_id = active_grant.catalog_version_id
+             AND send_entitlement.tier_id = active_grant.tier_id
+             AND send_entitlement.entitlement_key = 'direct_message.send'
+            JOIN app_membership_tier_entitlements quota_entitlement
+              ON quota_entitlement.catalog_version_id = active_grant.catalog_version_id
+             AND quota_entitlement.tier_id = active_grant.tier_id
+             AND quota_entitlement.entitlement_key = 'direct_message.new_threads_per_day'
+            WHERE active_grant.user_id = quota.account_id
+              AND active_grant.catalog_version_id = quota.catalog_version_id
+              AND active_grant.starts_at <= quota.consumed_at
+              AND active_grant.expires_at > quota.consumed_at
+              AND create_entitlement.availability = 'available'
+              AND json_extract(create_entitlement.value_json, '$') = 1
+              AND send_entitlement.availability = 'available'
+              AND quota_entitlement.availability = 'available'
+              AND CAST(json_extract(quota_entitlement.value_json, '$') AS INTEGER) > 0
+              AND NOT EXISTS (
+                SELECT 1
+                FROM app_membership_grant_revocations revocation
+                WHERE revocation.grant_id = active_grant.id
+                  AND revocation.revoked_at <= quota.consumed_at
+              )
+          )
+
+        UNION ALL
+
+        SELECT message.id AS fact_id
+        FROM app_conversation_messages message
+        JOIN app_conversations conversation ON conversation.id = message.conversation_id
+        WHERE message.sender_type = 'viewer'
+          AND EXISTS (
+            SELECT 1
+            FROM app_membership_grants expired_grant
+            WHERE expired_grant.user_id = conversation.account_id
+              AND expired_grant.expires_at <= message.created_at
+              AND NOT EXISTS (
+                SELECT 1
+                FROM app_membership_grant_revocations early_revocation
+                WHERE early_revocation.grant_id = expired_grant.id
+                  AND early_revocation.revoked_at < expired_grant.expires_at
+              )
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM app_membership_grants active_grant
+            JOIN app_membership_tier_entitlements send_entitlement
+              ON send_entitlement.catalog_version_id = active_grant.catalog_version_id
+             AND send_entitlement.tier_id = active_grant.tier_id
+             AND send_entitlement.entitlement_key = 'direct_message.send'
+            WHERE active_grant.user_id = conversation.account_id
+              AND active_grant.starts_at <= message.created_at
+              AND active_grant.expires_at > message.created_at
+              AND send_entitlement.availability = 'available'
+              AND json_extract(send_entitlement.value_json, '$') = 1
+              AND NOT EXISTS (
+                SELECT 1
+                FROM app_membership_grant_revocations revocation
+                WHERE revocation.grant_id = active_grant.id
+                  AND revocation.revoked_at <= message.created_at
+              )
+          )
+      ) leaked_membership_facts
     `).first<{ count: number }>(),
     db.prepare(`
       SELECT COUNT(*) AS count FROM (
@@ -1794,6 +2201,18 @@ async function collectOperationalFindings(db: D1Database, now: Date): Promise<De
       sourceReference: 'app_conversation_operator_message_facts',
       impactCount: Number(operatorIdentity!.count), impactScope: { scope: 'global' },
       runbookId: 'oprb_operator_identity_v1',
+    })
+  }
+  if (Number(membershipExpiryAccessLeaks?.count ?? 0) > 0) {
+    findings.push({
+      detectorKey: 'membership.expiry_access',
+      incidentKey: 'detector:membership_expiry_not_revoked:global',
+      type: 'membership_expiry_not_revoked', domain: 'membership', severity: 'p1',
+      title: '会员到期后仍产生需会员授权的消息事实',
+      summary: '检测到话题创建或观看者消息发生时不存在仍有效且允许对应动作的会员 grant；事件只保留聚合数量。',
+      sourceReference: 'app_managed_conversations.membership_expiry_access',
+      impactCount: Number(membershipExpiryAccessLeaks!.count), impactScope: { scope: 'global' },
+      runbookId: 'oprb_membership_integrity_v1',
     })
   }
   if (Number(duplicateGrants?.count ?? 0) > 0) {

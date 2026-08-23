@@ -461,16 +461,11 @@ function diagnosticClass(severity: string) {
 
 <template>
   <div class="mx-auto max-w-[1500px] space-y-6 p-4 sm:p-6 lg:p-8">
-    <header class="overflow-hidden rounded-3xl border border-rose-100 bg-gradient-to-br from-white via-rose-50/70 to-amber-50 p-6 shadow-sm sm:p-8">
-      <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div class="max-w-3xl">
-          <div class="mb-3 flex flex-wrap items-center gap-2 text-xs font-medium text-rose-700"><span class="rounded-full bg-white px-3 py-1 ring-1 ring-rose-200">ADM-MSG-04</span><span>平台话题运营 · Asia/Shanghai</span></div>
-          <h1 class="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">会话质量与抽检</h1>
-          <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-600">队列只展示回复事实。领取并记录目的后才会限时开放目标消息、前后一条上下文和披露卡；抽检人与实际回复操作员强制隔离。</p>
-        </div>
-        <div class="flex flex-wrap gap-2"><NuxtLink to="/admin/app/conversations" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:border-rose-300 hover:text-rose-700">会话队列</NuxtLink><NuxtLink to="/admin/app/conversation-groups" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:border-rose-300 hover:text-rose-700">运营组与班次</NuxtLink></div>
-      </div>
-    </header>
+    <section class="overflow-hidden rounded-2xl border border-[#eaded8] bg-white p-5 shadow-sm sm:p-6">
+      <AdminAppPageHeader page-id="ADM-MSG-04" route="/admin/app/conversation-quality" title="会话质量与抽检" description="领取并记录目的后才限时开放最小正文证据；抽检人与实际回复操作员强制隔离。" :state="pageError ? '加载失败' : status === 'pending' ? '加载中' : '正常'" figma-state="正常" :state-tone="pageError ? 'danger' : status === 'pending' ? 'warning' : 'info'">
+        <template #actions><NuxtLink to="/admin/app/conversations" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:border-rose-300 hover:text-rose-700">会话队列</NuxtLink><NuxtLink to="/admin/app/conversation-groups" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:border-rose-300 hover:text-rose-700">运营组与班次</NuxtLink></template>
+      </AdminAppPageHeader>
+    </section>
 
     <div v-if="successMessage" class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ successMessage }}</div>
     <div v-if="pageError" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{{ pageError }}</div>

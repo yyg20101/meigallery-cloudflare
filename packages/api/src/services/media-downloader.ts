@@ -3,14 +3,22 @@
  * 从 WordPress 原始 URL 下载图片到 R2，视频到 Stream
  */
 
-import { R2_KEY_PREFIX } from '@meigallery/shared/constants'
+import { IMPORT_PACKAGE_LIMITS, R2_KEY_PREFIX } from '@meigallery/shared/constants'
 import { assertSafeExternalUrl, safeExternalFetch } from '../utils/external-url'
+import {
+  assertSupportedImageBytes,
+  sanitizeImportedImage,
+  ZipImportError,
+} from './admin-zip-package'
+
+const REMOTE_MEDIA_REQUEST_TIMEOUT_MS = 60_000
 
 export interface DownloadResult {
   assetId: string
   success: boolean
   r2Key?: string
   streamUid?: string
+  errorCode?: string
   error?: string
 }
 
@@ -24,28 +32,99 @@ export async function downloadImageToR2(
   assetId: string,
 ): Promise<DownloadResult> {
   try {
-    const response = await safeExternalFetch(sourceUrl)
+    const response = await safeExternalFetch(sourceUrl, {
+      signal: AbortSignal.timeout(REMOTE_MEDIA_REQUEST_TIMEOUT_MS),
+    })
     if (!response.ok) {
-      return { assetId, success: false, error: `HTTP ${response.status}` }
+      return {
+        assetId,
+        success: false,
+        errorCode: 'LEGACY_MEDIA_REMOTE_HTTP_ERROR',
+        error: `远程图片返回 HTTP ${response.status}`,
+      }
     }
 
-    const contentType = response.headers.get('content-type') || 'image/jpeg'
-    const ext = contentType.includes('png') ? 'png'
-      : contentType.includes('webp') ? 'webp'
-      : contentType.includes('gif') ? 'gif'
-      : 'jpg'
+    const sourceBytes = await readBoundedResponseBytes(
+      response,
+      IMPORT_PACKAGE_LIMITS.MAX_IMAGE_ENTRY_BYTES,
+    )
+    const ext = assertSupportedImageBytes(sourceBytes, `旧站媒体 ${assetId}`)
+    const bytes = sanitizeImportedImage(sourceBytes, ext)
+    const contentType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
 
     const r2Key = `${R2_KEY_PREFIX.ORIGINALS}/${galleryId}/${assetId}.${ext}`
 
-    await r2.put(r2Key, response.body, {
+    await r2.put(r2Key, bytes, {
       httpMetadata: { contentType },
     })
 
     return { assetId, success: true, r2Key }
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : '未知错误'
-    return { assetId, success: false, error: message }
+    const failure = safeImageDownloadFailure(err)
+    if (failure.errorCode === 'LEGACY_MEDIA_REMOTE_DOWNLOAD_FAILED') {
+      console.error(JSON.stringify({
+        event: 'legacy_media_download_failed',
+        assetId,
+        errorCode: failure.errorCode,
+        errorName: err instanceof Error ? err.name : 'UnknownError',
+      }))
+    }
+    return { assetId, success: false, ...failure }
   }
+}
+
+function safeImageDownloadFailure(error: unknown): Pick<DownloadResult, 'errorCode' | 'error'> {
+  if (error instanceof ZipImportError) {
+    return { errorCode: error.code, error: error.message }
+  }
+  if (error instanceof Error && error.message === '远程图片超过 10 MiB 上限') {
+    return { errorCode: 'LEGACY_MEDIA_REMOTE_TOO_LARGE', error: error.message }
+  }
+  if (error instanceof Error && error.message === '远程图片响应没有内容') {
+    return { errorCode: 'LEGACY_MEDIA_REMOTE_EMPTY', error: error.message }
+  }
+  return {
+    errorCode: 'LEGACY_MEDIA_REMOTE_DOWNLOAD_FAILED',
+    error: '远程图片下载或存储失败，请稍后重试',
+  }
+}
+
+async function readBoundedResponseBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const declaredLength = response.headers.get('content-length')
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > maxBytes) {
+    throw new Error('远程图片超过 10 MiB 上限')
+  }
+  if (!response.body) throw new Error('远程图片响应没有内容')
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let totalBytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) {
+        try {
+          await reader.cancel()
+        } catch {
+          // 保留原始大小错误；连接取消失败不改变安全结论。
+        }
+        throw new Error('远程图片超过 10 MiB 上限')
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const result = new Uint8Array(totalBytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return result
 }
 
 /**
@@ -63,6 +142,7 @@ export async function uploadVideoToStream(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/copy`,
       {
         method: 'POST',
+        signal: AbortSignal.timeout(REMOTE_MEDIA_REQUEST_TIMEOUT_MS),
         headers: {
           'Authorization': `Bearer ${apiToken}`,
           'Content-Type': 'application/json',
@@ -82,14 +162,28 @@ export async function uploadVideoToStream(
     }
 
     if (!result.success || !result.result?.uid) {
-      const errorMsg = result.errors?.[0]?.message || 'Stream API 错误'
-      return { assetId, success: false, error: errorMsg }
+      return {
+        assetId,
+        success: false,
+        errorCode: 'LEGACY_STREAM_COPY_FAILED',
+        error: 'Stream 复制任务创建失败',
+      }
     }
 
     return { assetId, success: true, streamUid: result.result.uid }
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : '未知错误'
-    return { assetId, success: false, error: message }
+    console.error(JSON.stringify({
+      event: 'legacy_stream_copy_failed',
+      assetId,
+      errorCode: 'LEGACY_STREAM_COPY_FAILED',
+      errorName: err instanceof Error ? err.name : 'UnknownError',
+    }))
+    return {
+      assetId,
+      success: false,
+      errorCode: 'LEGACY_STREAM_COPY_FAILED',
+      error: 'Stream 复制任务创建失败',
+    }
   }
 }
 

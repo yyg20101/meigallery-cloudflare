@@ -15,10 +15,22 @@ import {
   claimAdminSafetyAppeal,
   decideAdminSafetyAppeal,
   getAdminSafetyAppeal,
-  listAdminSafetyAppeals,
-  parseAdminSafetyAppealListQuery,
   type AdminSafetyAppealDecisionInput,
 } from '../../services/admin-app-safety-appeals'
+import {
+  getAdminAppealQueueSummary,
+  listAdminAppealQueue,
+  parseAdminAppealQueueQuery,
+} from '../../services/admin-app-appeal-queue'
+import {
+  updateAdminAppealReviewWorkflow,
+  type AdminAppealReviewWorkflowInput,
+} from '../../services/admin-app-appeal-review-workflow'
+import {
+  claimAdminServiceAppeal,
+  decideAdminServiceAppeal,
+  getAdminServiceAppeal,
+} from '../../services/admin-app-service-appeals'
 import {
   claimAdminConversationSafetyEscalation,
   decideAdminConversationSafetyEscalation,
@@ -171,14 +183,32 @@ adminAppSafetyRoutes.post('/escalations/:escalationId/decision', async (c) => {
 adminAppSafetyRoutes.get('/appeals', async (c) => {
   try {
     const config = appealsEnabledConfig(c.env)
-    const query = parseAdminSafetyAppealListQuery({
+    const query = parseAdminAppealQueueQuery({
       status: c.req.query('status'),
-      limit: c.req.query('limit'),
+      sourceType: c.req.query('sourceType'),
+      assignment: c.req.query('assignment'),
+      query: c.req.query('query'),
+      page: c.req.query('page'),
+      pageSize: c.req.query('pageSize'),
     })
     return c.json({
-      data: await listAdminSafetyAppeals(c.env.DB, c.get('userId')!, query),
+      data: await listAdminAppealQueue(c.env.DB, c.get('userId')!, query),
       policyId: config.appealPolicyId,
     })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.get('/appeals/:appealId/summary', async (c) => {
+  try {
+    appealsEnabledConfig(c.env)
+    return c.json({ data: await getAdminAppealQueueSummary(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('appealId'),
+    ) })
   }
   catch (error) {
     return handleSafetyError(c, error)
@@ -188,15 +218,26 @@ adminAppSafetyRoutes.get('/appeals', async (c) => {
 adminAppSafetyRoutes.post('/appeals/:appealId/claim', async (c) => {
   try {
     const config = appealsEnabledConfig(c.env)
-    const data = await claimAdminSafetyAppeal(
-      c.env.DB,
-      c.get('userId')!,
-      c.req.param('appealId'),
-      config.appealPolicyId,
-      c.req.header('Idempotency-Key') ?? null,
-      new Date(),
-      config.requireAppealsProductionReady,
-    )
+    const appealId = c.req.param('appealId')
+    const data = appealId.startsWith('bap_')
+      ? await claimAdminServiceAppeal(
+          c.env.DB,
+          c.get('userId')!,
+          appealId,
+          config.appealPolicyId,
+          c.req.header('Idempotency-Key') ?? null,
+          new Date(),
+          config.requireAppealsProductionReady,
+        )
+      : await claimAdminSafetyAppeal(
+          c.env.DB,
+          c.get('userId')!,
+          appealId,
+          config.appealPolicyId,
+          c.req.header('Idempotency-Key') ?? null,
+          new Date(),
+          config.requireAppealsProductionReady,
+        )
     return c.json({ message: data.replayed ? '已返回原领取结果' : '申诉已领取', data })
   }
   catch (error) {
@@ -208,12 +249,12 @@ adminAppSafetyRoutes.get('/appeals/:appealId', async (c) => {
   try {
     appealsEnabledConfig(c.env)
     requireAppealAccessReason(c.req.query('accessReason'))
-    return c.json({ data: await getAdminSafetyAppeal(
-      c.env.DB,
-      c.get('userId')!,
-      c.req.param('appealId'),
-      c.get('appRequestId') || crypto.randomUUID(),
-    ) })
+    const appealId = c.req.param('appealId')
+    const requestId = c.get('appRequestId') || crypto.randomUUID()
+    const data = appealId.startsWith('bap_')
+      ? await getAdminServiceAppeal(c.env.DB, c.get('userId')!, appealId, requestId)
+      : await getAdminSafetyAppeal(c.env.DB, c.get('userId')!, appealId, requestId)
+    return c.json({ data })
   }
   catch (error) {
     return handleSafetyError(c, error)
@@ -223,17 +264,66 @@ adminAppSafetyRoutes.get('/appeals/:appealId', async (c) => {
 adminAppSafetyRoutes.post('/appeals/:appealId/decision', async (c) => {
   try {
     const config = appealsEnabledConfig(c.env)
-    const data = await decideAdminSafetyAppeal(
+    const appealId = c.req.param('appealId')
+    const input = await c.req.json<AdminSafetyAppealDecisionInput>()
+    const data = appealId.startsWith('bap_')
+      ? await decideAdminServiceAppeal(
+          c.env.DB,
+          c.get('userId')!,
+          appealId,
+          config.appealPolicyId,
+          c.req.header('Idempotency-Key') ?? null,
+          input,
+          new Date(),
+          config.requireAppealsProductionReady,
+        )
+      : await decideAdminSafetyAppeal(
+          c.env.DB,
+          c.get('userId')!,
+          appealId,
+          config.appealPolicyId,
+          c.req.header('Idempotency-Key') ?? null,
+          input,
+          new Date(),
+          config.requireAppealsProductionReady,
+        )
+    return c.json({ message: data.replayed ? '已返回原复核结论' : '复核结论已记录', data })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.post('/appeals/:appealId/request-supplement', async (c) => {
+  try {
+    appealsEnabledConfig(c.env)
+    const data = await updateAdminAppealReviewWorkflow(
       c.env.DB,
       c.get('userId')!,
       c.req.param('appealId'),
-      config.appealPolicyId,
+      'request_supplement',
       c.req.header('Idempotency-Key') ?? null,
-      await c.req.json<AdminSafetyAppealDecisionInput>(),
-      new Date(),
-      config.requireAppealsProductionReady,
+      await c.req.json<AdminAppealReviewWorkflowInput>(),
     )
-    return c.json({ message: data.replayed ? '已返回原复核结论' : '复核结论已记录', data })
+    return c.json({ message: data.replayed ? '已返回原补充请求' : '已请求用户补充必要说明', data })
+  }
+  catch (error) {
+    return handleSafetyError(c, error)
+  }
+})
+
+adminAppSafetyRoutes.post('/appeals/:appealId/escalate', async (c) => {
+  try {
+    appealsEnabledConfig(c.env)
+    const data = await updateAdminAppealReviewWorkflow(
+      c.env.DB,
+      c.get('userId')!,
+      c.req.param('appealId'),
+      'escalate',
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AdminAppealReviewWorkflowInput>(),
+    )
+    return c.json({ message: data.replayed ? '已返回原升级结果' : '申诉已进入升级复核', data })
   }
   catch (error) {
     return handleSafetyError(c, error)

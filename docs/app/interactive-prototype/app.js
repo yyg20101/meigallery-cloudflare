@@ -55,10 +55,10 @@
       short: "进入与账号",
       kicker: "移动端 · 首次进入",
       state: () => state.loggedIn ? "已登录" : "未登录",
-      lead: "用简洁的手机号流程建立账号。普通注册用户仅作为内容观看者，不会自动成为列表中的真人。",
+      lead: "App 1.0 使用邮箱密码登录，注册增加邮箱验证码。普通注册用户仅作为内容观看者，不会自动成为列表中的真人。",
       rule: "注册身份与真人资料完全分离。只有管理员认证或管理员创建并发布的真人资料，才会出现在发现列表。",
       actions: [
-        { label: "填写手机号并登录", action: "login" },
+        { label: "填写邮箱和密码并登录", action: "login" },
         { label: "查看完整业务流程", action: "show-overview" }
       ],
       expected: "登录成功后进入发现页；用户没有资料发布入口，也不会被其他观看者检索。",
@@ -212,13 +212,13 @@
           <div class="welcome-logo">M</div>
           <h2>遇见值得了解的人</h2>
           <p>浏览经过平台审核的真人资料与内容</p>
-          <label class="form-field">${icon("user")}<input id="login-phone" inputmode="tel" value="138 0013 8000" aria-label="手机号" /></label>
-          <label class="form-field">${icon("lock")}<input id="login-code" inputmode="numeric" value="2468" aria-label="验证码" /></label>
+          <label class="form-field">${icon("mail")}<input id="login-email" inputmode="email" value="viewer@example.com" aria-label="邮箱" /></label>
+          <label class="form-field">${icon("lock")}<input id="login-password" type="password" value="password" aria-label="密码" /></label>
           <div class="welcome-actions">
-            <button type="button" class="primary-button hotspot" data-action="login">${icon("login")}手机号登录 / 注册</button>
-            <button type="button" class="secondary-button" data-action="login">快速体验演示账号</button>
+            <button type="button" class="primary-button hotspot" data-action="login">${icon("login")}登录并继续</button>
+            <button type="button" class="secondary-button" data-action="login">注册观看者账号</button>
           </div>
-          <div class="welcome-legal">登录即表示已阅读并同意《用户协议》和《隐私政策》<br />注册用户仅为观看者，不会自动成为公开真人资料。</div>
+          <div class="welcome-legal">注册需逐项确认当前四类生效文档；文档更新后登录也需重新确认。<br />注册用户仅为观看者，不会自动成为公开真人资料。</div>
         </div>
       </div>
     </div>`;

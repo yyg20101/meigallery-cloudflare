@@ -63,7 +63,7 @@ Search-2 在 Search-1 隐私搜索和 Taxonomy-1 稳定目录之上完成以下�
 
 ## 3. API 契约
 
-Search-2 引入契约版本为 `1.15.0`；当前累计 App API v2 契约已由 Recommendation-1 兼容提升为 `1.16.0`。
+Search-2 引入契约版本为 `1.15.0`，Recommendation-1 交付时累计提升为 `1.16.0`；Membership-7 后仓库当前累计 App API v2 契约为 `1.26.0`。
 
 ### 3.1 Bootstrap
 

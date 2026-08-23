@@ -60,14 +60,9 @@ async function runDryRun() {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <NuxtLink :to="`/admin/app/recommendation/rules/${ruleVersionId}`" class="text-sm font-medium text-blue-600 hover:underline">返回规则工作台</NuxtLink>
-        <h1 class="mt-2 text-xl font-bold text-gray-950">推荐 Dry-run 预览</h1>
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">使用与正式推荐相同的资格校验、排序和多样性逻辑，以合成场景预览结果；不产生曝光、不读取真实观看者偏好。</p>
-      </div>
-      <span v-if="rule" class="inline-flex self-start rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset" :class="recommendationStateClass(rule.state)">{{ RECOMMENDATION_STATE_LABELS[rule.state] || rule.state }}</span>
-    </div>
+    <AdminAppPageHeader page-id="ADM-REC-03" :route="`/admin/app/recommendation/rules/${ruleVersionId}/preview`" title="推荐 Dry-run" description="以合成场景比较规则结果；不产生曝光，也不读取真实观看者偏好。" :state="error ? '加载失败' : running ? '运行中' : rule ? (RECOMMENDATION_STATE_LABELS[rule.state] || rule.state) : '正常'" :figma-state="error ? '样本不足' : '正常'" :state-tone="error ? 'danger' : running || status === 'pending' ? 'warning' : 'success'">
+      <template #actions><NuxtLink :to="`/admin/app/recommendation/rules/${ruleVersionId}`" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">返回规则工作台</NuxtLink></template>
+    </AdminAppPageHeader>
 
     <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950"><span class="font-semibold">模拟边界：</span>个性化规则只选取已发布稳定 taxonomy 的合成词条，不绑定账号；公开资格与平台屏蔽规则仍由服务端执行。Dry-run 每次会递增规则编辑锁版本。</div>
     <div v-if="error" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{{ recommendationApiError(error, '规则加载失败。') }} <button class="ml-2 font-semibold underline" @click="refresh()">重试</button></div>

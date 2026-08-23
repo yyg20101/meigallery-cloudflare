@@ -118,21 +118,12 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="rounded-full bg-pink-50 px-2.5 py-1 text-xs font-medium text-pink-700 ring-1 ring-inset ring-pink-200">ADM-MBR-04 / 05</span>
-          <h1 class="text-xl font-bold text-gray-950">创建会员变更</h1>
-        </div>
-        <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">
-          在没有用户会员申请时，也可先确认目标账号，再预览并提交单账号 App 五级会员发放、续期或撤销。App 会员与旧 Web vip/svip 完全隔离。
-        </p>
-      </div>
-      <div class="flex flex-wrap gap-2">
+    <AdminAppPageHeader page-id="ADM-MBR-04" route="/admin/app/membership/grants/new" title="会员发放申请" description="确认目标账号后，预览并提交单账号五级会员发放、续期或撤销；App 会员与旧 Web vip/svip 完全隔离。" figma-state="正常">
+      <template #actions>
         <NuxtLink to="/admin/app/membership/reviews" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100">独立复核队列</NuxtLink>
         <NuxtLink to="/admin/app/membership/applications" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">返回会员申请队列</NuxtLink>
-      </div>
-    </div>
+      </template>
+    </AdminAppPageHeader>
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
       <span class="font-semibold">当前开发边界：</span>

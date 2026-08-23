@@ -2,7 +2,7 @@
 
 App 版本：1.0
 
-日期：2026-08-10
+日期：2026-08-20
 
 状态：需求讨论中
 
@@ -25,7 +25,19 @@ App 版本：1.0
 
 ### 2.1 当前开发进度说明
 
-Privacy-1 已完成默认关闭的跨仓开发基线：App API v2 累计为 `1.17.0`，Cloudflare 已具备数据权利策略、申请状态机、二次验证、申请级状态访问、Nuxt 管理队列与 Operations-1 逾期检测，KMP 已具备响应式申请、记录、详情和取消交互。当前只支持安全登记、追踪和取消；真实导出制品、下载与不可逆注销处理属于 Privacy-2。按当前开发顺序，环境配置、`0094` 执行和专项测试统一后置。
+Privacy-1 已完成默认关闭的登记、跟踪与取消控制面；Privacy-2A 在 `1.24.0` 补齐私有导出，Privacy-2C 又把新制品补齐到 41 类白名单快照、保持旧 35-scope 兼容，并继续复用可恢复 Queue、私有 R2 TAR、重新验证、一次性票据和 KMP 流式保存；Privacy-2B 已补齐九步不可逆删除、七类保留隔离、完成证据和客户端终态清理源码。Operations-2 已把会员自然到期与到期后权限泄漏分开，并以 `0106` 补齐新话题/观看者消息反向核权；Membership-7 又把相同权威时间边界以不参与授权的生命周期快照提供给 KMP。Operations-3 以 `operations-detectors-v3 + 0108` 接入 Cloudflare 官方公共状态，当前可执行 10 类 D1 检测与 1 类平台检测，来源失败只降为 partial，不把公共状态冒充账户级遥测；Operations-4 已以 `operations-metrics-v2` 接入指定 Workers/D1/R2 的账户级 GraphQL 采集器，未配置、空样本或来源异常仍显式非 `known`。Wallet-3 已把钱包保护性冻结接回不可变分录驱动的快照重建、案件关闭和正式解冻闭环，Wallet-4 又补齐显式外部旧余额快照、逐项 Owner 复核和不可变迁移分类。Message-6/7 已补齐通知策略换绑与数据导出失败必要通知；Message-8 已补齐默认关闭的文本消息规则接口、无正文评估、人工复核租约、作者隔离和审核/会话限制站内通知，但 OQ-021/OQ-033 与正式后台审核 Figma 仍未关闭；Message-9 又补齐批准策略下的通知到期边界、延迟事件抑制和有界物理清理。Recommendation-5 已以 `0113` 补齐默认关闭的灰度目标/反指标策略、仅聚合评估、不可变停止和完整回退，真实来源、阈值、保留和监控 UI 仍受决策/Figma 门禁。Legacy Import-2 已把 WordPress → Gallery 的专用任务可见性、来源级串行、单篇成功/失败原子事实、私有来源快照、不可改写审核/失败证据、媒体范围和过期任务恢复收敛到 `0116/0117`；External Import-2 又把 Telegram 接收原子性、专用 Queue、确定性 R2 key、30 分钟租约、过期恢复和安全错误证据收敛到 `0118`。仓库当前累计 App API v2 为 `1.26.0`，页面事实保持 99/408、Mobile 50/208、Admin 49/200。OQ-020/OQ-024/OQ-025 未关闭，三阶段能力继续默认关闭。按当前开发顺序，环境配置、`0094/0102/0103/0105/0106/0107/0108/0109/0110/0111/0112/0113/0114/0115/0116/0117/0118` 执行、构建、专项测试和设备 QA 统一后置。
+
+Recommendation-6 已在不改变 App API、KMP、Nuxt 或 Figma 的前提下补齐推荐解释证据的批准后有界到期清理，并把账号关联会话/条目纳入 Privacy-2B 第四步零残留核验。它新增的 `0114` 同样属于统一后置 migration；真实保留期、稳定密钥生命周期、构建与专项验证仍未执行。
+
+Privacy-2C 已在不增加 migration、公共 DTO 或 UI 状态的前提下追加 6 类本人数据，把新制品范围增至 41 类；执行器按 artifact scope 数完成，旧 35-scope 任务可继续恢复。推荐会话与条目只通过稳定账号 HMAC 定位，摘要与上下文摘要不进入副本；分类契约测试源码已编写但尚未运行。
+
+Interaction-4 已补齐浏览历史批准后的有界到期清理：每日维护只认显式策略 ID、approved 保留决策与 purge 门禁，能力关闭后仍履行既有删除义务；复用 `0078` 到期索引，不新增 API、UI 或 migration。D1 测试源码已编写但尚未运行。
+
+Message-9 已补齐通知正文批准后的完整生命周期：新投递按原始事件时间写不可变到期边界，延迟过期 Outbox 安全抑制；每日维护按 explicit/legacy 稳定顺序有界删除正文与单条已读事件，同时保留分类已读聚合和 Outbox 去重墓碑。`0115` 不回填、不删除、不配置策略；D1 测试源码已编写但尚未运行。
+
+Legacy Import-2 已修复旧后台复用 ZIP 列表和调用不存在任务媒体端点的问题，并把任务/条目可见性、同来源串行、post ID 去重、媒体作用域、单篇成功/失败原子事实、来源快照、结构化失败证据、审核终态、逐页/逐条续租和过期任务恢复闭环写入 `0116/0117`。REST 来源可执行，XML 与 Stream 仍后置；migration、构建、测试和环境 QA 尚未执行。
+
+External Import-2 已把 Telegram 主记录/文件行/accepted 审计与并发每日限额收敛到原子 D1 batch，以专用 `TELEGRAM_IMPORT_QUEUE` 替代 HTTP `waitUntil`，并补齐 payload 白名单验证、确定性 R2 key、稳定标签 slug、处理中目标、pending/failed/fetching 30 分钟 token 租约、显式过期恢复、旧执行器所有权复核、60 秒远端超时、有界图片净化和无底层异常泄漏的失败证据。`0118`、Queue 配置、构建、测试和环境 QA 尚未执行。
 
 ## 3. M0：数据与产品地基
 
@@ -62,7 +74,7 @@ Privacy-1 已完成默认关闭的跨仓开发基线：App API v2 累计为 `1.1
 - 注册、登录、设备和隐私设置。
 - 推荐、地区、热门、最新、搜索和筛选。
 - 真人详情、图库媒体、喜欢、关注、收藏和浏览历史。
-- 通知、举报、拉黑、帮助，以及数据导出/注销的申请、进度和允许阶段取消；真实导出下载与不可逆处理必须通过 Privacy-2 门禁。
+- 通知、举报、拉黑、帮助，以及数据导出/注销的申请、进度和允许阶段取消；导出下载与不可逆注销分别已具备 Privacy-2A/2B 默认关闭实现，浏览历史也已具备 Interaction-4 默认关闭的到期清理，三者仍须各自通过治理、配置和验证门禁。
 
 ### 4.3 后台与运营
 
@@ -77,7 +89,7 @@ Privacy-1 已完成默认关闭的跨仓开发基线：App API v2 累计为 `1.1
 - 所有公开入口只返回 `verified + published`。
 - 暂停资料和媒体凭证撤回满足目标时限。
 - 个性化关闭、非个性化入口和数据清除有效。
-- 无障碍、性能、崩溃、数据权利和安全门禁通过；Privacy-2 未获批准时 production 数据权利 capability 保持关闭。
+- 无障碍、性能、崩溃、数据权利和安全门禁通过；Privacy-2A 未完成正式治理、配置和验证时 production 导出 capability 保持关闭，Privacy-2B 的 OQ-020/OQ-024/OQ-025、`0103`、Queue/Secret 和验证未闭环时不可逆注销始终关闭。
 
 ## 5. M2A：App 1.0 平台话题与手动运营
 
@@ -111,6 +123,8 @@ Privacy-1 已完成默认关闭的跨仓开发基线：App API v2 累计为 `1.1
 - 队列达到 70% 时预警、85% 时限流、100% 时暂停新话题；降级由服务端 capability 控制并给出真实用户说明。
 
 M2A 的功能验收分别以 [会员与手动发放](../ways-of-work/plan/real-person-discovery-platform/membership-entitlements-and-manual-grants/prd.md)、[平台话题与运营接收](../ways-of-work/plan/real-person-discovery-platform/member-messaging-and-managed-operations/prd.md)、[站内通知](../ways-of-work/plan/real-person-discovery-platform/in-app-notification-center/prd.md)、[钱包与调币](../ways-of-work/plan/real-person-discovery-platform/wallet-ledger-and-admin-coin-adjustments/prd.md) 和 [运营看板与审计](../ways-of-work/plan/real-person-discovery-platform/operations-dashboard-and-audit-log/prd.md) 为准。
+
+当前 Membership-6 只完成默认关闭的批量发放服务端编排：有效行逐项进入现有独立复核，不直接产生 grant。OQ-018、`0104`、治理配置、Figma 正式页面、Nuxt UI、构建、测试和双管理员环境验收完成前，不计入 M2A 可运营能力或阶段退出条件。
 
 ## 6. M2B：未来在线商业化
 
@@ -185,6 +199,7 @@ M2A 的功能验收分别以 [会员与手动发放](../ways-of-work/plan/real-p
 - 未认证、未发布、暂停和归档资料在所有入口一致过滤。
 - 授权撤回后媒体和分享链接停止可用。
 - 推荐个性化关闭、规则切换和游标过期。
+- 推荐灰度守护默认关闭、低样本观察、来源缺项、连续反指标越线、不可变阻断和 100% 回退。
 
 ### 10.2 平台话题
 
@@ -196,7 +211,7 @@ M2A 的功能验收分别以 [会员与手动发放](../ways-of-work/plan/real-p
 
 ### 10.3 App 1.0 会员与账本
 
-- 会员申请提交、重复拦截、待补充、拒绝、取消、手动发放、到期、撤销和 entitlement 刷新。
+- 会员申请提交、重复拦截、待补充、拒绝、取消、单笔/批量手动发放、逐项独立复核、部分失败恢复、到期、撤销和 entitlement 刷新。
 - 低风险调币、高风险复核、批量部分失败和冲正。
 - 余额重建、grant/entitlement/分录逐笔对账。
 
@@ -234,6 +249,7 @@ M2A 的功能验收分别以 [会员与手动发放](../ways-of-work/plan/real-p
 
 - Request/Trace ID 贯穿客户端、Worker、DO、Queue、Workflow 和适配器。
 - Dashboard 分产品、消息、商业、安全、迁移和基础设施。
+- 账户级基础设施指标复用 Cloudflare GraphQL Analytics：Workers/R2 使用最近 5 分钟窗口，D1 使用当日 UTC P95；adaptive 数据显式标记采样，空窗口不作为 0。
 - 日志和分析禁止包含平台话题正文、证件、授权原件、完整支付凭证和访问令牌。
 - 告警有严重级别、Owner、响应时限、Runbook 和升级渠道。
 - 关键审计缺失、平台运营身份异常和账本差异属于高优先级事件。

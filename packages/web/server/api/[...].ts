@@ -39,9 +39,17 @@ export default defineEventHandler(async (event) => {
 
   // 读取请求体（仅 POST/PUT/PATCH/DELETE）
   let body: BodyInit | undefined
+  let streamingBody = false
   if (!['GET', 'HEAD'].includes(method)) {
-    const rawBody = await readRawBody(event, false)
-    body = rawBody ? new Uint8Array(rawBody).buffer : undefined
+    const webRequest = (event as typeof event & { web?: { request?: Request } }).web?.request
+    if (webRequest?.body && !webRequest.bodyUsed) {
+      body = webRequest.body
+      streamingBody = true
+    }
+    else {
+      const rawBody = await readRawBody(event, false)
+      body = rawBody ? new Uint8Array(rawBody).buffer : undefined
+    }
   }
 
   let response: Response
@@ -49,19 +57,23 @@ export default defineEventHandler(async (event) => {
   if (apiBinding) {
     // Cloudflare Workers 环境：Service Binding 直连
     // Service Binding 忽略域名，仅使用路径路由到目标 Worker
-    response = await apiBinding.fetch(`https://api.internal${path}`, {
+    const init: RequestInit & { duplex?: 'half' } = {
       method,
       headers: forwardHeaders,
       body,
-    })
+    }
+    if (streamingBody) init.duplex = 'half'
+    response = await apiBinding.fetch(`https://api.internal${path}`, init)
   } else {
     // 本地开发回退：代理到 API 开发服务器
     const apiBaseUrl = config.public.apiBaseUrl as string
-    response = await fetch(`${apiBaseUrl}${path}`, {
+    const init: RequestInit & { duplex?: 'half' } = {
       method,
       headers: forwardHeaders,
       body,
-    })
+    }
+    if (streamingBody) init.duplex = 'half'
+    response = await fetch(`${apiBaseUrl}${path}`, init)
   }
 
   // 转发响应状态

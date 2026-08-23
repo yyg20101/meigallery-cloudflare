@@ -4,7 +4,7 @@ App 版本：1.0
 
 App API：v2 / 契约 `1.3.0`
 
-状态：喜欢与关注保守开发基线
+状态：喜欢与关注保守开发基线；`APP-INT-02` 已按 Figma 完成独立页面增量
 
 ## 1. 目标
 
@@ -14,7 +14,8 @@ App API：v2 / 契约 `1.3.0`
 
 - 资料详情读取本人喜欢/关注状态。
 - 喜欢、取消喜欢、关注、取消关注；同一目标状态重复请求幂等。
-- 本人喜欢列表和已关注列表，均采用不透明游标分页。
+- 本人喜欢列表和已关注列表，均采用绑定账号、关系类型与完整查询上下文的不透明游标分页。
+- 独立 `APP-INT-02` 喜欢页支持最长 40 字符搜索、地区 stable code 与风格 stable term ID 的服务端组合过滤。
 - 已失效资料在本人列表中只显示最小不可用占位，并允许取消关系。
 - Android/iOS 共用领域、网络与 Compose Multiplatform 页面逻辑。
 - bootstrap 明确返回 `interactions.like`、`interactions.follow`、`interactions.favorite` 和 `interactions.history` 能力。
@@ -34,8 +35,8 @@ App API：v2 / 契约 `1.3.0`
 | GET | `/api/v2/person-profiles/:profileId/interactions` | 获取本人对当前可用资料的权威状态 |
 | PUT/DELETE | `/api/v2/person-profiles/:profileId/like` | 幂等喜欢/取消喜欢 |
 | PUT/DELETE | `/api/v2/person-profiles/:profileId/follow` | 幂等关注/取消关注 |
-| GET | `/api/v2/me/likes` | 本人喜欢列表 |
-| GET | `/api/v2/me/follows` | 本人已关注列表 |
+| GET | `/api/v2/me/likes` | 本人喜欢列表；可选 `query`、`region`、`styleTerm` |
+| GET | `/api/v2/me/follows` | 本人已关注列表；可选 `query`、`region`、`styleTerm` |
 
 写入响应和详情状态使用同一 DTO：
 
@@ -70,16 +71,17 @@ App API：v2 / 契约 `1.3.0`
 - 不建立按 `profile_id` 查询观看者名单的产品接口，也不写目标侧通知。
 - PUT 使用当前公开资格条件完成受控插入；DELETE 不要求资料仍公开。
 - 列表只按当前 Access Token 的 `account_id` 查询，禁止调用方提交账号 ID。
-- 私有响应统一 `Cache-Control: no-store`；未知/跨类型游标返回 `INVALID_CURSOR`。
+- 私有响应统一 `Cache-Control: no-store`；未知、跨账号、跨类型、跨查询条件或旧版本游标返回非法请求，客户端按当前条件从首屏重新读取。
 - 生产 Auth capability 仍默认关闭；Interaction-1 不绕过账号、设备、会话、同意和账号状态校验。
 
 ## 6. 客户端交互
 
 - 详情加载完成后再读取本人关系；关系读取失败不隐藏公开资料，但按钮进入可重试状态。
-- 已登录用户点击按钮可先切换视觉状态；写失败必须恢复旧状态并显示安全文案。
+- 详情页允许可回滚的即时反馈；独立喜欢列表取消操作必须先确认，并在服务端明确返回未喜欢后才移除卡片，失败保留旧状态。
 - 在途操作合并，禁止连点形成并发的相反写入。
 - 未登录点击喜欢/关注时进入“我的”登录入口，不伪造成功状态。
-- 一级导航文案使用“关注”；页面内提供“已关注 / 喜欢”切换、空态、错误、分页和不可用占位。
+- 一级导航文案使用“关注”，只承载关注动态与已关注筛选；喜欢通过“我的”进入独立 `APP-INT-02`，不再作为关注页顶部分段。
+- `APP-INT-02` 严格对应 Figma 正式节点 `159:66943`、`159:67025`、`159:67067` 和支持 Section `824:3614` 的 16 张状态稿，覆盖首载/失败、登录失效、能力关闭、筛选、搜索空态、分页、取消喜欢和游标刷新。
 - 所有文案只表达本人记录，例如“已喜欢”“已关注”，禁止“配对成功”“对方已收到”。
 
 ## 7. 验收门禁

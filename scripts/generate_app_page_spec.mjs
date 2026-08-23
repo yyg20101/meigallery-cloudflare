@@ -8,6 +8,7 @@
  */
 
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
@@ -41,9 +42,9 @@ const layoutDescriptions = {
   challenge: '风险原因、验证目标、验证码输入和重试限制按任务顺序纵向组织。',
   preferences: '按地区、风格和主题分组选择，持续披露偏好用途及跳过后的推荐方式。',
   document: '固定展示文档版本、更新时间、完整正文与返回原入口动作。',
-  discover: '推荐范围、搜索、频道和真人卡片构成首屏，认证状态与推荐依据优先展示。',
-  selection: '搜索、当前选择、最近使用和完整目录分区组织，并明确不使用精确定位。',
-  categories: '分类入口按业务维度分组，空分类和目录失效均保留可恢复路径。',
+  discover: '44dp 地区、搜索和筛选入口位于顶部；推荐/地区/热门/最新频道、横向重点真人卡和双列推荐卡按 Figma 首屏顺序展开。',
+  selection: '460dp 底部弹层依次展示隐私说明、当前地区、地区范围、常用城市和应用动作；遮罩、关闭和所有选项均具有独立 44dp 热区。',
+  categories: '顶部返回与页面标题下依次展示本周主题、内容主题、职业身份、风格特质、地区四个分类组和统一目录说明；空分类、加载与目录失效均使用独立 Figma 状态。',
   search: '搜索输入、历史、建议、结果和无结果解释围绕同一搜索任务组织。',
   filter: '基础筛选、高级权益门槛、预计结果数和应用动作处于同一工作面。',
   saved: '已保存条件、额度、目录变化和管理动作按可恢复性组织。',
@@ -53,6 +54,7 @@ const layoutDescriptions = {
   feed: '关注更新按时间组织，不使用匹配、在线或关系暗示。',
   'people-list': '真人列表与移除、筛选或解除动作并列，资料不可用时解释原因。',
   folders: '收藏夹、额度和管理动作按文件夹层级呈现。',
+  'favorite-assignment': '固定标题、服务端事实说明、收藏夹归属列表、规则说明与完成操作；最后一项移出使用独立底部确认层。',
   history: '按时间分组浏览记录，并提供单条清除和全部清除。',
   'chat-list': '平台接收主体、未读、限制状态和话题摘要组成会话列表。',
   confirm: '在创建话题前集中披露会员资格、额度、接收主体和不保证回复。',
@@ -111,25 +113,33 @@ const layoutDescriptions = {
   audit: '查询条件、结果、请求链和受控导出入口构成审计检索工作区。',
   'audit-detail': '事件时间线、脱敏差异和申请—批准—执行关系集中展示。',
   integrity: 'sequence 缺口、无审计业务和校验结果按风险程度组织。',
-  export: '范围、目的、独立复核、短期凭证和过期状态形成受控导出闭环。'
+  export: '范围、目的、独立复核、短期凭证和过期状态形成受控导出闭环。',
+  'search-audit': '就绪指标、运行配置、跨域版本依赖和不可变策略版本共同构成只读核查工作区；页面不提供启用运行配置的捷径。',
+  'membership-review-queue': '复核资格摘要、状态与类型筛选、最小化队列和职责分离提示共同组成会员变更复核入口。',
+  'audit-registry': '观察事实、正式口径、治理阻断、候选编辑、历史影响预览和独立复核申请形成 Action 口径治理闭环。',
+  'audit-registry-review': '候选口径、提交时影响快照、当前 Registry、职责分离、复核说明和不可变结论双栏呈现。',
+  'privacy-queue': '申请类型、脱敏账号、负责人、当前状态和策略时限构成最小化数据权利队列；加载、失败、空队列、治理门禁和逾期均使用独立状态。',
+  'privacy-detail': '脱敏申请事实、策略快照、不可变时间线和处置检查清单双栏呈现；领取、Privacy-2 门禁、失败与只读终态具有独立反馈。'
 }
 
 const FIGMA_FILE_KEY = 'LaNSwwGsznwcpV8msj7BQC'
 const FIGMA_FILE_SLUG = 'Peachmote-UI-%E5%80%9F%E9%89%B4%E5%AE%A1%E6%9F%A5%E6%9D%BF---MeiGallery'
 const FIGMA_PAGE_ID = '9:8'
+const FIGMA_MOBILE_PAGE_ID = '145:57041'
+const FIGMA_ADMIN_PAGE_ID = '145:57042'
 const FIGMA_FINAL_VERSION_ID = '2381987656588552168'
 const FIGMA_DESIGN_URL = `https://www.figma.com/design/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}`
 const FIGMA_FINAL_DELIVERY = Object.freeze({
-  designedPages: 92,
-  designedStates: 349,
-  mobileStates: 186,
-  adminStates: 163,
-  flowPreviews: 92,
-  mobilePageActions: 382,
-  mobileFlowActions: 128,
-  adminPageActions: 1408,
-  adminFlowActions: 366,
-  totalActions: 2284,
+  designedPages: 99,
+  designedStates: 408,
+  mobileStates: 208,
+  adminStates: 200,
+  flowPreviews: 99,
+  mobilePageActions: 914,
+  mobileFlowActions: 180,
+  adminPageActions: 2043,
+  adminFlowActions: 434,
+  historicalActionBaseline: 3571,
   missingDestinations: 0,
   undersizedMobileTouchTargets: 0,
   unstyledText: 0,
@@ -139,9 +149,44 @@ const FIGMA_FINAL_DELIVERY = Object.freeze({
   textOverflow: 0
 })
 
-function figmaPrototypeUrl(frameId) {
+const NEW_ADMIN_FIGMA_FRAMES = Object.freeze({
+  'ADM-SRC-01': Object.freeze({
+    normal: '965:17409',
+    states: Object.freeze({
+      正常: '965:17409', 加载中: '965:17620', 加载失败: '965:17834',
+      尚未就绪: '965:18048', 无策略版本: '965:18259'
+    })
+  }),
+  'ADM-MBR-07': Object.freeze({
+    normal: '966:17714',
+    states: Object.freeze({
+      待复核: '966:17714', 加载中: '966:17928', 加载失败: '966:18145',
+      空队列: '966:18364', 仅本人发起: '966:18550', 账号已变化: '966:18764'
+    })
+  }),
+  'ADM-AUD-05': Object.freeze({
+    normal: '967:18080',
+    states: Object.freeze({
+      正常: '967:18080', 加载中: '967:18297', 加载失败: '967:18517',
+      '未登记 Action': '967:18739', 治理阻断: '967:18956', 候选编辑: '967:19176', 提交失败: '967:19383'
+    })
+  }),
+  'ADM-AUD-06': Object.freeze({
+    normal: '969:18507',
+    states: Object.freeze({
+      待复核: '969:18507', 加载中: '969:18673', 加载失败: '969:18842',
+      申请人冲突: '969:19013', 基线变化: '969:19177', 终态只读: '969:19341'
+    })
+  })
+})
+
+function figmaPrototypeUrl(frameId, pageId = FIGMA_PAGE_ID) {
   const nodeId = frameId.replace(':', '-')
-  return `https://www.figma.com/proto/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}?node-id=${nodeId}&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=${encodeURIComponent(frameId)}&show-proto-sidebar=1&page-id=${encodeURIComponent(FIGMA_PAGE_ID)}`
+  return `https://www.figma.com/proto/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}?node-id=${nodeId}&scaling=min-zoom&content-scaling=fixed&starting-point-node-id=${encodeURIComponent(frameId)}&show-proto-sidebar=1&page-id=${encodeURIComponent(pageId)}`
+}
+
+function figmaDesignNodeUrl(frameId) {
+  return `${FIGMA_DESIGN_URL}?node-id=${frameId.replace(':', '-')}`
 }
 
 function figmaState({
@@ -149,6 +194,10 @@ function figmaState({
   screen,
   frameId,
   image,
+  imageDirectory = 'phase14',
+  expectedWidth = 874,
+  expectedHeight = 1792,
+  figmaPageId = FIGMA_PAGE_ID,
   trigger,
   interaction,
   expected,
@@ -158,12 +207,1354 @@ function figmaState({
     state,
     screen,
     frameId,
-    image: `figma-final/phase14/${image}`,
+    image: `figma-final/${imageDirectory}/${image}`,
+    expectedWidth,
+    expectedHeight,
     trigger,
     interaction,
     expected,
     authority,
-    prototypeUrl: figmaPrototypeUrl(frameId)
+    prototypeUrl: figmaPrototypeUrl(frameId, figmaPageId)
+  }
+}
+
+function supplementalFigmaState({
+  state,
+  frameId,
+  image,
+  trigger,
+  interaction,
+  expected,
+  authority
+}) {
+  return {
+    state,
+    frameId,
+    image,
+    trigger,
+    interaction,
+    expected,
+    authority
+  }
+}
+
+// 已完成逐状态 Figma 复核、但除默认态外不扩充客户文档注册映射的页面。
+// 这些图片直接嵌入 MD，避免后续重新生成时退回旧 HTML 原型或遗漏独立状态。
+const supplementalFigmaStateSpecs = Object.freeze({
+  'APP-DSC-01': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '159:61979',
+      image: 'mobile/app-dsc-01__default.png',
+      trigger: '推荐目录、推荐会话和首屏数据同步成功。',
+      interaction: '可切换推荐、地区、热门、最新频道；点击地区、搜索、筛选、卡片主体或独立喜欢热区进入对应任务。',
+      expected: '首屏按 Figma 顺序展示顶部入口、频道、横向重点真人和双列推荐卡，所有交互目标不小于 44dp。',
+      authority: '卡片、推荐理由、排序和地区结果均来自服务端当前推荐投影。'
+    }),
+    supplementalFigmaState({
+      state: '首次空',
+      frameId: '159:62126',
+      image: 'mobile/app-dsc-01__state-02.png',
+      trigger: '当前推荐模式、排序和地区条件查询成功，但没有可展示真人。',
+      interaction: '保留顶部入口和底部导航，用户可切换频道、扩大地区范围或清除筛选。',
+      expected: '空结果具有明确原因和恢复动作，不使用虚构真人或历史结果冒充当前结果。',
+      authority: '空状态来自成功响应的空集合，不与网络失败或目录失效混淆。'
+    }),
+    supplementalFigmaState({
+      state: '骨架',
+      frameId: '159:62283',
+      image: 'mobile/app-dsc-01__state-03.png',
+      trigger: '首次进入或条件切换后尚未取得可展示的权威首屏。',
+      interaction: '地区、搜索和筛选入口保持可识别；骨架卡不响应资料或喜欢操作。',
+      expected: '骨架尺寸与最终卡片一致，加载完成后不产生明显布局跳动。',
+      authority: '骨架不承载真人、认证、推荐理由或互动状态等业务事实。'
+    }),
+    supplementalFigmaState({
+      state: '分页',
+      frameId: '159:62441',
+      image: 'mobile/app-dsc-01__state-04.png',
+      trigger: '接近列表末尾且服务端仍返回 nextCursor。',
+      interaction: '自动加载下一页并防重复请求；失败时保留已有卡片、当前位置和原游标，提供非阻断重试。',
+      expected: '成功后按稳定 profileId 去重追加，nextCursor 为空后停止请求。',
+      authority: '分页游标、排序和去重键均由当前服务端响应决定，客户端不推算页码。'
+    }),
+    supplementalFigmaState({
+      state: '离线缓存',
+      frameId: '159:62597',
+      image: 'mobile/app-dsc-01__state-05.png',
+      trigger: '当前离线，且存在与 sort、推荐模式和地区 code 完全一致的本次运行缓存。',
+      interaction: '显示缓存时间与重试入口；允许只读浏览已缓存卡片，禁用喜欢和依赖联网的筛选提交。',
+      expected: '明确结果并非最新；网络恢复后重新读取权威首屏并移除离线提示。',
+      authority: '缓存只读且不得跨条件复用，不能证明真人、认证或授权仍然有效。'
+    }),
+    supplementalFigmaState({
+      state: '规则刷新',
+      frameId: '159:62753',
+      image: 'mobile/app-dsc-01__state-06.png',
+      trigger: '推荐会话、规则版本或目录版本变化，现有排序不再代表当前结果。',
+      interaction: '页面进入显式刷新态并重新请求首屏；刷新失败提供安全重试，不把旧排序继续标记为当前。',
+      expected: '刷新成功后以新 session/version 原子替换列表、理由和游标。',
+      authority: '推荐规则版本和会话由服务端签发，客户端不得拼接新旧页。'
+    })
+  ],
+  'APP-DSC-02': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '159:62911',
+      image: 'mobile/app-dsc-02__default.png',
+      trigger: '用户点击推荐页顶部地区入口或“地区”频道，且地区目录可用。',
+      interaction: '在 460dp 底部弹层内选择地区范围或常用城市；选择只修改草稿，点击应用后才提交。',
+      expected: '当前地区、范围、城市和主按钮按 Figma 层级展示，遮罩、关闭和每个选项均有独立 44dp 热区。',
+      authority: '提交只使用服务端稳定地区 code；“全国”使用 null，展示名称不作为查询键。'
+    }),
+    supplementalFigmaState({
+      state: '定位未使用',
+      frameId: '159:63100',
+      image: 'mobile/app-dsc-02__state-02.png',
+      trigger: '客户端未申请持续定位，用户仍通过目录手动选择模糊地区。',
+      interaction: '说明定位未使用后继续选择范围或城市；不触发系统定位授权，不显示精确距离。',
+      expected: '用户可完整完成地区筛选，且清楚该选择仅用于内容范围。',
+      authority: '地区偏好来自用户显式选择，不从设备定位或第三方画像推断。'
+    }),
+    supplementalFigmaState({
+      state: '目录更新',
+      frameId: '159:63298',
+      image: 'mobile/app-dsc-02__state-03.png',
+      trigger: '已保存地区 code 在新目录版本中被重命名、合并、下线或失效。',
+      interaction: '展示目录更新说明并要求用户重新确认有效范围；不静默映射为同名字符串。',
+      expected: '仅有效稳定 code 可被应用，失效选择不会继续影响推荐。',
+      authority: '服务端目录版本、词条状态和替代关系是唯一权威。'
+    }),
+    supplementalFigmaState({
+      state: '无结果',
+      frameId: '159:63496',
+      image: 'mobile/app-dsc-02__state-04.png',
+      trigger: '当前地区条件有效，但推荐查询成功且没有可展示真人。',
+      interaction: '提示卡与弹层保持 24dp 间距；用户可选择更大范围、其他城市或全国后重新应用。',
+      expected: '保留当前草稿和完整选择能力，不自动扩大范围或展示其他地区结果。',
+      authority: '无结果不改变用户选择；只有用户点击应用后才提交新的地区 code。'
+    })
+  ],
+  'APP-DSC-03': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '159:63697',
+      image: 'mobile/app-dsc-03__default.png',
+      trigger: '服务端分类目录版本有效，且存在当前可公开浏览的分类组与稳定词条。',
+      interaction: '点击本周主题直接以稳定 term ID 进入结果；内容主题、职业身份、风格特质进入对应筛选面板，地区进入 APP-DSC-02。',
+      expected: '分类层级、推荐主题和统一目录说明按 Figma 展示，各卡片及返回、底部导航热区均不小于 44dp。',
+      authority: '顺序、展示名、稳定 ID、目录版本和词条状态均由服务端目录决定。'
+    }),
+    supplementalFigmaState({
+      state: '空分类',
+      frameId: '159:63800',
+      image: 'mobile/app-dsc-03__state-02.png',
+      trigger: '目录请求成功，但当前可用范围内没有可公开展示的分类或真人。',
+      interaction: '用户可重新读取分类，或进入热门推荐；页面不自动创建分类、扩大范围或伪造结果。',
+      expected: '空状态明确区分“请求成功但无内容”与网络失败，主次恢复路径均可达。',
+      authority: '可公开分类与可展示真人集合由服务端权威响应决定。'
+    }),
+    supplementalFigmaState({
+      state: '目录失效',
+      frameId: '159:63865',
+      image: 'mobile/app-dsc-03__state-03.png',
+      trigger: '已保存的分类 stable ID 因合并、下线、重定向或目录版本变更而不再可用。',
+      interaction: '页面提供重新读取当前目录、返回分类页和查看目录变化说明；不按展示名猜测映射。',
+      expected: '重读成功后只使用新版本有效 ID；无法安全重定向的词条停止使用并等待用户重选。',
+      authority: '合并关系、替代 ID、下线状态和版本均以服务端目录为准。'
+    })
+  ],
+  'APP-DSC-04': [
+    supplementalFigmaState({
+      state: '初始',
+      frameId: '159:63946',
+      image: 'mobile/app-dsc-04__default.png',
+      trigger: '用户从推荐页搜索入口进入，搜索能力可用且尚未提交本次查询。',
+      interaction: '可进入输入态、筛选、已保存条件、全部分类，复用最近搜索或热门发现，并通过“管理历史”进入逐条删除、清空全部或关闭记录。',
+      expected: '搜索入口、最近搜索、热门发现和底部导航按 Figma 层级展示，所有可见操作均具有不小于 44dp 的独立热区。',
+      authority: '最近搜索只来自当前账号的权威历史设置与记录；热门词仅作为显式搜索入口，不代表人物事实。'
+    }),
+    supplementalFigmaState({
+      state: '输入中',
+      frameId: '159:64061',
+      image: 'mobile/app-dsc-04__state-02.png',
+      trigger: '用户聚焦搜索框并输入展示名、地区、职业或已审核标签。',
+      interaction: '可清空输入、进入筛选或已保存条件、选择公开索引建议，或提交规范化后的搜索词。',
+      expected: '输入内容始终可见，清空和提交动作独立；建议不包含法定姓名、内部备注或其他非公开字段。',
+      authority: '查询长度、可搜索字段、建议来源和可用排序由服务端 capability 与公开索引约束。'
+    }),
+    supplementalFigmaState({
+      state: '有结果',
+      frameId: '159:64147',
+      image: 'mobile/app-dsc-04__state-03.png',
+      trigger: '搜索请求成功并返回至少一条当前可公开展示的人物资料。',
+      interaction: '可修改搜索、调整筛选、打开已保存条件、进入人物详情或查看平台认证规则；接近末尾时使用服务端游标分页。',
+      expected: '结果卡展示当前公开投影、命中原因和认证标识，加载更多按稳定 profileId 去重且不重排已有卡片。',
+      authority: '结果集合、命中原因、认证状态、排序和 nextCursor 均以当前服务端响应为准。'
+    }),
+    supplementalFigmaState({
+      state: '无结果',
+      frameId: '159:64252',
+      image: 'mobile/app-dsc-04__state-04.png',
+      trigger: '关键词与筛选组合请求成功，但当前公开快照返回空集合。',
+      interaction: '保留关键词和条件，用户可修改搜索词、进入筛选主动放宽，或返回热门推荐。',
+      expected: '明确区分成功空结果与请求失败，不自动扩大范围，也不用未认证资料补位。',
+      authority: '空结果由当前公开快照决定；只有用户显式修改关键词或筛选后才执行新查询。'
+    }),
+    supplementalFigmaState({
+      state: '历史关闭',
+      frameId: '159:64339',
+      image: 'mobile/app-dsc-04__state-05.png',
+      trigger: '当前账号的搜索历史记录开关处于关闭状态。',
+      interaction: '页面不展示最近搜索，仍允许基础搜索、筛选和已保存条件，并提供显式“开启搜索历史”动作；不以历史关闭阻断搜索。',
+      expected: '关闭状态具有明确隐私说明，后续成功搜索不写入账号历史，底部导航保持可用。',
+      authority: '记录开关、保留天数和历史条目由服务端账号设置决定，客户端不私自创建本地历史。'
+    })
+  ],
+  'APP-DSC-05': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '159:64428',
+      image: 'mobile/app-dsc-05__default.png',
+      trigger: '筛选目录、当前账号筛选能力和当前条件预估均已成功读取。',
+      interaction: '以稳定 term ID 选择地区、风格、职业身份等条件；同组条件取并集、跨组取交集，400ms 防抖后更新预估；可清空、保存或应用。',
+      expected: '弹层顶部提供保存与清空，底部同时展示已选数量、服务端预估和主操作；所有选项具有独立 44dp 热区。',
+      authority: '目录版本、词条状态、会员门槛、预估数量和最终结果均来自服务端，展示名称不作为查询键。'
+    }),
+    supplementalFigmaState({
+      state: '权益门槛',
+      frameId: '159:64628',
+      image: 'mobile/app-dsc-05__state-02.png',
+      trigger: '当前账号选择了基础或完整会员等级才能使用的筛选条件。',
+      interaction: '保留所有已选条件；受限条件进入会员权益页，基础条件仍可调整；无权条件不得应用或保存。',
+      expected: '明确说明风格、职业、场景等等级门槛，摘要不显示虚假人数，主操作改为查看会员权益。',
+      authority: '客户端只解释 capability 与 requiredRank，是否可用仍由服务端 entitlement 校验。'
+    }),
+    supplementalFigmaState({
+      state: '目录冲突',
+      frameId: '159:64837',
+      image: 'mobile/app-dsc-05__state-03.png',
+      trigger: 'catalogVersionId 变化，所选 term ID 被合并、重定向、下线或失效。',
+      interaction: '保留仍有效的选择和冲突上下文；重新加载目录后按服务端重定向结果等待用户确认，不按展示名猜测映射。',
+      expected: '摘要明确保留数量与目录刷新要求，应用按钮改为重新加载目录，保存动作禁用。',
+      authority: '有效词条、替代关系和新目录版本以服务端目录响应为唯一权威。'
+    }),
+    supplementalFigmaState({
+      state: '无结果',
+      frameId: '159:65046',
+      image: 'mobile/app-dsc-05__state-04.png',
+      trigger: '当前条件合法且预估请求成功，但可展示人物数量为 0。',
+      interaction: '保持当前条件不变；用户可逐项调整、清空后查看全部人物，或保存当前条件稍后使用。',
+      expected: '状态卡、摘要和主按钮统一显示 0 结果语义，不使用旧人数、扩大范围或未认证资料补位。',
+      authority: '0 结果来自当前服务端公开投影；只有用户主动修改条件后才重新预估。'
+    })
+  ],
+  'APP-DSC-06': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '159:65258',
+      image: 'mobile/app-dsc-06__default.png',
+      trigger: '当前账号保存条件列表、最新 taxonomy 解释、会员权限与额度均读取成功。',
+      interaction: '每张卡可先重新复核再使用、进入编辑条件流程或打开删除确认；底部导航和返回动作保持独立。',
+      expected: '卡片只展示名称、当前有效条件摘要和默认排序，不展示持久化或过期的结果数量；顶部显示权威额度。',
+      authority: '名称、版本、stable term ID、目录解释、默认排序和额度均来自本人账号的服务端响应。'
+    }),
+    supplementalFigmaState({
+      state: '空',
+      frameId: '159:65411',
+      image: 'mobile/app-dsc-06__state-02.png',
+      trigger: '列表请求成功且当前账号没有有效保存条件。',
+      interaction: '用户可返回搜索和筛选创建第一组条件，也可通过底部导航离开；页面不创建本地示例条件。',
+      expected: '额度明确显示 0 / 当前上限，空态与加载失败可区分，主操作进入搜索而不是直接生成保存条件。',
+      authority: '空集合和当前上限以服务端账号作用域列表为准。'
+    }),
+    supplementalFigmaState({
+      state: '额度满',
+      frameId: '159:65477',
+      image: 'mobile/app-dsc-06__state-03.png',
+      trigger: '创建新条件时服务端返回当前已用数量达到会员额度。',
+      interaction: '既有条件继续允许复核、编辑和删除；用户可删除不常用条件或查看会员权益，不在 App 内购买。',
+      expected: '未成功创建的新条件不进入列表，现有条件保持不变，额度与会员授予边界清晰可见。',
+      authority: '上限、已用数量和是否可创建由服务端 entitlement 与原子额度校验决定。'
+    }),
+    supplementalFigmaState({
+      state: '标签已合并',
+      frameId: '159:65577',
+      image: 'mobile/app-dsc-06__state-04.png',
+      trigger: '保存条件引用的 stable term ID 已被当前目录显式重定向到合并目标。',
+      interaction: '页面提示目录解释已更新；使用前仍重新 preview，编辑或删除均携带当前版本，不按展示名猜测替代项。',
+      expected: '卡片显示新的安全展示名称但保留来源关系，合并不会扩大查询，也不自动覆盖另一设备修改。',
+      authority: '重定向目标、当前目录版本和 canonical 条件由服务端 taxonomy closure 响应决定。'
+    })
+  ],
+  'APP-DSC-07': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '159:65741',
+      image: 'mobile/app-dsc-07__default.png',
+      trigger: '人物仍为管理员认证并发布，当前账号可读取公开资料，相关 capability 已通过客户端契约校验。',
+      interaction: '顶部返回、分享和更多操作相互独立；资料正文、公开图库、平台接收披露和认证范围按当前权威数据展示；喜欢、关注、收藏为单向关系，发起话题前先展示平台运营接收说明。',
+      expected: '只展示服务端当前公开投影，不暗示本人在线、本人回复或双方匹配；所有主要操作具有至少 44dp 热区，并在提交、失败与成功状态之间保持明确出口。',
+      authority: '人物发布资格、认证标签、媒体可见性、互动状态、会员权益、平台接收主体和安全原因均由服务端响应决定。'
+    }),
+    supplementalFigmaState({
+      state: '下架',
+      frameId: '159:65841',
+      image: 'mobile/app-dsc-07__state-02.png',
+      trigger: '人物被下架、撤回展示授权、暂停公开或已不存在，服务端不再返回可展示详情。',
+      interaction: '立即停止展示缓存资料、图片和互动入口；只保留返回发现、查看帮助和当前状态说明。',
+      expected: '页面明确区分下架与网络失败，不使用历史缓存绕过当前服务端状态，也不保留可继续操作的热区。',
+      authority: '下架原因和是否恢复公开完全由服务端状态决定，客户端不得自行猜测或延长缓存可见期。'
+    }),
+    supplementalFigmaState({
+      state: '受限',
+      frameId: '159:65952',
+      image: 'mobile/app-dsc-07__state-03.png',
+      trigger: '人物仍存在，但当前账号、地区或访问策略不允许读取该资料详情。',
+      interaction: '不展示资料正文和媒体，只提供返回发现、查看帮助与服务端访问限制说明。',
+      expected: '受限状态不泄露被保护内容，不把登录、升级或客户端隐藏按钮当作绕过权限的方式。',
+      authority: '访问资格由服务端按当前账号和策略校验；客户端仅解释结果，不硬编码会员名称或地区白名单。'
+    }),
+    supplementalFigmaState({
+      state: '离线摘要',
+      frameId: '159:66063',
+      image: 'mobile/app-dsc-07__state-04.png',
+      trigger: '本次运行曾安全读取同一人物资料，随后发生网络或服务暂不可用。',
+      interaction: '只展示本次会话内最近一次安全摘要与同步说明；喜欢、关注、收藏、分享、媒体和发起话题均暂停，用户可重新连接或查看帮助。',
+      expected: '离线摘要带新鲜度说明且不落盘，不把旧资料标记为当前事实，不写入任何本地假互动。',
+      authority: '仅网络或服务暂不可用可使用同 profileId 的会话内摘要；下架、受限或校验失败必须清除缓存。'
+    }),
+    supplementalFigmaState({
+      state: '媒体不可用',
+      frameId: '159:66172',
+      image: 'mobile/app-dsc-07__state-05.png',
+      trigger: '人物公开资料仍可读取，但公开图库 capability、媒体清单或短期访问授权暂不可用。',
+      interaction: '保留人物资料、认证、平台披露和允许的互动；媒体区单独显示错误与重试，不清空整页或复用旧媒体授权。',
+      expected: '媒体失败与人物下架分离；重试只重新请求媒体，受保护媒体凭证不进入 UI、Domain 或持久化存储。',
+      authority: '媒体清单、requiredRank、公开状态和短期访问授权均由 Media API 逐次校验。'
+    })
+  ],
+  'APP-DSC-08': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '159:66285',
+      image: 'mobile/app-dsc-08__default.png',
+      trigger: '人物与当前图片仍满足公开资格，媒体字节已通过 Worker 安全返回并仅存在于当前页面内存。',
+      interaction: '用户可返回人物详情、查看媒体说明、双指或按钮缩放、查看下一张、举报当前图片和打开资料认证范围；最后一张存在 nextCursor 时先进入分页加载。',
+      expected: '全屏图片、页码、标题、授权说明和底部动作与 Figma 一致；不虚构媒体总量、更新时间、会员名称或长期资源地址。',
+      authority: '人物资格、媒体清单、访问类型、会员权限、短期凭证和图片内容均由服务端逐次校验。'
+    }),
+    supplementalFigmaState({
+      state: '访问凭证刷新',
+      frameId: '159:66346',
+      image: 'mobile/app-dsc-08__state-02.png',
+      trigger: '受保护图片的短期访问窗口到期，当前人物、账号和媒体仍停留在同一查看任务。',
+      interaction: '短暂保留当前内存图片并自动重新请求一次授权；刷新期间禁止重复翻页或把旧 URL 写入缓存，用户仍可返回。',
+      expected: '刷新成功后恢复同一图片；会员、会话或资料资格变化时进入对应登录、权益不足或内容隐藏状态。',
+      authority: '访问凭证、有效期、账号会话、会员 rank 和媒体可见性以服务端当前响应为准。'
+    }),
+    supplementalFigmaState({
+      state: '图片加载失败',
+      frameId: '159:66400',
+      image: 'mobile/app-dsc-08__state-03.png',
+      trigger: '当前图片内容请求发生网络、服务、凭证或可重试响应错误，且尚未得到可安全展示的字节。',
+      interaction: '仅重新加载当前媒体，或返回人物详情、查看帮助；不会重放人物互动、改变会员或使用历史资源地址。',
+      expected: '失败原因使用用户安全文案；重试只影响当前图片，既有列表和人物位置不被无关清空。',
+      authority: '错误类型、是否可重试和重新授权结果由 Media API 返回，客户端未知错误安全拒绝。'
+    }),
+    supplementalFigmaState({
+      state: '内容隐藏',
+      frameId: '159:66437',
+      image: 'mobile/app-dsc-08__state-04.png',
+      trigger: '人物暂停公开、授权撤回、安全隐藏或当前服务端资格谓词不再通过。',
+      interaction: '停止刷新并清理当前媒体状态，只保留返回人物详情、查看公开推荐、举报问题或帮助出口。',
+      expected: '不展示历史图片、人物正文或内部下架原因，也不把登录或升级作为绕过方式。',
+      authority: '是否可展示由服务端统一人物公开资格谓词决定；客户端只呈现通用不可用状态。'
+    })
+  ],
+  'APP-DSC-09': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '159:66476',
+      image: 'mobile/app-dsc-09__default.png',
+      trigger: '人物仍满足公开资格，认证记录与当前资料版本一致且四项公开核验完整有效。',
+      interaction: '展示认证范围、最近核验与资料版本；可返回真人详情、查看平台认证规则或举报认证问题。',
+      expected: '四项核验和平台代运营边界按 Figma 完整展示；认证不被解释为本人运营、本人回复或平台背书。',
+      authority: '认证范围、版本、时间、运营模式和责任边界均来自服务端当前认证说明。'
+    }),
+    supplementalFigmaState({
+      state: '认证失效',
+      frameId: '159:66553',
+      image: 'mobile/app-dsc-09__state-02.png',
+      trigger: '进入说明后服务端确认人物已停止公开，或认证、授权、发布、安全门禁不再有效。',
+      interaction: '停止使用旧认证事实，只保留返回真人详情、查看规则和举报或申诉说明出口。',
+      expected: '旧认证不再用于搜索、推荐、媒体凭证或新平台话题；页面不泄漏内部撤回原因。',
+      authority: '认证是否仍有效和公开入口是否收敛由服务端当前资格谓词决定。'
+    }),
+    supplementalFigmaState({
+      state: '资料变化',
+      frameId: '159:66636',
+      image: 'mobile/app-dsc-09__state-03.png',
+      trigger: '当前会话曾读取认证说明，后续服务端返回了不同的资料版本。',
+      interaction: '保留最近一次已知摘要并明确等待刷新；用户可重新读取认证信息、返回真人详情或查看规则。',
+      expected: '刷新中、失败和成功都有独立状态；旧摘要不被继续标记为当前有效认证事实。',
+      authority: '版本变化由稳定 profileId 与服务端 profileVersion 比较得出，展示文案不替代版本号。'
+    })
+  ],
+  'APP-INT-06': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '894:3616',
+      image: 'mobile/app-int-06__default.png',
+      trigger: '人物收藏状态与收藏夹摘要均已从服务端读取成功。',
+      interaction: '点击任意收藏夹立即提交单项归属变更；页面完成或返回时不再重复提交。',
+      expected: '展示当前权威勾选、收藏夹人数和类型；喜欢与关注状态不受影响。',
+      authority: '勾选状态、收藏状态和人数均以服务端响应为准。'
+    }),
+    supplementalFigmaState({
+      state: '加载中',
+      frameId: '896:3614',
+      image: 'figma-final/phase15/app-int-06-loading.png',
+      trigger: '首次进入或读取失败后重新加载收藏归属。',
+      interaction: '保持返回可用，禁用完成和收藏夹选择，不使用旧勾选冒充当前结果。',
+      expected: '等高骨架保持布局稳定，读取完成后整体切换到权威结果。',
+      authority: '加载态不承载收藏归属、人数或资料可用性事实。'
+    }),
+    supplementalFigmaState({
+      state: '读取失败',
+      frameId: '896:3677',
+      image: 'figma-final/phase15/app-int-06-load-failed.png',
+      trigger: '收藏夹或当前人物收藏状态读取失败。',
+      interaction: '允许重新加载或安全返回，失败前不执行任何归属修改。',
+      expected: '明确说明未修改数据，不展示不完整列表或缓存勾选。',
+      authority: '只有完整读取成功后才允许编辑。'
+    }),
+    supplementalFigmaState({
+      state: '更新中',
+      frameId: '896:3740',
+      image: 'figma-final/phase15/app-int-06-updating.png',
+      trigger: '用户选择加入或移出某个收藏夹并已发起服务端请求。',
+      interaction: '只标记目标行并锁定其他选择、完成与返回后的重复提交。',
+      expected: '服务端确认前保留旧勾选，不进行乐观更新。',
+      authority: '归属变化只在服务端返回成功后生效。'
+    }),
+    supplementalFigmaState({
+      state: '更新失败',
+      frameId: '898:3616',
+      image: 'figma-final/phase15/app-int-06-update-failed.png',
+      trigger: '单个收藏夹归属更新被网络、权限、版本或业务规则拒绝。',
+      interaction: '保留原权威勾选并标出失败目标，可只重试该行或完成返回。',
+      expected: '失败不影响其他收藏夹，也不把本地意图显示为已保存。',
+      authority: '失败后继续展示服务端旧结果。'
+    }),
+    supplementalFigmaState({
+      state: '成功反馈',
+      frameId: '898:3679',
+      image: 'figma-final/phase15/app-int-06-success.png',
+      trigger: '服务端确认加入或移出某个非最后收藏夹。',
+      interaction: '刷新收藏状态和收藏夹摘要，继续允许下一次单项调整或完成返回。',
+      expected: '成功提示指出具体结果，勾选和人数同步为最新权威值。',
+      authority: '成功反馈来自本次响应与后续权威摘要，不由客户端推算。'
+    }),
+    supplementalFigmaState({
+      state: '资料不可用',
+      frameId: '898:3746',
+      image: 'figma-final/phase15/app-int-06-unavailable.png',
+      trigger: '人物资料已失效，但当前账号仍存在历史收藏归属。',
+      interaction: '只允许从已加入收藏夹移出，禁止新增到其他收藏夹。',
+      expected: '最小披露资料不可用状态，不恢复历史封面、地区或标签。',
+      authority: '资料资格与允许动作由服务端当前状态决定。'
+    }),
+    supplementalFigmaState({
+      state: '移出最后收藏夹确认',
+      frameId: '898:3809',
+      image: 'figma-final/phase15/app-int-06-last-removal-confirm.png',
+      trigger: '用户尝试移出唯一剩余的收藏夹归属。',
+      interaction: '底部确认层阻止背景点击穿透；取消保留原值，确认才提交取消收藏。',
+      expected: '明确说明将取消收藏，但喜欢与关注不会改变。',
+      authority: '确认动作只提交移出请求，最终结果仍以服务端为准。'
+    }),
+    supplementalFigmaState({
+      state: '移出最后一项中',
+      frameId: '899:3616',
+      image: 'figma-final/phase15/app-int-06-last-removal-processing.png',
+      trigger: '用户确认移出唯一剩余的收藏夹。',
+      interaction: '关闭确认层并锁定所有重复操作，原勾选保留到服务端确认。',
+      expected: '处理中明确提示原收藏状态尚未改变。',
+      authority: '客户端不预先将 favorited 改为 false。'
+    }),
+    supplementalFigmaState({
+      state: '已取消收藏',
+      frameId: '899:3681',
+      image: 'figma-final/phase15/app-int-06-unfavorited.png',
+      trigger: '服务端确认人物已不属于任何收藏夹。',
+      interaction: '显示取消收藏结果；用户仍可重新选择任意收藏夹或完成返回。',
+      expected: '收藏状态变为未收藏，喜欢与关注维持各自权威状态。',
+      authority: 'favorited=false 与空 folderIds 必须来自服务端返回。'
+    })
+  ],
+  'ADM-PRI-01': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '939:15995',
+      image: 'admin/adm-pri-01__default.png',
+      trigger: '服务端返回当前管理员有权查看的数据权利申请、负责人和策略时限。',
+      interaction: '可按类型、状态和负责人筛选，刷新权威队列或打开首条申请；列表不展示导出内容、私密正文或内部凭证。',
+      expected: '显示脱敏账号、稳定申请编号、当前状态和时限；所有筛选与分页继续使用服务端结果。',
+      authority: '申请状态、负责人、SLA 与可见范围均由服务端当前策略和对象范围决定。'
+    }),
+    supplementalFigmaState({
+      state: '加载中',
+      frameId: '942:16120',
+      image: 'figma-final/phase16/adm-pri-01-loading.png',
+      trigger: '首次进入、切换筛选或重新加载队列。',
+      interaction: '保留侧栏和安全返回路径，禁用重复刷新，不使用旧统计或缓存列表冒充当前结果。',
+      expected: '表格结构保持稳定，事实字段使用读取占位，完成后整体切换到服务端权威列表。',
+      authority: '加载态不承载申请数量、负责人或处理时限事实。'
+    }),
+    supplementalFigmaState({
+      state: '加载失败',
+      frameId: '942:16342',
+      image: 'figma-final/phase16/adm-pri-01-load-failure.png',
+      trigger: '队列或治理策略读取失败。',
+      interaction: '只允许重新加载、切换后台模块或安全返回；失败期间不执行领取和处置。',
+      expected: '明确说明未执行任何处置，不展示过期队列或推断申请终态。',
+      authority: '完整读取成功前所有写操作保持关闭。'
+    }),
+    supplementalFigmaState({
+      state: '空队列',
+      frameId: '942:16556',
+      image: 'figma-final/phase16/adm-pri-01-empty.png',
+      trigger: '当前筛选查询成功但没有可见申请。',
+      interaction: '可调整筛选、刷新或进入其他后台模块，不创建虚构待办。',
+      expected: '空结果与加载失败严格区分，申请数量显示为零。',
+      authority: '空队列来自成功响应的空集合。'
+    }),
+    supplementalFigmaState({
+      state: '治理门禁关闭',
+      frameId: '942:16770',
+      image: 'admin/adm-pri-01__state-02.png',
+      trigger: 'Privacy-1 保留策略、负责人、SLA 或地区规则尚未全部获批。',
+      interaction: '允许查看策略和脱敏申请事实，但不允许开始真实数据导出或账号删除。',
+      expected: '门禁原因、影响和安全下一步可理解，不以客户端开关绕过治理。',
+      authority: '门禁由服务端已批准治理策略共同决定。'
+    }),
+    supplementalFigmaState({
+      state: '已逾期',
+      frameId: '942:16984',
+      image: 'figma-final/phase16/adm-pri-01-overdue.png',
+      trigger: '至少一条申请超过当前策略计算的处理时限。',
+      interaction: '突出逾期行和升级记录入口，可进入申请详情核对负责人和不可变时间线。',
+      expected: '逾期只改变优先级与提示，不自动完成申请或执行不可逆动作。',
+      authority: '逾期由服务端策略快照、提交时间和当前时间计算。'
+    })
+  ],
+  'ADM-PRI-02': [
+    supplementalFigmaState({
+      state: '正常',
+      frameId: '944:16747',
+      image: 'admin/adm-pri-02__default.png',
+      trigger: '申请已由当前管理员领取，权威事实、策略快照和时间线读取成功。',
+      interaction: '核对脱敏账号与检查清单后尝试开始受控处置；返回队列不改变申请状态。',
+      expected: '当前仅呈现控制面事实，并明确真实导出包与不可逆删除仍由 Privacy-2 门禁控制。',
+      authority: '领取人、版本、策略和允许动作由服务端重新校验。'
+    }),
+    supplementalFigmaState({
+      state: '加载中',
+      frameId: '945:16842',
+      image: 'figma-final/phase16/adm-pri-02-loading.png',
+      trigger: '首次进入申请详情或失败后重新读取。',
+      interaction: '保留返回队列，禁用处置，不展示旧策略快照或过期 capability。',
+      expected: '详情和检查清单保持等高结构，事实字段仅显示读取占位。',
+      authority: '加载态不代表申请已领取、已完成或可执行。'
+    }),
+    supplementalFigmaState({
+      state: '加载失败',
+      frameId: '945:17043',
+      image: 'figma-final/phase16/adm-pri-02-load-failure.png',
+      trigger: '申请事实、策略快照或时间线读取失败。',
+      interaction: '允许重新加载或返回队列，不开放领取、导出和删除动作。',
+      expected: '保留最小脱敏标识，明确未发生任何写操作，也不推断申请终态。',
+      authority: '只有完整读取成功后才允许进入下一状态。'
+    }),
+    supplementalFigmaState({
+      state: '待领取',
+      frameId: '945:17245',
+      image: 'figma-final/phase16/adm-pri-02-unclaimed.png',
+      trigger: '申请仍未分配负责人，且当前管理员具备领取 capability 与对象范围。',
+      interaction: '领取时重新校验权限和申请版本，并写入负责人、原因与不可删除审计；领取本身不执行导出或删除。',
+      expected: '页面明确区分领取控制面和真实数据处置。',
+      authority: '领取结果只在服务端条件更新成功后生效。'
+    }),
+    supplementalFigmaState({
+      state: 'Privacy-2 门禁关闭',
+      frameId: '945:17448',
+      image: 'admin/adm-pri-02__state-02.png',
+      trigger: '管理员尝试进入真实导出或不可逆删除，但 Privacy-2 治理与执行器尚未开放。',
+      interaction: '只允许查看开放条件、策略快照和审计时间线，禁止生成导出包或删除账号。',
+      expected: '不提供伪完成按钮，不以客户端状态模拟真实副作用。',
+      authority: 'Privacy-2 capability、治理策略和执行器状态由服务端共同决定。'
+    }),
+    supplementalFigmaState({
+      state: '操作失败',
+      frameId: '945:17651',
+      image: 'figma-final/phase16/adm-pri-02-operation-failure.png',
+      trigger: '领取或受控动作未取得服务端事实变更确认。',
+      interaction: '保留失败事件、请求版本和原因，重新读取最新版本后才允许重试。',
+      expected: '失败不显示为完成，不隐藏原申请，也不删除失败审计。',
+      authority: '申请状态只有服务端确认更新后才变化。'
+    }),
+    supplementalFigmaState({
+      state: '终态只读',
+      frameId: '945:17853',
+      image: 'figma-final/phase16/adm-pri-02-terminal-readonly.png',
+      trigger: '用户在可取消窗口内撤回，或申请已进入当前策略定义的只读终态。',
+      interaction: '只允许查看脱敏事实、策略快照、审计时间线并返回队列，主操作保持禁用。',
+      expected: '明确本例未生成导出包、未执行删除；终态事实不可由管理员在页面内改写。',
+      authority: '终态、取消事实和副作用证据来自服务端不可变时间线。'
+    })
+  ]
+})
+
+const supplementalFigmaDelivery = Object.freeze({
+  'APP-DSC-01': {
+    formalActions: 67,
+    supportSectionId: '581:2',
+    supportFrames: 11,
+    supportActions: 75
+  },
+  'APP-DSC-02': {
+    formalActions: 45,
+    supportSectionId: '603:2326',
+    supportFrames: 6,
+    supportActions: 60
+  },
+  'APP-DSC-03': {
+    formalActions: 25,
+    supportSectionId: '627:2770',
+    supportFrames: 3,
+    supportActions: 21,
+    supportScreens: [
+      {
+        title: '加载中',
+        frameId: '630:2770',
+        image: 'mobile/app-dsc-03__loading.png',
+        description: '首次读取目录时的等高骨架，不承载分类、数量或真人事实。'
+      },
+      {
+        title: '目录变化说明',
+        frameId: '627:2771',
+        image: 'mobile/app-dsc-03__catalog-explanation.png',
+        description: '说明 stable ID、合并重定向、下线和未知词条的安全处理规则。'
+      },
+      {
+        title: '加载失败',
+        frameId: '634:2',
+        image: 'mobile/app-dsc-03__load-failed.png',
+        description: '网络或服务暂不可用时保留页面与既有选择，提供重载、返回推荐和帮助中心三条安全路径。'
+      }
+    ]
+  },
+  'APP-DSC-04': {
+    formalActions: 56,
+    supportSectionId: '645:2770',
+    supportFrames: 12,
+    supportActions: 95,
+    supportScreens: [
+      {
+        title: '搜索中',
+        frameId: '645:2771',
+        image: 'mobile/app-dsc-04__loading.png',
+        description: '提交后保留关键词与筛选，用等高骨架等待当前公开结果，不显示旧结果冒充本次查询。'
+      },
+      {
+        title: '搜索失败',
+        frameId: '645:2876',
+        image: 'mobile/app-dsc-04__load-failed.png',
+        description: '网络或服务失败时保留输入与筛选，提供重新搜索、修改搜索词和帮助入口。'
+      },
+      {
+        title: '分页中',
+        frameId: '645:2965',
+        image: 'mobile/app-dsc-04__pagination-loading.png',
+        description: '已有结果保持可用，下一页返回后按稳定 profileId 去重追加。'
+      },
+      {
+        title: '分页失败',
+        frameId: '645:3069',
+        image: 'mobile/app-dsc-04__pagination-failed.png',
+        description: '分页失败不清空或重排现有列表，用户可复用原 nextCursor 重新加载。'
+      },
+      {
+        title: '历史加载中',
+        frameId: '645:3174',
+        image: 'mobile/app-dsc-04__history-loading.png',
+        description: '只为账号最近搜索显示骨架，热门发现和基础搜索保持可用。'
+      },
+      {
+        title: '历史加载失败',
+        frameId: '645:3288',
+        image: 'mobile/app-dsc-04__history-load-failed.png',
+        description: '历史读取失败不阻断搜索，提供独立重读动作且不伪造本地记录。'
+      },
+      {
+        title: '历史为空',
+        frameId: '645:3403',
+        image: 'mobile/app-dsc-04__history-empty.png',
+        description: '记录功能已开启但尚无成功搜索时，说明写入条件，并保留搜索与显式关闭记录入口。'
+      },
+      {
+        title: '清空历史确认',
+        frameId: '645:3489',
+        image: 'mobile/app-dsc-04__history-clear-confirm.png',
+        description: '模态确认区分“仅清空”和“清空并关闭记录”，遮罩下控件不可点击穿透。'
+      },
+      {
+        title: '平台认证规则',
+        frameId: '645:3619',
+        image: 'mobile/app-dsc-04__verification-rules.png',
+        description: '解释搜索结果认证标识的核验范围、展示授权、发布安全状态与非本人运营边界。'
+      },
+      {
+        title: '历史管理',
+        frameId: '651:2',
+        image: 'mobile/app-dsc-04__history-management.png',
+        description: '独立管理当前账号的搜索历史，支持逐条删除、清空全部、关闭后续记录或返回搜索。'
+      },
+      {
+        title: '历史删除中',
+        frameId: '651:157',
+        image: 'mobile/app-dsc-04__history-deleting.png',
+        description: '单条删除提交后只锁定本次操作，其他历史保持可见，不提前伪造删除成功。'
+      },
+      {
+        title: '历史删除失败',
+        frameId: '651:306',
+        image: 'mobile/app-dsc-04__history-delete-failed.png',
+        description: '删除失败时保留全部权威记录，并为失败条目提供定向重试，不影响其他记录。'
+      }
+    ]
+  },
+  'APP-DSC-05': {
+    formalActions: 67,
+    supportSectionId: '666:2782',
+    supportFrames: 9,
+    supportActions: 48,
+    supportScreens: [
+      {
+        title: '筛选加载中',
+        frameId: '667:2781',
+        image: 'mobile/app-dsc-05__loading.png',
+        description: '首次读取目录和账号筛选能力时禁用条件与应用，加载完成后自动进入正常态。'
+      },
+      {
+        title: '筛选加载失败',
+        frameId: '667:2907',
+        image: 'mobile/app-dsc-05__load-failed.png',
+        description: '目录读取失败时保留当前选择，提供重新加载和清空，不显示伪造目录。'
+      },
+      {
+        title: '结果预估中',
+        frameId: '667:3033',
+        image: 'mobile/app-dsc-05__preview-loading.png',
+        description: '选择变化经 400ms 防抖后进入预估态，期间保留条件并禁用应用与保存。'
+      },
+      {
+        title: '结果预估失败',
+        frameId: '668:3003',
+        image: 'mobile/app-dsc-05__preview-failed.png',
+        description: '预估失败不清空当前条件，可定向重试、继续调整或返回；重新验证前不得保存。'
+      },
+      {
+        title: '已清空',
+        frameId: '668:3129',
+        image: 'mobile/app-dsc-05__cleared.png',
+        description: '清空后所有条件恢复未选视觉，摘要显示全部人物，不保留旧预估。'
+      },
+      {
+        title: '应用中',
+        frameId: '668:3255',
+        image: 'mobile/app-dsc-05__applying.png',
+        description: '应用时锁定当前条件并进入搜索加载态，防止重复提交或新旧条件混用。'
+      },
+      {
+        title: '保存条件命名',
+        frameId: '669:3225',
+        image: 'mobile/app-dsc-05__save-naming.png',
+        description: '仅保存结构化条件与排序，要求输入可识别名称，不保存自由搜索词和预估数量。'
+      },
+      {
+        title: '保存中',
+        frameId: '669:3351',
+        image: 'mobile/app-dsc-05__saving.png',
+        description: '保存提交期间锁定名称和条件，成功后进入 APP-DSC-06 权威列表。'
+      },
+      {
+        title: '保存失败',
+        frameId: '669:3477',
+        image: 'mobile/app-dsc-05__save-failed.png',
+        description: '保存失败保留名称与当前条件，可重新保存或取消，不提前占用服务端额度。'
+      }
+    ]
+  },
+  'APP-DSC-06': {
+    formalActions: 44,
+    supportSectionId: '696:3472',
+    supportFrames: 15,
+    supportActions: 47,
+    supportScreens: [
+      {
+        title: '列表加载中',
+        frameId: '696:3473',
+        image: 'mobile/app-dsc-06__loading.png',
+        description: '读取账号私有条件、当前目录、会员权限与额度时禁用卡片操作，不展示缓存或示例业务事实。'
+      },
+      {
+        title: '列表加载失败',
+        frameId: '696:3625',
+        image: 'mobile/app-dsc-06__load-failed.png',
+        description: '失败不会清除服务端条件，页面明确不展示本地缓存或示例条件，并提供重新加载。'
+      },
+      {
+        title: '使用前复核中',
+        frameId: '696:3689',
+        image: 'mobile/app-dsc-06__revalidating.png',
+        description: '点击使用后按当前目录、会员权限和默认排序重新 preview，期间锁定其他卡片操作。'
+      },
+      {
+        title: '使用前复核失败',
+        frameId: '696:3841',
+        image: 'mobile/app-dsc-06__revalidation-failed.png',
+        description: '复核失败不应用任何条件，也不改变既有搜索结果；可定向重试或返回列表。'
+      },
+      {
+        title: '会员降级',
+        frameId: '696:3938',
+        image: 'mobile/app-dsc-06__membership-downgraded.png',
+        description: '保存条件继续保留，但受限高级项不能被忽略后执行；可查看权益、编辑为基础条件或删除。'
+      },
+      {
+        title: '条件失效',
+        frameId: '696:4035',
+        image: 'mobile/app-dsc-06__invalid.png',
+        description: '已下线且无安全重定向的 stable term ID 明确标记失效，移除并重新预估前不能使用。'
+      },
+      {
+        title: '编辑条件',
+        frameId: '696:4132',
+        image: 'mobile/app-dsc-06__editing.png',
+        expectedWidth: 453,
+        expectedHeight: 912,
+        description: '复用 APP-DSC-05 筛选组件编辑结构化条件，下一步才进入名称与默认排序确认。'
+      },
+      {
+        title: '确认更新',
+        frameId: '696:4273',
+        image: 'mobile/app-dsc-06__update-confirm.png',
+        description: '同一确认卡内复核名称、热门优先默认排序与结构化条件，并携带当前 version 提交。'
+      },
+      {
+        title: '确认更新｜最新优先',
+        frameId: '703:3555',
+        image: 'mobile/app-dsc-06__update-latest-sort.png',
+        description: '默认排序可在热门优先与最新优先间显式切换，不保存自由搜索词或预估结果数。'
+      },
+      {
+        title: '更新中',
+        frameId: '696:4425',
+        image: 'mobile/app-dsc-06__updating.png',
+        description: '更新期间锁定名称、排序和条件，乐观版本未确认前不提前修改列表。'
+      },
+      {
+        title: '更新失败',
+        frameId: '696:4577',
+        image: 'mobile/app-dsc-06__update-failed.png',
+        description: '普通失败保留全部输入并允许重新保存；列表仍显示最后一次服务端确认版本。'
+      },
+      {
+        title: '删除确认',
+        frameId: '696:4729',
+        image: 'mobile/app-dsc-06__delete-confirm.png',
+        description: '删除必须二次确认并明确目标名称，不改变当前已经应用的搜索结果。'
+      },
+      {
+        title: '删除中',
+        frameId: '696:4881',
+        image: 'mobile/app-dsc-06__deleting.png',
+        description: '提交当前 version 后锁定确认卡，成功或 deleted=false 都收敛为列表移除终态。'
+      },
+      {
+        title: '删除失败',
+        frameId: '696:5033',
+        image: 'mobile/app-dsc-06__delete-failed.png',
+        description: '失败时条件仍保留，可使用同一目标重新删除或取消，不伪造成功反馈。'
+      },
+      {
+        title: '版本冲突',
+        frameId: '696:5185',
+        image: 'mobile/app-dsc-06__version-conflict.png',
+        description: '另一设备已更新时禁止覆盖，先读取最新名称、排序、条件和 version，再由用户重新确认。'
+      }
+    ]
+  },
+  'APP-DSC-07': {
+    formalActions: 33,
+    supportSectionId: '718:3555',
+    supportFrames: 25,
+    supportActions: 144,
+    supportScreens: [
+      {
+        title: '资料加载中',
+        frameId: '718:3556',
+        image: 'mobile/app-dsc-07__loading.png',
+        description: '读取当前公开资格、资料、认证、媒体与互动状态时只显示骨架，不回填示例人物或旧业务事实。'
+      },
+      {
+        title: '资料加载失败',
+        frameId: '718:3655',
+        image: 'mobile/app-dsc-07__load-failed.png',
+        description: '无法确认当前公开状态时不展示详情，提供重新加载和返回发现两条安全路径。'
+      },
+      {
+        title: '已喜欢',
+        frameId: '718:3754',
+        image: 'mobile/app-dsc-07__liked.png',
+        description: '服务端确认单向喜欢后更新按钮状态，不创建匹配、互相喜欢或真人可见名单。'
+      },
+      {
+        title: '已关注',
+        frameId: '718:3853',
+        image: 'mobile/app-dsc-07__followed.png',
+        description: '服务端确认关注后更新按钮状态；关注只影响观看者账号的更新与列表。'
+      },
+      {
+        title: '已收藏',
+        frameId: '718:3952',
+        image: 'mobile/app-dsc-07__favorited.png',
+        description: '默认收藏状态以服务端收藏关系为准，喜欢、关注和收藏彼此独立。'
+      },
+      {
+        title: '单向动作处理中',
+        frameId: '718:4051',
+        image: 'mobile/app-dsc-07__action-processing.png',
+        description: '喜欢、关注或收藏提交期间锁定相应动作并显示处理中反馈，避免重复提交。'
+      },
+      {
+        title: '单向动作失败',
+        frameId: '718:4150',
+        image: 'mobile/app-dsc-07__action-failed.png',
+        description: '失败时恢复服务端确认前状态，保留详情并提供定向重试，不伪造已保存结果。'
+      },
+      {
+        title: '分享面板',
+        frameId: '718:4249',
+        image: 'mobile/app-dsc-07__share.png',
+        description: '复制链接与系统分享都先要求服务端提供可验证的当前资料链接。'
+      },
+      {
+        title: '分享不可用',
+        frameId: '718:4348',
+        image: 'mobile/app-dsc-07__share-unavailable.png',
+        description: '服务端没有安全链接时明确不可用，不由客户端拼接可能继续暴露下架内容的地址。'
+      },
+      {
+        title: '运营接收说明',
+        frameId: '718:4447',
+        image: 'mobile/app-dsc-07__operation-disclosure.png',
+        description: '发起话题前持续说明接收方是平台运营、并非本人收件箱，回复由平台决定且不保证。'
+      },
+      {
+        title: '更多操作',
+        frameId: '718:4546',
+        image: 'mobile/app-dsc-07__more.png',
+        description: '举报与屏蔽按独立 capability 展示；未开放能力保持不可操作，不通过隐藏状态绕过服务端。'
+      },
+      {
+        title: '举报原因选择',
+        frameId: '718:4645',
+        image: 'mobile/app-dsc-07__report-reason.png',
+        description: '原因来自服务端安全目录，选择稳定 reason code 后才允许提交。'
+      },
+      {
+        title: '举报提交中',
+        frameId: '718:4744',
+        image: 'mobile/app-dsc-07__report-submitting.png',
+        description: '提交期间锁定按钮并使用请求 token 防重，不提前生成本地举报记录。'
+      },
+      {
+        title: '举报提交失败',
+        frameId: '718:4843',
+        image: 'mobile/app-dsc-07__report-failed.png',
+        description: '失败保留原因选择，可重新提交或返回详情；会话失效时不继续重放旧请求。'
+      },
+      {
+        title: '举报已提交',
+        frameId: '718:4942',
+        image: 'mobile/app-dsc-07__report-submitted.png',
+        description: '服务端确认后可完成或直接进入安全中心举报记录，处理状态不在客户端推断。'
+      },
+      {
+        title: '屏蔽确认',
+        frameId: '718:5041',
+        image: 'mobile/app-dsc-07__block-confirm.png',
+        description: '二次确认明确屏蔽将影响推荐、关系、历史和关联话题，取消不会提交。'
+      },
+      {
+        title: '屏蔽处理中',
+        frameId: '718:5140',
+        image: 'mobile/app-dsc-07__block-processing.png',
+        description: '等待服务端完成屏蔽及关联清理；成功后退出当前详情，失败时保留可重试结果。'
+      },
+      {
+        title: '离线操作受限',
+        frameId: '728:3570',
+        image: 'mobile/app-dsc-07__offline-blocked.png',
+        description: '离线点击互动、分享、媒体或话题入口时说明必须联网，不写入本地假状态。'
+      },
+      {
+        title: '媒体重试中',
+        frameId: '728:3670',
+        image: 'mobile/app-dsc-07__media-retrying.png',
+        description: '只重新请求当前人物的媒体清单与权限，资料正文和已确认互动保持可用。'
+      },
+      {
+        title: '媒体重试失败',
+        frameId: '728:3768',
+        image: 'mobile/app-dsc-07__media-retry-failed.png',
+        description: '媒体失败继续收敛在媒体区，不把整个人物误判为下架，也不复用过期授权。'
+      },
+      {
+        title: '举报原因：隐私',
+        frameId: '729:3585',
+        image: 'mobile/app-dsc-07__report-reason-privacy.png',
+        description: '隐私问题选中态与其他原因互斥，提交稳定 code 而非展示文案。'
+      },
+      {
+        title: '举报原因：不适宜内容',
+        frameId: '729:3707',
+        image: 'mobile/app-dsc-07__report-reason-content.png',
+        description: '不适宜内容选中态使用服务端当前原因目录，不在客户端硬编码处置结论。'
+      },
+      {
+        title: '举报原因：其他',
+        frameId: '729:3829',
+        image: 'mobile/app-dsc-07__report-reason-other.png',
+        description: '其他原因仍使用服务端 reason code；首期不增加未设计的自由文本输入。'
+      },
+      {
+        title: '关注处理中',
+        frameId: '729:3951',
+        image: 'mobile/app-dsc-07__follow-processing.png',
+        description: '关注动作单独锁定并等待服务端确认，不影响喜欢和收藏的权威状态。'
+      },
+      {
+        title: '收藏处理中',
+        frameId: '729:4059',
+        image: 'mobile/app-dsc-07__favorite-processing.png',
+        description: '收藏动作单独锁定并等待服务端确认，失败时恢复原收藏关系。'
+      }
+    ]
+  },
+  'APP-DSC-08': {
+    formalActions: 14,
+    supportSectionId: '750:3580',
+    supportFrames: 19,
+    supportActions: 69,
+    supportScreens: [
+      {
+        title: '首次加载',
+        frameId: '750:3581',
+        image: 'mobile/app-dsc-08__loading.png',
+        description: '首次进入时确认人物资格、媒体清单和授权状态，不回填旧图片或示例媒体。'
+      },
+      {
+        title: '暂无可查看媒体',
+        frameId: '750:3633',
+        image: 'mobile/app-dsc-08__empty.png',
+        description: '当前权威清单为空时提供返回详情和公开推荐，不把空集合误报为网络失败。'
+      },
+      {
+        title: '当前图片加载中',
+        frameId: '750:3667',
+        image: 'mobile/app-dsc-08__image-loading.png',
+        description: '只加载当前媒体；受保护字节尚未返回前不显示模糊预览或历史 URL。'
+      },
+      {
+        title: '登录后查看',
+        frameId: '750:3719',
+        image: 'mobile/app-dsc-08__sign-in-required.png',
+        description: '受保护图片要求有效 App 会话；登录后重新请求，不创建匿名授权。'
+      },
+      {
+        title: '会员权益不足',
+        frameId: '750:3753',
+        image: 'mobile/app-dsc-08__membership-required.png',
+        description: '服务端拒绝当前 rank 时进入权益说明，不硬编码会员名称或提前展示图片。'
+      },
+      {
+        title: '访问凭证过期',
+        frameId: '750:3787',
+        image: 'mobile/app-dsc-08__access-expired.png',
+        description: '短期凭证到期后仅刷新当前图片；旧凭证和 URL 不进入持久缓存。'
+      },
+      {
+        title: '单张媒体不可用',
+        frameId: '751:3590',
+        image: 'mobile/app-dsc-08__media-unavailable.png',
+        description: '单图停止公开只影响当前项，可继续下一张，不把整个人物误判为下架。'
+      },
+      {
+        title: '缩放查看',
+        frameId: '751:3624',
+        image: 'mobile/app-dsc-08__zoomed.png',
+        description: '双指与显式按钮共用 1–5 倍内存缩放状态，切换媒体时复位。'
+      },
+      {
+        title: '翻页加载中',
+        frameId: '751:3684',
+        image: 'mobile/app-dsc-08__page-transition.png',
+        description: '短暂保留上一张内存图，下一张通过安全加载后才切换。'
+      },
+      {
+        title: '分页加载中',
+        frameId: '751:3736',
+        image: 'mobile/app-dsc-08__pagination-loading.png',
+        description: '使用同一人物版本和 nextCursor 读取下一批，不混合两个查询版本。'
+      },
+      {
+        title: '分页加载失败',
+        frameId: '751:3788',
+        image: 'mobile/app-dsc-08__pagination-failed.png',
+        description: '保留当前图片、位置和已验证列表，可只重试分页或继续查看当前图片。'
+      },
+      {
+        title: '媒体说明',
+        frameId: '751:3822',
+        image: 'mobile/app-dsc-08__media-info.png',
+        description: '只说明授权来源、公开或实时权益核验以及内存缓存边界，不展示内部存储键。'
+      },
+      {
+        title: '举报原因选择',
+        frameId: '752:3596',
+        image: 'mobile/app-dsc-08__report-reason.png',
+        description: '原因来自服务端 Safety 目录且默认不预选，选择稳定 code 后才允许提交。'
+      },
+      {
+        title: '举报提交中',
+        frameId: '752:3656',
+        image: 'mobile/app-dsc-08__report-submitting.png',
+        description: '提交期间锁定重复动作并等待服务端确认，不提前生成本地举报记录。'
+      },
+      {
+        title: '举报提交失败',
+        frameId: '752:3716',
+        image: 'mobile/app-dsc-08__report-failed.png',
+        description: '失败保留原因选择，可定向重试或返回媒体；会话失效时进入登录。'
+      },
+      {
+        title: '举报已提交',
+        frameId: '752:3776',
+        image: 'mobile/app-dsc-08__report-submitted.png',
+        description: '服务端确认后提供完成和举报记录出口，处理状态不由客户端推断。'
+      },
+      {
+        title: '媒体列表已更新',
+        frameId: '752:3836',
+        image: 'mobile/app-dsc-08__list-updated.png',
+        description: '游标失效时丢弃旧列表并从首批重新读取，不拼接新旧媒体版本。'
+      },
+      {
+        title: '当前图片加载失败',
+        frameId: '752:3870',
+        image: 'mobile/app-dsc-08__image-failed.png',
+        description: '普通加载失败只重试当前图片，返回详情与帮助仍可用。'
+      },
+      {
+        title: '举报原因：隐私',
+        frameId: '760:3600',
+        image: 'mobile/app-dsc-08__report-reason-privacy.png',
+        description: '隐私原因选中态与其他原因互斥，提交稳定 code 而不是展示文案。'
+      }
+    ]
+  },
+  'APP-DSC-09': {
+    formalActions: 12,
+    supportSectionId: '783:3600',
+    supportFrames: 13,
+    supportActions: 50,
+    supportScreens: [
+      {
+        title: '认证说明加载中',
+        frameId: '784:3600',
+        image: 'mobile/app-dsc-09__loading.png',
+        description: '首次进入只读取服务端当前认证说明，不显示旧认证详情或内部审核证据。'
+      },
+      {
+        title: '认证说明加载失败',
+        frameId: '784:3697',
+        image: 'mobile/app-dsc-09__load-failed.png',
+        description: '失败只重试认证说明；返回人物详情与帮助入口保持可用，不把网络失败误报为认证失效。'
+      },
+      {
+        title: '平台认证规则',
+        frameId: '784:3803',
+        image: 'mobile/app-dsc-09__verification-rules.png',
+        description: '弹层集中说明四项公开核验、失效条件和平台代运营边界，不披露证据或审核员。'
+      },
+      {
+        title: '举报认证问题',
+        frameId: '784:3898',
+        image: 'mobile/app-dsc-09__report-reason.png',
+        description: '原因来自服务端 Safety 目录且默认不预选；举报由平台管理员接收。'
+      },
+      {
+        title: '举报原因：资料不实',
+        frameId: '785:3605',
+        image: 'mobile/app-dsc-09__report-reason-false-info.png',
+        description: '资料问题选中态与其他原因互斥，提交时使用服务端稳定 reason code。'
+      },
+      {
+        title: '举报提交中',
+        frameId: '785:3707',
+        image: 'mobile/app-dsc-09__report-submitting.png',
+        description: '提交期间锁定重复操作并等待服务端确认，不提前创建本地成功记录。'
+      },
+      {
+        title: '举报提交失败',
+        frameId: '785:3798',
+        image: 'mobile/app-dsc-09__report-failed.png',
+        description: '失败保留当前原因，可直接重试或返回认证说明；会话失效时由账号状态收敛。'
+      },
+      {
+        title: '举报已提交',
+        frameId: '785:3889',
+        image: 'mobile/app-dsc-09__report-submitted.png',
+        description: '服务端确认后提供完成和举报记录出口，处理结果仍以安全中心为准。'
+      },
+      {
+        title: '认证信息刷新中',
+        frameId: '786:3609',
+        image: 'mobile/app-dsc-09__refreshing.png',
+        description: '资料版本变化后重新核验授权、资料一致性和素材权利；返回前保留当前已知摘要。'
+      },
+      {
+        title: '认证信息刷新失败',
+        frameId: '786:3666',
+        image: 'mobile/app-dsc-09__refresh-failed.png',
+        description: '刷新失败不会覆盖最近已知记录，可定向重试、返回详情或查看认证规则。'
+      },
+      {
+        title: '举报原因：授权问题',
+        frameId: '787:3613',
+        image: 'mobile/app-dsc-09__report-reason-authorization.png',
+        description: '授权问题使用独立选中反馈，提交稳定 code，不在客户端推断审核结论。'
+      },
+      {
+        title: '举报原因：隐私问题',
+        frameId: '787:3715',
+        image: 'mobile/app-dsc-09__report-reason-privacy.png',
+        description: '隐私问题与其他原因互斥，仍由平台管理员按当前规则核查。'
+      },
+      {
+        title: '举报原因：其他',
+        frameId: '787:3817',
+        image: 'mobile/app-dsc-09__report-reason-other.png',
+        description: '其他问题沿用服务端原因目录，不创建无契约的本地分类或处置结果。'
+      }
+    ]
+  },
+  'APP-INT-06': {
+    formalActions: 36,
+    supportSectionId: '159:66694',
+    supportFrames: 0,
+    supportActions: 0
+  },
+  'ADM-PRI-01': {
+    formalActions: 56,
+    supportSectionId: '936:15995',
+    supportFrames: 0,
+    supportActions: 0
+  },
+  'ADM-PRI-02': {
+    formalActions: 69,
+    supportSectionId: '936:15995',
+    supportFrames: 0,
+    supportActions: 0
+  }
+})
+
+const directFigmaCaptureSpecs = new Map([
+  ['APP-AUTH-04::等待', { frameId: '159:61148', width: 437, height: 896 }],
+  ['APP-AUTH-06::正常', { frameId: '159:61658', width: 437, height: 896 }],
+  ['APP-AUTH-06::加载失败', { frameId: '159:61703', width: 437, height: 896 }],
+  ['APP-DSC-01::正常', { frameId: '159:61979', width: 453, height: 912 }],
+  ['APP-DSC-01::离线缓存', { frameId: '159:62597', width: 453, height: 912 }],
+  ['APP-DSC-02::正常', { frameId: '159:62911', width: 453, height: 912 }],
+  ['APP-DSC-02::无结果', { frameId: '159:63496', width: 453, height: 912 }],
+  ['APP-DSC-03::正常', { frameId: '159:63697', width: 437, height: 896 }],
+  ['APP-DSC-04::初始', { frameId: '159:63946', width: 437, height: 896 }],
+  ['APP-DSC-04::输入中', { frameId: '159:64061', width: 437, height: 896 }],
+  ['APP-DSC-04::有结果', { frameId: '159:64147', width: 437, height: 896 }],
+  ['APP-DSC-04::无结果', { frameId: '159:64252', width: 437, height: 896 }],
+  ['APP-DSC-04::历史关闭', { frameId: '159:64339', width: 437, height: 896 }],
+  ['APP-DSC-05::正常', { frameId: '159:64428', width: 453, height: 912 }],
+  ['APP-DSC-05::权益门槛', { frameId: '159:64628', width: 453, height: 912 }],
+  ['APP-DSC-05::目录冲突', { frameId: '159:64837', width: 453, height: 912 }],
+  ['APP-DSC-05::无结果', { frameId: '159:65046', width: 453, height: 912 }],
+  ['APP-DSC-06::正常', { frameId: '159:65258', width: 437, height: 896 }],
+  ['APP-DSC-06::空', { frameId: '159:65411', width: 437, height: 896 }],
+  ['APP-DSC-06::额度满', { frameId: '159:65477', width: 437, height: 896 }],
+  ['APP-DSC-06::标签已合并', { frameId: '159:65577', width: 437, height: 896 }],
+  ['APP-DSC-07::正常', { frameId: '159:65741', width: 453, height: 912 }],
+  ['APP-DSC-07::下架', { frameId: '159:65841', width: 453, height: 912 }],
+  ['APP-DSC-07::受限', { frameId: '159:65952', width: 453, height: 912 }],
+  ['APP-DSC-07::离线摘要', { frameId: '159:66063', width: 453, height: 912 }],
+  ['APP-DSC-07::媒体不可用', { frameId: '159:66172', width: 453, height: 912 }],
+  ['APP-DSC-08::正常', { frameId: '159:66285', width: 437, height: 896 }],
+  ['APP-DSC-08::访问凭证刷新', { frameId: '159:66346', width: 437, height: 896 }],
+  ['APP-DSC-08::图片加载失败', { frameId: '159:66400', width: 437, height: 896 }],
+  // 页面目录沿用“加载失败”作为 P0 关键态名称，对应 Figma 的“图片加载失败”正式稿。
+  ['APP-DSC-08::加载失败', { frameId: '159:66400', width: 437, height: 896 }],
+  ['APP-DSC-08::内容隐藏', { frameId: '159:66437', width: 437, height: 896 }],
+  ['APP-DSC-09::正常', { frameId: '159:66476', width: 437, height: 896 }],
+  ['APP-DSC-09::认证失效', { frameId: '159:66553', width: 437, height: 896 }],
+  ['APP-DSC-09::资料变化', { frameId: '159:66636', width: 437, height: 896 }],
+  ['APP-INT-01::正常', { frameId: '159:66700', width: 461, height: 920 }],
+  ['APP-INT-01::资料下架', { frameId: '801:3685', width: 461, height: 920 }],
+  ['APP-INT-02::正常', { frameId: '159:66943', width: 461, height: 920 }],
+  ['APP-INT-02::资料不可用', { frameId: '159:67067', width: 461, height: 920 }],
+  ['APP-INT-06::正常', { frameId: '894:3616', width: 461, height: 920 }],
+  ['ADM-PRI-01::正常', { frameId: '939:15995', width: 1440, height: 960 }],
+  ['ADM-PRI-01::治理门禁关闭', { frameId: '942:16770', width: 1440, height: 960 }],
+  ['ADM-PRI-02::正常', { frameId: '944:16747', width: 1440, height: 960 }],
+  ['ADM-PRI-02::Privacy-2 门禁关闭', { frameId: '945:17448', width: 1440, height: 960 }]
+])
+
+function directFigmaCaptureSpec(pageId, state) {
+  const spec = directFigmaCaptureSpecs.get(`${pageId}::${state}`)
+  if (!spec) return null
+  return {
+    ...spec,
+    sourceUrl: figmaDesignNodeUrl(spec.frameId)
+  }
+}
+
+function localCaptureMetadata(image) {
+  const filePath = path.join(OUTPUT_DIR, image)
+  if (!fs.existsSync(filePath)) {
+    return { sha256: null, bytes: null }
+  }
+  const data = fs.readFileSync(filePath)
+  const pngSignature = '89504e470d0a1a0a'
+  const isPng = data.length >= 24
+    && data.subarray(0, 8).toString('hex') === pngSignature
+  return {
+    ...(isPng
+      ? { width: data.readUInt32BE(16), height: data.readUInt32BE(20) }
+      : {}),
+    sha256: createHash('sha256').update(data).digest('hex'),
+    bytes: data.length,
+    status: 'captured'
   }
 }
 
@@ -398,14 +1789,18 @@ const detailedFigmaStateSpecs = {
       authority: '服务端对象级授权和返回状态优先。'
     }),
     figmaState({
-      state: '冲正中',
-      screen: 'APP-WAL-03｜分录详情｜Reversing',
-      frameId: '145:56598',
-      image: 'phase14-23-entryReversing.png',
-      trigger: '原分录已关联待执行或已执行的冲正流程。',
-      interaction: '展示冲正状态与关联引用；允许查看冲正进度，但原分录继续保留。',
-      expected: '冲正完成后追加反向分录并刷新关系，不修改或删除原记录。',
-      authority: '冲正由申请—复核—执行状态机驱动，客户端只读。'
+      state: '扣减',
+      screen: 'APP-WAL-03｜金币分录详情｜扣减',
+      frameId: '159:72195',
+      image: 'app-wal-03-debit.png',
+      imageDirectory: 'phase17',
+      expectedWidth: 437,
+      expectedHeight: 896,
+      figmaPageId: FIGMA_MOBILE_PAGE_ID,
+      trigger: '当前有效分录方向为扣减，且服务端已返回用户可见的完整分录事实。',
+      interaction: '展示扣减数量、调整原因、发生时间、安全业务单号、执行结果和冲正关系；用户可提出疑问或复制业务单号。',
+      expected: '扣减方向与负向数量清晰呈现，原分录保持不可编辑删除；提出疑问只创建独立申诉，不直接修改余额。',
+      authority: '分录方向、数量、原因、执行结果与冲正关系均以服务端有效账本返回为准。'
     })
   ]
 }
@@ -612,6 +2007,12 @@ function requirementTraceFor(page) {
     nonFunctional = ids('PRD-NFR', ['001', '003', '004', '005', '006', '007', '008'])
     acceptance = ids('PRD-AC', ['002', '009', '010'])
     features = [featureSources.taxonomy]
+  } else if (id.startsWith('ADM-SRC')) {
+    product = ids('PRD-FR', ['020', '021', '022', '023', '090', '091', '092'])
+    release = ids('SCP-FR', ['012', '030'])
+    nonFunctional = ids('PRD-NFR', ['001', '003', '004', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['002', '009', '010'])
+    features = [featureSources.discovery, featureSources.taxonomy, featureSources.operations]
   } else if (id.startsWith('ADM-REC')) {
     product = ids('PRD-FR', ['020', '021', '022', '023', '090', '091', '092'])
     release = ids('SCP-FR', ['012', '030'])
@@ -630,6 +2031,12 @@ function requirementTraceFor(page) {
     nonFunctional = ids('PRD-NFR', ['001', '002', '003', '005', '006', '007', '008'])
     acceptance = ids('PRD-AC', ['002', '005', '010'])
     features = [featureSources.safety]
+  } else if (id.startsWith('ADM-PRI')) {
+    product = ids('PRD-FR', ['080', '081', '082', '090', '091', '092'])
+    release = ids('SCP-FR', ['012', '013'])
+    nonFunctional = ids('PRD-NFR', ['001', '002', '003', '004', '005', '006', '007', '008'])
+    acceptance = ids('PRD-AC', ['001', '006', '010'])
+    features = [featureSources.privacy, featureSources.operations]
   } else if (id.startsWith('ADM-MBR')) {
     product = ids('PRD-FR', ['060', '061', '062', '063', '064', '065', '066', '090', '091', '092'])
     release = ids('SCP-FR', ['004', '005', '005B', '012', '030'])
@@ -700,9 +2107,11 @@ function rolesFor(page) {
     ['ADM-OV', 'Owner、运营主管、安全主管'],
     ['ADM-PER', '内容编辑、合规审核、发布者、Owner'],
     ['ADM-TAX', '内容运营、标签管理员、推荐运营'],
+    ['ADM-SRC', 'Owner、搜索运营、数据治理人员'],
     ['ADM-REC', '推荐运营、数据分析、Owner'],
     ['ADM-MSG', '话题运营、运营主管、质检人员'],
     ['ADM-SAF', '安全专员、独立申诉复核人、Owner'],
+    ['ADM-PRI', '隐私运营、合规管理员、Owner'],
     ['ADM-MBR', '会员运营、独立复核人、Owner'],
     ['ADM-WAL', '财务运营、独立复核人、Owner'],
     ['ADM-NTF', '通知运营、模板审核人、Owner'],
@@ -739,9 +2148,13 @@ function ruleFor(page) {
   if (page.id.startsWith('APP-SET')) return '账号设置不改变公开真人资料；敏感操作需要服务端重新验证。'
   if (page.id.startsWith('APP-SYS')) return '缓存不能冒充最新事实；必须提供可理解原因和安全返回路径。'
   if (page.id.startsWith('ADM-MSG')) return '管理员只能以固定平台运营身份发送，正文读取按租约和对象范围控制。'
+  if (page.id.startsWith('ADM-SRC')) return '页面只核查权威配置和聚合健康，不展示搜索词、条件名称或用户明细，也不提供隐式启用入口。'
+  if (page.id.startsWith('ADM-AUD-05') || page.id.startsWith('ADM-AUD-06')) return '正式 Action 口径只能通过候选预览、职责分离和不可变复核结论追加；不得自动登记或改写历史事实。'
   if (page.id.startsWith('ADM-WAL')) return '余额只允许通过追加分录变化；高风险申请必须由不同管理员复核。'
   if (page.id.startsWith('ADM-MBR')) return '等级名称配置化，权限使用 rank 与稳定 entitlement key，不硬编码会员名称。'
+  if (page.id === 'ADM-PER-04') return 'ZIP 只导入 Gallery 内容，不自动创建 Person/Profile 或推荐资格；真人候选必须由管理员显式关联来源并完成授权、认证和发布门禁。'
   if (page.id.startsWith('ADM-PER')) return '只有管理员创建或导入真人资料；认证、授权、审核和发布状态必须可追溯。'
+  if (page.id.startsWith('ADM-PRI')) return 'Privacy-1 只交付数据权利控制面；没有真实导出包、删除执行器和不可变副作用证据时，不允许把申请标记为已完成。'
   return '后台写操作必须经过 capability、对象范围、版本检查和不可删除审计。'
 }
 
@@ -756,7 +2169,10 @@ function dataPermissionFor(page) {
     if (page.id.startsWith('APP-DSC')) return '只读取公开投影和经授权媒体凭证；受保护媒体凭证由服务端短期签发。'
     return '只读取当前账号范围内的必要数据；所有写操作均由服务端鉴权、校验并返回权威状态。'
   }
+  if (page.id.startsWith('ADM-SRC')) return '只读取聚合就绪状态、不可变策略版本与稳定引用；不得返回用户搜索词、保存条件名称或账号明细。'
+  if (page.id.startsWith('ADM-AUD-05') || page.id.startsWith('ADM-AUD-06')) return '仅有效 Owner 可读取候选、观察事实和治理引用；申请人不得复核本人操作，批准或驳回必须写入不可变时间线。'
   if (page.id.startsWith('ADM-AUD')) return '仅允许具备审计 capability 的管理员按授权范围读取脱敏事件；导出必须申请、复核、短期授权并记录审计。'
+  if (page.id.startsWith('ADM-PRI')) return '仅展示脱敏账号、申请事实、策略快照和不可变时间线；领取与处置同时校验 capability、对象范围、版本、治理门禁和审计原因。'
   if (page.id.startsWith('ADM-WAL') || page.id.startsWith('ADM-MBR')) return '高风险写操作采用申请—独立复核—执行状态机；申请人不得复核本人操作，所有阶段写入审计。'
   if (page.id.startsWith('ADM-MSG')) return '正文访问受领取租约、对象范围和最小必要原则限制；发送身份固定为平台运营。'
   return '管理员 API 与公开 API 分离；读取和写入同时校验 capability、对象范围、版本与审计要求。'
@@ -764,11 +2180,27 @@ function dataPermissionFor(page) {
 
 function interactionFor(page) {
   const overrides = {
+    'ADM-PER-04': '管理员从真人列表的批量导入入口进入，但当前 ZIP schema 是 Gallery 内容包。选择 256 MiB 以内 ZIP 后，浏览器按服务端计划分片上传，原包完成前不允许执行；点击“执行导入”后进入服务端校验和 Queue 逐项处理，离开页面不终止任务。列表持续回读权威进度，单项失败保留其他成功结果；只有 retryable 失败可在原任务重试，修正原包的永久失败必须新建任务，运行时故障可从暂停态继续。成功项进入 Gallery 编辑，不自动生成真人身份、公开资料或推荐资格；若要进入 ADM-PER-03，管理员必须另行显式选择 Gallery 作为候选来源并完成授权、认证和发布流程。',
+    'APP-DSC-01': '用户从登录完成、底部“推荐”或返回首页进入。顶部地区入口打开 APP-DSC-02；搜索和筛选分别进入 APP-DSC-04/05。推荐、热门、最新切换服务端排序，地区频道打开地区弹层；切换后重置游标并保留当前页面直到新请求进入明确加载态。卡片主体进入 APP-DSC-07，44dp 喜欢按钮与卡片点击区分离；允许乐观反馈，但服务端拒绝时必须回滚并显示原因。接近列表末尾自动分页，分页失败以非阻断浮层重试且保留已有卡片。只允许复用当前 sort、推荐模式和地区 code 完全一致的本次运行缓存；离线缓存禁用喜欢和筛选。推荐会话或规则版本变化时进入规则刷新态，不把旧排序继续标记为当前结果。',
+    'APP-DSC-02': '用户点击推荐页顶部地区或“地区”频道后，以 460dp 底部弹层进入。点击范围或常用城市只修改弹层草稿，不立即刷新推荐；选项触控区统一为 44dp，列表超出首屏时横向滚动。选择更高范围时清除不兼容的城市选中，选择城市时只提交该城市稳定 code；“全国”提交 null。点击“应用地区”关闭弹层并以权威 code 重新请求 APP-DSC-01，重复选择当前值只关闭弹层。点击关闭或遮罩放弃草稿。页面不申请持续定位、不显示精确距离，也不得把“华东、杭州”等展示文案当作查询键；定位未使用、目录更新和无结果分别使用 Figma 独立状态提示。',
+    'APP-DSC-03': '用户从推荐频道或搜索入口进入。首次读取时展示 Figma 等高骨架；目录可用后展示本周主题和内容主题、职业身份、风格特质、地区四个分类组。点击本周主题使用服务端稳定 term ID 直接执行搜索；点击前三组进入 APP-DSC-05 对应类型筛选，点击地区进入 APP-DSC-02。空分类可重读或进入热门推荐。目录失效时仅按服务端重定向关系处理；无安全替代时停止使用旧 ID，并提供重读、返回分类和目录变化说明。',
+    'APP-DSC-04': '用户从推荐页搜索入口进入。初始态可使用最近搜索、热门发现、全部分类、筛选或已保存条件；输入时仅使用公开索引建议，清空与提交具有独立 44dp 热区。提交后保留关键词和筛选并进入等高骨架，成功结果展示当前公开投影、匹配原因和认证标识，分页按服务端 nextCursor 与稳定 profileId 去重。成功空集合进入无结果态，不自动扩大筛选或用未认证资料补位；首屏或分页失败均保留当前任务与已有结果并提供定向重试。搜索历史由账号设置决定，可独立重读、清空或清空并关闭，关闭后不写入新的账号历史。',
+    'APP-DSC-06': '用户从筛选保存成功、搜索页或“我的”进入。列表先读取账号私有条件、当前 taxonomy 解释、会员权限与原子额度；卡片只显示名称、当前有效条件摘要和默认排序，不持久化或展示旧结果数。点击使用必须先以完整来源条件重新 preview，只有 canApply=true 才进入搜索；会员降级或失效项不会被忽略后扩大结果。编辑流程复用 APP-DSC-05，随后确认名称、热门/最新默认排序和当前结构化条件；更新与删除均携带乐观 version，删除先二次确认。409 时不覆盖另一设备版本，先读取最新条件再由用户重新确认。',
+    'APP-DSC-07': '用户从推荐、搜索、关注、喜欢、收藏或浏览历史进入。页面先读取人物当前公开资格，再分别读取互动、收藏、安全与媒体状态；人物下架或受限时立即停止展示正文和缓存，网络暂不可用仅允许复用同一人物在本次会话内的最近安全摘要。喜欢、关注、收藏均为单向关系；发起话题前必须展示“由平台运营接收、并非本人收件箱、不保证回复”的持续披露。媒体失败只收敛媒体区并允许定向重试；分享在服务端尚无可验证资料链接时明确不可用。举报、屏蔽和解除屏蔽均等待服务端结果，举报成功可直接进入安全中心的举报记录。',
+    'APP-DSC-08': '用户从 APP-DSC-07 公开图库进入。首次读取当前人物媒体清单；选择下一张时先保留当前内存图片并安全加载目标，最后一张存在 nextCursor 时进入分页。受保护图片只在内存显示，短期凭证到期后重新核验；登录、会员不足、单图失效和人物隐藏分别进入独立状态。媒体说明只披露授权与访问边界。举报原因使用服务端稳定 code，默认不预选，提交中防止重复操作，成功后可进入举报记录。',
+    'APP-INT-06': '用户从真人详情收藏入口或收藏夹详情进入。页面并行读取当前人物收藏状态与收藏夹摘要，完整成功后才允许操作；每次选择只提交目标收藏夹的一次加入或移出请求，服务端确认前保留旧勾选并锁定其他操作。失败保留原权威状态并允许定向重试，成功后刷新收藏状态和文件夹摘要。资料不可用时只允许移出现有归属。移出唯一剩余收藏夹前必须二次确认，确认后独立显示处理中和已取消收藏结果；喜欢与关注始终不随收藏变化。',
     'APP-MSG-05': '用户从推荐页铃铛或消息页通知入口进入。首次进入、切换分类和回到前台均以 HTTP 拉取权威列表；实时事件只触发重新拉取。点击通知先提交幂等已读，再读取目标当前状态并进入 APP-MSG-06；“全部已读”成功后必须服务端回读，多设备差异不得仅靠本地清零。分页失败保留已有列表，实时离线保留缓存并提示新鲜度。',
     'APP-MSG-06': '用户从通知列表进入。页面展示事件时间、用户安全正文、目标当前状态和当前可执行动作；点击主操作前重新校验目标、账号和 entitlement。目标失效时保留安全历史说明并返回列表；无权限时进入当前权益或安全出口；未知能力需要升级时不渲染不可执行入口。',
     'APP-WAL-01': '用户从“我的金币卡”进入。页面先读取权威余额投影和最近有效分录，再展示同步时间与只读规则；点击“查看金币明细”进入 APP-WAL-02。离线时只展示带时间戳缓存，同步失败不把余额改成 0，也不生成补偿分录；页面始终不出现充值、消费、转账、兑换或提现入口。',
     'APP-WAL-02': '用户从钱包页进入。默认按时间倒序读取有效分录，可切换全部、增加和扣减筛选；切换筛选会重置服务端游标，加载更多复用 nextCursor 并按 entryId 去重。分页失败或维护状态保留已验证历史，不修改、隐藏或重新计算原分录。',
-    'APP-WAL-03': '用户从金币明细进入。页面展示方向、数量、原因、时间、安全业务单号、执行结果和冲正关系；复制只包含用户安全业务引用。提交申诉只创建独立案件并进入 APP-SET-08，不直接改余额；冲正通过新分录表达，原分录始终保留且不可编辑删除。'
+    'APP-WAL-03': '用户从金币明细进入。页面展示方向、数量、原因、时间、安全业务单号、执行结果和冲正关系；复制只包含用户安全业务引用。提交申诉只创建独立案件并进入 APP-SET-08，不直接改余额；冲正通过新分录表达，原分录始终保留且不可编辑删除。',
+    'APP-SET-08': '用户从账号限制、举报记录或金币分录详情进入。页面只匹配入口对应的业务对象；无指定入口时按 updatedAt 展示最近更新案件。创建与补充使用幂等请求标识，显式重试复用同一标识；冲突时优先恢复服务端现有案件。处理中可补充必要说明，升级复核与终态禁止补充。维持原结论、申诉成立、已关闭分别进入独立结果页，展示服务端用户可见说明并通过“返回我的”退出；任何申诉结果都不直接改写原业务对象。',
+    'ADM-PRI-01': '管理员从后台“数据权利”导航进入。页面先读取治理门禁、可见申请和负责人范围，再按类型、状态与负责人筛选；所有列表项只展示脱敏账号、稳定申请编号、当前状态和策略时限。首屏、筛选和刷新均具有独立加载、失败与空态；治理未批准时保持控制面只读，逾期只触发升级提示和详情核对，不自动完成申请。',
+    'ADM-PRI-02': '管理员从数据权利队列进入。页面读取申请当前版本、脱敏账号、策略快照与不可变时间线；未领取时先以条件更新建立负责人和审计原因。开始处置前重新校验 capability、对象范围、版本与 Privacy-2 门禁；当前阶段不得生成真实导出包或执行不可逆删除。操作失败保留原事实并记录失败事件；已取消等终态只读，不能从页面改写。',
+    'ADM-SRC-01': '管理员从“搜索运营”进入。页面并行读取运行配置、不可变搜索策略、Taxonomy 与会员目录稳定引用及隐私聚合健康；加载和失败时不展示残留快照。点击策略、隐私或阻断指标只进入只读解释，目录治理跳转 ADM-TAX-01。本页不存在一键启用搜索、迁移或生产切换动作。',
+    'ADM-MBR-07': '管理员从会员与金币导航或会员变更提交结果进入。页面按状态和变更类型读取最小化复核队列，并根据当前管理员与发起人关系计算 canReview；本人发起项只允许查看。进入 ADM-MBR-05 前再次读取账号与申请基线；账号变化后的申请保持失效，不允许继续批准。',
+    'ADM-AUD-05': '有效 Owner 从审计完整性或导航进入。页面对照真实审计事实、当前 Registry 与待复核申请，筛选未登记、冲突和未就绪 Action。登记或修订前填写稳定引用并预览历史影响；预览不会写入数据库，提交后必须由另一位 Owner 在 ADM-AUD-06 独立复核。加载、筛选或提交失败均不得自动登记、退休或修改历史事实。',
+    'ADM-AUD-06': '另一位有效 Owner 从 Action 口径治理的待复核申请进入。页面重新核对候选定义、提交时基线、当前 Registry、观察事实与职责分离；申请人本人只读等待，基线变化使原申请安全失效。批准后只追加正式版本，驳回或终态均形成不可变结论与时间线，不能改写历史申请。'
   }
   if (overrides[page.id]) return overrides[page.id]
   const secondary = page.secondary.length ? page.secondary.join('、') : '返回上一页'
@@ -781,7 +2213,7 @@ function chooseKeyState(page) {
   const candidates = page.states.slice(1)
   if (!candidates.length) return page.states[0]
   const patterns = [
-    { score: 500, pattern: /无权限|无会员|受限|冻结|冲突|限制|门槛|锁定|已有处理中|争议|隔离|负余额/ },
+    { score: 500, pattern: /无权限|无会员|受限|冻结|冲突|限制|门槛|门禁|锁定|已有处理中|争议|隔离|负余额/ },
     { score: 470, pattern: /同步失败/ },
     { score: 400, pattern: /失败|错误|异常|不可用|不足|失效|拒绝|无结果|离线|超时/ },
     { score: 300, pattern: /到期|下架|额度尽|维护|升级|过期|撤销|关闭|只读|安全审核/ },
@@ -798,7 +2230,7 @@ function chooseKeyState(page) {
 
 function acceptanceFor(page) {
   return [
-    `从“${page.entry}”能够进入，页面明确显示 ${page.id}、页面名称、设计路由和返回路径。`,
+    `从“${page.entry}”能够进入正确页面，并提供清晰页面名称和安全返回路径；Page ID、设计路由、Figma Node ID 与状态 key 仅用于设计、开发和测试追踪，真实 UI 不渲染这些交付标注。`,
     `主要操作“${page.primary}”具有处理中、成功和失败反馈，重复提交不会产生不可控的重复业务结果。`,
     `页面覆盖“${page.states.join('、')}”状态，并在空、错误、受限或冲突时提供安全下一步。`,
     `服务端状态变化后不会继续展示过期权限、过期余额、失效认证或不可访问内容。`,
@@ -808,6 +2240,17 @@ function acceptanceFor(page) {
 
 function screenshotBaseName(page) {
   return page.pageId.toLowerCase()
+}
+
+function newAdminFigmaCaptureSpec(pageId, state) {
+  const frameId = NEW_ADMIN_FIGMA_FRAMES[pageId]?.states?.[state]
+  if (!frameId) return null
+  return {
+    frameId,
+    sourceUrl: figmaDesignNodeUrl(frameId),
+    width: 1440,
+    height: 960
+  }
 }
 
 function sourceUrl(page, state) {
@@ -854,14 +2297,57 @@ const enrichedPages = catalog.pages.map((page, index) => {
   }
 })
 
+for (const page of enrichedPages) {
+  if (!Array.isArray(page.states) || page.states.length === 0) {
+    throw new Error(`${page.pageId} 缺少正式状态`)
+  }
+  if (page.states.some(state => (
+    typeof state !== 'string'
+    || state.length === 0
+    || state.trim() !== state
+  ))) {
+    throw new Error(`${page.pageId} 存在空白或未规范化的正式状态名称`)
+  }
+  if (new Set(page.states).size !== page.states.length) {
+    throw new Error(`${page.pageId} 存在重复正式状态`)
+  }
+}
+
+const derivedFigmaStateCounts = Object.freeze({
+  designedPages: enrichedPages.length,
+  designedStates: enrichedPages.reduce(
+    (total, page) => total + page.states.length,
+    0
+  ),
+  mobileStates: enrichedPages
+    .filter(page => page.platform === 'mobile')
+    .reduce((total, page) => total + page.states.length, 0),
+  adminStates: enrichedPages
+    .filter(page => page.platform === 'admin')
+    .reduce((total, page) => total + page.states.length, 0)
+})
+
+for (const key of ['designedPages', 'designedStates', 'mobileStates', 'adminStates']) {
+  if (derivedFigmaStateCounts[key] !== FIGMA_FINAL_DELIVERY[key]) {
+    throw new Error(
+      `页面目录实际 ${key} 与 Figma 最终交付不一致：`
+      + `${derivedFigmaStateCounts[key]} != ${FIGMA_FINAL_DELIVERY[key]}`
+    )
+  }
+}
+
 const captures = []
 const legacyKeyStateCaptureIndexes = new Map([
   ['APP-MSG-05', 3],
-  ['APP-WAL-02', 4]
+  ['APP-WAL-02', 4],
+  ['ADM-PRI-01', 2],
+  ['ADM-PRI-02', 2]
 ])
 for (const page of enrichedPages) {
   const platformDirectory = page.platform === 'mobile' ? 'mobile' : 'admin'
   const defaultState = page.states[0]
+  const defaultFigmaCapture = newAdminFigmaCaptureSpec(page.pageId, defaultState)
+    || directFigmaCaptureSpec(page.pageId, defaultState)
   captures.push({
     pageId: page.pageId,
     platform: page.platform,
@@ -873,16 +2359,18 @@ for (const page of enrichedPages) {
     stateIndex: 1,
     variant: 'default',
     image: `${platformDirectory}/${screenshotBaseName(page)}__default.png`,
-    sourceUrl: sourceUrl(page, defaultState),
+    sourceUrl: defaultFigmaCapture?.sourceUrl || sourceUrl(page, defaultState),
     alt: `${page.pageId} ${page.pageName}默认状态“${defaultState}”原型`,
-    expectedWidth: 1600,
-    expectedHeight: 1000,
+    expectedWidth: defaultFigmaCapture?.width || 1600,
+    expectedHeight: defaultFigmaCapture?.height || 1000,
     sha256: null,
     bytes: null
   })
 
   if (page.priority === 'P0') {
     const stateIndex = page.states.indexOf(page.keyState) + 1
+    const keyFigmaCapture = newAdminFigmaCaptureSpec(page.pageId, page.keyState)
+      || directFigmaCaptureSpec(page.pageId, page.keyState)
     // 新增细化状态前，部分基础关键态已使用旧序号生成并进入追踪清单。
     // 路径继续保持稳定；视觉验收由同 Page ID、同状态的 Figma 最终图覆盖。
     const captureFileIndex = legacyKeyStateCaptureIndexes.get(page.pageId) || stateIndex
@@ -897,10 +2385,10 @@ for (const page of enrichedPages) {
       stateIndex,
       variant: 'key-state',
       image: `${platformDirectory}/${screenshotBaseName(page)}__state-${String(captureFileIndex).padStart(2, '0')}.png`,
-      sourceUrl: sourceUrl(page, page.keyState),
+      sourceUrl: keyFigmaCapture?.sourceUrl || sourceUrl(page, page.keyState),
       alt: `${page.pageId} ${page.pageName}关键状态“${page.keyState}”原型`,
-      expectedWidth: 1600,
-      expectedHeight: 1000,
+      expectedWidth: keyFigmaCapture?.width || 1600,
+      expectedHeight: keyFigmaCapture?.height || 1000,
       sha256: null,
       bytes: null
     })
@@ -938,12 +2426,75 @@ const figmaStateCaptures = enrichedPages.flatMap(page => {
     expected: item.expected,
     authority: item.authority,
     alt: `${page.pageId} ${page.pageName} Figma 最终状态“${item.state}”原型`,
-    expectedWidth: 874,
-    expectedHeight: 1792,
+    expectedWidth: item.expectedWidth,
+    expectedHeight: item.expectedHeight,
     sha256: null,
     bytes: null
   }))
 })
+
+const registeredCaptureImages = new Set(
+  [...captures, ...figmaStateCaptures].map(capture => capture.image)
+)
+const supplementalFigmaCaptures = enrichedPages.flatMap(page => {
+  const delivery = supplementalFigmaDelivery[page.pageId]
+  if (!delivery) return []
+  const dimensions = page.pageId.startsWith('ADM-PRI')
+    ? { expectedWidth: 1440, expectedHeight: 960 }
+    : page.pageId === 'APP-INT-06'
+      ? { expectedWidth: 461, expectedHeight: 920 }
+      : ['APP-DSC-03', 'APP-DSC-04', 'APP-DSC-06', 'APP-DSC-08', 'APP-DSC-09'].includes(page.pageId)
+        ? { expectedWidth: 437, expectedHeight: 896 }
+        : { expectedWidth: 453, expectedHeight: 912 }
+  const stateCaptures = (supplementalFigmaStateSpecs[page.pageId] || [])
+    .filter(item => !registeredCaptureImages.has(item.image))
+    .map(item => ({
+      pageId: page.pageId,
+      platform: page.platform,
+      module: page.module,
+      route: page.route,
+      pageName: page.pageName,
+      state: item.state,
+      variant: 'figma-supplemental-state',
+      frameId: item.frameId,
+      image: item.image,
+      sourceUrl: figmaDesignNodeUrl(item.frameId),
+      prototypeUrl: figmaPrototypeUrl(
+        item.frameId,
+        page.platform === 'mobile' ? FIGMA_MOBILE_PAGE_ID : FIGMA_ADMIN_PAGE_ID
+      ),
+      alt: `${page.pageId} ${page.pageName} Figma 补充状态“${item.state}”原型`,
+      ...dimensions,
+      sha256: null,
+      bytes: null
+    }))
+  const supportCaptures = (delivery.supportScreens || []).map(item => ({
+    pageId: page.pageId,
+    platform: page.platform,
+    module: page.module,
+    route: page.route,
+    pageName: page.pageName,
+    state: item.title,
+    variant: 'figma-interaction-support',
+    frameId: item.frameId,
+    image: item.image,
+    sourceUrl: figmaDesignNodeUrl(item.frameId),
+    alt: `${page.pageId} ${page.pageName} ${item.title}交互支持稿`,
+    expectedWidth: item.expectedWidth || dimensions.expectedWidth,
+    expectedHeight: item.expectedHeight || dimensions.expectedHeight,
+    sha256: null,
+    bytes: null
+  }))
+  return [...stateCaptures, ...supportCaptures]
+})
+
+for (const capture of [
+  ...captures,
+  ...figmaStateCaptures,
+  ...supplementalFigmaCaptures
+]) {
+  Object.assign(capture, localCaptureMetadata(capture.image))
+}
 
 const counts = {
   pages: enrichedPages.length,
@@ -958,43 +2509,45 @@ const counts = {
   detailedFigmaPages: enrichedPages.filter(page => page.figmaStates.length).length,
   detailedFigmaStateCaptures: figmaStateCaptures.length,
   documentPrototypeMappings: captures.length + figmaStateCaptures.length,
-  figmaDesignedPages: FIGMA_FINAL_DELIVERY.designedPages,
-  figmaDesignedStates: FIGMA_FINAL_DELIVERY.designedStates,
-  figmaMobileStates: FIGMA_FINAL_DELIVERY.mobileStates,
-  figmaAdminStates: FIGMA_FINAL_DELIVERY.adminStates,
+  supplementalFigmaCaptures: supplementalFigmaCaptures.length,
+  figmaDesignedPages: derivedFigmaStateCounts.designedPages,
+  figmaDesignedStates: derivedFigmaStateCounts.designedStates,
+  figmaMobileStates: derivedFigmaStateCounts.mobileStates,
+  figmaAdminStates: derivedFigmaStateCounts.adminStates,
   figmaFlowPreviews: FIGMA_FINAL_DELIVERY.flowPreviews,
-  figmaPageActions:
+  figmaHistoricalPageActionBaseline:
     FIGMA_FINAL_DELIVERY.mobilePageActions
     + FIGMA_FINAL_DELIVERY.adminPageActions,
-  figmaFlowActions:
+  figmaHistoricalFlowActionBaseline:
     FIGMA_FINAL_DELIVERY.mobileFlowActions
     + FIGMA_FINAL_DELIVERY.adminFlowActions,
-  figmaTotalActions: FIGMA_FINAL_DELIVERY.totalActions,
+  figmaHistoricalActionBaseline: FIGMA_FINAL_DELIVERY.historicalActionBaseline,
   groups: catalog.groups.length
 }
 
 const expectedCounts = {
-  pages: 92,
-  mobilePages: 49,
-  adminPages: 43,
-  p0Pages: 54,
-  p1Pages: 31,
-  p2Pages: 7,
-  defaultCaptures: 92,
-  keyStateCaptures: 54,
-  totalCaptures: 146,
+  pages: 99,
+  mobilePages: 50,
+  adminPages: 49,
+  p0Pages: 57,
+  p1Pages: 32,
+  p2Pages: 10,
+  defaultCaptures: 99,
+  keyStateCaptures: 57,
+  totalCaptures: 156,
   detailedFigmaPages: 5,
   detailedFigmaStateCaptures: 23,
-  documentPrototypeMappings: 169,
-  figmaDesignedPages: 92,
-  figmaDesignedStates: 349,
-  figmaMobileStates: 186,
-  figmaAdminStates: 163,
-  figmaFlowPreviews: 92,
-  figmaPageActions: 1790,
-  figmaFlowActions: 494,
-  figmaTotalActions: 2284,
-  groups: 14
+  documentPrototypeMappings: 179,
+  supplementalFigmaCaptures: 136,
+  figmaDesignedPages: 99,
+  figmaDesignedStates: 408,
+  figmaMobileStates: 208,
+  figmaAdminStates: 200,
+  figmaFlowPreviews: 99,
+  figmaHistoricalPageActionBaseline: 2957,
+  figmaHistoricalFlowActionBaseline: 614,
+  figmaHistoricalActionBaseline: 3571,
+  groups: 15
 }
 
 for (const [key, expected] of Object.entries(expectedCounts)) {
@@ -1030,17 +2583,36 @@ if (missingProductRequirements.length) {
   throw new Error(`产品需求未映射到页面：${missingProductRequirements.join('、')}`)
 }
 
+const captureArtifacts = [
+  ...captures,
+  ...figmaStateCaptures,
+  ...supplementalFigmaCaptures
+]
+const captureHashes = captureArtifacts
+  .map(capture => capture.sha256)
+  .filter(Boolean)
+const captureArtifactsVerified = captureArtifacts.every(capture => (
+  capture.sha256
+  && capture.bytes > 0
+  && capture.width === capture.expectedWidth
+  && capture.height === capture.expectedHeight
+)) && new Set(captureHashes).size === captureArtifacts.length
+
 const manifest = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   appVersion: '1.0',
-  generatedAt: '2026-07-30',
+  generatedAt: '2026-08-14',
+  figmaAuditAt: '2026-08-14',
+  status: captureArtifactsVerified ? 'verified' : 'capture-pending',
+  ...(captureArtifactsVerified ? { verifiedAt: '2026-08-14' } : {}),
   source: 'docs/app/interactive-prototype/page-catalog.js',
   captureViewport: { width: 1600, height: 1000 },
   figmaFinal: {
     fileKey: FIGMA_FILE_KEY,
     fileUrl: FIGMA_DESIGN_URL,
     finalVersionId: FIGMA_FINAL_VERSION_ID,
-    scope: '移动端 49 页、管理后台 43 页及全部 349 个需求状态',
+    versionNote: '该版本 ID 为历史冻结点；当前事实源为同一 fileKey 的实时文件，2026-08-14 已完成 408 个正式状态登记；APP-SET-08 已补齐补充、升级和三个终态结果页。全量交互统计留待开发结束后统一重算。',
+    scope: '移动端 50 页、管理后台 49 页及全部 408 个需求状态',
     status: 'final-deliverable',
     officialPages: {
       mobile: '10｜Mobile Pages',
@@ -1050,19 +2622,22 @@ const manifest = {
       qaHandoff: '50｜QA & Handoff'
     },
     audit: {
-      pageCoverage: '92/92',
-      stateCoverage: '349/349',
-      mobileStateCoverage: '186/186',
-      adminStateCoverage: '163/163',
+      pageCoverage: '99/99',
+      stateCoverage: '408/408',
+      mobileStateCoverage: '208/208',
+      adminStateCoverage: '200/200',
       flowPreviews: FIGMA_FINAL_DELIVERY.flowPreviews,
-      pageActions:
-        FIGMA_FINAL_DELIVERY.mobilePageActions
-        + FIGMA_FINAL_DELIVERY.adminPageActions,
-      flowActions:
-        FIGMA_FINAL_DELIVERY.mobileFlowActions
-        + FIGMA_FINAL_DELIVERY.adminFlowActions,
-      totalActions: FIGMA_FINAL_DELIVERY.totalActions,
-      missingDestinations: FIGMA_FINAL_DELIVERY.missingDestinations,
+      historicalActionBaseline: {
+        scope: 'APP-SET-08 增量六态前',
+        pageActions:
+          FIGMA_FINAL_DELIVERY.mobilePageActions
+          + FIGMA_FINAL_DELIVERY.adminPageActions,
+        flowActions:
+          FIGMA_FINAL_DELIVERY.mobileFlowActions
+          + FIGMA_FINAL_DELIVERY.adminFlowActions,
+        totalActions: FIGMA_FINAL_DELIVERY.historicalActionBaseline,
+        missingDestinations: FIGMA_FINAL_DELIVERY.missingDestinations
+      },
       undersizedMobileTouchTargets:
         FIGMA_FINAL_DELIVERY.undersizedMobileTouchTargets,
       unstyledText: FIGMA_FINAL_DELIVERY.unstyledText,
@@ -1075,7 +2650,8 @@ const manifest = {
   counts,
   pages: enrichedPages,
   captures,
-  figmaStateCaptures
+  figmaStateCaptures,
+  supplementalFigmaCaptures
 }
 
 function imagePathFor(capture) {
@@ -1119,7 +2695,62 @@ function detailedFigmaStateLines(page) {
   return lines
 }
 
+function supplementalFigmaStateLines(page) {
+  const pageCaptures = supplementalFigmaStateSpecs[page.pageId] || []
+  if (!pageCaptures.length) return []
+  const delivery = supplementalFigmaDelivery[page.pageId]
+  const hasSupportFrames = delivery.supportFrames > 0
+  const deliverySummary = hasSupportFrames
+    ? `正式稿共 ${delivery.formalActions} 个有效动作，支持 Section \`${delivery.supportSectionId}\` 含 ${delivery.supportFrames} 张交互支持稿和 ${delivery.supportActions} 个有效动作，失效目标与不足 44dp 热区均为 0。`
+    : `正式稿共 ${delivery.formalActions} 个有效动作，位于正式页面 Section \`${delivery.supportSectionId}\`；失效目标与不足 44dp 热区均为 0。`
+  const lines = [
+    `**Figma 逐状态交付：** 本页 ${pageCaptures.length} 个正式需求状态均已完成独立 Frame、交互和截图复核；${deliverySummary}`,
+    '',
+    `- [打开 Figma ${hasSupportFrames ? '交互支持' : '正式页面'} Section](${figmaDesignNodeUrl(delivery.supportSectionId)})`,
+    ''
+  ]
+  for (const [index, capture] of pageCaptures.entries()) {
+    const prototypeUrl = figmaPrototypeUrl(
+      capture.frameId,
+      page.platform === 'mobile' ? FIGMA_MOBILE_PAGE_ID : FIGMA_ADMIN_PAGE_ID
+    )
+    lines.push(
+      `**状态 ${index + 1}｜${capture.state}｜\`${capture.frameId}\`**`,
+      '',
+      `- 触发条件：${capture.trigger}`,
+      `- 关键交互：${capture.interaction}`,
+      `- 预期结果：${capture.expected}`,
+      `- 权威边界：${capture.authority}`,
+      `- [打开 Figma 交互原型](${prototypeUrl})`,
+      '',
+      `![${page.pageId} ${page.pageName} Figma 状态“${capture.state}”原型](./assets/page-prototypes/${capture.image})`,
+      ''
+    )
+  }
+  if (delivery.supportScreens?.length) {
+    lines.push('**交互支持稿（不新增正式需求状态）：**', '')
+    for (const screen of delivery.supportScreens) {
+      lines.push(
+        `**${screen.title}｜\`${screen.frameId}\`**`,
+        '',
+        `- ${screen.description}`,
+        `- [打开 Figma 设计节点](${figmaDesignNodeUrl(screen.frameId)})`,
+        '',
+        `![${page.pageId} ${page.pageName} ${screen.title}交互支持稿](./assets/page-prototypes/${screen.image})`,
+        ''
+      )
+    }
+  }
+  return lines
+}
+
 function figmaFinalMappingLine(page) {
+  if (page.pageId === 'APP-SET-08') {
+    return '**Figma 最终稿映射：** `10｜Mobile Pages` → `APP-SET-08`，共 9 个需求状态：'
+      + '正常 `159:73873`、已有处理中 `159:73925`、提交失败 `159:73978`、'
+      + '补充说明 `1118:3615`、补充提交失败 `1123:3616`、升级处理中 `1123:3668`、'
+      + '维持原结论 `1130:3617`、申诉成立 `1132:3618`、已关闭 `1132:3670`。'
+  }
   return `**Figma 最终稿映射：** \`${page.figmaDesignPage}\` → `
     + `\`${page.pageId}\`，共 ${page.figmaDesignedStateCount} 个需求状态；`
     + `在 [Figma 最终设计文件](${FIGMA_DESIGN_URL}) 中按 Page ID 定位。`
@@ -1163,8 +2794,17 @@ function markdownForPage(page) {
     ''
   ]
   for (const item of page.acceptance) lines.push(`- ${item}`)
+  if (page.pageId === 'APP-SET-08') {
+    lines.push(
+      '- 创建与补充必须幂等；网络失败的显式重试复用请求标识，并发已创建案件恢复现有案件。',
+      '- 举报结论、账号限制与金币分录按入口上下文隔离；无上下文时按 `updatedAt` 展示最新案件。',
+      '- 升级复核与终态禁止补充；三个终态必须使用各自 Figma 结果页，申诉不会直接改写原业务对象。'
+    )
+  }
   if (page.figmaStates.length) {
     lines.push('', ...detailedFigmaStateLines(page))
+  } else if (supplementalFigmaStateSpecs[page.pageId]?.length) {
+    lines.push('', ...supplementalFigmaStateLines(page))
   } else {
     lines.push('', `![${preferredDefault.alt}](${imagePathFor(preferredDefault)})`, '')
     if (keyCapture) {
@@ -1235,6 +2875,13 @@ function developmentMarkdownForPage(page) {
     ''
   ]
   for (const item of page.acceptance) lines.push(`- ${item}`)
+  if (page.pageId === 'APP-SET-08') {
+    lines.push(
+      '- 创建与补充必须幂等；网络失败的显式重试复用请求标识，并发已创建案件恢复现有案件。',
+      '- 举报结论、账号限制与金币分录按入口上下文隔离；无上下文时按 `updatedAt` 展示最新案件。',
+      '- 升级复核与终态禁止补充；三个终态必须使用各自 Figma 结果页，申诉不会直接改写原业务对象。'
+    )
+  }
   lines.push(
     '- UI 层、状态层、数据层和服务端契约不得使用页面展示名称替代稳定 ID、rank、entitlement 或状态枚举。',
     '- 加载、空、错误、离线、无权限、对象失效和服务端状态变化必须按本页状态集合安全收敛。',
@@ -1242,6 +2889,8 @@ function developmentMarkdownForPage(page) {
   )
   if (page.figmaStates.length) {
     lines.push(...detailedFigmaStateLines(page))
+  } else if (supplementalFigmaStateSpecs[page.pageId]?.length) {
+    lines.push(...supplementalFigmaStateLines(page))
   } else {
     lines.push(`![${preferredDefault.alt}](${imagePathFor(preferredDefault)})`, '')
     if (keyCapture) {
@@ -1257,15 +2906,17 @@ const markdown = [
   '',
   'App 版本：1.0',
   '',
-  '更新日期：2026-07-30',
+  '更新日期：2026-08-14',
   '',
   '状态：需求讨论中，待客户确认',
   '',
   '## 1. 文档用途',
   '',
-  '本文是 92 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。',
+  `本文是 ${counts.pages} 个页面级功能对象的详细说明和原型映射基线。每个 Page ID 独立描述用户价值、角色、前置条件、进入路径、页面结构、详细交互、业务规则、页面状态、数据权限、需求追踪、验收标准和客户确认项。`,
   '',
-  'Figma 最终设计已覆盖移动端 49 页、管理后台 43 页和全部 349 个需求状态，并建立 92 个流程预览与 2,284 个有效交互动作。客户文档继续保留 92 张默认状态、54 张 P0 关键状态和通知/金币 23 张逐状态本地导出图，共 169 个确定性图片映射；图片通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。',
+  'Page ID、设计路由、Figma Node ID 和状态 key 是设计交付、实现映射与测试追踪元数据，不是真实产品 UI 文案；除非产品需求另行定义面向用户的业务编号，否则 KMP 与 Nuxt 页面不得可见渲染这些标注。',
+  '',
+  `Figma 最终设计已覆盖移动端 ${counts.mobilePages} 页、管理后台 ${counts.adminPages} 页和全部 ${counts.figmaDesignedStates} 个正式需求状态，并建立 ${counts.figmaFlowPreviews} 个流程预览。${counts.figmaHistoricalActionBaseline.toLocaleString('en-US')} 个有效交互动作是 APP-SET-08 增量六态前的历史基线，开发结束后统一重算。客户文档保留 ${counts.defaultCaptures} 张默认状态、${counts.keyStateCaptures} 张 P0 关键状态和通知/金币 23 张逐状态注册导出，共 ${counts.documentPrototypeMappings} 个 manifest 确定性图片映射；APP-DSC-01 至 APP-DSC-09、APP-INT-06 与 ADM-PRI-01/02 的逐状态 Figma 图直接进入本 MD。图片均通过 Page ID、状态与 Frame ID 关联，不通过章节位置猜测。`,
   '',
   '## 2. 覆盖统计',
   '',
@@ -1281,8 +2932,10 @@ const markdown = [
   `| Figma 最终设计页面 | ${counts.figmaDesignedPages} |`,
   `| Figma 最终设计状态 | ${counts.figmaDesignedStates}（移动端 ${counts.figmaMobileStates} / 后台 ${counts.figmaAdminStates}） |`,
   `| Figma 流程预览 | ${counts.figmaFlowPreviews} |`,
-  `| Figma 有效交互动作 | ${counts.figmaTotalActions} |`,
+  `| Figma 有效交互动作（APP-SET-08 增量前历史基线） | ${counts.figmaHistoricalActionBaseline} |`,
   `| 通知与金币逐状态本地导出 | ${counts.detailedFigmaPages} 页 / ${counts.detailedFigmaStateCaptures} 张 |`,
+  '| 发现页逐状态 MD 直嵌 | 9 页 / 38 正式状态（16 张注册图 + 22 张补充图） |',
+  '| 发现页交互支持稿 | 7 页 / 96 张（不新增正式需求状态） |',
   `| 客户文档图片映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.filter(page => page.requirements.traceKey).length} |`,
   '',
@@ -1337,7 +2990,7 @@ const developmentMarkdown = [
   '',
   'App 版本：1.0',
   '',
-  '更新日期：2026-07-30',
+  '更新日期：2026-08-14',
   '',
   '状态：需求讨论中；客户确认结论同步后作为开发排期与实现验收基线',
   '',
@@ -1345,11 +2998,12 @@ const developmentMarkdown = [
   '',
   '## 1. 文档定位与使用规则',
   '',
-  '1. 本文是 App 1.0 面向开发的单一入口，覆盖产品范围、需求编号、技术边界、92 个页面级实现对象、349 个 Figma 最终设计状态、169 个客户文档图片映射和开发验收。',
+  `1. 本文是 App 1.0 面向开发的单一入口，覆盖产品范围、需求编号、技术边界、${counts.pages} 个页面级实现对象、${counts.figmaDesignedStates} 个 Figma 正式设计状态、${counts.documentPrototypeMappings} 个客户文档 manifest 图片映射、APP-DSC-01 至 APP-DSC-09、APP-INT-06 与 ADM-PRI-01/02 的逐状态 Figma 图和开发验收。`,
   '2. 客户意见先同步到产品总需求、发布范围、Feature PRD 和页面目录，再重新生成本文与客户 DOCX；不得直接在 DOCX 中维护独立需求。',
   '3. 开发任务、接口、测试用例、缺陷和变更必须至少引用一个 `PRD/SCP` 编号和一个 Page ID；纯后端门禁可引用需求编号并标注“无独立页面”。',
   '4. 原型用于确认信息层级、交互和状态表达，不替代服务端权限、数据状态机、API 契约或安全门禁。',
-  '5. 发生冲突时按“客户已确认结论 → App 1.0 发布范围 → 产品总需求 → Feature PRD → 本文逐页规格 → 原型”处理，并先修订上游再重新生成下游。',
+  '5. Page ID、设计路由、Figma Node ID 和状态 key 仅用于交付与追踪，不得作为可见文案渲染到 KMP 或 Nuxt 真实 UI；面向用户的业务编号必须由独立产品需求定义。',
+  '6. 发生冲突时按“客户已确认结论 → App 1.0 发布范围 → 产品总需求 → Feature PRD → 本文逐页规格 → 原型”处理，并先修订上游再重新生成下游。',
   '',
   '## 2. 开发交付基线',
   '',
@@ -1365,9 +3019,11 @@ const developmentMarkdown = [
   `| 基础逐页原型 | ${counts.totalCaptures} |`,
   `| Figma 最终设计页面 | ${counts.figmaDesignedPages} |`,
   `| Figma 最终设计状态 | ${counts.figmaDesignedStates}（移动端 ${counts.figmaMobileStates} / 后台 ${counts.figmaAdminStates}） |`,
-  `| Figma 页面内 / 流程动作 | ${counts.figmaPageActions} / ${counts.figmaFlowActions} |`,
-  `| Figma 有效交互动作总数 | ${counts.figmaTotalActions} |`,
+  `| Figma 页面内 / 流程动作（APP-SET-08 增量前历史基线） | ${counts.figmaHistoricalPageActionBaseline} / ${counts.figmaHistoricalFlowActionBaseline} |`,
+  `| Figma 有效交互动作总数（APP-SET-08 增量前历史基线） | ${counts.figmaHistoricalActionBaseline} |`,
   `| 通知与金币逐状态本地导出 | ${counts.detailedFigmaPages} 页 / ${counts.detailedFigmaStateCaptures} 张 |`,
+  '| 发现页逐状态 MD 直嵌 | 9 页 / 38 正式状态（16 张注册图 + 22 张补充图） |',
+  '| 发现页交互支持稿 | 7 页 / 96 张（不新增正式需求状态） |',
   `| 客户文档图片映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.length} |`,
   '',
@@ -1375,10 +3031,11 @@ const developmentMarkdown = [
   '',
   `- 最终文件：[Peachmote UI 借鉴审查板 - MeiGallery](${FIGMA_DESIGN_URL})；最终版本 ID：\`${FIGMA_FINAL_VERSION_ID}\`。`,
   `- \`10｜Mobile Pages\` 覆盖 ${counts.mobilePages} 个 Page ID、${counts.figmaMobileStates} 个状态；\`20｜Admin Pages\` 覆盖 ${counts.adminPages} 个 Page ID、${counts.figmaAdminStates} 个状态。`,
-  `- \`30｜Prototype Flows\` 覆盖 ${counts.figmaFlowPreviews} 个流程预览；页面内与流程动作合计 ${counts.figmaTotalActions} 个，缺失目标为 0。`,
+  `- \`30｜Prototype Flows\` 覆盖 ${counts.figmaFlowPreviews} 个流程预览；${counts.figmaHistoricalActionBaseline} 个页面内与流程动作及缺失目标 0 只代表 APP-SET-08 增量六态前的历史基线，当前动作总数待开发结束后统一重算。`,
   '- `40｜Delivery Index` 按 Page ID 提供页面索引和需求追踪；`50｜QA & Handoff` 提供视觉、交互、边界和交付门禁。',
   '- 最终 QA 中未发现未绑定文字样式、原始填充/描边、缺失字体、文字溢出或移动端不足 44dp 的关键点击热区。',
-  '- 开发以 Page ID、状态名称和需求追踪键定位设计；客户文档中的 169 张图用于离线逐页确认，不替代 Figma 中 349 个最终状态。',
+  `- 开发以 Page ID、状态名称和需求追踪键定位设计；客户文档中的 ${counts.documentPrototypeMappings} 张图用于离线逐页确认，不替代 Figma 中 ${counts.figmaDesignedStates} 个最终状态。`,
+  '- **Figma-first 门禁**：任何新增或变更的用户可见页面、弹层、状态和跨页流程，必须先在正式 Figma 页面完成独立 Frame、Prototype 目标、Delivery Index 映射与交付审计，再进入 KMP/Nuxt 实现；设计缺口不得由代码临时发明。',
   '',
   '### 2.2 App 1.0 实现范围',
   '',
@@ -1517,13 +3174,13 @@ const traceability = [
   '',
   'App 版本：1.0',
   '',
-  '更新时间：2026-07-30',
+  '更新时间：2026-08-14',
   '',
   '状态：需求讨论中，待客户确认',
   '',
   '## 1. 文档目的',
   '',
-  '本文把产品总需求、App 1.0 发布范围、Feature PRD、92 个 Page ID、349 个 Figma 最终设计状态与 169 个客户文档图片映射建立确定性关系，并作为开发需求规格的追踪索引。任何页面或原型不得脱离需求编号单独成为实现依据；任何 App 1.0 用户可见需求也不得在没有 Page ID、明确非 UI 验收或未来范围说明的情况下进入开发。',
+  `本文把产品总需求、App 1.0 发布范围、Feature PRD、${counts.pages} 个 Page ID、${counts.figmaDesignedStates} 个 Figma 最终设计状态与 ${counts.documentPrototypeMappings} 个客户文档图片映射建立确定性关系，并作为开发需求规格的追踪索引。任何页面或原型不得脱离需求编号单独成为实现依据；任何 App 1.0 用户可见需求也不得在没有 Page ID、明确非 UI 验收或未来范围说明的情况下进入开发。`,
   '',
   '## 2. 基线与冲突处理',
   '',
@@ -1545,7 +3202,7 @@ const traceability = [
   `| 基础逐页原型 | ${counts.totalCaptures} |`,
   `| Figma 最终设计页面 | ${counts.figmaDesignedPages} |`,
   `| Figma 最终设计状态 | ${counts.figmaDesignedStates} |`,
-  `| Figma 流程预览 / 有效动作 | ${counts.figmaFlowPreviews} / ${counts.figmaTotalActions} |`,
+  `| Figma 流程预览 / 历史动作基线 | ${counts.figmaFlowPreviews} / ${counts.figmaHistoricalActionBaseline}（APP-SET-08 增量前） |`,
   `| 通知与金币逐状态本地导出 | ${counts.detailedFigmaPages} 页 / ${counts.detailedFigmaStateCaptures} 张 |`,
   `| 客户文档图片映射总数 | ${counts.documentPrototypeMappings} |`,
   `| 已建立需求追踪的页面 | ${enrichedPages.length} |`,
@@ -1586,9 +3243,9 @@ traceability.push(
   '## 6. 逐页同步验收',
   '',
   '- 每个 Page ID 必须同时存在页面目录、详细功能说明、默认状态原型和需求追踪键。',
-  '- 54 个 P0 页面必须额外存在一张关键异常、受限、冲突或处理中状态原型。',
-  '- 92 个 Page ID 的 349 个需求状态必须全部存在于 Figma 最终页，并按 Page ID、状态名称、模块和需求追踪键定位；`30｜Prototype Flows` 必须覆盖 92 个流程预览。',
-  '- Figma 页面内与流程动作合计必须为 2,284 个，缺失目标为 0；移动端关键点击热区不得小于 44dp。',
+  `- ${counts.p0Pages} 个 P0 页面必须额外存在一张关键异常、受限、冲突或处理中状态原型。`,
+  `- ${counts.pages} 个 Page ID 的 ${counts.figmaDesignedStates} 个需求状态必须全部存在于 Figma 最终页，并按 Page ID、状态名称、模块和需求追踪键定位；\`30｜Prototype Flows\` 必须覆盖 ${counts.figmaFlowPreviews} 个流程预览。`,
+  `- ${counts.figmaHistoricalActionBaseline.toLocaleString('en-US')} 个页面内与流程动作是 APP-SET-08 增量六态前的历史基线；开发结束后必须重算，增量期间每个新增状态单独核对缺失目标和 44dp 移动端关键热区。`,
   '- `APP-MSG-05`、`APP-MSG-06`、`APP-WAL-01`、`APP-WAL-02`、`APP-WAL-03` 另外保留 23 张逐状态本地导出图；每张图都具备唯一 Frame ID、触发条件、关键交互、预期结果和权威边界。',
   '- Page ID、页面名称、优先级、默认状态、关键状态、图片文件名和需求追踪键由同一清单生成并自动校验。',
   '- `ADM-AUD-03` 的完整可视化页面属于 P2；审计完整性的最小自动校验与告警属于 P0 后端门禁，两者不得混为同一页面优先级。',

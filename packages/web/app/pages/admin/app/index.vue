@@ -115,15 +115,8 @@ function metricValue(metric: AdminOperationsOverviewMetric) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <h1 class="text-xl font-bold text-gray-950">App 运营总览</h1>
-          <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">ADM-OV-01</span>
-        </div>
-        <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">跨人物供给、发现、话题、会员、金币、通知、安全和审计查看聚合运行状态。未知、延迟和未配置不会伪装成 0。</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
+    <AdminAppPageHeader page-id="ADM-OV-01" route="/admin/app" title="运营总览" description="按权限范围汇总供给、发现、消息、会员、钱包、安全与平台健康；未知、延迟和未配置不会伪装成 0。" :state="status === 'pending' ? '加载中' : status === 'error' ? '质量异常' : overview?.overall.label || '正常'" :figma-state="status === 'error' || overview?.overall.state === 'critical' ? '质量异常' : overview?.overall.state === 'partial' ? '部分无权限' : overview?.overall.unknownMetricCount ? '数据延迟' : '正常'" :state-tone="status === 'error' ? 'danger' : status === 'pending' ? 'warning' : overview?.overall.state === 'healthy' ? 'success' : 'info'">
+      <template #actions>
         <NuxtLink to="/admin/app/incidents" class="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50">
           进入事件中心
         </NuxtLink>
@@ -133,8 +126,8 @@ function metricValue(metric: AdminOperationsOverviewMetric) {
         <button v-if="isOwner" type="button" :disabled="Boolean(actionBusy)" class="inline-flex min-h-11 items-center justify-center rounded-lg bg-gray-950 px-4 text-sm font-medium text-white hover:bg-black disabled:opacity-50" @click="refreshSnapshot">
           {{ actionBusy === 'refresh' ? '正在生成…' : '生成指标快照' }}
         </button>
-      </div>
-    </header>
+      </template>
+    </AdminAppPageHeader>
 
     <p v-if="actionError" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ actionError }}</p>
     <p v-if="successMessage" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">{{ successMessage }}</p>

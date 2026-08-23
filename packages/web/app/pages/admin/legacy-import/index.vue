@@ -3,8 +3,47 @@ definePageMeta({ layout: 'admin' })
 
 const { api } = useApi()
 
+interface LegacyImportSource {
+  id: string
+  name: string
+  base_url?: string | null
+  baseUrl?: string | null
+  mode: 'rest_api' | 'xml'
+}
+
+interface LegacyImportJob {
+  id: string
+  status: string
+  source_key: string
+  success_count: number
+  failure_count: number
+  created_at: string
+  legacy_processing_expires_at?: string | null
+  recovery_available?: number
+}
+
+interface LegacyExecuteResult {
+  totalPosts: number
+  processed: number
+  skippedDuplicates: number
+  successCount: number
+  failureCount: number
+  errors?: Array<{ title: string; errorCode: string; error: string }>
+}
+
+interface LegacyMediaDownloadResult {
+  galleries: number
+  selectedCount: number
+  downloaded: number
+  failed: number
+  skipped: number
+  remaining: number
+  done: boolean
+  errors: string[]
+}
+
 // 来源列表
-const sources = ref<any[]>([])
+const sources = ref<LegacyImportSource[]>([])
 const loadingSources = ref(false)
 
 // 创建来源表单
@@ -12,20 +51,20 @@ const newSource = reactive({ name: '', baseUrl: '', mode: 'rest_api' })
 const creating = ref(false)
 
 // 任务列表
-const jobs = ref<any[]>([])
+const jobs = ref<LegacyImportJob[]>([])
 const startingJob = ref(false)
 const selectedSourceId = ref('')
 
 // 执行/下载状态
 const executingJobId = ref<string | null>(null)
 const downloadingJobId = ref<string | null>(null)
-const executeResult = ref<any>(null)
-const downloadResult = ref<any>(null)
+const executeResult = ref<LegacyExecuteResult | null>(null)
+const downloadResult = ref<LegacyMediaDownloadResult | null>(null)
 
 async function fetchSources() {
   loadingSources.value = true
   try {
-    const res = await api<{ data: any[] }>('/api/admin/legacy-import/sources')
+    const res = await api<{ data: LegacyImportSource[] }>('/api/admin/legacy-import/sources')
     sources.value = res.data ?? []
   } finally {
     loadingSources.value = false
@@ -67,7 +106,7 @@ async function executeJob(jobId: string) {
   executingJobId.value = jobId
   executeResult.value = null
   try {
-    const res = await api<any>(`/api/admin/legacy-import/jobs/${jobId}/execute`, { method: 'POST' })
+    const res = await api<LegacyExecuteResult>(`/api/admin/legacy-import/jobs/${jobId}/execute`, { method: 'POST' })
     executeResult.value = res
     await fetchJobs()
   } catch (e: any) {
@@ -81,7 +120,7 @@ async function downloadMedia(jobId: string) {
   downloadingJobId.value = jobId
   downloadResult.value = null
   try {
-    const res = await api<any>(`/api/admin/legacy-import/jobs/${jobId}/download-media`, { method: 'POST' })
+    const res = await api<LegacyMediaDownloadResult>(`/api/admin/legacy-import/jobs/${jobId}/download-media`, { method: 'POST' })
     downloadResult.value = res
     await fetchJobs()
   } catch (e: any) {
@@ -92,14 +131,11 @@ async function downloadMedia(jobId: string) {
 }
 
 async function fetchJobs() {
-  // import_jobs 表直接查询 type='legacy' 的记录
-  // 后端 GET /jobs 暂未实现列表端点，复用 import-jobs 列表
   try {
-    const res = await api<{ data: any[]; total: number }>('/api/admin/import-jobs', {
+    const res = await api<{ data: LegacyImportJob[]; total: number }>('/api/admin/legacy-import/jobs', {
       query: { pageSize: '50' },
     })
-    // 过滤出 legacy 类型的任务
-    jobs.value = (res.data ?? []).filter((j: any) => j.type === 'legacy')
+    jobs.value = res.data ?? []
   } catch {
     jobs.value = []
   }
@@ -110,7 +146,7 @@ function getSourceName(sourceKey: string): string {
   return s?.name ?? sourceKey?.slice(0, 12) ?? '-'
 }
 
-function getSourceBaseUrl(source: any): string | null {
+function getSourceBaseUrl(source: LegacyImportSource): string | null {
   return source?.base_url ?? source?.baseUrl ?? null
 }
 

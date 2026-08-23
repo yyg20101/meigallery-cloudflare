@@ -142,23 +142,36 @@ export type AdminSafetyAppealStatus = 'submitted' | 'processing' | 'upheld' | 'c
 
 export interface AdminSafetyAppealSummary {
   appealId: string
-  reportId: string
-  type: 'report_no_violation_review'
+  accountPublicId: string
+  reportId?: string
+  type: 'report_no_violation_review' | 'account_restriction_review' | 'wallet_entry_review'
+  source?: {
+    type: 'account_restriction' | 'wallet_entry'
+    sourceId: string
+    sourceVersion: string
+    reference: string
+    label: string
+  }
   status: AdminSafetyAppealStatus
+  workflowStatus: string
+  reviewState: 'normal' | 'evidence_insufficient' | 'needs_escalation'
   userVisibleMessage: string
-  originalReportVersion: number
+  originalReportVersion?: number
   version: number
   assignedToMe: boolean
   canClaim: boolean
   isolationBlocked: boolean
+  overdue: boolean
   submittedAt: string
   updatedAt: string
+  reviewDueAt: string | null
+  supplementDueAt: string | null
   resolvedAt: string | null
 }
 
 export interface AdminSafetyAppealDetail extends AdminSafetyAppealSummary {
   statement: string
-  report: {
+  report?: {
     targetType: string
     profileId: string
     mediaId: string | null
@@ -181,6 +194,13 @@ export interface AdminSafetyAppealDetail extends AdminSafetyAppealSummary {
       capturedAt: string
     }
   }
+  sourceSnapshotSha256?: string
+  sourceFacts?: Record<string, string | number | null>
+  supplements?: Array<{
+    sequence: number
+    note: string
+    createdAt: string
+  }>
   timeline: Array<{
     sequence: number
     status: AdminSafetyAppealStatus

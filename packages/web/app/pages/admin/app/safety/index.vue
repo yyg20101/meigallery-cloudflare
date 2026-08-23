@@ -6,17 +6,33 @@ import type {
   AdminSafetyReportDetail,
   AdminSafetyReportSummary,
 } from '~/types/admin-app-safety'
+import type { AdminFigmaPageId } from '~/utils/admin-figma-pages'
 
 definePageMeta({ layout: 'admin' })
 
 const { api } = useApi()
 const { isOwner } = useAuth()
 const route = useRoute()
+const routeCaseId = computed(() => typeof route.params.caseId === 'string' ? route.params.caseId : null)
+const isReportDetailRoute = computed(() => Boolean(routeCaseId.value))
+const pageContext = computed<{ pageId: AdminFigmaPageId; route: string; title: string; description: string }>(() => isReportDetailRoute.value
+  ? {
+      pageId: 'ADM-SAF-02',
+      route: route.path,
+      title: '安全案件详情',
+      description: '只展示处置所需的最小证据，并联动资料暂停、会话限制或账号限制。',
+    }
+  : {
+      pageId: 'ADM-SAF-01',
+      route: '/admin/app/reviews',
+      title: '安全审核队列',
+      description: '按优先级与处理时限分配真人、媒体、会话和消息举报案件。',
+    })
 const activeTab = ref<'reports' | 'escalations' | 'runtime'>(route.query.tab === 'escalations' ? 'escalations' : 'reports')
-const statusFilter = ref('open')
+const statusFilter = ref(isReportDetailRoute.value ? 'all' : 'open')
 const priorityFilter = ref('')
 const targetFilter = ref('')
-const selectedId = ref<string | null>(null)
+const selectedId = ref<string | null>(routeCaseId.value)
 const detail = ref<AdminSafetyReportDetail | null>(null)
 const listError = ref('')
 const detailError = ref('')
@@ -102,22 +118,37 @@ const { data: runtimeData, refresh: refreshRuntime } = await useAsyncData(
 
 const reports = computed(() => reportData.value?.data ?? [])
 const selectedSummary = computed(() => reports.value.find(report => report.reportId === selectedId.value) ?? null)
+const selectedReport = computed(() => detail.value ?? selectedSummary.value)
 const runtimeControl = computed(() => runtimeData.value?.data ?? null)
 const selectedEscalationSummary = computed(() => (
   escalations.value.find(item => item.escalationId === selectedEscalationId.value) ?? null
 ))
 
 watch(reports, (items) => {
+  if (routeCaseId.value) {
+    selectedId.value = routeCaseId.value
+    return
+  }
   if (selectedId.value && items.some(item => item.reportId === selectedId.value)) return
   selectedId.value = items[0]?.reportId ?? null
 }, { immediate: true })
 
-watch(selectedId, async (reportId) => {
+watch(routeCaseId, (reportId) => {
+  selectedId.value = reportId || reports.value[0]?.reportId || null
+})
+
+watch(selectedId, () => {
   detail.value = null
   detailError.value = ''
   operationError.value = ''
-  if (reportId && selectedSummary.value?.assignment.status === 'mine') await loadDetail(reportId)
-})
+}, { immediate: true })
+
+watch([selectedId, selectedSummary, reportStatus], async ([reportId, summary, listStatus]) => {
+  if (!reportId) return
+  if (summary?.assignment.status === 'mine' || (isReportDetailRoute.value && listStatus === 'success' && !summary)) {
+    await loadDetail(reportId)
+  }
+}, { immediate: true })
 
 watch(escalations, (items) => {
   if (selectedEscalationId.value && items.some(item => item.escalationId === selectedEscalationId.value)) return
@@ -435,21 +466,20 @@ if (activeTab.value === 'escalations') await loadEscalations()
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div>
-      <h1 class="text-xl font-bold text-gray-950">App 安全审核</h1>
-      <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">
-        用户举报与平台运营内部升级严格分队列；审核员领取后才可按对应业务目的读取最小证据，内部说明不会返回给观看者。
-      </p>
-    </div>
+    <AdminAppPageHeader :page-id="pageContext.pageId" :route="pageContext.route" :title="pageContext.title" :description="pageContext.description" figma-state="正常">
+      <template #actions>
+        <NuxtLink v-if="isReportDetailRoute" to="/admin/app/reviews" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#eaded8] bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-[#fff7f2]">返回审核队列</NuxtLink>
+      </template>
+    </AdminAppPageHeader>
 
-    <div class="flex flex-wrap gap-2 border-b border-gray-200">
+    <div v-if="!isReportDetailRoute" class="flex flex-wrap gap-2 border-b border-gray-200">
       <button class="border-b-2 px-4 py-2.5 text-sm font-medium" :class="activeTab === 'reports' ? 'border-rose-500 text-rose-700' : 'border-transparent text-gray-500'" @click="activeTab = 'reports'">举报队列</button>
       <button class="border-b-2 px-4 py-2.5 text-sm font-medium" :class="activeTab === 'escalations' ? 'border-red-600 text-red-700' : 'border-transparent text-gray-500'" @click="activeTab = 'escalations'">内部升级</button>
       <button class="border-b-2 px-4 py-2.5 text-sm font-medium" :class="activeTab === 'runtime' ? 'border-rose-500 text-rose-700' : 'border-transparent text-gray-500'" @click="activeTab = 'runtime'">运行控制</button>
     </div>
 
     <template v-if="activeTab === 'reports'">
-      <div class="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-3">
+      <div v-if="!isReportDetailRoute" class="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-3">
         <label class="text-sm text-gray-700">状态
           <select v-model="statusFilter" class="mt-1 min-h-10 w-full rounded-lg border border-gray-300 px-3">
             <option value="open">全部待处理</option><option value="submitted">待分级</option><option value="triaged">已领取</option><option value="investigating">调查中</option><option value="actioned">已处置</option><option value="no_violation">未发现违规</option><option value="closed">已关闭</option><option value="all">全部状态（最多 100 条）</option>
@@ -467,13 +497,13 @@ if (activeTab.value === 'escalations') await loadEscalations()
         </label>
       </div>
 
-      <div class="grid min-w-0 gap-4 xl:grid-cols-[minmax(19rem,24rem)_minmax(0,1fr)]">
-        <section class="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div class="grid min-w-0 gap-4" :class="isReportDetailRoute ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(19rem,24rem)_minmax(0,1fr)]'">
+        <section v-if="!isReportDetailRoute" class="overflow-hidden rounded-xl border border-gray-200 bg-white">
           <div v-if="listError" class="m-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ listError }}</div>
           <div v-else-if="reportStatus === 'pending'" class="p-10 text-center text-sm text-gray-500">正在加载举报队列…</div>
           <div v-else-if="!reports.length" class="p-10 text-center text-sm text-gray-500">当前筛选下没有举报。</div>
           <div v-else class="max-h-[48rem] divide-y divide-gray-100 overflow-y-auto">
-            <button v-for="report in reports" :key="report.reportId" class="block min-h-28 w-full p-4 text-left hover:bg-gray-50" :class="selectedId === report.reportId ? 'bg-rose-50 ring-1 ring-inset ring-rose-200' : ''" @click="selectedId = report.reportId">
+            <button v-for="report in reports" :key="report.reportId" class="block min-h-28 w-full p-4 text-left hover:bg-gray-50" :class="selectedId === report.reportId ? 'bg-rose-50 ring-1 ring-inset ring-rose-200' : ''" @click="navigateTo(`/admin/app/reviews/${report.reportId}`)">
               <span class="flex items-start justify-between gap-3">
                 <span class="min-w-0">
                   <span class="block truncate text-sm font-semibold text-gray-950">{{ report.reasonLabel }}</span>
@@ -487,19 +517,19 @@ if (activeTab.value === 'escalations') await loadEscalations()
         </section>
 
         <section class="min-h-[42rem] overflow-hidden rounded-xl border border-gray-200 bg-white">
-          <div v-if="!selectedSummary" class="grid min-h-[42rem] place-items-center p-8 text-sm text-gray-500">选择一条举报。</div>
+          <div v-if="!selectedReport && !detailError && !detailLoading" class="grid min-h-[42rem] place-items-center p-8 text-sm text-gray-500">选择一条举报。</div>
           <template v-else>
             <header class="border-b border-gray-200 p-5">
               <div class="flex flex-wrap items-start justify-between gap-3">
-                <div class="min-w-0"><h2 class="text-base font-semibold text-gray-950">{{ selectedSummary.reasonLabel }}</h2><p class="mt-1 break-all text-xs text-gray-500">{{ selectedSummary.reportId }}</p></div>
-                <div class="flex gap-2"><span class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset" :class="priorityClass(selectedSummary.priority)">{{ selectedSummary.priority.toUpperCase() }}</span><span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">{{ targetLabel(selectedSummary.target.type) }}</span></div>
+                <div class="min-w-0"><h2 class="text-base font-semibold text-gray-950">{{ selectedReport?.reasonLabel || '安全案件' }}</h2><p class="mt-1 break-all text-xs text-gray-500">{{ selectedId }}</p></div>
+                <div v-if="selectedReport" class="flex gap-2"><span class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset" :class="priorityClass(selectedReport.priority)">{{ selectedReport.priority.toUpperCase() }}</span><span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">{{ targetLabel(selectedReport.target.type) }}</span></div>
               </div>
             </header>
             <div v-if="operationError" class="m-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ operationError }}</div>
             <div v-if="detailError" class="m-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ detailError }} <button class="underline" @click="loadDetail()">重试</button></div>
             <div v-else-if="detailLoading" class="p-10 text-center text-sm text-gray-500">正在读取最小证据并记录审计…</div>
-            <div v-else-if="selectedSummary.assignment.status !== 'mine'" class="grid min-h-[34rem] place-items-center p-8 text-center">
-              <div class="max-w-md"><h3 class="font-semibold text-gray-950">{{ selectedSummary.assignment.status === 'other' ? '其他审核员正在处理' : '领取后才能查看敏感证据' }}</h3><p class="mt-2 text-sm leading-6 text-gray-600">领取前仅展示目标 ID、原因、优先级和时间，不显示用户说明或消息正文。</p><button v-if="selectedSummary.assignment.canClaim" class="mt-5 min-h-10 rounded-lg bg-rose-500 px-5 text-sm font-medium text-white disabled:opacity-50" :disabled="claiming" @click="claimReport">{{ claiming ? '领取中…' : '领取并查看证据' }}</button></div>
+            <div v-else-if="selectedReport?.assignment.status !== 'mine'" class="grid min-h-[34rem] place-items-center p-8 text-center">
+              <div class="max-w-md"><h3 class="font-semibold text-gray-950">{{ selectedReport?.assignment.status === 'other' ? '其他审核员正在处理' : '领取后才能查看敏感证据' }}</h3><p class="mt-2 text-sm leading-6 text-gray-600">领取前仅展示目标 ID、原因、优先级和时间，不显示用户说明或消息正文。</p><button v-if="selectedReport?.assignment.canClaim || (isReportDetailRoute && !selectedReport)" class="mt-5 min-h-10 rounded-lg bg-rose-500 px-5 text-sm font-medium text-white disabled:opacity-50" :disabled="claiming" @click="claimReport">{{ claiming ? '领取中…' : '领取并查看证据' }}</button></div>
             </div>
             <div v-else-if="detail" class="space-y-5 p-4 sm:p-5">
               <section class="rounded-lg border border-gray-200 p-4"><h3 class="text-sm font-semibold text-gray-950">举报说明</h3><p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-gray-700">{{ detail.description || '用户未填写补充说明。' }}</p></section>

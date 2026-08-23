@@ -46,6 +46,14 @@ adminAppOperationRoutes.post('/overview/refresh', requireOwner, async (c) => {
       c.env.DB,
       actor(c),
       c.req.header('Idempotency-Key') ?? null,
+      new Date(),
+      {
+        accountId: c.env.APP_OPERATIONS_CLOUDFLARE_ACCOUNT_ID,
+        apiToken: c.env.APP_OPERATIONS_CLOUDFLARE_ANALYTICS_TOKEN,
+        workerScripts: c.env.APP_OPERATIONS_CLOUDFLARE_WORKER_SCRIPTS,
+        d1DatabaseId: c.env.APP_OPERATIONS_CLOUDFLARE_D1_DATABASE_ID,
+        r2Buckets: c.env.APP_OPERATIONS_CLOUDFLARE_R2_BUCKETS,
+      },
     )
     return c.json({ data: result.overview, replayed: result.replayed }, result.replayed ? 200 : 201)
   }

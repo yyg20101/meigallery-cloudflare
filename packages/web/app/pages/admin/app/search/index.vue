@@ -46,22 +46,16 @@ function scalarLabel(value: string | number | boolean | null) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <h1 class="text-xl font-bold text-gray-950">App 搜索运营核查</h1>
-        <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600">
-          只读核查搜索策略、稳定分类目录、会员筛选权益和隐私数据健康。页面不会展示搜索词、条件名称或用户明细，也不会直接修改运行配置。
-        </p>
-      </div>
-      <div class="flex flex-wrap gap-2">
+    <AdminAppPageHeader page-id="ADM-SRC-01" route="/admin/app/search" title="搜索运营核查" description="只读核查搜索策略、跨域版本、会员筛选权益和隐私数据健康。" :state="error ? '加载失败' : status === 'pending' ? '加载中' : overview ? '正常' : '尚未就绪'" :figma-state="error ? '加载失败' : status === 'pending' ? '加载中' : overview ? '正常' : '尚未就绪'" :state-tone="error ? 'danger' : status === 'pending' || !overview ? 'warning' : 'success'">
+      <template #actions>
         <NuxtLink to="/admin/app/taxonomy" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
           查看分类目录
         </NuxtLink>
-        <button :disabled="status === 'pending'" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-gray-950 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50" @click="refresh()">
+        <button :disabled="status === 'pending'" class="inline-flex min-h-10 items-center justify-center rounded-[10px] bg-[#d63363] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50" @click="refresh()">
           {{ status === 'pending' ? '刷新中…' : '刷新核查' }}
         </button>
-      </div>
-    </div>
+      </template>
+    </AdminAppPageHeader>
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
       <span class="font-semibold">开发阶段边界：</span>

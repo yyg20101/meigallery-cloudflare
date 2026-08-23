@@ -145,14 +145,9 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div class="min-w-0">
-        <NuxtLink to="/admin/app/membership/reviews" class="text-sm font-medium text-violet-700 hover:underline">← 返回独立复核队列</NuxtLink>
-        <h1 class="mt-2 break-words text-xl font-bold text-gray-950">会员变更复核详情</h1>
-        <p class="mt-1 break-all font-mono text-xs text-gray-500">{{ requestId }}</p>
-      </div>
-      <button type="button" class="min-h-10 shrink-0 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50" @click="refresh()">刷新详情</button>
-    </header>
+    <AdminAppPageHeader page-id="ADM-MBR-05" :route="`/admin/app/membership/reviews/${requestId}`" title="会员发放复核" :description="`独立比较前后权益并批准或拒绝 · ${requestId}`" :state="errorMessage ? '加载失败' : status === 'pending' ? '加载中' : review ? statusLabel(review.status) : '正常'" figma-state="正常" :state-tone="errorMessage ? 'danger' : status === 'pending' || review?.status === 'pending_review' ? 'warning' : review?.status === 'approved' ? 'success' : 'neutral'">
+      <template #actions><NuxtLink to="/admin/app/membership/reviews" class="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700">返回复核队列</NuxtLink><button type="button" class="min-h-10 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700" @click="refresh()">刷新详情</button></template>
+    </AdminAppPageHeader>
 
     <p v-if="status === 'pending'" class="rounded-xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">正在加载复核详情…</p>
     <p v-else-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">{{ errorMessage }}</p>

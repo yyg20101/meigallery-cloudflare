@@ -20,6 +20,10 @@ const INTERACTION_MIGRATION = readFileSync(
   new URL('../../migrations/0070_app_viewer_interactions.sql', import.meta.url),
   'utf8',
 )
+const TAXONOMY_MIGRATION = readFileSync(
+  new URL('../../migrations/0081_app_taxonomy_catalog.sql', import.meta.url),
+  'utf8',
+)
 const NOW = new Date('2026-08-06T08:00:00.000Z')
 
 let miniflare: Miniflare
@@ -44,6 +48,7 @@ beforeAll(async () => {
   await db.exec(executableSql(PUBLIC_MIGRATION))
   await db.exec(executableSql(SUPPLY_MIGRATION))
   await db.exec(executableSql(INTERACTION_MIGRATION))
+  await db.exec(executableSql(TAXONOMY_MIGRATION))
   await db.exec(executableSql(`
     CREATE TABLE app_profile_blocks (
       account_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

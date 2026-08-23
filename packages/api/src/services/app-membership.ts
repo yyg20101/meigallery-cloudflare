@@ -11,6 +11,7 @@ import type {
 import type { Bindings } from '../index'
 
 export const APP_MEMBERSHIP_DRAFT_CATALOG_ID = 'amc_app_1_0_draft_1'
+export const APP_MEMBERSHIP_DEFAULT_EXPIRING_SOON_DAYS = 30
 
 export interface AppMembershipRuntimeConfig {
   enabled: boolean
@@ -18,6 +19,7 @@ export interface AppMembershipRuntimeConfig {
   applicationsEnabled: boolean
   catalogVersionId: string | null
   requireProductionReady: boolean
+  expiringSoonWindowDays: number
 }
 
 export class AppMembershipError extends Error {
@@ -86,6 +88,12 @@ interface ActiveGrantRow {
   accent_token: string
 }
 
+interface EndedGrantRow extends ActiveGrantRow {
+  ended_state: 'expired' | 'revoked'
+  ended_at: string
+  ended_user_visible_note: string | null
+}
+
 export function getAppMembershipRuntimeConfig(env: Pick<Bindings,
   | 'APP_ENV'
   | 'APP_MEMBERSHIP_ENABLED'
@@ -93,6 +101,7 @@ export function getAppMembershipRuntimeConfig(env: Pick<Bindings,
   | 'APP_MEMBERSHIP_APPLICATIONS_ENABLED'
   | 'APP_MEMBERSHIP_CATALOG_VERSION'
   | 'APP_MEMBERSHIP_PRODUCTION_READY'
+  | 'APP_MEMBERSHIP_EXPIRING_SOON_DAYS'
 >): AppMembershipRuntimeConfig {
   const catalogVersionId = normalizeCatalogVersionId(env.APP_MEMBERSHIP_CATALOG_VERSION)
   const requireProductionReady = env.APP_ENV === 'production'
@@ -107,6 +116,7 @@ export function getAppMembershipRuntimeConfig(env: Pick<Bindings,
       && productionGateSatisfied,
     catalogVersionId,
     requireProductionReady,
+    expiringSoonWindowDays: normalizeExpiringSoonWindowDays(env.APP_MEMBERSHIP_EXPIRING_SOON_DAYS),
   }
 }
 
@@ -230,10 +240,11 @@ export async function resolveAppMembershipSnapshot(
   userId: number,
   catalogVersionId: string,
   now = new Date(),
-  options: { requireProductionReady?: boolean } = {},
+  options: { requireProductionReady?: boolean; expiringSoonWindowDays?: number } = {},
 ): Promise<AppMembershipSnapshot> {
   const catalog = await getAppMembershipCatalog(db, catalogVersionId, options)
   const nowIso = now.toISOString()
+  const expiringSoonWindowDays = normalizeExpiringSoonWindowDays(options.expiringSoonWindowDays)
   const grant = await db.prepare(`
     SELECT g.id AS grant_id, g.tier_id, g.tier_code_snapshot, g.tier_name_snapshot,
            g.rank_snapshot, g.starts_at, g.expires_at, g.source_type,
@@ -251,10 +262,47 @@ export async function resolveAppMembershipSnapshot(
     LIMIT 1
   `).bind(userId, catalogVersionId, nowIso, nowIso).first<ActiveGrantRow>()
 
+  const endedGrant = grant
+    ? null
+    : await db.prepare(`
+      SELECT g.id AS grant_id, g.tier_id, g.tier_code_snapshot, g.tier_name_snapshot,
+             g.rank_snapshot, g.starts_at, g.expires_at, g.source_type,
+             g.user_visible_note, t.accent_token,
+             CASE
+               WHEN r.revoked_at IS NOT NULL AND r.revoked_at <= g.expires_at THEN 'revoked'
+               ELSE 'expired'
+             END AS ended_state,
+             CASE
+               WHEN r.revoked_at IS NOT NULL AND r.revoked_at <= g.expires_at THEN r.revoked_at
+               ELSE g.expires_at
+             END AS ended_at,
+             CASE
+               WHEN r.revoked_at IS NOT NULL AND r.revoked_at <= g.expires_at THEN r.user_visible_note
+               ELSE NULL
+             END AS ended_user_visible_note
+      FROM app_membership_grants g
+      JOIN app_membership_tiers t
+        ON t.catalog_version_id = g.catalog_version_id AND t.tier_id = g.tier_id
+      LEFT JOIN app_membership_grant_revocations r ON r.grant_id = g.id
+      WHERE g.user_id = ?
+        AND g.catalog_version_id = ?
+        AND g.starts_at <= ?
+        AND (
+          g.expires_at <= ?
+          OR (r.revoked_at IS NOT NULL AND r.revoked_at <= ? AND r.revoked_at <= g.expires_at)
+        )
+      ORDER BY ended_at DESC, g.rank_snapshot DESC, g.id ASC
+      LIMIT 1
+    `).bind(userId, catalogVersionId, nowIso, nowIso, nowIso).first<EndedGrantRow>()
+
   const tier = grant
     ? catalog.tiers.find(item => item.tierId === grant.tier_id)
     : null
   if (grant && !tier) throw invalidCatalog()
+  const endedTier = endedGrant
+    ? catalog.tiers.find(item => item.tierId === endedGrant.tier_id)
+    : null
+  if (endedGrant && !endedTier) throw invalidCatalog()
   const tierValues = new Map((tier?.entitlements ?? []).map(item => [item.key, item]))
   const entitlements: AppMembershipResolvedEntitlement[] = catalog.definitions.map((definition) => {
     const resolved = tierValues.get(definition.key)
@@ -268,6 +316,18 @@ export async function resolveAppMembershipSnapshot(
       usage: null,
     }
   })
+
+  const remainingMilliseconds = grant
+    ? new Date(grant.expires_at).getTime() - now.getTime()
+    : null
+  const remainingDays = remainingMilliseconds === null
+    ? null
+    : Math.max(0, Math.ceil(remainingMilliseconds / 86_400_000))
+  const lifecycleState = grant
+    ? remainingMilliseconds! <= expiringSoonWindowDays * 86_400_000
+      ? 'expiring_soon' as const
+      : 'active' as const
+    : endedGrant?.ended_state ?? 'free'
 
   return {
     catalogVersionId: catalog.catalogVersionId,
@@ -292,6 +352,31 @@ export async function resolveAppMembershipSnapshot(
           userVisibleNote: grant.user_visible_note,
         }
       : null,
+    lifecycle: {
+      state: lifecycleState,
+      expiringSoonWindowDays,
+      remainingDays,
+      endedGrant: endedGrant && endedTier
+        ? {
+            tier: {
+              tierId: endedGrant.tier_id,
+              code: endedGrant.tier_code_snapshot,
+              displayName: endedGrant.tier_name_snapshot,
+              rank: Number(endedGrant.rank_snapshot),
+              accentToken: endedTier.accentToken,
+            },
+            grant: {
+              grantId: endedGrant.grant_id,
+              sourceType: 'manual_admin',
+              startsAt: endedGrant.starts_at,
+              expiresAt: endedGrant.expires_at,
+              userVisibleNote: endedGrant.user_visible_note,
+            },
+            endedAt: endedGrant.ended_at,
+            userVisibleNote: endedGrant.ended_user_visible_note,
+          }
+        : null,
+    },
     entitlements,
   }
 }
@@ -340,6 +425,13 @@ function normalizeCatalogVersionId(value: string | undefined): string | null {
   const normalized = value?.trim()
   if (!normalized || !/^amc_[A-Za-z0-9_-]{1,76}$/u.test(normalized)) return null
   return normalized
+}
+
+function normalizeExpiringSoonWindowDays(value: string | number | undefined): number {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 365
+    ? parsed
+    : APP_MEMBERSHIP_DEFAULT_EXPIRING_SOON_DAYS
 }
 
 function toDefinition(row: DefinitionRow): AppMembershipEntitlementDefinition {

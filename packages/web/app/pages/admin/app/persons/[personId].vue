@@ -6,6 +6,7 @@ import type {
   TaxonomyCatalogItem,
   TaxonomyType,
 } from '~/types/admin-app-taxonomy'
+import type { AdminFigmaPageId } from '~/utils/admin-figma-pages'
 import {
   formatAdminDate,
   PERSON_STATUS_LABELS,
@@ -25,6 +26,32 @@ definePageMeta({ layout: 'admin' })
 const route = useRoute()
 const { api } = useApi()
 const personId = computed(() => String(route.params.personId || ''))
+type PersonPageMode = 'workbench' | 'verification' | 'publication'
+const pageMode = computed<PersonPageMode>(() => {
+  if (route.path.startsWith('/admin/app/verifications/')) return 'verification'
+  if (route.path.startsWith('/admin/app/publications/')) return 'publication'
+  return 'workbench'
+})
+const pageContext = computed<{ pageId: AdminFigmaPageId; route: string; title: string; description: string }>(() => ({
+  workbench: {
+    pageId: 'ADM-PER-03',
+    route: route.path,
+    title: '真人工作台',
+    description: '在版本化工作台中维护人物事实、草稿、用途授权、认证和公开投影。',
+  },
+  verification: {
+    pageId: 'ADM-PER-05',
+    route: route.path,
+    title: '认证审核',
+    description: '独立检查主体存在性、成年、授权范围、资料一致性与媒体权利。',
+  },
+  publication: {
+    pageId: 'ADM-PER-06',
+    route: route.path,
+    title: '发布审核',
+    description: '预览锁定版本，并在服务端重新校验认证、授权、公开字段与媒体安全。',
+  },
+}[pageMode.value]))
 const busyAction = ref('')
 const message = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -351,7 +378,7 @@ function pausePublication() {
 </script>
 
 <template>
-  <div class="min-w-0 space-y-5">
+  <div class="min-w-0 space-y-5" :data-page-mode="pageMode">
     <div v-if="status === 'pending'" class="rounded-xl border border-gray-200 bg-white px-6 py-12 text-center text-sm text-gray-500">正在加载人物工作台…</div>
     <div v-else-if="error || !detail" class="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
       人物工作台加载失败或记录不存在。
@@ -359,6 +386,20 @@ function pausePublication() {
     </div>
 
     <template v-else>
+      <AdminAppPageHeader
+        :page-id="pageContext.pageId"
+        :route="pageContext.route"
+        :title="pageContext.title"
+        :description="pageContext.description"
+        :state="PERSON_STATUS_LABELS[detail.publicationStatus] || detail.publicationStatus"
+        :figma-state="pageMode === 'verification' ? (detail.verificationStatus === 'pending' ? '需要复核' : '正常') : pageMode === 'publication' ? (detail.verificationStatus !== 'verified' ? '未认证' : ['expired', 'revoked'].includes(detail.authorizationStatus) ? '授权失效' : '正常') : detail.authorizationStatus === 'expired' ? '授权过期' : detail.verificationStatus === 'pending' ? '认证待审' : detail.publicationStatus === 'pending_review' ? '发布待审' : '正常'"
+        :state-tone="detail.liveProjection?.visible ? 'success' : 'neutral'"
+      >
+        <template #actions>
+          <NuxtLink to="/admin/app/persons" class="inline-flex min-h-9 items-center justify-center rounded-lg border border-[#eaded8] bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-[#fff7f2]">返回列表</NuxtLink>
+        </template>
+      </AdminAppPageHeader>
+
       <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0">
           <div class="flex min-w-0 flex-wrap items-center gap-2">
@@ -369,7 +410,6 @@ function pausePublication() {
           </div>
           <p class="mt-1 break-all text-xs leading-5 text-gray-500">{{ detail.personId }} · {{ detail.profileId }}</p>
         </div>
-        <NuxtLink to="/admin/app/persons" class="shrink-0 text-sm font-medium text-blue-600 hover:underline">返回人物供给</NuxtLink>
       </div>
 
       <div class="grid min-w-0 gap-3 sm:grid-cols-3">
@@ -395,7 +435,7 @@ function pausePublication() {
         {{ message.text }}
       </div>
 
-      <div class="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]">
+      <div v-if="pageMode === 'workbench'" class="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]">
         <form class="min-w-0 space-y-5 rounded-xl border border-gray-200 bg-white p-4 sm:p-6" @submit.prevent="saveProfile">
           <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
             <div>
@@ -456,7 +496,7 @@ function pausePublication() {
         </aside>
       </div>
 
-      <section class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+      <section v-if="pageMode === 'workbench'" class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
         <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div class="min-w-0">
             <div class="flex min-w-0 flex-wrap items-center gap-2">
@@ -522,8 +562,8 @@ function pausePublication() {
         </template>
       </section>
 
-      <div class="grid min-w-0 gap-5 xl:grid-cols-3">
-        <section class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+      <div class="grid min-w-0 gap-5" :class="pageMode === 'workbench' ? 'xl:grid-cols-3' : 'mx-auto w-full max-w-5xl'">
+        <section v-if="pageMode === 'workbench'" class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
           <h2 class="text-base font-semibold text-gray-950">1. 用途授权</h2>
           <p class="mt-1 text-xs leading-5 text-gray-500">只记录内部证据引用，不在此填写证件号码或证据正文。</p>
           <div v-if="detail.currentAuthorization" class="mt-4 rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-600">
@@ -546,7 +586,7 @@ function pausePublication() {
           </div>
         </section>
 
-        <section class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+        <section v-if="pageMode !== 'publication'" id="verification-review" class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
           <h2 class="text-base font-semibold text-gray-950">2. 认证复核</h2>
           <p class="mt-1 text-xs leading-5 text-gray-500">认证结论绑定当前内容版本，不使用“本人运营”等未冻结宣传文案。</p>
           <div v-if="detail.currentVerification" class="mt-4 rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-600">
@@ -572,7 +612,7 @@ function pausePublication() {
           </div>
         </section>
 
-        <section class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+        <section v-if="pageMode !== 'verification'" id="publication-review" class="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
           <h2 class="text-base font-semibold text-gray-950">3. 发布与暂停</h2>
           <p class="mt-1 text-xs leading-5 text-gray-500">发布时再次执行全部门禁，并把审定版本单向写入公开投影。</p>
           <div class="mt-4 rounded-lg p-3 text-sm" :class="allGatesPassed ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'">

@@ -356,18 +356,12 @@ function emptyPagination(): TaxonomyPagination {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div class="min-w-0">
-        <NuxtLink to="/admin/app/taxonomy" class="text-sm font-medium text-blue-600 hover:underline">返回 Taxonomy 目录</NuxtLink>
-        <p class="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">ADM-TAX-02</p>
-        <h1 class="mt-1 break-words text-xl font-bold text-gray-950">{{ term?.displayName || '词条详情' }}</h1>
-        <p class="mt-1 break-all font-mono text-xs text-gray-500">{{ termId }}</p>
-      </div>
-      <div v-if="term" class="flex flex-wrap items-center gap-2">
-        <span class="rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset" :class="taxonomyStatusClass(term.lifecycleStatus)">{{ TAXONOMY_STATUS_LABELS[term.lifecycleStatus] }}</span>
-        <span class="rounded-full bg-white px-3 py-1.5 text-xs text-gray-600 ring-1 ring-gray-200">编辑锁 v{{ term.version }}</span>
-      </div>
-    </header>
+    <AdminAppPageHeader page-id="ADM-TAX-02" :route="route.path" :title="term?.displayName || '词条详情'" :description="`编辑词条、别名和旧值映射，并预览合并影响 · ${termId}`" :state="status === 'pending' ? '加载中' : error ? '加载失败' : term ? TAXONOMY_STATUS_LABELS[term.lifecycleStatus] : '正常'" :figma-state="term?.mergeTargetTermId ? '合并冲突' : term?.catalogs.length ? '被引用' : '正常'" :state-tone="error ? 'danger' : status === 'pending' ? 'warning' : 'info'">
+      <template #actions>
+        <span v-if="term" class="inline-flex min-h-10 items-center rounded-full bg-white px-3 text-xs text-gray-600 ring-1 ring-gray-200">编辑锁 v{{ term.version }}</span>
+        <NuxtLink to="/admin/app/taxonomy" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#eaded8] bg-white px-4 text-sm font-medium text-stone-700 hover:bg-[#fff7f2]">返回 Taxonomy 目录</NuxtLink>
+      </template>
+    </AdminAppPageHeader>
 
     <div v-if="error" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{{ taxonomyApiError(error, '词条详情加载失败。') }} <button type="button" class="ml-2 font-semibold underline" @click="refresh()">重试</button></div>
     <div v-if="status === 'pending'" class="rounded-xl border border-gray-200 bg-white px-5 py-14 text-center text-sm text-gray-500">正在加载词条与引用影响…</div>

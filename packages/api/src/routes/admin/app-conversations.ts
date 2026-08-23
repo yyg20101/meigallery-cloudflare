@@ -37,7 +37,12 @@ import {
   getAppSafetyRuntimeConfig,
   requireAppSafetyAdminEnabled,
 } from '../../services/app-safety'
+import { AppMessageModerationError } from '../../services/app-message-moderation'
 import { errorJson } from '../../utils/api-error'
+import {
+  publishAppRealtimeConversationRefresh,
+  scheduleAppRealtimeTask,
+} from '../../services/app-realtime'
 
 export const adminAppConversationRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -185,12 +190,18 @@ adminAppConversationRoutes.post('/:conversationId/read', async (c) => {
   try {
     enabledConfig(c.env)
     const body = await c.req.json<{ sequence?: unknown }>()
-    return c.json({ data: await markAdminAppConversationRead(
+    const data = await markAdminAppConversationRead(
       c.env.DB,
       c.get('userId')!,
       c.req.param('conversationId'),
       body.sequence,
-    ) })
+    )
+    scheduleRealtime(c, publishAppRealtimeConversationRefresh(c.env, {
+      conversationId: data.conversationId,
+      dedupeKey: `conversation:${data.conversationId}:operator-read:${data.readSequence}`,
+      scopes: ['conversations', 'messages'],
+    }), 'admin.conversation.read')
+    return c.json({ data })
   }
   catch (error) {
     return handleAppMessagingError(c, error)
@@ -199,16 +210,34 @@ adminAppConversationRoutes.post('/:conversationId/read', async (c) => {
 
 adminAppConversationRoutes.post('/:conversationId/messages', async (c) => {
   try {
-    enabledConfig(c.env)
+    const config = enabledConfig(c.env)
+    const now = new Date()
     const data = await sendAdminAppConversationMessage(
       c.env.DB,
       c.get('userId')!,
       c.req.param('conversationId'),
       c.req.header('Idempotency-Key') ?? null,
       await c.req.json<AdminSendAppMessageInput>(),
+      now,
+      {
+        policyId: config.moderationPolicyId,
+        requireProductionReady: config.requireProductionReady,
+      },
     )
+    scheduleRealtime(c, publishAppRealtimeConversationRefresh(c.env, {
+      conversationId: data.message.conversationId,
+      dedupeKey: `message:${data.message.messageId}:operator`,
+      scopes: ['conversations', 'messages'],
+      occurredAt: new Date(data.message.createdAt),
+    }), 'admin.conversation.reply')
     return c.json({
-      message: data.replayed ? '已返回原运营回复' : '运营回复已发送',
+      message: data.replayed
+        ? '已返回原运营回复'
+        : data.message.status === 'review_pending'
+          ? '运营回复已提交审核'
+          : data.message.status === 'rejected'
+            ? '运营回复未通过审核'
+            : '运营回复已发送',
       data,
     }, data.replayed ? 200 : 201)
   }
@@ -258,6 +287,13 @@ adminAppConversationRoutes.post('/:conversationId/close', async (c) => {
       c.req.param('conversationId'),
       c.req.header('Idempotency-Key') ?? null,
     )
+    if (!data.replayed) {
+      scheduleRealtime(c, publishAppRealtimeConversationRefresh(c.env, {
+        conversationId: data.conversationId,
+        dedupeKey: `conversation:${data.conversationId}:closed`,
+        scopes: ['conversations', 'messages'],
+      }), 'admin.conversation.close')
+    }
     return c.json({ message: data.replayed ? '已返回原关闭结果' : '话题已关闭', data })
   }
   catch (error) {
@@ -269,6 +305,14 @@ function enabledConfig(env: Bindings) {
   const config = getAppMessagingRuntimeConfig(env)
   requireAppMessagingAdminEnabled(config)
   return config
+}
+
+function scheduleRealtime(
+  c: { executionCtx: { waitUntil(task: Promise<unknown>): void } },
+  task: Promise<unknown>,
+  operation: string,
+) {
+  scheduleAppRealtimeTask(c.executionCtx, task, operation)
 }
 
 function enabledSafetyEscalationConfig(env: Bindings) {
@@ -293,6 +337,9 @@ function handleAppMessagingError(c: Parameters<typeof errorJson>[0], error: unkn
     return errorJson(c, error.status, error.message, { code: error.code })
   }
   if (error instanceof AppMessagingError) {
+    return errorJson(c, error.status, error.message, { code: error.code })
+  }
+  if (error instanceof AppMessageModerationError) {
     return errorJson(c, error.status, error.message, { code: error.code })
   }
   throw error

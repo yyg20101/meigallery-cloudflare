@@ -77,6 +77,11 @@ import {
   type AppSessionPrincipal,
 } from '../services/app-account-access'
 import {
+  getAppAccountProfile,
+  updateAppAccountProfile,
+  type UpdateAppAccountProfileInput,
+} from '../services/app-account-profile'
+import {
   APP_SUPPORT_CENTER_PATH,
   APP_SUPPORT_CONTENT_VERSION,
   getAppRuntimePolicy,
@@ -171,6 +176,12 @@ import {
   type CreateAppConversationInput,
   type SendAppMessageInput,
 } from '../services/app-messaging'
+import { AppMessageModerationError } from '../services/app-message-moderation'
+import {
+  getAppConversationSettings,
+  updateAppConversationSettings,
+  type UpdateAppConversationSettingsInput,
+} from '../services/app-conversation-settings'
 import { autoAssignConversationIfEligible } from '../services/app-conversation-auto-assignment'
 import {
   APP_SAFETY_MAX_DESCRIPTION_LENGTH,
@@ -193,12 +204,23 @@ import {
   type CreateAppSafetyReportInput,
 } from '../services/app-safety'
 import {
+  addAppSafetyAppealSupplement,
   createAppSafetyAppeal,
   getAppSafetyAppeal,
   listAppSafetyAppeals,
+  type AddAppSafetyAppealSupplementInput,
   parseAppAppealListQuery,
   type CreateAppSafetyAppealInput,
 } from '../services/app-safety-appeals'
+import {
+  addAppServiceAppealSupplement,
+  createAppServiceAppeal,
+  getAppServiceAppeal,
+  listAppServiceAppeals,
+  type AddAppServiceAppealSupplementInput,
+  parseAppServiceAppealListQuery,
+  type CreateAppServiceAppealInput,
+} from '../services/app-service-appeals'
 import {
   APP_NOTIFICATION_CATEGORIES,
   APP_NOTIFICATION_MAX_PAGE_SIZE,
@@ -240,11 +262,11 @@ import {
   APP_RECOMMENDATION_POLICY_ID,
   AppRecommendationError,
   getAppRecommendationRuntimeConfig,
-  resolveAppRecommendationCapabilities,
 } from '../services/app-recommendation-policy'
 import {
   getAppRecommendationPage,
   getAppRecommendationPreference,
+  resolveExecutableAppRecommendationCapabilities,
   updateAppRecommendationPreference,
 } from '../services/app-recommendations'
 import {
@@ -270,6 +292,11 @@ import {
   type AppDataRightsStepUpInput,
 } from '../services/app-data-rights'
 import {
+  APP_DATA_RIGHTS_DOWNLOAD_HEADER,
+  downloadAppDataRightsExport,
+  issueAppDataRightsExportDownloadTicket,
+} from '../services/app-data-rights-exports'
+import {
   APP_PERSON_MEDIA_ACCESS_HEADER,
   APP_PERSON_MEDIA_ACCESS_TOKEN_TTL_SECONDS,
   APP_PERSON_MEDIA_DEFAULT_PAGE_SIZE,
@@ -283,6 +310,16 @@ import {
   listPublicPersonMedia,
   parseAppPersonMediaListQuery,
 } from '../services/app-person-media'
+import {
+  AppRealtimeError,
+  connectAppRealtime,
+  disconnectAppRealtimeAccount,
+  disconnectAppRealtimeDevice,
+  issueAppRealtimeTicket,
+  publishAppRealtimeRefresh,
+  resolveAppRealtimeCapability,
+  scheduleAppRealtimeTask,
+} from '../services/app-realtime'
 
 export const appV2Routes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 const APP_PERSON_MEDIA_IMAGE_TYPES = new Set([
@@ -303,7 +340,11 @@ appV2Routes.use('*', async (c, next) => {
 })
 
 appV2Routes.get('/app/bootstrap', async (c) => {
-  return appApiSuccess(c, await bootstrapConfig(c.env, c.req.header('CF-IPCountry')))
+  return appApiSuccess(c, await bootstrapConfig(
+    c.env,
+    c.req.header('CF-IPCountry'),
+    c.req.header('X-Client-Version'),
+  ))
 })
 
 appV2Routes.get('/app/support', async (c) => {
@@ -378,12 +419,15 @@ for (const path of [
   '/reports/*',
   '/appeals',
   '/appeals/*',
+  '/service-appeals',
+  '/service-appeals/*',
   '/conversations',
   '/conversations/*',
   '/membership-applications',
   '/membership-applications/*',
   '/notifications',
   '/notifications/*',
+  '/realtime/tickets',
 ]) {
   appV2Routes.use(path, async (c, next) => {
     try {
@@ -395,7 +439,7 @@ for (const path of [
         token,
         new Date(),
         config.documentVersions,
-        { allowRestricted: isDataRightsAccessPath(c.req.path, c.req.method) },
+        { allowRestricted: isRestrictedAccountAccessPath(c.req.path, c.req.method) },
       )
       c.set('appAccountId', principal.accountInternalId)
       c.set('appAccountPublicId', principal.accountId)
@@ -429,6 +473,34 @@ for (const path of [
   })
 }
 
+appV2Routes.post('/realtime/tickets', async (c) => {
+  try {
+    return appApiSuccess(c, await issueAppRealtimeTicket(
+      c.env,
+      appPrincipal(c),
+      c.get('appRequestId') || crypto.randomUUID(),
+      realtimeBusinessEligible(c.env),
+    ), 201)
+  }
+  catch (error) {
+    return appRealtimeError(c, error)
+  }
+})
+
+appV2Routes.get('/realtime/connect', async (c) => {
+  try {
+    return await connectAppRealtime(
+      c.env,
+      c.req.header('Authorization'),
+      c.req.header('Upgrade'),
+      realtimeBusinessEligible(c.env),
+    )
+  }
+  catch (error) {
+    return appRealtimeError(c, error)
+  }
+})
+
 appV2Routes.get('/notifications', async (c) => {
   try {
     const principal = appPrincipal(c)
@@ -444,7 +516,7 @@ appV2Routes.get('/notifications', async (c) => {
       principal.accountInternalId,
       principal.accountId,
       config,
-      notificationTargetCapabilities(c.env),
+      await notificationTargetCapabilities(c.env),
       query,
     )
     return appApiListSuccess(c, result.data, {
@@ -475,13 +547,21 @@ appV2Routes.post('/notifications/read-all', async (c) => {
   try {
     const principal = appPrincipal(c)
     const body = await c.req.json<{ category?: unknown }>()
-    return appApiSuccess(c, await markAppNotificationsReadAll(
+    const data = await markAppNotificationsReadAll(
       c.env.DB,
       principal.accountInternalId,
       body.category,
       notificationConfig(c.env),
       { deviceId: principal.deviceId, requestId: c.get('appRequestId')! },
-    ))
+    )
+    if (data.markedCount > 0) {
+      scheduleAppRealtimeRefresh(c, publishAppRealtimeRefresh(c.env, {
+        accountId: principal.accountInternalId,
+        dedupeKey: `notifications:${data.category}:read-all:${data.readAt}`,
+        scopes: ['notifications'],
+      }), 'notifications.read_all')
+    }
+    return appApiSuccess(c, data)
   }
   catch (error) {
     return appNotificationError(c, error)
@@ -496,7 +576,7 @@ appV2Routes.get('/notifications/:notificationId', async (c) => {
       principal.accountInternalId,
       c.req.param('notificationId'),
       notificationConfig(c.env),
-      notificationTargetCapabilities(c.env),
+      await notificationTargetCapabilities(c.env),
     ))
   }
   catch (error) {
@@ -507,13 +587,21 @@ appV2Routes.get('/notifications/:notificationId', async (c) => {
 appV2Routes.post('/notifications/:notificationId/read', async (c) => {
   try {
     const principal = appPrincipal(c)
-    return appApiSuccess(c, await markAppNotificationRead(
+    const data = await markAppNotificationRead(
       c.env.DB,
       principal.accountInternalId,
       c.req.param('notificationId'),
       notificationConfig(c.env),
       { deviceId: principal.deviceId, requestId: c.get('appRequestId')! },
-    ))
+    )
+    if (!data.replayed) {
+      scheduleAppRealtimeRefresh(c, publishAppRealtimeRefresh(c.env, {
+        accountId: principal.accountInternalId,
+        dedupeKey: `notification:${data.notificationId}:read:${data.readAt}`,
+        scopes: ['notifications'],
+      }), 'notification.read')
+    }
+    return appApiSuccess(c, data)
   }
   catch (error) {
     return appNotificationError(c, error)
@@ -625,6 +713,34 @@ appV2Routes.get('/me', async (c) => {
   }
 })
 
+appV2Routes.get('/me/account-profile', async (c) => {
+  try {
+    accountProfileConfig(c.env)
+    return appApiSuccess(c, await getAppAccountProfile(c.env.DB, appPrincipal(c)))
+  }
+  catch (error) {
+    return appAccountError(c, error)
+  }
+})
+
+appV2Routes.put('/me/account-profile', async (c) => {
+  try {
+    accountProfileConfig(c.env)
+    return appApiSuccess(c, await updateAppAccountProfile(
+      c.env.DB,
+      appPrincipal(c),
+      await c.req.json<UpdateAppAccountProfileInput>(),
+      c.get('appRequestId') || crypto.randomUUID(),
+    ))
+  }
+  catch (error) {
+    if (error instanceof SyntaxError) {
+      return appApiError(c, 400, 'REQUEST_BODY_INVALID', '请求体必须为有效 JSON')
+    }
+    return appAccountError(c, error)
+  }
+})
+
 appV2Routes.get('/me/data-rights', async (c) => {
   try {
     const principal = appPrincipal(c)
@@ -733,14 +849,22 @@ appV2Routes.post('/me/data-rights/deletion-requests', async (c) => {
       )
       return appApiSuccess(c, recovered)
     }
+    const principal = appPrincipal(c)
     const result = await createAppAccountDeletionRequest(
       c.env,
-      appPrincipal(c),
+      principal,
       getAppDataRightsRuntimeConfig(c.env),
       c.req.header('X-Step-Up-Token'),
       c.req.header('Idempotency-Key') ?? null,
       await c.req.json<AppDataRightsDeletionRequestInput>(),
     )
+    if (result.sessionRevoked) {
+      scheduleAppRealtimeRefresh(
+        c,
+        disconnectAppRealtimeAccount(c.env, principal.accountInternalId),
+        'data_rights.deletion_requested',
+      )
+    }
     return appApiSuccess(c, result, result.replayed ? 200 : 201)
   }
   catch (error) {
@@ -755,6 +879,37 @@ appV2Routes.get('/me/data-rights/requests/:requestId', async (c) => {
       appPrincipal(c).accountInternalId,
       c.req.param('requestId'),
     ))
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.post('/me/data-rights/requests/:requestId/download-tickets', async (c) => {
+  try {
+    return appApiSuccess(c, await issueAppDataRightsExportDownloadTicket(
+      c.env,
+      appPrincipal(c),
+      c.req.param('requestId'),
+      c.req.header('X-Step-Up-Token'),
+      c.req.header('Idempotency-Key') ?? null,
+      c.get('appRequestId')!,
+    ))
+  }
+  catch (error) {
+    return appDataRightsError(c, error)
+  }
+})
+
+appV2Routes.get('/me/data-rights/requests/:requestId/download', async (c) => {
+  try {
+    return await downloadAppDataRightsExport(
+      c.env,
+      appPrincipal(c),
+      c.req.param('requestId'),
+      c.req.header(APP_DATA_RIGHTS_DOWNLOAD_HEADER),
+      c.get('appRequestId')!,
+    )
   }
   catch (error) {
     return appDataRightsError(c, error)
@@ -944,7 +1099,10 @@ appV2Routes.get('/me/entitlements', async (c) => {
       appPrincipal(c).accountInternalId,
       config.catalogVersionId,
       new Date(),
-      { requireProductionReady: config.requireProductionReady },
+      {
+        requireProductionReady: config.requireProductionReady,
+        expiringSoonWindowDays: config.expiringSoonWindowDays,
+      },
     ))
   }
   catch (error) {
@@ -972,6 +1130,13 @@ appV2Routes.post('/conversations', async (c) => {
       new Date(),
       config.requireProductionReady,
     )
+    if (data.created) {
+      scheduleAppRealtimeRefresh(c, publishAppRealtimeRefresh(c.env, {
+        accountId: principal.accountInternalId,
+        dedupeKey: `conversation:${data.conversation.conversationId}:created`,
+        scopes: ['conversations', 'messages'],
+      }), 'conversation.create')
+    }
     return appApiSuccess(c, data, data.created ? 201 : 200)
   }
   catch (error) {
@@ -1028,6 +1193,38 @@ appV2Routes.get('/conversations/:conversationId', async (c) => {
   }
 })
 
+appV2Routes.get('/conversations/:conversationId/settings', async (c) => {
+  try {
+    conversationSettingsConfig(c.env)
+    return appApiSuccess(c, await getAppConversationSettings(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('conversationId'),
+    ))
+  }
+  catch (error) {
+    return appMessagingError(c, error)
+  }
+})
+
+appV2Routes.put('/conversations/:conversationId/settings', async (c) => {
+  try {
+    conversationSettingsConfig(c.env)
+    return appApiSuccess(c, await updateAppConversationSettings(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('conversationId'),
+      await c.req.json<UpdateAppConversationSettingsInput>(),
+    ))
+  }
+  catch (error) {
+    if (error instanceof SyntaxError) {
+      return appApiError(c, 400, 'REQUEST_BODY_INVALID', '请求体必须为有效 JSON')
+    }
+    return appMessagingError(c, error)
+  }
+})
+
 appV2Routes.get('/conversations/:conversationId/messages', async (c) => {
   try {
     messagingConfig(c.env)
@@ -1061,8 +1258,9 @@ appV2Routes.post('/conversations/:conversationId/messages', async (c) => {
       await c.req.json<SendAppMessageInput>(),
       now,
       config.requireProductionReady,
+      config.moderationPolicyId,
     )
-    if (!data.replayed) {
+    if (data.message.status === 'accepted') {
       scheduleConversationAutoAssignment(c, autoAssignConversationIfEligible(
         c.env.DB,
         conversationId,
@@ -1070,6 +1268,12 @@ appV2Routes.post('/conversations/:conversationId/messages', async (c) => {
         now,
       ))
     }
+    scheduleAppRealtimeRefresh(c, publishAppRealtimeRefresh(c.env, {
+      accountId: appPrincipal(c).accountInternalId,
+      dedupeKey: `message:${data.message.messageId}:viewer`,
+      scopes: ['conversations', 'messages'],
+      occurredAt: new Date(data.message.createdAt),
+    }), 'conversation.viewer_message')
     return appApiSuccess(c, data, data.replayed ? 200 : 201)
   }
   catch (error) {
@@ -1080,13 +1284,20 @@ appV2Routes.post('/conversations/:conversationId/messages', async (c) => {
 appV2Routes.post('/conversations/:conversationId/read', async (c) => {
   try {
     messagingConfig(c.env)
+    const principal = appPrincipal(c)
     const body = await c.req.json<{ sequence?: unknown }>()
-    return appApiSuccess(c, await markAppConversationRead(
+    const data = await markAppConversationRead(
       c.env.DB,
-      appPrincipal(c).accountInternalId,
+      principal.accountInternalId,
       c.req.param('conversationId'),
       body.sequence,
-    ))
+    )
+    scheduleAppRealtimeRefresh(c, publishAppRealtimeRefresh(c.env, {
+      accountId: principal.accountInternalId,
+      dedupeKey: `conversation:${data.conversationId}:viewer-read:${data.readSequence}`,
+      scopes: ['conversations', 'messages'],
+    }), 'conversation.viewer_read')
+    return appApiSuccess(c, data)
   }
   catch (error) {
     return appMessagingError(c, error)
@@ -1105,6 +1316,13 @@ appV2Routes.post('/conversations/:conversationId/close', async (c) => {
       c.req.header('Idempotency-Key') ?? null,
       new Date(),
     )
+    if (!result.replayed) {
+      scheduleAppRealtimeRefresh(c, publishAppRealtimeRefresh(c.env, {
+        accountId: principal.accountInternalId,
+        dedupeKey: `conversation:${result.conversationId}:closed`,
+        scopes: ['conversations', 'messages'],
+      }), 'conversation.viewer_close')
+    }
     return appApiSuccess(c, {
       conversation: await getAppConversation(
         c.env.DB,
@@ -1126,12 +1344,22 @@ appV2Routes.post('/conversations/:conversationId/close', async (c) => {
 
 appV2Routes.delete('/me/devices/:deviceId', async (c) => {
   try {
-    return appApiSuccess(c, await revokeAppDevice(
+    const principal = appPrincipal(c)
+    const data = await revokeAppDevice(
       c.env.DB,
-      appPrincipal(c),
+      principal,
       c.req.param('deviceId'),
       c.get('appRequestId') || crypto.randomUUID(),
-    ))
+    )
+    scheduleAppRealtimeRefresh(c, Promise.all([
+      disconnectAppRealtimeDevice(c.env, principal.accountInternalId, data.deviceId),
+      publishAppRealtimeRefresh(c.env, {
+        accountId: principal.accountInternalId,
+        dedupeKey: `device:${data.deviceId}:revoked:${data.revokedAt ?? 'unknown'}`,
+        scopes: ['account'],
+      }),
+    ]), 'account.device_revoke')
+    return appApiSuccess(c, data)
   }
   catch (error) {
     return appAccountError(c, error)
@@ -1178,6 +1406,7 @@ appV2Routes.post('/discovery/recommendations', async (c) => {
       getAppRecommendationRuntimeConfig(c.env),
       c.req.url,
       viewer,
+      c.req.header('X-Client-Version'),
     ))
   }
   catch (error) {
@@ -1191,6 +1420,7 @@ appV2Routes.get('/me/recommendation-preference', async (c) => {
       c.env.DB,
       appPrincipal(c).accountInternalId,
       getAppRecommendationRuntimeConfig(c.env),
+      c.req.header('X-Client-Version'),
     ))
   }
   catch (error) {
@@ -1205,6 +1435,7 @@ appV2Routes.put('/me/recommendation-preference', async (c) => {
       appPrincipal(c).accountInternalId,
       await c.req.json<unknown>(),
       getAppRecommendationRuntimeConfig(c.env),
+      c.req.header('X-Client-Version'),
     ))
   }
   catch (error) {
@@ -1607,6 +1838,98 @@ appV2Routes.get('/me/appeals/:appealId', async (c) => {
   }
 })
 
+appV2Routes.post('/me/appeals/:appealId/supplements', async (c) => {
+  try {
+    appealConfig(c.env)
+    const result = await addAppSafetyAppealSupplement(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('appealId'),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AddAppSafetyAppealSupplementInput>(),
+    )
+    return appApiSuccess(c, result, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.post('/service-appeals', async (c) => {
+  try {
+    const config = appealConfig(c.env)
+    const result = await createAppServiceAppeal(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      config.appealPolicyId,
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<CreateAppServiceAppealInput>(),
+      new Date(),
+      config.requireAppealsProductionReady,
+    )
+    return appApiSuccess(c, result, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.get('/me/service-appeals', async (c) => {
+  try {
+    appealConfig(c.env)
+    const principal = appPrincipal(c)
+    const query = parseAppServiceAppealListQuery({
+      limit: c.req.query('limit'),
+      cursor: c.req.query('cursor'),
+      accountScope: principal.accountId,
+    })
+    const result = await listAppServiceAppeals(
+      c.env.DB,
+      principal.accountInternalId,
+      principal.accountId,
+      query,
+    )
+    return appApiListSuccess(c, result.data, {
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    })
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.get('/me/service-appeals/:appealId', async (c) => {
+  try {
+    appealConfig(c.env)
+    return appApiSuccess(c, await getAppServiceAppeal(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('appealId'),
+    ))
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
+appV2Routes.post('/me/service-appeals/:appealId/supplements', async (c) => {
+  try {
+    appealConfig(c.env)
+    const result = await addAppServiceAppealSupplement(
+      c.env.DB,
+      appPrincipal(c).accountInternalId,
+      c.req.param('appealId'),
+      c.req.header('Idempotency-Key') ?? null,
+      await c.req.json<AddAppServiceAppealSupplementInput>(),
+    )
+    return appApiSuccess(c, result, result.replayed ? 200 : 201)
+  }
+  catch (error) {
+    return appSafetyError(c, error)
+  }
+})
+
 for (const interactionType of ['like', 'follow'] as const) {
   appV2Routes.put(`/person-profiles/:profileId/${interactionType}`, async (c) => {
     try {
@@ -1649,6 +1972,9 @@ for (const [path, interactionType] of [
       const query = parseAppViewerInteractionQuery({
         limit: c.req.query('limit'),
         cursor: c.req.query('cursor'),
+        query: c.req.query('query'),
+        region: c.req.query('region'),
+        styleTerm: c.req.query('styleTerm'),
         accountScope: principal.accountId,
         interactionType,
       })
@@ -1747,6 +2073,9 @@ appV2Routes.get('/me/favorites', async (c) => {
     const query = parseAppFavoriteListQuery({
       limit: c.req.query('limit'),
       cursor: c.req.query('cursor'),
+      query: c.req.query('query'),
+      region: c.req.query('region'),
+      styleTerm: c.req.query('styleTerm'),
       accountScope: principal.accountId,
     })
     const result = await listAppFavorites(
@@ -1775,6 +2104,7 @@ appV2Routes.get('/me/favorite-folders', async (c) => {
       appPrincipal(c).accountInternalId,
       interactionCollectionConfig(c.env),
       getAppMembershipRuntimeConfig(c.env),
+      c.req.url,
     ))
   }
   catch (error) {
@@ -1835,6 +2165,9 @@ appV2Routes.get('/me/favorite-folders/:folderId/items', async (c) => {
     const query = parseAppFavoriteListQuery({
       limit: c.req.query('limit'),
       cursor: c.req.query('cursor'),
+      query: c.req.query('query'),
+      region: c.req.query('region'),
+      styleTerm: c.req.query('styleTerm'),
       accountScope: principal.accountId,
       folderId,
     })
@@ -2202,6 +2535,7 @@ appV2Routes.delete('/me/search-history/:historyId', async (c) => {
 async function bootstrapConfig(
   env: Bindings,
   requestCountry?: string,
+  requestClientVersion?: string,
 ): Promise<AppBootstrapConfig> {
   const auth = getAppAuthRuntimeConfig(env)
   const membership = getAppMembershipRuntimeConfig(env)
@@ -2217,6 +2551,10 @@ async function bootstrapConfig(
   const dataRights = getAppDataRightsRuntimeConfig(env)
   const media = getAppPersonMediaRuntimeConfig(env)
   const runtime = getAppRuntimePolicy(env, requestCountry)
+  const realtime = await resolveAppRealtimeCapability(
+    env,
+    auth.enabled && (messaging.enabled || notifications.enabled),
+  )
   const [interactionCollectionCapabilities, followUpdatesCapability, personSearchCapabilities] = auth.enabled
     ? await Promise.all([
         resolveAppInteractionCollectionCapabilities(env.DB, interactionCollections),
@@ -2230,7 +2568,7 @@ async function bootstrapConfig(
       ]
   const [taxonomyCatalogCapability, recommendationCapabilities, dataRightsCapabilities] = await Promise.all([
     resolveAppTaxonomyCatalogCapability(env.DB, taxonomy),
-    resolveAppRecommendationCapabilities(env.DB, recommendation),
+    resolveExecutableAppRecommendationCapabilities(env.DB, recommendation, requestClientVersion),
     auth.enabled
       ? resolveAppDataRightsCapabilities(env.DB, dataRights)
       : Promise.resolve({
@@ -2287,12 +2625,15 @@ async function bootstrapConfig(
       },
       messaging: auth.enabled && messaging.enabled,
       notifications: auth.enabled && notifications.enabled,
+      realtime: realtime.enabled,
       wallet: auth.enabled && wallet.enabled,
       safety: {
         reports: auth.enabled && safety.enabled,
         blocks: auth.enabled && safety.enabled,
         conversationClose: auth.enabled && safety.enabled && messaging.enabled,
         appeals: auth.enabled && safety.appealsEnabled,
+        accountRestrictionAppeals: auth.enabled && safety.appealsEnabled,
+        walletEntryAppeals: auth.enabled && safety.appealsEnabled && wallet.enabled,
       },
       dataRights: {
         overview: auth.enabled && dataRightsCapabilities.overview,
@@ -2380,6 +2721,11 @@ async function bootstrapConfig(
       methods: auth.methods,
       registrationEnabled: auth.registrationEnabled,
       deviceManagementEnabled: auth.enabled,
+      accountProfileEnabled: auth.enabled && env.APP_ACCOUNT_PROFILE_ENABLED === 'true',
+      initialPreferencesEnabled: auth.enabled
+        && env.APP_INITIAL_PREFERENCES_ENABLED === 'true'
+        && recommendationCapabilities.preferences
+        && taxonomyCatalogCapability,
       accessTokenTtlSeconds: auth.accessTokenTtlSeconds,
       challenge: auth.enabled ? auth.challenge : { type: 'none' },
       documents: auth.enabled && auth.documentVersions && auth.documentUrls
@@ -2408,12 +2754,27 @@ async function bootstrapConfig(
       disclosureText: APP_MESSAGING_DISCLOSURE_TEXT,
       transport: 'http_pull',
       maxTextLength: APP_MESSAGING_MAX_TEXT_LENGTH,
+      conversationSettingsEnabled: auth.enabled
+        && messaging.enabled
+        && env.APP_CONVERSATION_SETTINGS_ENABLED === 'true',
     },
     notifications: {
       policyVersion: notifications.policyId,
       transport: 'http_pull',
       maxPageSize: APP_NOTIFICATION_MAX_PAGE_SIZE,
       categories: [...APP_NOTIFICATION_CATEGORIES],
+    },
+    realtime: {
+      policyVersion: realtime.policyId,
+      transport: realtime.transport,
+      protocol: realtime.protocol,
+      ticketPath: realtime.ticketPath,
+      connectPath: realtime.connectPath,
+      eventSchemaVersion: realtime.eventSchemaVersion,
+      ticketTtlSeconds: realtime.ticketTtlSeconds,
+      reconnectMinDelayMs: realtime.reconnectMinDelayMs,
+      reconnectMaxDelayMs: realtime.reconnectMaxDelayMs,
+      maxConnectionsPerAccount: realtime.maxConnectionsPerAccount,
     },
     wallet: {
       policyVersion: wallet.policyId,
@@ -2444,6 +2805,8 @@ async function bootstrapConfig(
       transport: 'http_poll',
       stepUpTtlSeconds: dataRightsCapabilities.policy?.stepUpTtlSeconds ?? 300,
       statusAccessHeader: APP_DATA_RIGHTS_STATUS_HEADER,
+      downloadTicketHeader: APP_DATA_RIGHTS_DOWNLOAD_HEADER,
+      exportFormat: 'tar',
       systemPush: false,
       exportProcessing: auth.enabled && dataRightsCapabilities.exportProcessing,
       deletionProcessing: auth.enabled && dataRightsCapabilities.deletionProcessing,
@@ -2475,12 +2838,24 @@ function notificationConfig(env: Bindings) {
   return config
 }
 
-function notificationTargetCapabilities(env: Bindings) {
+async function notificationTargetCapabilities(env: Bindings) {
   const auth = getAppAuthRuntimeConfig(env)
   const membership = getAppMembershipRuntimeConfig(env)
   const messaging = getAppMessagingRuntimeConfig(env)
   const safety = getAppSafetyRuntimeConfig(env)
   const wallet = getAppWalletRuntimeConfig(env)
+  let dataRightsAvailable = false
+  if (auth.enabled) {
+    try {
+      dataRightsAvailable = (
+        await resolveAppDataRightsCapabilities(env.DB, getAppDataRightsRuntimeConfig(env))
+      ).overview
+    }
+    catch {
+      // 通知列表仍可读；数据权利门禁不可判定时只关闭目标动作。
+      dataRightsAvailable = false
+    }
+  }
   return {
     messaging: auth.enabled && messaging.enabled,
     profiles: true,
@@ -2490,6 +2865,7 @@ function notificationTargetCapabilities(env: Bindings) {
     safetyAppeals: auth.enabled && safety.appealsEnabled,
     accountSecurity: auth.enabled,
     wallet: auth.enabled && wallet.enabled,
+    dataRights: dataRightsAvailable,
   }
 }
 
@@ -2499,9 +2875,26 @@ function walletConfig(env: Bindings) {
   return config
 }
 
+function accountProfileConfig(env: Bindings) {
+  const config = getAppAuthRuntimeConfig(env)
+  requireAppAuthEnabled(config)
+  if (env.APP_ACCOUNT_PROFILE_ENABLED !== 'true') {
+    throw new AppAccountAccessError(403, 'FEATURE_DISABLED', '账号资料功能当前未开放')
+  }
+  return config
+}
+
 function messagingConfig(env: Bindings) {
   const config = getAppMessagingRuntimeConfig(env)
   requireAppMessagingEnabled(config)
+  return config
+}
+
+function conversationSettingsConfig(env: Bindings) {
+  const config = messagingConfig(env)
+  if (env.APP_CONVERSATION_SETTINGS_ENABLED !== 'true') {
+    throw new AppMessagingError(403, 'FEATURE_DISABLED', '会话设置当前未开放')
+  }
   return config
 }
 
@@ -2532,6 +2925,9 @@ function appSafetyError(
   if (error instanceof AppSafetyError) {
     return appApiError(c, error.status, error.code, error.message, error.retryable)
   }
+  if (error instanceof SyntaxError) {
+    return appApiError(c, 400, 'REQUEST_BODY_INVALID', '请求体必须为有效 JSON')
+  }
   return appMessagingError(c, error)
 }
 
@@ -2542,6 +2938,9 @@ function appMessagingError(
   if (error instanceof AppMessagingError) {
     return appApiError(c, error.status, error.code, error.message, error.retryable)
   }
+  if (error instanceof AppMessageModerationError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
   return appMembershipError(c, error)
 }
 
@@ -2550,6 +2949,16 @@ function appNotificationError(
   error: unknown,
 ) {
   if (error instanceof AppNotificationError) {
+    return appApiError(c, error.status, error.code, error.message, error.retryable)
+  }
+  throw error
+}
+
+function appRealtimeError(
+  c: Parameters<typeof appApiError>[0],
+  error: unknown,
+) {
+  if (error instanceof AppRealtimeError) {
     return appApiError(c, error.status, error.code, error.message, error.retryable)
   }
   throw error
@@ -2647,6 +3056,14 @@ function scheduleConversationAutoAssignment(
   }
 }
 
+function scheduleAppRealtimeRefresh(
+  c: { executionCtx: { waitUntil(task: Promise<unknown>): void } },
+  task: Promise<unknown>,
+  operation: string,
+) {
+  scheduleAppRealtimeTask(c.executionCtx, task, operation)
+}
+
 function appPrincipal(c: {
   get(name: 'appAccountId'): number | undefined
   get(name: 'appAccountPublicId'): string | undefined
@@ -2669,9 +3086,21 @@ function appPrincipal(c: {
   }
 }
 
-function isDataRightsAccessPath(path: string, method: string) {
+function realtimeBusinessEligible(env: Bindings) {
+  const auth = getAppAuthRuntimeConfig(env)
+  const messaging = getAppMessagingRuntimeConfig(env)
+  const notifications = getAppNotificationRuntimeConfig(env)
+  return auth.enabled && (messaging.enabled || notifications.enabled)
+}
+
+function isRestrictedAccountAccessPath(path: string, method: string) {
   if (path === '/api/v2/me' && method === 'GET') return true
-  return path.startsWith('/api/v2/me/data-rights')
+  if (path.startsWith('/api/v2/me/data-rights')) return true
+  if (path === '/api/v2/service-appeals' && method === 'POST') return true
+  if (/^\/api\/v2\/me\/appeals\/[^/]+\/supplements$/u.test(path) && method === 'POST') return true
+  if (/^\/api\/v2\/me\/service-appeals\/[^/]+\/supplements$/u.test(path) && method === 'POST') return true
+  if (path.startsWith('/api/v2/me/appeals') && method === 'GET') return true
+  return path.startsWith('/api/v2/me/service-appeals') && method === 'GET'
 }
 
 function isDataRightsDeletionCreationPath(path: string, method: string) {

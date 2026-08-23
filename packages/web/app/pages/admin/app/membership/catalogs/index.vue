@@ -385,22 +385,10 @@ function isCloneableBase(item: MembershipCatalogSummary) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-      <div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-2 text-xs font-medium text-gray-500">
-            <span class="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">ADM-MBR-01</span>
-            <span>管理平面 · 不自动切换运行时</span>
-          </div>
-          <h1 class="mt-3 text-xl font-semibold text-gray-950 sm:text-2xl">五级会员目录</h1>
-          <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-600">
-            以不可变版本维护名称、rank、服务说明和权益组合。草稿发布必须由另一位 Owner 复核；批准后仍需后置配置才会成为环境引用。
-          </p>
-        </div>
-        <button class="w-full rounded-xl bg-gray-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 sm:w-auto" @click="openCreate">
-          新建目录版本
-        </button>
-      </div>
+    <section class="rounded-2xl border border-[#eaded8] bg-white p-4 shadow-sm sm:p-6">
+      <AdminAppPageHeader page-id="ADM-MBR-01" route="/admin/app/membership/catalogs" title="五级会员目录" description="以不可变版本维护名称、rank、服务说明和权益组合；批准后仍需后置配置才会成为环境引用。" figma-state="正常">
+        <template #actions><button class="min-h-10 rounded-[10px] bg-[#d63363] px-4 py-2 text-sm font-medium text-white hover:bg-[#bd2756]" @click="openCreate">新建目录版本</button></template>
+      </AdminAppPageHeader>
       <nav class="mt-5 flex min-w-0 gap-2 overflow-x-auto pb-1 text-sm">
         <span class="shrink-0 rounded-full bg-gray-950 px-3 py-1.5 text-white">目录版本</span>
         <NuxtLink class="shrink-0 rounded-full bg-gray-100 px-3 py-1.5 text-gray-700 hover:bg-gray-200" to="/admin/app/entitlements">Entitlement 定义</NuxtLink>
@@ -408,7 +396,7 @@ function isCloneableBase(item: MembershipCatalogSummary) {
         <NuxtLink class="shrink-0 rounded-full bg-gray-100 px-3 py-1.5 text-gray-700 hover:bg-gray-200" to="/admin/app/membership/grants/new">会员发放</NuxtLink>
         <NuxtLink class="shrink-0 rounded-full bg-gray-100 px-3 py-1.5 text-gray-700 hover:bg-gray-200" to="/admin/app/membership/reviews">变更复核</NuxtLink>
       </nav>
-    </header>
+    </section>
 
     <div v-if="operationMessage" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">{{ operationMessage }}</div>
     <div v-if="operationError" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-800">{{ operationError }}</div>

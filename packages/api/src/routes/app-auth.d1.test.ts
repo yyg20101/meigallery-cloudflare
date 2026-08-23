@@ -64,6 +64,21 @@ beforeAll(async () => {
     CREATE TABLE galleries (id TEXT PRIMARY KEY, cover_key TEXT, status TEXT NOT NULL);
   `))
   await db.exec(executableSql(MIGRATION))
+  await db.exec(executableSql(`
+    ALTER TABLE app_account_security
+      ADD COLUMN restriction_version INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE app_account_security
+      ADD COLUMN restriction_reference TEXT;
+    CREATE TABLE app_realtime_tickets (
+      id TEXT PRIMARY KEY,
+      account_id INTEGER NOT NULL,
+      session_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      consumed_at TEXT,
+      cancelled_at TEXT,
+      cancellation_reason TEXT
+    );
+  `))
 })
 
 beforeEach(async () => {
@@ -221,7 +236,9 @@ describe('App Auth HTTP 路由', () => {
     const logout = await app.request('/api/v2/auth/logout', {
       method: 'POST',
       headers: { Authorization: authorization },
-    }, env)
+    }, env, {
+      waitUntil() {},
+    } as unknown as ExecutionContext)
     expect(logout.status).toBe(200)
     expect(await logout.json()).toMatchObject({ data: { loggedOut: true } })
 

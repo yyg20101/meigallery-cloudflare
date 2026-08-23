@@ -111,18 +111,9 @@ function impactLabel(incident: AdminOperationalIncidentSummary) {
 
 <template>
   <div class="min-w-0 space-y-5">
-    <header class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <h1 class="text-xl font-bold text-gray-950">App 运营事件中心</h1>
-          <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">ADM-OV-02</span>
-        </div>
-        <p class="mt-1 max-w-4xl text-sm leading-6 text-gray-600">统一查看跨域异常、负责人、Runbook 与处置状态。事件数量只来自已运行检测，不把尚未接入的检测器解释为零异常。</p>
-      </div>
-      <NuxtLink to="/admin/app" class="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:w-auto">
-        返回运营总览
-      </NuxtLink>
-    </header>
+    <AdminAppPageHeader page-id="ADM-OV-02" route="/admin/app/incidents" title="异常中心" description="集中处理跨领域异常、优先级、责任人与 Runbook；事件数量只来自已运行检测。" :state="loading ? '加载中' : errorMessage ? '加载失败' : '正常'" figma-state="正常" :state-tone="errorMessage ? 'danger' : loading ? 'warning' : 'info'">
+      <template #actions><NuxtLink to="/admin/app" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#eaded8] bg-white px-4 text-sm font-medium text-stone-700 hover:bg-[#fff7f2]">返回运营总览</NuxtLink></template>
+    </AdminAppPageHeader>
 
     <section class="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
       <div class="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">

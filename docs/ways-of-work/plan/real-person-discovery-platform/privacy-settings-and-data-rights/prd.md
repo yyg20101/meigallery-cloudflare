@@ -6,7 +6,7 @@ Feature ID：F-13
 
 App 版本：1.0
 
-状态：需求已细化；Privacy-1 默认关闭开发基线已完成，地区政策、保留期、责任人和 Privacy-2 真实处理待决策门禁关闭
+状态：需求已细化；Privacy-1/2A/2B/2C 默认关闭源码开发已完成，地区政策、保留期、责任人、配置与真实处理仍待决策和统一验证门禁关闭
 
 ## 2. Epic
 
@@ -17,6 +17,9 @@ App 版本：1.0
 - 安全基线：[信任、安全、隐私与合规](../../../../app/TRUST_SAFETY_PRIVACY_COMPLIANCE.md)
 - API 基线：[App API 与实时通信契约](../../../../app/API_AND_REALTIME_CONTRACT.md)
 - 开发基线：[Privacy-1 数据权利控制面跨仓开发基线](../../../../app/PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md)
+- 私有导出：[Privacy-2A 私有数据导出制品跨仓交付基线](../../../../app/PRIVACY_2A_PRIVATE_EXPORT_INTEGRATION.md)
+- 不可逆注销：[Privacy-2B 账号不可逆注销跨仓交付基线](../../../../app/PRIVACY_2B_IRREVERSIBLE_DELETION_INTEGRATION.md)
+- 副本覆盖：[Privacy-2C 个人数据副本覆盖补全开发基线](../../../../app/PRIVACY_2C_DATA_COPY_COVERAGE_INTEGRATION.md)
 - 开放决策：OQ-002、OQ-003、OQ-020、OQ-024、OQ-025、OQ-030
 
 ## 3. Goal
@@ -96,7 +99,7 @@ Search-1 已按 `PDR-FR-010/012/013` 完成默认关闭的独立搜索历史服�
 
 - **PDR-FR-030**：用户可创建本账号数据导出请求；创建前执行新鲜会话或再次身份验证，不能仅凭持有旧页面访问权限下载。
 - **PDR-FR-031**：导出持久化状态至少包含 `requested`、`collecting`、`ready`、`expired`、`failed`、`cancelled`；`verification_required` 是创建/取消前的交互状态，不持久化为已创建申请状态。
-- **PDR-FR-032**：导出至少包含账号资料、身份方式摘要、同意/设置、设备摘要、喜欢/关注/收藏/历史、会员/entitlement、金币明细、本人会话与消息、举报/申诉状态和数据请求历史中依法可提供部分。
+- **PDR-FR-032**：导出至少包含账号资料、身份方式摘要、同意/设置、设备摘要、推荐偏好与可解释推荐证据、喜欢/关注/收藏/历史、拉黑状态与时间线、旧版图库点赞、会员/entitlement、金币明细、本人会话与消息、举报/申诉状态和数据请求历史中依法可提供部分。
 - **PDR-FR-033**：导出不得包含密码/Token/验证码、其他用户身份、真人非公开资料、管理员身份、内部备注、风控规则、授权原件或其他账号的平台话题。
 - **PDR-FR-034**：导出包提供人类可读索引和结构化数据，使用私有 R2 对象、短期单次/受限下载凭证和完整性校验；链接不得进入日志或分析。
 - **PDR-FR-035**：App 通过站内通知和状态查询告知导出就绪，不依赖系统推送；过期后删除可下载副本，用户可重新申请。
@@ -138,7 +141,7 @@ Search-1 已按 `PDR-FR-010/012/013` 完成默认关闭的独立搜索历史服�
 → 修改/确认 → 服务端版本化保存 → 跨设备同步与下游生效
 ```
 
-数据导出（Privacy-1 当前开发边界）：
+数据导出（Privacy-1 控制面）：
 
 ```text
 我的 → 隐私与数据权利 → 阅读当前范围 → 密码二次验证
@@ -146,14 +149,14 @@ Search-1 已按 `PDR-FR-010/012/013` 完成默认关闭的独立搜索历史服�
 → 服务端允许时再次验证并按版本取消
 ```
 
-数据导出（Privacy-2 后续处理）：
+数据导出（Privacy-2A/2C 当前默认关闭源码边界）：
 
 ```text
 requested → collecting → 生成私有制品与完整性证据
 → ready → 再次验证后签发短期下载凭证 → expired 并清理副本
 ```
 
-账号注销（Privacy-1 当前开发边界）：
+账号注销（Privacy-1 控制面）：
 
 ```text
 我的 → 注销说明 → 三项明确确认 → 密码二次验证
@@ -161,7 +164,7 @@ requested → collecting → 生成私有制品与完整性证据
 → 使用申请级状态凭证查询 → 允许阶段再次验证并取消
 ```
 
-账号注销（Privacy-2 后续处理）：
+账号注销（Privacy-2B 当前默认关闭源码边界）：
 
 ```text
 scheduled → 正式等待规则到期 → processing
@@ -221,7 +224,7 @@ scheduled → 正式等待规则到期 → processing
 
 未关闭 OQ-020/OQ-025 前可以实现默认关闭的申请控制面和状态 UI，但不能运行真实导出/删除 Workflow、冻结生产删除计划或对外承诺完成时限。
 
-### 6.8 Privacy-1 当前开发实现
+### 6.8 Privacy-1 历史开发边界
 
 Privacy-1 已按 App API v2 `1.17.0` 完成“可登记、可追踪、可取消”控制面，所有 capability 默认关闭：
 
@@ -233,7 +236,15 @@ Privacy-1 已按 App API v2 `1.17.0` 完成“可登记、可追踪、可取消�
 - Nuxt `ADM-PRI-01/02` 提供管理员最小化总览、队列和详情；Owner 可领取、开始处理、标记失败、重试或凭证据取消。没有真实制品或不可逆处理证据时不提供“完成”动作。
 - Operations-1 只按超过策略 `deadline_at` 且仍非终态的申请生成 `data_rights_overdue` 事件，不复制账号敏感内容。
 
-本阶段不包含导出快照、R2 制品、下载凭证、不可逆删除/匿名化、依法保留隔离或完成证明。以上均为 Privacy-2，必须在 OQ-002/OQ-020/OQ-024/OQ-025 等门禁关闭后实施。
+Privacy-1 本身不包含导出快照、R2 制品、下载凭证、不可逆删除/匿名化、依法保留隔离或完成证明；这些源码已分别由 Privacy-2A/2B 承接，但真实处理仍必须在 OQ-002/OQ-020/OQ-024/OQ-025 等门禁关闭后开放。
+
+### 6.9 Privacy-2A/2B/2C 当前开发实现
+
+- Privacy-2A 已完成 35 类原始白名单、rowid 纳入边界、可恢复 Queue、私有 R2 README/manifest/TAR、重新验证、短期一次性下载票据、KMP 流式保存和两阶段到期清理。
+- Privacy-2B 已完成九步前向可恢复注销、逐步零残留核验、七类 `compliance_only` 保留隔离、完成证据与 KMP 本地终态清理；管理员不能人工伪造 completed。
+- Privacy-2C 在前 35 类 ordinal 不变的前提下追加 6 类，新制品当前为 41 类；执行器按 artifact 自身 scope 数完成，旧 35-scope 任务可以继续恢复。
+- 推荐会话与条目使用集中账号 HMAC 定位，只导出本人可解释字段，`account_hash`、`context_hash`、内部账号 ID、密钥和原始上下文全部排除；稳定密钥是导出与删除的共同 fail-closed 门禁。
+- 本轮只完成源码和文档，不执行 migration、配置、构建、测试、模拟器/真机、截图或生产处理；capability 继续默认关闭。
 
 ## 7. Acceptance Criteria
 
@@ -258,6 +269,8 @@ Privacy-1 已按 App API v2 `1.17.0` 完成“可登记、可追踪、可取消�
 - **PDR-AC-019（Privacy-1）**：Given 两个管理员并发更新同一申请，When 后提交者使用旧版本，Then 服务端返回版本冲突且不覆盖先前事实。
 - **PDR-AC-020（Privacy-1）**：Given 没有真实导出制品或不可逆处理证据，When 管理员查看申请详情，Then 后台不提供完成动作。
 - **PDR-AC-021（Privacy-1）**：Given 服务端已创建注销申请并撤销会话但成功响应丢失，When App 使用原幂等标识和发起 Access Token 重试，Then 只返回同一申请及其状态凭证，不创建第二个申请或恢复普通权限。
+- **PDR-AC-022（Privacy-2C）**：Given 升级前已经存在 35-scope 导出任务，When 新版执行器继续处理，Then 在原第 35 类后进入 finalizing，不要求新增分类且不生成错误的部分制品。
+- **PDR-AC-023（Privacy-2C）**：Given 新建 41-scope 导出包含本人推荐证据，When 生成 NDJSON，Then 会话与条目通过账号 HMAC 正确归属，且账号摘要、上下文摘要、密钥和其他账号证据均不进入副本。
 
 ## 8. Out of Scope
 
