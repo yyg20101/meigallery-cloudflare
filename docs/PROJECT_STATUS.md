@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-08-23。
+更新时间：2026-08-24。
 
 本文件只记录当前状态。历史变更以 Git、PR、tag 和 `docs/releases/` 为准。
 
@@ -33,13 +33,23 @@
 - 归因架构门禁发现数据权利删除服务重新写入废弃用户归因编号，现已移除该运行时依赖；架构测试重新确认运行时只使用 `attribution_conversion_facts` 单一事实入口。废弃数据库列仍须遵循“先发布兼容代码，再单独执行 contract migration”的既定顺序，不能与本次代码修复同批删除。
 - 本轮只验证源码与本地产物；没有执行 production/dev migration、修改 Cloudflare 资源配置、部署 Worker、导入真人资料或开启任何 production App 能力。下方逐切片的“测试未运行/构建后置”是其开发完成当时的记录；当前全仓冷验证结果以本节为准，环境 migration、浏览器/设备远端联调和生产发布状态仍以各节明确边界为准。
 
+## 2026-08-24 开发收口与运行资源复核
+
+- 业务复审确认 App 公共发现列表、地区目录和公开人物详情均允许游客只读；新增路由回归锁定无 Authorization 时返回 200。所有公开人物仍统一要求 `verified + published + authorization active/current + visible + source gallery published`，普通注册账号只创建观看者，不会生成真人资料或进入推荐。
+- production/dev Wrangler 已补齐 ZIP 导入、私有数据导出、不可逆注销和 Telegram 导入四组 Queue；dev 使用独立 `-dev` 名称，Queue dispatch 对非法 `APP_ENV` 和跨环境业务 Queue fail closed。`AppRealtimeHub` 使用声明式 SQLite Durable Object export，production/dev 运行开关均保持关闭。
+- Cloudflare 只读反查与受控初始化确认：仅创建 4 个 dev 主 Queue 和 4 个 dev 诊断 DLQ，均为 0 producer / 0 consumer；没有创建同名 production Queue、部署 Worker、设置 Secret、执行 D1 migration 或接入业务流量。
+- 原租约收缩 migration 已从未执行的旧 `0117` 安全顺延到末尾 `0119`；新的无副作用 `0117` 只保持 0001～0119 连续。分阶段执行器在 dev/production 远端只读计划中均精确选择截至 `0118` 的连续扩展，并确认只剩 `0119` 在兼容运行时激活后单独执行。
+- 本轮最终门禁为：脚本测试 72/72、API 测试 1,098/1,098（140 个文件）、Web 单元测试 301/301（60 个文件），ESLint 零警告，三个 workspace 类型检查、production/dev API Wrangler dry-run 和 Nuxt Cloudflare Worker 构建全部通过。没有执行共享 dev/production migration、部署 Worker 或开启受治理能力。
+- KMP `dev` 已保持干净并同步 `origin/dev`；正式包不含 Mock 资产，独立 Mock 包已在 Huawei 真机覆盖 208 个 Mobile 正式状态和完整可操作目录。真机复核已包含底部导航稳定性、无黑色点击遮罩、游客浏览、交付标注清理和新应用图标；对应提交为 `71fd488`、`ee3e5bb`、`c4841c1`。
+- 线上正式人物列表当前为空不是前端 Mock 回退：远端只读检查未发现可供 App 公开发现使用的已授权人物投影，且 dev Worker 仍是旧版本。不得伪造真人或版权授权数据；后续必须由管理员提供真实素材及来源、用途授权、认证、发布复核证据，再按门禁执行 migration、部署并完成在线游客 E2E。
+
 ## ADM-PER-04 ZIP 导入开发状态
 
 - 已按正式 Figma `ADM-PER-04` 的正常、校验中、部分失败、已暂停、已完成五态重做 `/admin/app/imports` 列表和任务详情；页面只呈现服务端权威任务/逐项结果，不在浏览器解析 ZIP。
 - `0101_zip_import_packages.sql`、`admin-zip-package.ts`、`admin-zip-import.ts` 已完成 256 MiB 私有 ZIP 原包的 8 MiB R2 multipart、一次性会话隔离、服务端 ETag 清单、range 流式解压硬上限、ZIP 安全边界、图片元数据净化、Queue 逐项处理、部分失败、带轮次/会话 guard 的暂停恢复、公式安全错误 CSV 与后台审计。
 - Cloudflare 官方当前单请求上限按账户方案为 Free/Pro 100 MB、Business 200 MB；因此没有让 256 MiB 原包穿过单个 Worker 请求，而是使用现有私有 R2 binding multipart。无需新增 S3 密钥或浏览器直传 CORS 配置。
 - ZIP schema 是 Gallery 内容包。成功项只创建 Gallery/媒体/标签，不自动创建 Person/Profile，也不自动进入推荐；任何真人候选仍需独立来源、授权、认证和发布工作流。
-- 当前源码与测试已通过 2026-08-23 全仓冷验证；`0101` 尚未执行，`IMPORT_QUEUE` consumer/producer 与 Stream 仍未配置，环境 migration、模拟器/浏览器 QA 和部署仍未执行。
+- 当前源码与测试已通过 2026-08-23 全仓冷验证；`wrangler.toml` 与初始化脚本已补齐 production/dev 隔离的 `IMPORT_QUEUE` producer/consumer、有界单并发和诊断 DLQ。dev 主 Queue/DLQ 已于 2026-08-24 创建但尚无 producer/consumer，production Queue、`0101`、Stream、Worker 绑定、环境 QA 和部署仍未执行。
 
 ## WordPress 旧站迁移运行完整性
 
@@ -49,7 +59,7 @@
 - 远程链接入库前执行安全 HTTPS 校验，Gallery 正文移除源站媒体嵌入；私有来源快照冻结旧分类/标签 ID、媒体描述和原 HTML。审核保存结论、备注、审核人和时间，不覆盖风险标记，也绝不直接发布 Gallery。
 - 全局下载、状态、失败重置和封面设置已限定到 legacy Gallery，普通 Admin 进一步只处理本人任务，避免误改 ZIP 或手工上传内容。
 - 执行已增加 30 分钟 D1 权威租约：WordPress 每个 REST 请求有 60 秒截止时间，每页校验后与逐篇落库期间续租，完成/失败按当前 token 条件收敛；过期或历史缺失租约的 processing 任务可被原子收敛为失败，有效租约不能提前回收。
-- `0116_legacy_import_operational_integrity.sql` 与 `0117_legacy_import_processing_lease_guards.sql` 已编写但未执行，后续按 `0116 → 兼容代码 → 0117` 发布；REST API 是当前唯一可执行来源，XML 上传/解析和 Stream 视频仍后置。源码与测试已通过 2026-08-23 全仓冷验证，浏览器 QA 和部署仍未执行。完整边界见 `docs/app/LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md`。
+- `0116_legacy_import_operational_integrity.sql` 与 `0119_legacy_import_processing_lease_guards.sql` 已编写但未执行；经 dev/production 远端 migration 账本只读核验，原约束版 `0117` 从未执行，因此已安全顺延到当前末尾 `0119`，新的 `0117_legacy_import_processing_lease_guard_reservation.sql` 仅以 `SELECT 1` 保持序号连续。部署脚本固定执行“截至 `0118` 的兼容扩展 → 兼容代码 → 单独 `0119`”，分阶段执行器会校验本地/远端序列连续性和执行后的精确余量；REST API 是当前唯一可执行来源，XML 上传/解析和 Stream 视频仍后置。源码与测试已通过 2026-08-23 全仓冷验证，浏览器 QA 和部署仍未执行。完整边界见 `docs/app/LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md`。
 
 ## Telegram 外部导入运行完整性
 
@@ -57,7 +67,7 @@
 - 媒体处理已从 HTTP `waitUntil` 改为专用 `TELEGRAM_IMPORT_QUEUE`。pending 派发、failed 清理和 fetching 处理均使用一次性 token 与可过期 30 分钟租约；fetching 有效租约下的重复投递只延迟重试，租约为空或过期后才条件接管，避免并行处理同一文件。每个文件预先持久化目标文件 ID 与确定性 R2 key，Queue 重投可以续跑且不会生成新的不可定位对象。
 - Telegram 两段请求均增加 60 秒超时和有界流读取；图片执行 10 MiB、魔数、容器、尺寸、像素、元数据净化和声明 MIME 一致性校验。底层网络、D1、R2 异常原文不再进入状态、文件错误、审计或结构化日志。
 - failed 重试会再次清理持久化 R2/D1 资源；没有有效派发租约的 pending 或租约为空/过期的 fetching 可由 Import Token 或后台显式恢复。旧执行器在失败清理前重新证明 token 所有权，有效租约和旧 token 均不能覆盖新尝试。
-- `0118_external_import_queue_integrity.sql`、Queue 消费者、Bot/后台恢复端点与测试源码已完成，并已通过 2026-08-23 全仓冷验证；Wrangler Queue 配置、migration 执行和环境 QA 仍未执行。当前无 App API v2、KMP、Nuxt 页面、Page ID 或 Figma 增量，页面事实保持 99/408、Mobile 50/208、Admin 49/200。完整边界见 `docs/app/EXTERNAL_IMPORT_2_QUEUE_INTEGRITY.md`。
+- `0118_external_import_queue_integrity.sql`、Queue 消费者、Bot/后台恢复端点与测试源码已完成，并已通过 2026-08-23 全仓冷验证；`wrangler.toml` 与初始化脚本已补齐 production/dev 隔离的 `TELEGRAM_IMPORT_QUEUE` 和诊断 DLQ。dev 主 Queue/DLQ 已创建但尚无 producer/consumer，production Queue、migration、Worker 绑定和环境 QA 仍未执行。当前无 App API v2、KMP、Nuxt 页面、Page ID 或 Figma 增量，页面事实保持 99/408、Mobile 50/208、Admin 49/200。完整边界见 `docs/app/EXTERNAL_IMPORT_2_QUEUE_INTEGRITY.md`。
 
 ## 独立 App 产品设计
 
@@ -172,7 +182,7 @@
 - 已完成 Message-4 账号级实时刷新跨仓源码：App API v2 `1.25.0` 新增严格 bootstrap capability、一次性短票据和 WebSocket Upgrade；`AppRealtimeHub` 使用 Hibernation WebSocket 与有限 SQLite 游标事件，只发送 `account|conversations|messages|notifications|membership|wallet` 刷新范围，不发送业务正文、账号资料、内部 ID、管理员信息或 Token。
 - `0105_app_realtime_refresh_channel.sql` 新增默认关闭的版本化策略和 SHA-256 短票据表；development seed 固定 `unresolved + disabled + production_ready=0`。退出、设备撤销、Refresh Token 重放和注销申请会取消未消费票据并关闭对应连接；Privacy-2B 不可逆执行进一步清理全部账号票据元数据。D1/HTTP 始终是业务与权限权威。
 - KMP 已接入 Ktor WebSocket、严格帧解析、进程内账号游标、有界指数退避、Android/iOS 前后台停连和当前可见页面 HTTP 补拉；断线复用 Figma `APP-MSG-05` 已有“实时离线”状态，没有新增页面或视觉状态。
-- OQ-028、Durable Object binding/SQLite migration tag、运行时配置、`0105` 执行、Cloud/KMP 构建测试与设备 QA 全部后置；现有环境继续返回 `realtime=false`。完整边界见 `docs/app/MESSAGE_4_REALTIME_REFRESH_INTEGRATION.md`。
+- OQ-028、`0105` 执行、远端 Durable Object 命名空间、Cloud/KMP 专项环境测试与设备 QA 继续后置；Wrangler 已改用 Cloudflare 当前声明式 `[exports.AppRealtimeHub] storage="sqlite"`，并为 production/dev 显式声明隔离 binding，运行开关保持 `false`。现有环境继续返回 `realtime=false`。完整边界见 `docs/app/MESSAGE_4_REALTIME_REFRESH_INTEGRATION.md`。
 - 已完成 Wallet-1 默认关闭的跨仓代码闭环：`0077_app_wallet_ledger.sql` 建立 development 策略、钱包快照、管理员调币申请、不可变分录、申请事件和独立复核记录；migration 不创建账号钱包、不导入旧余额、不写业务调币数据，也不开放批量或迁移入口。
 - App API v2 `1.10.0` 新增本人余额、方向筛选的游标明细和分录安全详情；空钱包只返回虚拟零余额，不因读取创建数据库记录。分录只展示固定原因、用户安全业务单号、前后余额和完整冲正关系，不返回内部备注或管理员身份。
 - Nuxt 新增 `/admin/app/wallets` 单笔调币工作台，支持账号确认、加币/扣币/补偿/完整冲正预览、幂等申请、另一管理员批准或拒绝。OQ-018 未关闭前所有申请强制独立复核、发起人不能自批、余额变化必须由新分录驱动，任何扣币均不得形成负余额。

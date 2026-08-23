@@ -436,6 +436,34 @@ describe('App API v2 路由契约', () => {
     })
   })
 
+  it('游客无需登录即可读取正式人物发现列表与地区目录', async () => {
+    const db = {
+      prepare() {
+        return {
+          bind() {
+            return { all: async () => ({ results: [] }) }
+          },
+        }
+      },
+    }
+    const { app, env } = createApp(db)
+    const feed = await app.fetch(
+      new Request('https://api.test/api/v2/discovery/feed'),
+      env,
+      {} as ExecutionContext,
+    )
+    const regions = await app.fetch(
+      new Request('https://api.test/api/v2/discovery/regions'),
+      env,
+      {} as ExecutionContext,
+    )
+
+    expect(feed.status).toBe(200)
+    expect(await feed.json()).toMatchObject({ data: [], meta: { hasMore: false } })
+    expect(regions.status).toBe(200)
+    expect(await regions.json()).toMatchObject({ data: [] })
+  })
+
   it('非法或不可见人物统一返回安全的不存在响应', async () => {
     const { app, env } = createApp()
     const response = await app.fetch(

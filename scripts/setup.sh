@@ -56,6 +56,20 @@ create_queue() {
   return 1
 }
 
+create_application_queues() {
+  local suffix=$1
+  local base_name
+
+  for base_name in \
+    "meigallery-import-zip" \
+    "meigallery-app-data-rights-export" \
+    "meigallery-app-data-rights-deletion" \
+    "meigallery-import-telegram"; do
+    create_queue "${base_name}${suffix}"
+    create_queue "${base_name}${suffix}-dlq"
+  done
+}
+
 print_production_resources() {
   echo ""
   echo "--- 创建生产 D1 数据库 ---"
@@ -75,6 +89,10 @@ print_production_resources() {
   create_queue "meigallery-ad-google"
   create_queue "meigallery-ad-google-dlq"
   echo ""
+
+  echo "--- 创建生产业务 Queue 与诊断 DLQ ---"
+  create_application_queues ""
+  echo ""
 }
 
 print_dev_resources() {
@@ -88,7 +106,11 @@ print_dev_resources() {
   echo "执行: ${WRANGLER_CMD} r2 bucket create meigallery-media-dev"
   echo ""
 
-  echo "dev 仅用于代码与通用业务逻辑验证，不创建或绑定广告平台资源。"
+  echo "--- 创建 dev 隔离业务 Queue 与诊断 DLQ ---"
+  create_application_queues "-dev"
+  echo ""
+
+  echo "dev 不创建或绑定广告平台资源；业务 Queue 使用 -dev 后缀与 production 隔离。"
   echo ""
 }
 
@@ -110,6 +132,10 @@ print_secrets() {
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_GALLERY_BOT ${env_flag}"
   echo "  # 可选：sourceBotKey=ops_case_bot 时配置"
   echo "  ${WRANGLER_CMD} secret put TELEGRAM_BOT_TOKEN_OPS_CASE_BOT ${env_flag}"
+  echo "  # 数据注销 identity seal 当前 HMAC 主密钥；能力开启前必须配置"
+  echo "  openssl rand -base64 32 | ${WRANGLER_CMD} secret put DATA_RIGHTS_RETENTION_MASTER_KEY_CURRENT ${env_flag}"
+  echo "  # 仅密钥轮换窗口配置，平时可不设置"
+  echo "  ${WRANGLER_CMD} secret put DATA_RIGHTS_RETENTION_MASTER_KEY_PREVIOUS ${env_flag}"
   if [ "$env_name" = "production" ]; then
     echo "  # 生成 32 字节随机主密钥并通过标准输入写入，不在终端输出明文"
     echo "  openssl rand -base64 32 | ${WRANGLER_CMD} secret put AD_PLATFORM_CREDENTIAL_MASTER_KEY_CURRENT ${env_flag}"

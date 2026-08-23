@@ -18,12 +18,22 @@ const REQUIRED_PRODUCTION_AD_QUEUES = [
   'meigallery-ad-google',
   'meigallery-ad-google-dlq',
 ]
+const BUSINESS_QUEUE_BASES = [
+  'meigallery-import-zip',
+  'meigallery-app-data-rights-export',
+  'meigallery-app-data-rights-deletion',
+  'meigallery-import-telegram',
+]
+const REQUIRED_PRODUCTION_BUSINESS_QUEUES = BUSINESS_QUEUE_BASES.flatMap(name => [name, `${name}-dlq`])
+const REQUIRED_DEV_BUSINESS_QUEUES = BUSINESS_QUEUE_BASES.flatMap(name => [`${name}-dev`, `${name}-dev-dlq`])
+const REQUIRED_PRODUCTION_QUEUES = [...REQUIRED_PRODUCTION_AD_QUEUES, ...REQUIRED_PRODUCTION_BUSINESS_QUEUES]
+const REQUIRED_ALL_QUEUES = [...REQUIRED_PRODUCTION_QUEUES, ...REQUIRED_DEV_BUSINESS_QUEUES]
 
 describe('Cloudflare setup Queue 初始化', () => {
   for (const [environment, expected] of [
-    ['dev', []],
-    ['production', REQUIRED_PRODUCTION_AD_QUEUES],
-    ['all', REQUIRED_PRODUCTION_AD_QUEUES],
+    ['dev', REQUIRED_DEV_BUSINESS_QUEUES],
+    ['production', REQUIRED_PRODUCTION_QUEUES],
+    ['all', REQUIRED_ALL_QUEUES],
   ]) {
     it(`${environment} 真正创建期望 Queue`, async () => {
       await withSetup(environment, 'success', async (execution, logFile) => {
@@ -38,8 +48,8 @@ describe('Cloudflare setup Queue 初始化', () => {
   it('Queue 已存在时保持幂等并继续创建后续 Queue', async () => {
     await withSetup('all', 'create-failed-info-passed', async (execution, logFile) => {
       const result = await execution
-      assert.deepEqual(await createdQueues(logFile), REQUIRED_PRODUCTION_AD_QUEUES)
-      assert.deepEqual(await inspectedQueues(logFile), REQUIRED_PRODUCTION_AD_QUEUES)
+      assert.deepEqual(await createdQueues(logFile), REQUIRED_ALL_QUEUES)
+      assert.deepEqual(await inspectedQueues(logFile), REQUIRED_ALL_QUEUES)
       assert.match(result.stdout, /已确认存在/)
       assert.equal(`${result.stdout}${result.stderr}`.includes(FIXTURE_SECRET), false)
     })

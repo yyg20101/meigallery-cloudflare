@@ -18,6 +18,11 @@ import {
 const COMMIT = 'a'.repeat(40)
 const BOOKMARK = '0000004b-00000000-000050c1-5d3a0b82ee4ac7c4df510c96f93fffee'
 const NOW = new Date('2026-08-08T02:30:00.000Z')
+const ALL_PENDING_MIGRATIONS = Object.freeze([
+  ...WALLET1_EXPECTED_PENDING_MIGRATIONS,
+  '0078_app_favorites_and_view_history.sql',
+  '0119_legacy_import_processing_lease_guards.sql',
+])
 
 describe('Wallet-1 dev readiness', () => {
   it('必须显式确认 dev 数据库，不能把 production 当目标', async () => {
@@ -47,7 +52,7 @@ describe('Wallet-1 dev readiness', () => {
 
       assert.equal(manifest.database, WALLET1_DEV_DATABASE)
       assert.equal(manifest.git.commit, COMMIT)
-      assert.deepEqual(manifest.pendingMigrations, WALLET1_EXPECTED_PENDING_MIGRATIONS)
+      assert.deepEqual(manifest.pendingMigrations, ALL_PENDING_MIGRATIONS)
       assert.equal(manifest.timeTravelBookmark, BOOKMARK)
       assert.equal(manifest.verifiedBoundary.walletUserRuntimeEnabled, false)
       assert.equal(manifest.verifiedBoundary.immutableLedgerCleanup, 'time_travel_or_disposable_database_only')
@@ -69,6 +74,13 @@ describe('Wallet-1 dev readiness', () => {
         createWallet1DevReadiness(baseOptions({
           backupDir,
           listPendingMigrations: async () => ['0077_app_wallet_ledger.sql'],
+        })),
+        /WALLET1_READINESS_PENDING_MIGRATIONS_UNEXPECTED/u,
+      )
+      await assert.rejects(
+        createWallet1DevReadiness(baseOptions({
+          backupDir,
+          listPendingMigrations: async () => ALL_PENDING_MIGRATIONS.slice(0, -1),
         })),
         /WALLET1_READINESS_PENDING_MIGRATIONS_UNEXPECTED/u,
       )
@@ -147,7 +159,8 @@ function baseOptions(overrides = {}) {
     now: () => NOW,
     getRepositoryState: async () => ({ commit: COMMIT, branch: 'dev', trackedStatus: '' }),
     validateLocalBoundary: async () => ({ databaseId: 'dev-database-id' }),
-    listPendingMigrations: async () => [...WALLET1_EXPECTED_PENDING_MIGRATIONS],
+    listPendingMigrations: async () => [...ALL_PENDING_MIGRATIONS],
+    listExpectedPendingMigrations: async () => [...ALL_PENDING_MIGRATIONS],
     getBookmark: async () => BOOKMARK,
     exportDatabase: output => writeFile(output, 'CREATE TABLE example (id TEXT PRIMARY KEY);\n'),
     ...overrides,

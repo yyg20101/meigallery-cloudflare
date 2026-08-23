@@ -4,7 +4,7 @@
 
 App 版本：1.0
 
-状态：源码开发完成；治理审批、migration、Queue/密钥配置、构建、测试、设备 QA 与生产启用统一后置
+状态：源码与 Wrangler Queue 契约完成；dev Queue 已创建但未绑定；治理审批、production 资源、migration、密钥和生产启用受门禁后置
 
 ## 1. 本阶段结论
 
@@ -23,7 +23,7 @@ OQ-020、OQ-024、OQ-025 当前仍未关闭。源码完成不代表允许接入�
 
 ## 2. 默认关闭与启用边界
 
-本阶段没有修改 Wrangler、Queue binding、Secret、环境 capability 或任何 dev/production 值，也没有执行 migration。
+Privacy-2B 初始切片当时没有修改 Wrangler、Queue binding、Secret、环境 capability 或任何 dev/production 值，也没有执行 migration。统一配置阶段随后补齐了保持关闭的 Queue 源码契约并只创建隔离 dev 主 Queue/DLQ；这不表示 Worker 已绑定、Secret 已配置或不可逆处理已获授权。
 
 `0103` 只 seed development profile `drdp_app_1_0_privacy_2b_dev_1`：
 
@@ -134,9 +134,9 @@ KMP 严格使用 `APP-SET-10` 四个正式节点：
 
 用户明确下载到设备的 Privacy-2A TAR 属于用户控制文件，不由账号注销在本机自动删除。
 
-## 8. 配置契约（仅记录，尚未写入）
+## 8. 配置契约
 
-后续配置阶段需要审查并显式建立：
+源码配置已显式声明下列 Queue；Secret 仍必须在远端能力启用前由获授权操作员建立：
 
 | 名称 | 用途 |
 |------|------|
@@ -145,7 +145,7 @@ KMP 严格使用 `APP-SET-10` 四个正式节点：
 | `DATA_RIGHTS_RETENTION_MASTER_KEY_CURRENT` | identity seal 当前 HMAC Secret |
 | `DATA_RIGHTS_RETENTION_MASTER_KEY_PREVIOUS` | Secret 轮换期只读兼容 |
 
-本阶段未修改任何 `wrangler.toml/jsonc`、Secret、cron 或 capability。若正式策略选择 `identity_reuse_mode=release`，仍须保留代码与配置对既有 seal 的安全判断，不能直接删除 previous-key 轮换能力。
+`wrangler.toml` 已声明 production `meigallery-app-data-rights-deletion` 与隔离 dev `meigallery-app-data-rights-deletion-dev` 的 producer/consumer、有界单并发和诊断 DLQ，初始化脚本同步覆盖幂等创建；dev 主 Queue/DLQ 已创建但尚无 producer/consumer，能力开关保持关闭，production Queue、Secret、cron 和 migration 均未执行。若正式策略选择 `identity_reuse_mode=release`，仍须保留代码与配置对既有 seal 的安全判断，不能直接删除 previous-key 轮换能力。
 
 Recommendation-6 不新增 Secret 或 binding；它复用推荐证据写入既有的 `SESSION_SECRET`。Privacy-2C 的 41 类个人数据副本也用同一分用途 HMAC 定位本人推荐会话/条目。正式配置阶段必须把“在途推荐 scope 完成、证据清空并零残留核验”纳入该密钥任何轮换或撤销的前置条件。
 
@@ -161,10 +161,10 @@ Figma 是可见状态唯一事实源：
 
 ## 10. 明确后置事项
 
-按照“全部开发结束后统一配置与验证”的顺序，本阶段没有执行：
+以下列表是最初切片交付时的历史后置记录；2026-08-24 已完成 Cloud/KMP 源码级构建测试与 KMP 真机 Mock QA，尚未完成的仍是 migration、Worker binding、Secret、治理审批和不可逆处理环境专项 QA：
 
 - `0103/0114` 或完整 D1 migration 链；
-- Queue、Secret、cron、Wrangler 与 dev/production capability 配置；
+- 远端 Queue、Secret、cron、migration 与 dev/production capability 启用；Wrangler 源码契约已完成但不等于远端已配置；
 - TypeScript/Kotlin 构建、单元/集成/E2E、并发与失败注入测试；
 - Android/iOS 模拟器、真机、`android-cli` 截图和 Figma 像素验收；
 - 大账号吞吐、R2 局部删除失败、租约中断、死信、备份/第三方删除与事故恢复演练；

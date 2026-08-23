@@ -235,7 +235,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - App API 提供本人概览、列表/详情、导出/注销申请、取消，以及普通会话失效后的三条请求级状态路径。账号 `restricted` 仍可访问必要 `/me` 与数据权利路径，其他能力继续逐请求拒绝。
 - `/api/admin/app/data-rights` 和 Nuxt `ADM-PRI-01/02` 提供脱敏队列、领取、开始处理、失败、重试和证据核验取消；没有 Privacy-2 真实证据时不提供完成动作。
 - Operations-1 只对超过 `deadline_at` 的非终态申请生成聚合 `data_rights_overdue` Incident，不复制账号或申请敏感内容，也不代替权威状态机。
-- KMP 已实现严格 `1.17.0` DTO、系统安全状态凭证、手机单列/宽屏双栏、注销影响逐项确认、退出登录后的申请级访问，以及注销成功响应丢失时对原幂等命令的安全恢复。当前未修改 Wrangler、未执行 `0094`，也未运行 migration、专项测试、KMP 构建、模拟器/真机或远端联调。
+- KMP 已实现严格 `1.17.0` DTO、系统安全状态凭证、手机单列/宽屏双栏、注销影响逐项确认、退出登录后的申请级访问，以及注销成功响应丢失时对原幂等命令的安全恢复。Privacy-1 初始切片当时未修改 Wrangler、未执行 `0094`；统一配置阶段已补齐后续导出/注销 Queue 的源码契约，但完整 migration 链、远端 Worker 绑定和能力启用仍未执行。
 - 本段是 Privacy-1 历史边界。Privacy-2A 已以默认关闭方式实现私有 R2 导出制品、一次性下载票据、到期清理与下载审计；Privacy-2B 已完成默认关闭的不可逆删除、保留隔离与完成证明源码，治理审批和运行验证继续后置。
 
 完整边界见 `docs/app/PRIVACY_1_DATA_RIGHTS_CONTROL_PLANE_INTEGRATION.md`。
@@ -267,7 +267,7 @@ App 使用 `GET /api/v2/auth/turnstile?purpose=...` 的受控 HTML 页面承载�
 - `users` 行作为 FK 锚点保留但清除登录身份和可识别资料。可选 identity seal 只保存邮箱的独立 Secret HMAC，并支持 current/previous 密钥轮换。
 - 待注销期间的身份、会话、设备、互动、偏好、通知、导出和命名分析重建继续由 D1 triggers 阻断或抑制，避免并发写回已经清除的事实。
 - KMP 读到 completed 后清除请求级状态凭证、普通会话和账号域内存，轮换 installation ID，并退出到未登录“我的”。`APP-SET-10` 没有完成态正式 Figma Frame，客户端不创建自拟成功页。
-- 当前未修改 Wrangler，未配置 `DATA_RIGHTS_DELETION_QUEUE`、`DATA_RIGHTS_RETENTION_MASTER_KEY_CURRENT/PREVIOUS`，未执行 `0103/0114`，也未运行构建、测试、设备 QA 或远端联调。
+- `wrangler.toml` 已声明 production/dev 隔离的 `DATA_RIGHTS_DELETION_QUEUE`，初始化脚本已在 dev 创建主 Queue 与诊断 DLQ；当前 dev Worker 尚未部署绑定，production Queue、`DATA_RIGHTS_RETENTION_MASTER_KEY_CURRENT/PREVIOUS`、`0103/0114`、能力启用和环境联调仍未执行。
 
 完整执行合同、保留域、后台行为、Figma 约束和后置门禁见 `docs/app/PRIVACY_2B_IRREVERSIBLE_DELETION_INTEGRATION.md`；推荐证据删除边界见 `docs/app/RECOMMENDATION_6_EVIDENCE_LIFECYCLE_INTEGRATION.md`。
 
@@ -429,7 +429,7 @@ App API v2 `1.20.0` 以兼容新增方式补齐观看者私有账号资料与单
 - 话题/消息/已读、通知投递/已读、会员生效状态和钱包实际入账在 D1 成功后以 `waitUntil` 尽力发布。失败不得回滚业务事实，幂等重放不重复广播。
 - 退出、远程设备撤销、Refresh Token 重放和 Privacy-2B 注销会取消未消费票据并关闭对应 session/device/account 连接；不可逆注销执行同时清理该账号全部实时票据元数据。所有 HTTP API 仍独立重验权限。
 - KMP 严格校验 bootstrap 和三类服务端帧，前台连接、后台停连，使用有界指数退避与游标补偿；仅刷新当前可见 HTTP 页面，并复用 `APP-MSG-05` 已有“实时离线”状态。
-- OQ-028 未关闭，本阶段不写 Wrangler Durable Object binding/环境值，不执行 `0105`，也不运行构建、测试或设备 QA。
+- OQ-028 未关闭。统一配置阶段已声明 production/dev `APP_REALTIME_HUB`、SQLite export 和保持关闭的环境值；当前不执行 `0105`，不部署命名空间，也不启用实时能力。
 
 完整契约、安全边界和后置门禁见 `docs/app/MESSAGE_4_REALTIME_REFRESH_INTEGRATION.md`。
 
@@ -1747,7 +1747,7 @@ CREATE TABLE legacy_url_redirects (
 
 ### 当前源码范围
 
-`ADM-PER-04` 已实现完整的服务端 ZIP 导入链路；当前阶段只完成开发，不代表环境已启用。`0101_zip_import_packages.sql`、Queue binding、Cloudflare Stream 配置、构建、测试和环境 QA 统一后置。
+`ADM-PER-04` 已实现完整的服务端 ZIP 导入链路；当前阶段只完成开发，不代表环境已启用。Wrangler 源码已声明 production/dev 隔离 Queue，dev 主 Queue/DLQ 已创建但尚未绑定；`0101_zip_import_packages.sql`、production Queue、Worker binding、Cloudflare Stream 配置和环境 QA 继续后置。
 
 ```text
 创建任务 queued
@@ -1845,7 +1845,7 @@ ZIP schema 是 Gallery 内容包，不包含真人主体所需的授权来源、
 - 媒体 INSERT 按每条 14 行/98 个绑定参数分块，遵守 D1 每条查询最多 100 个绑定参数的当前限制。
 - 任务级和全局媒体入口、状态、失败重置、封面设置都限定到 legacy 任务关联 Gallery，不能误处理 ZIP 或手工上传内容。
 - 远程图片限制为 10 MiB 和单请求 60 秒，只接受通过魔数、容器、尺寸/像素检查的 JPEG/PNG/WebP，并在写 R2 前剥离元数据；Content-Type 不作为可信格式依据。媒体状态变化与最小审计同批提交，网络、R2 与 Stream 原始异常不进入 HTTP 响应或审计。
-- `0116_legacy_import_operational_integrity.sql` 增加来源快照、结构化审核/失败证据、兼容回填、查询索引、终态完整性、不可改写触发器和 legacy 租约列；`0117_legacy_import_processing_lease_guards.sql` 在兼容代码发布后约束 processing 与租约字段一致。两者尚未执行，部署顺序固定为 `0116 → 兼容代码 → 0117`。
+- `0116_legacy_import_operational_integrity.sql` 增加来源快照、结构化审核/失败证据、兼容回填、查询索引、终态完整性、不可改写触发器和 legacy 租约列；`0117_legacy_import_processing_lease_guard_reservation.sql` 只以 `SELECT 1` 保持序号连续；`0119_legacy_import_processing_lease_guards.sql` 才在兼容代码发布后以 `CREATE TRIGGER IF NOT EXISTS` 收敛 processing 与租约字段约束。三者尚未在 dev/production 执行；收缩约束已顺延到当前 migration 末尾，部署脚本固定执行“截至 `0118` 的兼容扩展 → 兼容代码 → 单独 `0119`”，禁止一批应用。
 - 完整开发边界见 `docs/app/LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md`。
 
 ### 审核机制 `[开发实现，待统一验证 / 后续规划]`

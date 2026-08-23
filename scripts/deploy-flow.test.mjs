@@ -65,3 +65,18 @@ test('Wallet-1 dev 迁移完成后自动执行只读 schema 验收', () => {
   assert.ok(verifier > deploy)
   assert.match(source, /"\$WALLET1_MIGRATION_PENDING" = "true"/u)
 })
+
+test('Legacy 租约约束固定按扩展、兼容运行时、收缩三阶段执行', () => {
+  const guardDetection = source.indexOf('LEGACY_LEASE_GUARD_PENDING=true')
+  const extensionStage = source.indexOf('应用兼容扩展 migration')
+  const runtimeActivation = source.indexOf('兼容运行时已激活')
+  const guardStage = source.indexOf('--through="$LEGACY_LEASE_GUARD_MIGRATION"')
+
+  assert.ok(guardDetection > 0)
+  assert.ok(extensionStage > guardDetection)
+  assert.ok(runtimeActivation > extensionStage)
+  assert.ok(guardStage > runtimeActivation)
+  assert.match(source, /LEGACY_LEASE_EXTENSION_CUTOFF="0118_external_import_queue_integrity\.sql"/u)
+  assert.match(source, /LEGACY_LEASE_GUARD_MIGRATION="0119_legacy_import_processing_lease_guards\.sql"/u)
+  assert.match(source, /租约收缩 migration 后存在新的未编排 migration/u)
+})

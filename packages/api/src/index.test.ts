@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import app from './index'
+import app, { isQueueForEnvironment } from './index'
 import type { Bindings } from './index'
 
 function env(corsOrigin?: string) {
@@ -46,6 +46,35 @@ describe('统一 Queue 与 Cron 入口', () => {
     expect(acknowledged).toBe(true)
   })
 
+  it('业务 Queue 严格隔离 production 与 dev 名称', () => {
+    expect(isQueueForEnvironment('meigallery-import-telegram', 'meigallery-import-telegram', 'production')).toBe(true)
+    expect(isQueueForEnvironment('meigallery-import-telegram-dev', 'meigallery-import-telegram', 'dev')).toBe(true)
+    expect(isQueueForEnvironment('meigallery-import-telegram', 'meigallery-import-telegram', 'dev')).toBe(false)
+    expect(isQueueForEnvironment('meigallery-import-telegram-dev', 'meigallery-import-telegram', 'production')).toBe(false)
+    expect(isQueueForEnvironment('meigallery-import-telegram', 'meigallery-import-telegram', 'unknown')).toBe(false)
+    expect(isQueueForEnvironment('meigallery-import-telegram-dev', 'meigallery-import-telegram', 'unknown')).toBe(false)
+  })
+
+  it('业务 Queue 配错环境或 APP_ENV 非法时不确认消息', async () => {
+    for (const [queue, appEnvironment, errorCode] of [
+      ['meigallery-import-telegram-dev', 'production', 'QUEUE_ENVIRONMENT_MISMATCH'],
+      ['meigallery-import-telegram', 'dev', 'QUEUE_ENVIRONMENT_MISMATCH'],
+      ['meigallery-import-telegram', 'unknown', 'QUEUE_ENVIRONMENT_INVALID'],
+    ] as const) {
+      let acknowledged = false
+      const work = app.queue({
+        queue,
+        messages: [{ body: { kind: 'unknown' }, attempts: 1, ack() { acknowledged = true }, retry() {} }],
+      } as unknown as MessageBatch<unknown>, {
+        APP_ENV: appEnvironment,
+        DB: emptyDb(),
+        R2: {},
+      } as unknown as Bindings)
+      await expect(work).rejects.toThrow(errorCode)
+      expect(acknowledged).toBe(false)
+    }
+  })
+
   it('每 15 分钟 Cron 执行统一 Outbox 恢复，午夜继续执行每日维护', async () => {
     const sql: string[] = []
     let work: Promise<unknown> | undefined
@@ -59,13 +88,20 @@ describe('统一 Queue 与 Cron 入口', () => {
     expect(sql.some(value => value.includes('email_verification_codes'))).toBe(false)
   })
 
-  it('Wrangler 只注册三平台新 Queue、三个 DLQ 和每 15 分钟 Cron', () => {
+  it('Wrangler 注册三平台归因 Queue、四个业务 Queue、隔离的 dev 资源和每 15 分钟 Cron', () => {
     const config = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8')
     expect(config).toContain('crons = ["*/15 * * * *"]')
     expect(config).not.toContain('META_CAPI_QUEUE')
     expect(config).not.toContain('TIKTOK_EVENTS_QUEUE')
     for (const queue of ['meigallery-ad-meta', 'meigallery-ad-meta-dlq', 'meigallery-ad-tiktok', 'meigallery-ad-tiktok-dlq', 'meigallery-ad-google', 'meigallery-ad-google-dlq']) expect(config).toContain(queue)
-    expect((config.match(/max_retries = 3/g) ?? [])).toHaveLength(3)
+    for (const queue of ['meigallery-import-zip', 'meigallery-app-data-rights-export', 'meigallery-app-data-rights-deletion', 'meigallery-import-telegram']) {
+      expect(config).toContain(`queue = "${queue}"`)
+      expect(config).toContain(`queue = "${queue}-dev"`)
+      expect(config).toContain(`dead_letter_queue = "${queue}-dlq"`)
+      expect(config).toContain(`dead_letter_queue = "${queue}-dev-dlq"`)
+    }
+    expect(config).toContain('[exports.AppRealtimeHub]')
+    expect((config.match(/name = "APP_REALTIME_HUB"/g) ?? [])).toHaveLength(2)
   })
 })
 

@@ -687,13 +687,16 @@ export default {
     ctx.waitUntil(handleScheduled(event, env))
   },
   queue: async (batch: MessageBatch<AdPlatformQueueMessage | ZipImportQueueMessage | AppDataRightsExportQueueMessage | AppDataRightsDeletionQueueMessage | TelegramImportQueueMessage>, env: Bindings) => {
+    if (env.APP_ENV !== 'production' && env.APP_ENV !== 'dev') {
+      throw new Error('QUEUE_ENVIRONMENT_INVALID')
+    }
     const zipImport = await import('./services/admin-zip-import')
-    if (batch.queue === zipImport.ZIP_IMPORT_QUEUE_NAME) {
+    if (isQueueForEnvironment(batch.queue, zipImport.ZIP_IMPORT_QUEUE_NAME, env.APP_ENV)) {
       await zipImport.handleZipImportQueueBatch(batch as MessageBatch<ZipImportQueueMessage>, env)
       return
     }
     const dataRightsExport = await import('./services/app-data-rights-exports')
-    if (batch.queue === dataRightsExport.APP_DATA_RIGHTS_EXPORT_QUEUE_NAME) {
+    if (isQueueForEnvironment(batch.queue, dataRightsExport.APP_DATA_RIGHTS_EXPORT_QUEUE_NAME, env.APP_ENV)) {
       await dataRightsExport.handleAppDataRightsExportQueueBatch(
         batch as MessageBatch<AppDataRightsExportQueueMessage>,
         env,
@@ -701,7 +704,7 @@ export default {
       return
     }
     const dataRightsDeletion = await import('./services/app-data-rights-deletions')
-    if (batch.queue === dataRightsDeletion.APP_DATA_RIGHTS_DELETION_QUEUE_NAME) {
+    if (isQueueForEnvironment(batch.queue, dataRightsDeletion.APP_DATA_RIGHTS_DELETION_QUEUE_NAME, env.APP_ENV)) {
       await dataRightsDeletion.handleAppDataRightsDeletionQueueBatch(
         batch as MessageBatch<AppDataRightsDeletionQueueMessage>,
         env,
@@ -709,14 +712,29 @@ export default {
       return
     }
     const telegramImport = await import('./services/telegram-file-id-import')
-    if (batch.queue === telegramImport.TELEGRAM_IMPORT_QUEUE_NAME) {
+    if (isQueueForEnvironment(batch.queue, telegramImport.TELEGRAM_IMPORT_QUEUE_NAME, env.APP_ENV)) {
       await telegramImport.handleTelegramImportQueueBatch(
         batch as MessageBatch<TelegramImportQueueMessage>,
         env,
       )
       return
     }
+    const crossEnvironmentBusinessQueue = [
+      zipImport.ZIP_IMPORT_QUEUE_NAME,
+      dataRightsExport.APP_DATA_RIGHTS_EXPORT_QUEUE_NAME,
+      dataRightsDeletion.APP_DATA_RIGHTS_DELETION_QUEUE_NAME,
+      telegramImport.TELEGRAM_IMPORT_QUEUE_NAME,
+    ].some(queueName => batch.queue === queueName || batch.queue === `${queueName}-dev`)
+    if (crossEnvironmentBusinessQueue) {
+      throw new Error('QUEUE_ENVIRONMENT_MISMATCH')
+    }
     const { handleAttributionQueueBatch } = await import('./services/ad-platform/queue-runtime')
     await handleAttributionQueueBatch(batch as MessageBatch<AdPlatformQueueMessage>, env)
   },
+}
+
+export function isQueueForEnvironment(actualName: string, productionName: string, appEnvironment: string) {
+  if (appEnvironment === 'production') return actualName === productionName
+  if (appEnvironment === 'dev') return actualName === `${productionName}-dev`
+  return false
 }

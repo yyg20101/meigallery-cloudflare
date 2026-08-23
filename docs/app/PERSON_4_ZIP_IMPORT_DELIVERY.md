@@ -2,7 +2,7 @@
 
 更新时间：2026-08-20
 
-状态：源码开发完成；配置、migration、构建、测试与环境 QA 后置
+状态：源码与 Wrangler Queue 契约完成；dev Queue 已创建但未绑定；production 资源、migration、Stream 和环境 QA 受门禁后置
 
 ## 1. 交付范围
 
@@ -85,12 +85,12 @@ Cloudflare 当前官方限制中，Worker 请求体上限按账户方案分别�
 
 ## 7. 当前后置项
 
-按当前开发顺序，本阶段没有执行以下动作：
+以下列表是最初切片交付时的历史后置记录；2026-08-24 已完成 TypeScript/Nuxt/单元测试冷验证，尚未完成的仍是 migration、Worker binding、Stream 与真实环境专项 QA：
 
 - 不执行 `0101` migration。
-- 不修改/应用 `wrangler` Queue producer/consumer 或 Stream 配置。
+- `wrangler.toml` 已声明 production `meigallery-import-zip` 与隔离 dev `meigallery-import-zip-dev` 的 producer/consumer、单消息批次、有界并发和诊断 DLQ；dev 主 Queue/DLQ 已由初始化脚本创建，但 Worker 尚未部署所以 producer/consumer 均为 0。production Queue 未创建，Stream 仍未配置。
 - 不运行 TypeScript 检查、Nuxt build、单元/集成测试。
 - 不运行浏览器、模拟器、真机或截图 QA。
 - 不部署，不提交，不推送。
 
-全部开发任务结束后统一完成上述配置与验证，并以 Figma 五态逐项验收。
+远端门禁通过后再执行资源创建、migration 与环境验收，并以 Figma 五态逐项验收。

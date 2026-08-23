@@ -30,6 +30,19 @@ export async function main(options = {}) {
   assertQueueConfig(config.production.queues.meta, 'meigallery-ad-meta', 'meigallery-ad-meta-dlq', 'Meta')
   assertQueueConfig(config.production.queues.tiktok, 'meigallery-ad-tiktok', 'meigallery-ad-tiktok-dlq', 'TikTok')
   assertQueueConfig(config.production.queues.google, 'meigallery-ad-google', 'meigallery-ad-google-dlq', 'Google')
+  assertBusinessQueueConfig(config.production.queues.importZip, 'meigallery-import-zip', 3, 15, 'ZIP 导入 production')
+  assertBusinessQueueConfig(config.production.queues.dataRightsExport, 'meigallery-app-data-rights-export', 5, 15, '数据导出 production')
+  assertBusinessQueueConfig(config.production.queues.dataRightsDeletion, 'meigallery-app-data-rights-deletion', 5, 15, '数据删除 production')
+  assertBusinessQueueConfig(config.production.queues.telegramImport, 'meigallery-import-telegram', 5, 60, 'Telegram 导入 production')
+  assertBusinessQueueConfig(config.dev.queues.importZip, 'meigallery-import-zip-dev', 3, 15, 'ZIP 导入 dev')
+  assertBusinessQueueConfig(config.dev.queues.dataRightsExport, 'meigallery-app-data-rights-export-dev', 5, 15, '数据导出 dev')
+  assertBusinessQueueConfig(config.dev.queues.dataRightsDeletion, 'meigallery-app-data-rights-deletion-dev', 5, 15, '数据删除 dev')
+  assertBusinessQueueConfig(config.dev.queues.telegramImport, 'meigallery-import-telegram-dev', 5, 60, 'Telegram 导入 dev')
+  assert.equal(config.production.realtimeHub.bindingName, 'APP_REALTIME_HUB', 'production 实时 Durable Object binding 不正确')
+  assert.equal(config.dev.realtimeHub.bindingName, 'APP_REALTIME_HUB', 'dev 实时 Durable Object binding 不正确')
+  assert.equal(config.production.realtimeHub.className, 'AppRealtimeHub', 'production 实时 Durable Object class 不正确')
+  assert.equal(config.dev.realtimeHub.className, 'AppRealtimeHub', 'dev 实时 Durable Object class 不正确')
+  assert.deepEqual(config.realtimeExport, { type: 'durable-object', storage: 'sqlite' }, '实时 Durable Object 必须使用声明式 SQLite export')
 
   return config
 }
@@ -48,12 +61,25 @@ export async function loadWranglerResourceConfig(options = {}) {
         meta: extractQueueConfig(source, '', 'AD_META_QUEUE'),
         tiktok: extractQueueConfig(source, '', 'AD_TIKTOK_QUEUE'),
         google: extractQueueConfig(source, '', 'AD_GOOGLE_QUEUE'),
+        importZip: extractBusinessQueueConfig(source, '', 'IMPORT_QUEUE'),
+        dataRightsExport: extractBusinessQueueConfig(source, '', 'DATA_RIGHTS_EXPORT_QUEUE'),
+        dataRightsDeletion: extractBusinessQueueConfig(source, '', 'DATA_RIGHTS_DELETION_QUEUE'),
+        telegramImport: extractBusinessQueueConfig(source, '', 'TELEGRAM_IMPORT_QUEUE'),
       },
+      realtimeHub: extractDurableObjectBinding(source, ''),
     },
     dev: {
       d1: extractNamedFields(source, '[[env.dev.d1_databases]]', ['database_name', 'database_id']),
       r2: extractNamedFields(source, '[[env.dev.r2_buckets]]', ['bucket_name']),
+      queues: {
+        importZip: extractBusinessQueueConfig(source, 'env.dev.', 'IMPORT_QUEUE'),
+        dataRightsExport: extractBusinessQueueConfig(source, 'env.dev.', 'DATA_RIGHTS_EXPORT_QUEUE'),
+        dataRightsDeletion: extractBusinessQueueConfig(source, 'env.dev.', 'DATA_RIGHTS_DELETION_QUEUE'),
+        telegramImport: extractBusinessQueueConfig(source, 'env.dev.', 'TELEGRAM_IMPORT_QUEUE'),
+      },
+      realtimeHub: extractDurableObjectBinding(source, 'env.dev.'),
     },
+    realtimeExport: extractNamedFields(source, '[exports.AppRealtimeHub]', ['type', 'storage']),
   }
 }
 
@@ -75,6 +101,17 @@ function assertQueueConfig(queue, expectedMain, expectedDlq, label) {
   assert.equal(queue.dlqConsumerName, queue.deadLetterQueueName, `${label} DLQ 必须配置 consumer`)
   assert.equal(queue.maxRetries, 3, `${label} Queue max_retries 必须为 3`)
   assert.equal(queue.retryDelay, 60, `${label} Queue retry_delay 必须为 60`)
+}
+
+function assertBusinessQueueConfig(queue, expectedName, expectedRetries, expectedRetryDelay, label) {
+  assert.equal(queue.producerName, expectedName, `${label} producer 名称不正确`)
+  assert.equal(queue.mainConsumerName, expectedName, `${label} producer/consumer 必须一致`)
+  assert.equal(queue.deadLetterQueueName, `${expectedName}-dlq`, `${label} DLQ 名称不正确`)
+  assert.equal(queue.maxBatchSize, 1, `${label} 必须逐消息消费`)
+  assert.equal(queue.maxBatchTimeout, 5, `${label} batch timeout 不正确`)
+  assert.equal(queue.maxRetries, expectedRetries, `${label} max_retries 不正确`)
+  assert.equal(queue.retryDelay, expectedRetryDelay, `${label} retry_delay 不正确`)
+  assert.equal(queue.maxConcurrency, 1, `${label} 在容量审批前必须保持有界单并发`)
 }
 
 function extractQueueConfig(source, prefix, binding) {
@@ -106,6 +143,39 @@ function extractQueueConfig(source, prefix, binding) {
     dlqConsumerName: dlqConsumer.queueName,
     maxRetries: mainConsumer.maxRetries,
     retryDelay: mainConsumer.retryDelay,
+  }
+}
+
+function extractBusinessQueueConfig(source, prefix, binding) {
+  const producerHeader = `[[${prefix}queues.producers]]`
+  const consumerHeader = `[[${prefix}queues.consumers]]`
+  const producerSection = extractSections(source, producerHeader)
+    .find(section => extractOptionalQuotedField(section, 'binding') === binding)
+  if (!producerSection) throw new Error(`未找到 ${producerHeader} binding=${binding}`)
+  const producerName = extractQuotedField(producerSection, 'queue', `${producerHeader} binding=${binding}`)
+  const consumerSection = extractSections(source, consumerHeader)
+    .find(section => extractOptionalQuotedField(section, 'queue') === producerName)
+  if (!consumerSection) throw new Error(`未找到 ${producerName} 对应的 ${consumerHeader}`)
+  return {
+    producerName,
+    mainConsumerName: producerName,
+    deadLetterQueueName: extractQuotedField(consumerSection, 'dead_letter_queue', consumerHeader),
+    maxBatchSize: extractIntegerField(consumerSection, 'max_batch_size', consumerHeader),
+    maxBatchTimeout: extractIntegerField(consumerSection, 'max_batch_timeout', consumerHeader),
+    maxRetries: extractIntegerField(consumerSection, 'max_retries', consumerHeader),
+    retryDelay: extractIntegerField(consumerSection, 'retry_delay', consumerHeader),
+    maxConcurrency: extractIntegerField(consumerSection, 'max_concurrency', consumerHeader),
+  }
+}
+
+function extractDurableObjectBinding(source, prefix) {
+  const header = `[[${prefix}durable_objects.bindings]]`
+  const section = extractSections(source, header)
+    .find(candidate => extractOptionalQuotedField(candidate, 'name') === 'APP_REALTIME_HUB')
+  if (!section) throw new Error(`未找到 ${header} name=APP_REALTIME_HUB`)
+  return {
+    bindingName: 'APP_REALTIME_HUB',
+    className: extractQuotedField(section, 'class_name', header),
   }
 }
 
@@ -157,6 +227,12 @@ function extractOptionalIntegerField(sectionSource, fieldName) {
   const escapedFieldName = escapeRegExp(fieldName)
   const value = sectionSource.match(new RegExp(`^\\s*${escapedFieldName}\\s*=\\s*(\\d+)\\s*$`, 'm'))?.[1]
   return value === undefined ? undefined : Number(value)
+}
+
+function extractIntegerField(sectionSource, fieldName, sectionHeader) {
+  const value = extractOptionalIntegerField(sectionSource, fieldName)
+  if (value === undefined) throw new Error(`在 ${sectionHeader} 中未找到字段 ${fieldName}`)
+  return value
 }
 
 function camelCaseFieldName(fieldName) {

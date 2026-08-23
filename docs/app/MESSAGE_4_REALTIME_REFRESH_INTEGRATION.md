@@ -2,13 +2,13 @@
 
 更新时间：2026-08-20
 
-状态：Cloudflare 与 KMP 源码开发完成；默认关闭；配置、migration、构建、测试与设备 QA 后置
+状态：Cloudflare/KMP 源码与 Wrangler SQLite Durable Object 契约完成；默认关闭；远端资源、migration 与专项环境 QA 受门禁后置
 
 ## 1. 交付结论
 
 Message-4 把 App API v2 累计契约以兼容新增方式提升到 `1.25.0`，实现账号级、只携带刷新提示的 WebSocket 通道。D1 和现有已鉴权 HTTP API 继续是消息、通知、会员、钱包与账号状态的唯一业务权威；实时通道不承载正文、不授予写权限，也不替代 Message-3 Outbox。
 
-本切片不关闭 OQ-028。`0105_app_realtime_refresh_channel.sql` 的 development 策略固定为 `unresolved + disabled + production_ready=0`，仓库不在本阶段增加 Durable Object binding 或环境开关。源码存在不表示 dev/production 已开放。
+本切片不关闭 OQ-028。`0105_app_realtime_refresh_channel.sql` 的 development 策略固定为 `unresolved + disabled + production_ready=0`。统一配置阶段已按 Cloudflare 当前声明式 lifecycle 语法加入 production/dev `APP_REALTIME_HUB` binding 与 `[exports.AppRealtimeHub] storage="sqlite"`，并把两套运行开关显式保持 `false`；源码配置存在不表示命名空间已部署或 dev/production 已开放。
 
 ## 2. 产品与隐私边界
 
@@ -124,10 +124,10 @@ bootstrap 新增：
 
 ## 6. 后置启用与验证门禁
 
-按当前开发顺序，本阶段不执行下列动作：
+以下列表是最初切片交付时的历史后置记录；2026-08-24 已完成 Cloud/KMP 源码构建测试和 KMP 真机 Mock QA，尚未完成的仍是 migration、命名空间部署、治理审批与真实 WebSocket 环境专项 QA：
 
 1. 不执行 `0105` migration，不写 dev/production 数据。
-2. 不增加 Wrangler Durable Object binding、SQLite migration tag 或运行时环境值。
+2. Wrangler 源码已声明隔离 binding、SQLite export 与关闭的运行时环境值；不部署命名空间、不执行 `0105`，也不把声明式 export 错写为 legacy migration tag。
 3. 不把 OQ-028、容量预算、保留治理或生产排班标记为已关闭。
 4. 不运行 TypeScript/KMP 构建、测试、模拟器/真机、浏览器或 `android-cli` 截图验收。
 5. 不部署、不提交、不推送。

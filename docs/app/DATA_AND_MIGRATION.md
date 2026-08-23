@@ -146,15 +146,15 @@ Interaction-4 不新增表或 migration，复用 `0078_app_favorites_and_view_hi
 
 #### 3.3.2A Legacy Import-2 Gallery 迁移边界
 
-`0116_legacy_import_operational_integrity.sql` 与 `0117_legacy_import_processing_lease_guards.sql` 只增强既有 WordPress → Gallery 迁移链，不创建 Person/Profile 或公开投影：
+`0116_legacy_import_operational_integrity.sql` 与 `0119_legacy_import_processing_lease_guards.sql` 只增强既有 WordPress → Gallery 迁移链，不创建 Person/Profile 或公开投影：
 
 - 同一来源任务串行执行，来源内旧 `post_id` 与 Gallery slug 双重去重；单篇 Gallery、标签、媒体、legacy 条目、redirect 和审计在一个 D1 batch 中提交。
 - `source_snapshot_json` 私有冻结旧分类/标签 ID、经安全校验的媒体描述与原 HTML，最大 512 KiB；列表读取不返回快照，单条管理员详情才显式读取。失败时原子保存 `error_code/error_message` 和安全失败快照，超限原 HTML 只记录显式省略证据。
 - Gallery 正文只保存清洗文本，不保留源站图片/视频嵌入；图片必须进入 R2 下载流程，视频在 Stream 接入前保持待处理。
 - 审核终态保存管理员、时间和备注并保持不可改写，但只确认迁移条目，不发布 Gallery，也不授予推荐资格。
 - 任务列表、媒体下载、失败重置、状态和封面辅助写入都反向限定到 legacy 任务；Owner 查看全部，Admin 仅查看和操作本人任务。
-- `0116` 先扩展处理租约列；兼容代码按页和按条续租、以 token 条件收敛并只回收过期任务；`0117` 再强制 processing 与租约字段一致。
-- `0116/0117`、历史审核证据覆盖率检查、构建与定向测试均按当前要求统一后置；正式顺序固定为 `0116 → 兼容代码 → 0117`。详见 [Legacy Import-2 旧站迁移运行完整性开发基线](./LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md)。
+- `0116` 先扩展处理租约列；兼容代码按页和按条续租、以 token 条件收敛并只回收过期任务；`0119` 再强制 processing 与租约字段一致。
+- dev/production 账本均确认旧约束版 `0117` 未执行，收缩约束因此顺延到当前 migration 末尾 `0119`；新的 `0117_legacy_import_processing_lease_guard_reservation.sql` 只以 `SELECT 1` 保持序号连续。正式顺序固定为“截至 `0118` 的兼容扩展 → 兼容代码 → 单独 `0119`”；部署脚本和分阶段执行器共同拒绝越界或不连续序列。详见 [Legacy Import-2 旧站迁移运行完整性开发基线](./LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md)。
 
 ### Telegram 外部导入运行完整性增量
 
@@ -164,7 +164,7 @@ Interaction-4 不新增表或 migration，复用 `0078_app_favorites_and_view_hi
 - 新运行时只通过 `TELEGRAM_IMPORT_QUEUE` 处理媒体；每个文件预先保存本次尝试的确定性 R2 key，Queue 重投复用同一 key。
 - 30 分钟租约和一次性 token 阻止旧执行器覆盖恢复后的任务；升级前 `fetching_media` 行的租约为空时只允许经显式恢复端点认领。
 - failed 重试和过期恢复都先按持久化 key/处理中目标清理；清理未完成时保留引用和稳定 warning code，不能丢失定位证据后强行重跑。
-- 正式顺序固定为 `0118 → 新运行时 → TELEGRAM_IMPORT_QUEUE 配置/启用`；migration、Queue 配置、构建和专项验证统一后置。详见 [External Import-2 Telegram 队列与运行完整性开发基线](./EXTERNAL_IMPORT_2_QUEUE_INTEGRITY.md)。
+- 正式顺序固定为 `0118 → 新运行时 → TELEGRAM_IMPORT_QUEUE 绑定/启用`；Wrangler 源码与初始化脚本已声明 production/dev 隔离 Queue，dev 主 Queue/DLQ 已创建但尚无 producer/consumer；migration、production Queue、Worker binding 和专项环境验证仍受门禁后置。详见 [External Import-2 Telegram 队列与运行完整性开发基线](./EXTERNAL_IMPORT_2_QUEUE_INTEGRITY.md)。
 
 #### 3.3.3 Recommendation-1 推荐数据实施边界
 

@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { chmod, lstat, mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path, { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -18,6 +18,7 @@ const MIGRATIONS_DIR = join(ROOT_DIR, 'packages', 'api', 'migrations')
 export const WALLET1_DEV_DATABASE = 'meigallery-db-dev'
 export const WALLET1_POLICY_ID = 'wlp_app_1_0_wallet_1_dev_1'
 export const WALLET1_READINESS_KIND = 'wallet1-dev-migration-readiness'
+export const WALLET1_READINESS_SCHEMA_VERSION = 2
 export const WALLET1_EXPECTED_PENDING_MIGRATIONS = Object.freeze([
   '0075_app_membership_applications.sql',
   '0076_app_in_app_notifications.sql',
@@ -41,8 +42,9 @@ export async function createWallet1DevReadiness(options = {}) {
   validateRepositoryState(repository)
 
   const localBoundary = await (options.validateLocalBoundary || (() => validateLocalWallet1Boundary(options)))()
+  const expectedPendingMigrations = await (options.listExpectedPendingMigrations || listLocalWallet1PendingMigrations)()
   const pendingMigrations = await (options.listPendingMigrations || (() => listRemotePendingMigrations(options)))()
-  assertExpectedPendingMigrations(pendingMigrations)
+  assertExpectedPendingMigrations(pendingMigrations, expectedPendingMigrations)
 
   const timeTravelBookmark = await (options.getBookmark || (() => getRemoteBookmark(options)))()
   validateBookmark(timeTravelBookmark)
@@ -67,9 +69,9 @@ export async function createWallet1DevReadiness(options = {}) {
     const sha256 = createHash('sha256').update(sql).digest('hex')
 
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: WALLET1_READINESS_SCHEMA_VERSION,
       kind: WALLET1_READINESS_KIND,
-      purpose: 'wallet1-dev-before-migrations-0075-0077',
+      purpose: 'wallet1-dev-before-migrations-0075-onward',
       environment: 'dev',
       database: WALLET1_DEV_DATABASE,
       databaseId: localBoundary.databaseId,
@@ -133,7 +135,8 @@ export async function validateWallet1DevReadinessManifest(manifestPath, options 
   assertOutsideRepository(physicalManifestPath)
 
   const manifest = JSON.parse(await readFile(physicalManifestPath, 'utf8'))
-  validateManifestShape(manifest)
+  const expectedPendingMigrations = await (options.listExpectedPendingMigrations || listLocalWallet1PendingMigrations)()
+  validateManifestShape(manifest, expectedPendingMigrations)
 
   const now = options.now || (() => new Date())
   const nowMs = now().getTime()
@@ -158,7 +161,7 @@ export async function validateWallet1DevReadinessManifest(manifestPath, options 
   }
 
   const pendingMigrations = await (options.listPendingMigrations || (() => listRemotePendingMigrations(options)))()
-  assertExpectedPendingMigrations(pendingMigrations)
+  assertExpectedPendingMigrations(pendingMigrations, expectedPendingMigrations)
   if (!sameArray(manifest.pendingMigrations, pendingMigrations)) {
     throw new Error('WALLET1_READINESS_PENDING_MIGRATIONS_CHANGED')
   }
@@ -199,8 +202,11 @@ export function parsePendingMigrations(output) {
   return [...new Set(matches)]
 }
 
-export function assertExpectedPendingMigrations(migrations) {
-  if (!sameArray(migrations, WALLET1_EXPECTED_PENDING_MIGRATIONS)) {
+export function assertExpectedPendingMigrations(migrations, expectedMigrations = WALLET1_EXPECTED_PENDING_MIGRATIONS) {
+  const hasWalletPrefix = WALLET1_EXPECTED_PENDING_MIGRATIONS.every(
+    (migration, index) => migrations?.[index] === migration,
+  )
+  if (!hasWalletPrefix || !sameArray(migrations, expectedMigrations)) {
     throw new Error('WALLET1_READINESS_PENDING_MIGRATIONS_UNEXPECTED')
   }
 }
@@ -317,6 +323,17 @@ async function readMigrationSources() {
   return { membershipApplications, notifications, wallet }
 }
 
+async function listLocalWallet1PendingMigrations() {
+  const migrations = (await readdir(MIGRATIONS_DIR))
+    .filter(name => /^\d{4}_[A-Za-z0-9_]+\.sql$/u.test(name))
+    .sort()
+  const walletBoundary = migrations.indexOf(WALLET1_EXPECTED_PENDING_MIGRATIONS[0])
+  if (walletBoundary < 0) throw new Error('WALLET1_READINESS_0075_MISSING')
+  const expected = migrations.slice(walletBoundary)
+  assertExpectedPendingMigrations(expected, expected)
+  return expected
+}
+
 async function getRepositoryState(options = {}) {
   const runCommand = options.runCommand || defaultRunCommand
   const [commitStep, branchStep, statusStep] = await Promise.all([
@@ -404,14 +421,17 @@ async function defaultRunCommand(command, args, options = {}) {
   }
 }
 
-function validateManifestShape(manifest) {
-  if (manifest?.schemaVersion !== 1 || manifest?.kind !== WALLET1_READINESS_KIND) {
+function validateManifestShape(manifest, expectedPendingMigrations) {
+  if (manifest?.schemaVersion !== WALLET1_READINESS_SCHEMA_VERSION || manifest?.kind !== WALLET1_READINESS_KIND) {
     throw new Error('WALLET1_READINESS_MANIFEST_INVALID')
   }
   if (manifest.environment !== 'dev' || manifest.database !== WALLET1_DEV_DATABASE) {
     throw new Error('WALLET1_READINESS_MANIFEST_TARGET_INVALID')
   }
-  if (!sameArray(manifest.pendingMigrations, WALLET1_EXPECTED_PENDING_MIGRATIONS)) {
+  try {
+    assertExpectedPendingMigrations(manifest.pendingMigrations, expectedPendingMigrations)
+  }
+  catch {
     throw new Error('WALLET1_READINESS_MANIFEST_MIGRATIONS_INVALID')
   }
   if (manifest.verifiedBoundary?.walletUserRuntimeEnabled !== false

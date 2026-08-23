@@ -8,14 +8,25 @@ async function readMigration(name: string) {
 }
 
 describe('数据库迁移契约', () => {
-  it('migration 索引从 0001 到 0118 连续且编号唯一', async () => {
+  it('migration 索引从 0001 到 0119 连续且编号唯一', async () => {
     const names = (await readdir(MIGRATION_DIR))
       .filter(name => /^\d{4}_.+\.sql$/.test(name))
       .sort()
     const indexes = names.map(name => Number(name.slice(0, 4)))
 
-    expect(indexes).toEqual(Array.from({ length: 118 }, (_, index) => index + 1))
+    expect(indexes).toEqual(Array.from({ length: 119 }, (_, index) => index + 1))
     expect(new Set(indexes).size).toBe(indexes.length)
+  })
+
+  it('0117 只预约序号，租约收缩约束只能由末尾 0119 建立', async () => {
+    const reservation = await readMigration('0117_legacy_import_processing_lease_guard_reservation.sql')
+    const guard = await readMigration('0119_legacy_import_processing_lease_guards.sql')
+
+    expect(reservation).toMatch(/SELECT 1;/u)
+    expect(reservation).not.toMatch(/\b(?:ALTER|CREATE|DELETE|DROP|INSERT|REPLACE|UPDATE)\b/iu)
+    expect(guard).toContain('CREATE TRIGGER IF NOT EXISTS import_jobs_legacy_processing_lease_insert_guard')
+    expect(guard).toContain('CREATE TRIGGER IF NOT EXISTS import_jobs_legacy_processing_lease_update_guard')
+    expect(guard).toContain("RAISE(ABORT, 'legacy import processing lease invalid')")
   })
 
   it('0072 只建立默认关闭的平台话题结构，不写入账号、grant 或会话数据', async () => {

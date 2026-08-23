@@ -2,7 +2,7 @@
 
 更新时间：2026-08-20
 
-状态：源码与 migration 已完成，配置、migration 执行、构建、测试和环境验收统一后置
+状态：源码、migration 与 Wrangler Queue 契约已完成；dev Queue 已创建但未绑定；production 资源、migration 执行和环境验收受门禁后置
 
 ## 1. 目标与边界
 
@@ -68,13 +68,13 @@
 
 1. 应用 `0118`；旧运行时忽略新增兼容列。
 2. 发布新运行时；Queue 未配置时接口 fail closed 为 503，记录仍可幂等恢复。
-3. 配置 `TELEGRAM_IMPORT_QUEUE` producer/consumer 后启用外部调用。
+3. `wrangler.toml` 已声明 production `meigallery-import-telegram` 与隔离 dev `meigallery-import-telegram-dev` 的 `TELEGRAM_IMPORT_QUEUE` producer/consumer、有界单并发和诊断 DLQ；初始化脚本负责幂等创建。dev 主 Queue/DLQ 已创建但尚无 producer/consumer；只有 Worker 绑定与 migration 均完成后才启用外部调用。
 
-当前只提交源码和 migration 文件，不执行上述环境动作。
+当前只额外创建了隔离 dev Queue/DLQ，不执行 migration、部署 Worker、创建 production Queue 或启用外部调用。
 
 ## 8. 后置验收
 
-全部开发结束后统一验证：
+远端门禁通过后继续执行以下环境专项验证；源码级回归已纳入 2026-08-24 全仓门禁：
 
 - D1 batch 中途失败无半条任务；并发重复只保留一条记录。
 - Queue 未配置、发送失败、派发后未消费、重复投递、处理中 Worker 中断和旧 token 重放。

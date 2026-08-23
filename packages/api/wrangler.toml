@@ -81,6 +81,68 @@ queue = "meigallery-ad-google-dlq"
 max_batch_size = 10
 max_batch_timeout = 5
 
+# 业务 Queue 使用单消息批次与有界并发；业务状态机负责幂等、租约和终态收敛，
+# DLQ 仅保留平台级未交付消息供诊断，不绑定自动消费者。
+[[queues.producers]]
+binding = "IMPORT_QUEUE"
+queue = "meigallery-import-zip"
+
+[[queues.consumers]]
+queue = "meigallery-import-zip"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 3
+retry_delay = 15
+max_concurrency = 1
+dead_letter_queue = "meigallery-import-zip-dlq"
+
+[[queues.producers]]
+binding = "DATA_RIGHTS_EXPORT_QUEUE"
+queue = "meigallery-app-data-rights-export"
+
+[[queues.consumers]]
+queue = "meigallery-app-data-rights-export"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 5
+retry_delay = 15
+max_concurrency = 1
+dead_letter_queue = "meigallery-app-data-rights-export-dlq"
+
+[[queues.producers]]
+binding = "DATA_RIGHTS_DELETION_QUEUE"
+queue = "meigallery-app-data-rights-deletion"
+
+[[queues.consumers]]
+queue = "meigallery-app-data-rights-deletion"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 5
+retry_delay = 15
+max_concurrency = 1
+dead_letter_queue = "meigallery-app-data-rights-deletion-dlq"
+
+[[queues.producers]]
+binding = "TELEGRAM_IMPORT_QUEUE"
+queue = "meigallery-import-telegram"
+
+[[queues.consumers]]
+queue = "meigallery-import-telegram"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 5
+retry_delay = 60
+max_concurrency = 1
+dead_letter_queue = "meigallery-import-telegram-dlq"
+
+[[durable_objects.bindings]]
+name = "APP_REALTIME_HUB"
+class_name = "AppRealtimeHub"
+
+[exports.AppRealtimeHub]
+type = "durable-object"
+storage = "sqlite"
+
 # 环境变量（非敏感）— 生产默认值
 [vars]
 APP_ENV = "production"
@@ -116,6 +178,9 @@ APP_WALLET_ENABLED = "false"
 APP_WALLET_ADMIN_ENABLED = "false"
 APP_WALLET_POLICY_VERSION = "wlp_app_1_0_wallet_1_dev_1"
 APP_WALLET_PRODUCTION_READY = "false"
+APP_REALTIME_ENABLED = "false"
+APP_REALTIME_POLICY_VERSION = "rtp_app_1_0_message_4_dev_1"
+APP_REALTIME_PRODUCTION_READY = "false"
 
 [observability]
 enabled = true
@@ -146,9 +211,61 @@ name = "EMAIL"
 [env.dev.triggers]
 crons = []
 
-[env.dev.queues]
-producers = []
-consumers = []
+[[env.dev.queues.producers]]
+binding = "IMPORT_QUEUE"
+queue = "meigallery-import-zip-dev"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-import-zip-dev"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 3
+retry_delay = 15
+max_concurrency = 1
+dead_letter_queue = "meigallery-import-zip-dev-dlq"
+
+[[env.dev.queues.producers]]
+binding = "DATA_RIGHTS_EXPORT_QUEUE"
+queue = "meigallery-app-data-rights-export-dev"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-app-data-rights-export-dev"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 5
+retry_delay = 15
+max_concurrency = 1
+dead_letter_queue = "meigallery-app-data-rights-export-dev-dlq"
+
+[[env.dev.queues.producers]]
+binding = "DATA_RIGHTS_DELETION_QUEUE"
+queue = "meigallery-app-data-rights-deletion-dev"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-app-data-rights-deletion-dev"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 5
+retry_delay = 15
+max_concurrency = 1
+dead_letter_queue = "meigallery-app-data-rights-deletion-dev-dlq"
+
+[[env.dev.queues.producers]]
+binding = "TELEGRAM_IMPORT_QUEUE"
+queue = "meigallery-import-telegram-dev"
+
+[[env.dev.queues.consumers]]
+queue = "meigallery-import-telegram-dev"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 5
+retry_delay = 60
+max_concurrency = 1
+dead_letter_queue = "meigallery-import-telegram-dev-dlq"
+
+[[env.dev.durable_objects.bindings]]
+name = "APP_REALTIME_HUB"
+class_name = "AppRealtimeHub"
 
 [env.dev.vars]
 APP_ENV = "dev"
@@ -192,6 +309,9 @@ APP_WALLET_ENABLED = "false"
 APP_WALLET_ADMIN_ENABLED = "false"
 APP_WALLET_POLICY_VERSION = "wlp_app_1_0_wallet_1_dev_1"
 APP_WALLET_PRODUCTION_READY = "false"
+APP_REALTIME_ENABLED = "false"
+APP_REALTIME_POLICY_VERSION = "rtp_app_1_0_message_4_dev_1"
+APP_REALTIME_PRODUCTION_READY = "false"
 
 # 敏感变量需通过 wrangler secret put 设置：
 # corepack pnpm --filter @meigallery/api exec wrangler secret put SESSION_SECRET

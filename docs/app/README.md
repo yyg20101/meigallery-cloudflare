@@ -53,7 +53,7 @@ App 版本：1.0
 - [Account/Settings-2 账号资料、初始偏好与会话设置跨仓开发基线](./ACCOUNT_SETTINGS_2_FIGMA_CROSS_REPO_INTEGRATION.md)：记录 App API `1.20.0`、`0095`、三个默认关闭能力、Figma Node ID、私有账号资料、初始偏好、会话免打扰及举报/屏蔽/关闭交互。
 - [Account/Settings-3 跨域账号申诉交付基线](./ACCOUNT_SETTINGS_3_CROSS_DOMAIN_APPEAL_INTEGRATION.md)：记录 APP-SET-08 九个正式状态、举报与服务上下文精确选取、幂等创建恢复、三个终态结果页和跨仓验收边界。
 - [Person-4 ZIP 批量导入交付基线](./PERSON_4_ZIP_IMPORT_DELIVERY.md)：记录 ADM-PER-04 五个 Figma 状态、Worker 到私有 R2 的分片上传、ZIP 安全校验、Queue 逐项处理、部分失败恢复和 Gallery 与 Person 的显式边界。
-- [Legacy Import-2 旧站迁移运行完整性开发基线](./LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md)：记录专用 legacy 任务可见性、任务级媒体作用域、单篇成功/失败原子事实、私有来源快照、不可改写审核/失败证据、处理租约与 `0116/0117` 后置门禁。
+- [Legacy Import-2 旧站迁移运行完整性开发基线](./LEGACY_IMPORT_2_OPERATIONAL_INTEGRITY.md)：记录专用 legacy 任务可见性、任务级媒体作用域、单篇成功/失败原子事实、私有来源快照、不可改写审核/失败证据、处理租约与 `0116/0119` 分阶段门禁。
 - [External Import-2 Telegram 队列与运行完整性开发基线](./EXTERNAL_IMPORT_2_QUEUE_INTEGRITY.md)：记录原子接收、专用 Queue、30 分钟处理租约、确定性 R2 key、过期恢复、有界图片校验和安全错误证据，以及 `0118`/Queue 配置后置边界。
 - [App 1.0 需求追踪矩阵](./APP_REQUIREMENTS_TRACEABILITY.md)：把产品总需求、发布范围、Feature PRD、99 个 Page ID、408 个 Figma 最终状态和 179 个客户文档图片映射建立确定性关系，并明确未来能力或非 UI 门禁。
 - [产品总需求](./PRODUCT_REQUIREMENTS.md)：开发需求规格的产品层上游；业务规则变化先在此处和对应 Feature PRD 修订，再重新生成开发规格。

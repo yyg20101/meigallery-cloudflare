@@ -4,7 +4,7 @@
 
 App 版本：1.0
 
-状态：开发接线完成；Privacy-2C 已扩充当前数据副本范围；migration、Queue/R2 配置、构建、测试、设备 QA 与生产审批统一后置
+状态：开发接线与 Wrangler Queue 契约完成；dev Queue 已创建但未绑定；Privacy-2C 已扩充当前数据副本范围；production 资源、migration、环境 QA 与生产审批受门禁后置
 
 ## 1. 本阶段结论
 
@@ -24,7 +24,7 @@ Privacy-2A 本身**不实现**不可逆账号删除、匿名化执行器或法�
 
 ## 2. 默认关闭与启用边界
 
-本阶段没有修改 Wrangler、环境变量、Queue binding、R2 binding 或任何环境值，也没有执行 migration。
+Privacy-2A 初始切片当时没有修改 Wrangler、环境变量、Queue/R2 binding 或任何环境值，也没有执行 migration。统一配置阶段随后补齐了保持关闭的 Queue 源码契约并只创建隔离 dev 主 Queue/DLQ；这不表示 Worker 已绑定或数据导出 processing 已获授权。
 
 `0102` 只 seed development 配置 `drxp_app_1_0_privacy_2a_dev_1`：
 
@@ -217,10 +217,10 @@ data-rights/exports/{requestId}/{artifactId}/
 
 ## 11. 明确后置事项
 
-按照当前“先完成全部开发，再统一配置与验证”的顺序，本阶段没有执行：
+以下列表是最初切片交付时的历史后置记录；2026-08-24 已完成 Cloud/KMP 源码级构建测试与 KMP 真机 Mock QA，尚未完成的仍是 migration、Worker binding、治理审批和真实导出环境专项 QA：
 
 - `0102` 或完整 D1 migration 链；
-- Queue/R2/cron/Wrangler 配置与 dev/production capability 开放；
+- `wrangler.toml` 与初始化脚本已声明 production/dev 隔离的 `DATA_RIGHTS_EXPORT_QUEUE`、单消息批次、有界并发和诊断 DLQ；dev 主 Queue/DLQ 已创建但 Worker 尚未绑定，production Queue、migration、cron 验收与 dev/production capability 开放仍未执行；
 - TypeScript/Kotlin 构建、单元/集成/E2E/并发/失败注入测试；
 - Android/iOS 模拟器、真机、`android-cli` 截图和 Figma 像素验收；
 - 大账号性能、Queue 重试、R2 局部失败、过期清理与事故恢复演练；

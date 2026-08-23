@@ -86,7 +86,7 @@
 - 增加任务、来源 post、Gallery 媒体作用域所需索引；
 - 增加 imported/failed 终态完整性、条目终态不可改写、审核终态不可改写、已存在审核/失败证据不可改写和来源快照不可改写触发器。
 
-`0117_legacy_import_processing_lease_guards.sql` 在兼容代码发布后启用租约状态约束：legacy processing 必须同时持有 token 与到期时间，非 processing 和非 legacy 任务不得残留这两个字段。拆分 migration 是为了保持可发布顺序：先加列，再发布会写租约的代码，最后启用强约束。
+`0119_legacy_import_processing_lease_guards.sql` 在兼容代码发布后启用租约状态约束：legacy processing 必须同时持有 token 与到期时间，非 processing 和非 legacy 任务不得残留这两个字段。dev/production 远端账本均确认原约束版 `0117` 从未执行，因此收缩约束安全顺延到当前 migration 末尾；新的 `0117_legacy_import_processing_lease_guard_reservation.sql` 只执行 `SELECT 1`，用于保持全链序号连续，不修改 schema 或业务数据。`0119` 使用 `CREATE TRIGGER IF NOT EXISTS`，即使未来旧账本竞态留下同名且同义约束也能安全收敛。拆分并顺延 migration 是为了保持可发布顺序：先应用截至 `0118` 的兼容扩展，再发布会写租约的代码，最后单独启用强约束。
 
 Migration 不创建任务、不导入真实旧站内容、不发布 Gallery，也不修改环境配置。
 
@@ -114,7 +114,7 @@ Migration 不创建任务、不导入真实旧站内容、不发布 Gallery，�
 全部开发结束后统一执行：
 
 1. 在隔离 D1 副本检查历史 terminal review 与审核日志可回填覆盖率；
-2. 先应用 `0116` 扩展列与索引，再发布会写租约的兼容代码，最后应用 `0117` 租约约束；核对新增列、索引和触发器；
+2. 通过阶段执行器先应用截至 `0118` 的兼容扩展，再发布会写租约的兼容代码，最后单独应用 `0119` 租约约束；核对新增列、索引和触发器；
 3. 运行 legacy route/service 定向测试、API 类型检查与 Web 构建；
 4. 使用合成 WordPress 来源验证重复任务、分页续租、有效租约拒绝回收、过期任务恢复、部分失败、媒体重试、封面设置和审计完整性；
 5. 在正式启用前补齐 XML 独立上传/解析设计和 Stream 配置，未完成时保持明确不可用。

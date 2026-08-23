@@ -40,6 +40,9 @@ API_RELEASE_TAG=""
 WEB_RELEASE_TAG=""
 HAS_PENDING_MIGRATIONS=false
 WALLET1_MIGRATION_PENDING=false
+LEGACY_LEASE_GUARD_PENDING=false
+LEGACY_LEASE_EXTENSION_CUTOFF="0118_external_import_queue_integrity.sql"
+LEGACY_LEASE_GUARD_MIGRATION="0119_legacy_import_processing_lease_guards.sql"
 
 echo "=== MeiGallery 部署 (环境: $ENV, 范围: $SCOPE) ==="
 
@@ -103,6 +106,15 @@ if [ "$RUN_API" = "true" ]; then
       --validate-manifest="$WALLET1_DEV_READINESS_MANIFEST"
   fi
 
+  if [[ "$UNAPPLIED_MIGRATIONS" == *"$LEGACY_LEASE_GUARD_MIGRATION"* ]]; then
+    LEGACY_LEASE_GUARD_PENDING=true
+    LATEST_LOCAL_MIGRATION="$(find packages/api/migrations -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]_*.sql' -exec basename {} \; | sort | tail -n 1)"
+    if [ "$LATEST_LOCAL_MIGRATION" != "$LEGACY_LEASE_GUARD_MIGRATION" ]; then
+      echo "错误: 租约收缩 migration 后存在新的未编排 migration；必须先补充显式发布顺序。"
+      exit 1
+    fi
+  fi
+
   if [ "$IS_PRODUCTION" = "true" ] && [ "$HAS_PENDING_MIGRATIONS" = "true" ]; then
     echo "[API] production D1 存在待执行 migration，先导出备份..."
     node scripts/export-production-d1-backup.mjs
@@ -131,8 +143,17 @@ fi
 
 if [ "$RUN_API" = "true" ]; then
   if [ "$HAS_PENDING_MIGRATIONS" = "true" ]; then
-    echo "[API] 应用 D1 migration..."
-    "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
+    if [ "$LEGACY_LEASE_GUARD_PENDING" = "true" ]; then
+      echo "[API] 应用兼容扩展 migration（截至 $LEGACY_LEASE_EXTENSION_CUTOFF）..."
+      node scripts/apply-staged-d1-migrations.mjs \
+        --environment="$ENV" \
+        --confirm-database="$D1_DB" \
+        --through="$LEGACY_LEASE_EXTENSION_CUTOFF" \
+        --apply
+    else
+      echo "[API] 应用 D1 migration..."
+      "${PNPM[@]}" --filter @meigallery/api exec wrangler d1 migrations apply "$D1_DB" "${ENV_ARGS[@]}" --remote
+    fi
   else
     echo "[API] 无待执行 D1 migration，跳过。"
   fi
@@ -146,6 +167,15 @@ if [ "$RUN_API" = "true" ]; then
   else
     echo "[API] 部署 Worker..."
     "${PNPM[@]}" --filter @meigallery/api exec wrangler deploy "${ENV_ARGS[@]}" --var "RELEASE_COMMIT:${GIT_COMMIT}"
+  fi
+
+  if [ "$LEGACY_LEASE_GUARD_PENDING" = "true" ]; then
+    echo "[API] 兼容运行时已激活，单独应用租约收缩 migration..."
+    node scripts/apply-staged-d1-migrations.mjs \
+      --environment="$ENV" \
+      --confirm-database="$D1_DB" \
+      --through="$LEGACY_LEASE_GUARD_MIGRATION" \
+      --apply
   fi
 fi
 
